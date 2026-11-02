@@ -531,9 +531,12 @@ struct IMAPLegacyRecoveryTests {
                  sources: any IMAPMessageSourceCache, bodies: any IMAPMessageBodyCache,
                  fetch: IMAPSMTPBackend.MessageSourceFetchOperation? = nil,
                  messages: IMAPSMTPBackend.MessageListingOperation? = nil,
-                 condstore: IMAPSMTPBackend.CONDSTORESyncOperation? = nil) -> IMAPSMTPBackend {
+                 condstore: IMAPSMTPBackend.CONDSTORESyncOperation? = nil,
+                 flag: IMAPSMTPBackend.MessageFlagOperation? = nil,
+                 move: IMAPSMTPBackend.MessageMoveWithResultOperation? = nil,
+                 account: BrevAccount = Self.account) -> IMAPSMTPBackend {
         let configuration = IMAPAccountConfiguration(
-            accountID: Self.account.id, emailAddress: Self.account.emailAddress, displayName: Self.account.displayName,
+            accountID: account.id, emailAddress: account.emailAddress, displayName: account.displayName,
             incoming: MailServerSettings(
                 kind: .imap,
                 host: "imap.example.test",
@@ -555,7 +558,7 @@ struct IMAPLegacyRecoveryTests {
             secret: "fixture",
             authentication: .password
         )
-        return IMAPSMTPBackend(account: Self.account, configuration: configuration, credential: credential,
+        return IMAPSMTPBackend(account: account, configuration: configuration, credential: credential,
                                listFolders: { _, _ in [IMAPFolderListing(
                                    path: "INBOX",
                                    displayName: "Inbox",
@@ -563,7 +566,8 @@ struct IMAPLegacyRecoveryTests {
                                    flags: [],
                                    role: .inbox
                                )] },
-                               listMessages: messages, fetchMessageSource: fetch, condstoreSync: condstore, headerCache: legacy,
+                               listMessages: messages, fetchMessageSource: fetch, setMessageFlag: flag,
+                               moveMessagesWithResult: move, condstoreSync: condstore, headerCache: legacy,
                                sourceCache: sources, bodyCache: bodies, localSearchIndex: engine)
     }
 

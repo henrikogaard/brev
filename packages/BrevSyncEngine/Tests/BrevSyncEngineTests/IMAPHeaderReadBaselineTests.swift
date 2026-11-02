@@ -33,15 +33,18 @@ struct IMAPHeaderReadBaselineTests {
         var sqliteOpenDurations: [Duration] = []
         var sqliteQueryDurations: [Duration] = []
         var sqliteTotalDurations: [Duration] = []
+        var jsonThreadDurations: [Duration] = []
+        var sqliteThreadDurations: [Duration] = []
+        var backendDurations: [Duration] = []
 
         for sample in 0 ..< Self.sampleCount {
             let json: JSONRead
             let sqlite: SQLiteRead
             if sample.isMultiple(of: 2) {
                 json = try await Self.readJSON(fixture: fixture)
-                sqlite = try Self.readSQLite(fixture: fixture)
+                sqlite = try await Self.readSQLite(fixture: fixture)
             } else {
-                sqlite = try Self.readSQLite(fixture: fixture)
+                sqlite = try await Self.readSQLite(fixture: fixture)
                 json = try await Self.readJSON(fixture: fixture)
             }
             #expect(json.page == fixture.expectedFirstPage)
@@ -54,15 +57,19 @@ struct IMAPHeaderReadBaselineTests {
             sqliteOpenDurations.append(sqlite.openDuration)
             sqliteQueryDurations.append(sqlite.queryDuration)
             sqliteTotalDurations.append(sqlite.totalDuration)
+            jsonThreadDurations.append(json.threadDuration)
+            sqliteThreadDurations.append(sqlite.threadDuration)
+            try await backendDurations.append(Self.readBackend(fixture: fixture))
             let order = sample.isMultiple(of: 2) ? "json-first" : "sqlite-first"
             print(
-                "PERF header-read.sample rows=\(rowCount) page_size=\(Self.pageSize) sample=\(sample + 1) order=\(order) cold=store-reopen os_cache=uncontrolled build=\(Self.buildMode) json_read_ms=\(Self.ms(json.duration)) sqlite_open_ms=\(Self.ms(sqlite.openDuration)) sqlite_query_ms=\(Self.ms(sqlite.queryDuration)) sqlite_total_ms=\(Self.ms(sqlite.totalDuration))"
+                "PERF header-read.sample rows=\(rowCount) page_size=\(Self.pageSize) sample=\(sample + 1) order=\(order) cold=store-reopen os_cache=uncontrolled build=\(Self.buildMode) json_read_ms=\(Self.ms(json.duration)) sqlite_open_ms=\(Self.ms(sqlite.openDuration)) sqlite_query_ms=\(Self.ms(sqlite.queryDuration)) sqlite_total_ms=\(Self.ms(sqlite.totalDuration)) json_threads_ms=\(Self.ms(json.threadDuration)) sqlite_threads_ms=\(Self.ms(sqlite.threadDuration)) backend_total_ms=\(Self.ms(backendDurations.last!))"
             )
         }
 
         print(
-            "PERF header-read.summary rows=\(rowCount) page_size=\(Self.pageSize) samples=\(Self.sampleCount) fixture_json_bytes=\(fixture.jsonBytes) cold=store-reopen os_cache=uncontrolled build=\(Self.buildMode) json_read_median_ms=\(Self.ms(Self.median(jsonDurations))) sqlite_open_median_ms=\(Self.ms(Self.median(sqliteOpenDurations))) sqlite_query_median_ms=\(Self.ms(Self.median(sqliteQueryDurations))) sqlite_total_median_ms=\(Self.ms(Self.median(sqliteTotalDurations)))"
+            "PERF header-read.summary rows=\(rowCount) page_size=\(Self.pageSize) samples=\(Self.sampleCount) fixture_json_bytes=\(fixture.jsonBytes) cold=store-reopen os_cache=uncontrolled build=\(Self.buildMode) json_read_median_ms=\(Self.ms(Self.median(jsonDurations))) sqlite_open_median_ms=\(Self.ms(Self.median(sqliteOpenDurations))) sqlite_query_median_ms=\(Self.ms(Self.median(sqliteQueryDurations))) sqlite_total_median_ms=\(Self.ms(Self.median(sqliteTotalDurations))) json_threads_median_ms=\(Self.ms(Self.median(jsonThreadDurations))) sqlite_threads_median_ms=\(Self.ms(Self.median(sqliteThreadDurations))) backend_total_median_ms=\(Self.ms(Self.median(backendDurations)))"
         )
+        try await Self.flagPersistence(fixture: fixture)
     }
 
     private struct Fixture {
@@ -72,6 +79,7 @@ struct IMAPHeaderReadBaselineTests {
         let jsonBytes: Int
         let expectedFirstPage: [MessageHeader]
         let expectedSecondPage: [MessageHeader]
+        let expectedThreadedPage: [MessageHeader]
 
         var nextPageToken: String { "before:\(rowCount - IMAPHeaderReadBaselineTests.pageSize + 1)" }
     }
@@ -79,6 +87,7 @@ struct IMAPHeaderReadBaselineTests {
     private struct JSONRead {
         let page: [MessageHeader]
         let duration: Duration
+        let threadDuration: Duration
     }
 
     private struct SQLiteRead {
@@ -87,6 +96,7 @@ struct IMAPHeaderReadBaselineTests {
         let openDuration: Duration
         let queryDuration: Duration
         let totalDuration: Duration
+        let threadDuration: Duration
     }
 
     /// Seed work and the full source array leave scope before any read is timed.
@@ -103,7 +113,9 @@ struct IMAPHeaderReadBaselineTests {
                 date: Date(timeIntervalSince1970: TimeInterval(1_700_000_000 + uid * 60)),
                 isRead: uid.isMultiple(of: 2),
                 isFlagged: uid.isMultiple(of: 7),
-                messageID: "<baseline-\(uid)@example.test>"
+                messageID: "<baseline-\(uid)@example.test>",
+                inReplyTo: uid > rowCount - pageSize ? "<baseline-\(uid - rowCount + pageSize)@example.test>" : nil,
+                references: uid > rowCount - pageSize ? ["<baseline-\(uid - rowCount + pageSize)@example.test>"] : []
             )
         }
         let firstPage = Array(headers.prefix(pageSize))
@@ -126,6 +138,11 @@ struct IMAPHeaderReadBaselineTests {
             let store = try SQLiteSyncStore(databaseURL: databaseURL)
             try store.ensureAccount(id: accountID)
             try store.upsertHeaders(headers, accountID: accountID)
+            try store.storeIMAPPage(IMAPHeaderPageWrite(folderID: folderID, pageToken: nil, headers: firstPage,
+                                                        uidValidity: 777, highestModSeq: 888,
+                                                        nextPageToken: snapshot.nextPageToken), accountID: accountID)
+            try store.storeIMAPSnapshot(IMAPMailboxHeaderCacheSnapshot(headers: []), accountID: accountID,
+                                        folderID: folderID, importingLegacy: true)
         }
         return try Fixture(
             rowCount: rowCount,
@@ -133,7 +150,8 @@ struct IMAPHeaderReadBaselineTests {
             databaseURL: databaseURL,
             jsonBytes: JSONEncoder().encode(snapshot).count,
             expectedFirstPage: firstPage,
-            expectedSecondPage: Array(headers.dropFirst(pageSize).prefix(pageSize))
+            expectedSecondPage: Array(headers.dropFirst(pageSize).prefix(pageSize)),
+            expectedThreadedPage: Array(MessageThreadResolver.resolved(headers).prefix(pageSize))
         )
     }
 
@@ -149,10 +167,14 @@ struct IMAPHeaderReadBaselineTests {
         #expect(snapshot.highestModSeq == 888)
         #expect(snapshot.nextPageToken == fixture.nextPageToken)
         #expect(snapshot.firstPageHeaderIDs == Set(fixture.expectedFirstPage.map(\.id)))
-        return JSONRead(page: Array(snapshot.headers.prefix(pageSize)), duration: duration)
+        let threadStart = clock.now
+        let threaded = Array(MessageThreadResolver.resolved(snapshot.headers).prefix(pageSize))
+        let threadDuration = clock.now - threadStart
+        #expect(threaded == fixture.expectedThreadedPage)
+        return JSONRead(page: Array(snapshot.headers.prefix(pageSize)), duration: duration, threadDuration: threadDuration)
     }
 
-    private static func readSQLite(fixture: Fixture) throws -> SQLiteRead {
+    private static func readSQLite(fixture: Fixture) async throws -> SQLiteRead {
         let clock = ContinuousClock()
         let start = clock.now
         let store = try SQLiteSyncStore(databaseURL: fixture.databaseURL)
@@ -160,13 +182,90 @@ struct IMAPHeaderReadBaselineTests {
         let page = store.headers(accountID: accountID, folderID: folderID, limit: pageSize, offset: 0)
         let finished = clock.now
         let nextPage = store.headers(accountID: accountID, folderID: folderID, limit: pageSize, offset: pageSize)
+        let threadStart = clock.now
+        let engine = BrevSyncEngine(store: store)
+        let linked = try await engine.imapThreadingHeaders(for: page, folderID: folderID, account: account)
+        let resolved = MessageThreadResolver.resolved(linked)
+        let byID = Dictionary(uniqueKeysWithValues: resolved.map { ($0.id, $0) })
+        let threaded = page.compactMap { byID[$0.id] }
+        let threadDuration = clock.now - threadStart
+        #expect(linked.count == pageSize * 2)
+        #expect(threaded == fixture.expectedThreadedPage)
         return SQLiteRead(
             page: page,
             nextPage: nextPage,
             openDuration: opened - start,
             queryDuration: finished - opened,
-            totalDuration: finished - start
+            totalDuration: finished - start,
+            threadDuration: threadDuration
         )
+    }
+
+    private static var account: BrevAccount {
+        BrevAccount(id: accountID, displayName: "Baseline", emailAddress: "reader@example.test")
+    }
+
+    private static func readBackend(fixture: Fixture) async throws -> Duration {
+        let start = ContinuousClock.now
+        let engine = try BrevSyncEngine(databaseURL: fixture.databaseURL)
+        let legacy = LegacyReadCounter(root: fixture.cacheRoot.appendingPathComponent("migrated"))
+        let backend = IMAPLegacyRecoveryTests().backend(engine, legacy: legacy,
+                                                        sources: InMemoryIMAPMessageSourceCache(),
+                                                        bodies: InMemoryIMAPMessageBodyCache(), account: account)
+        let result = try await backend.messages(in: Folder(id: folderID, name: "Inbox", role: .inbox), pageToken: nil)
+        let duration = ContinuousClock.now - start
+        #expect(result.headers == fixture.expectedThreadedPage)
+        #expect(result.nextPageToken != nil)
+        #expect(await legacy.probes == 1)
+        #expect(await legacy.decodes == 0)
+        await backend.disconnect()
+        return duration
+    }
+
+    private static func flagPersistence(fixture: Fixture) async throws {
+        let engine = try BrevSyncEngine(databaseURL: fixture.databaseURL)
+        let legacy = LegacyReadCounter(root: fixture.cacheRoot.appendingPathComponent("migrated"))
+        let backend = IMAPLegacyRecoveryTests().backend(engine, legacy: legacy,
+                                                        sources: InMemoryIMAPMessageSourceCache(),
+                                                        bodies: InMemoryIMAPMessageBodyCache(),
+                                                        flag: { _, _, _, _, _, _ in }, account: account)
+        try await backend.connect()
+        let id = fixture.expectedFirstPage[0].id
+        var durations: [Duration] = []
+        for sample in 0 ..< 6 {
+            let value = !sample.isMultiple(of: 2)
+            let start = ContinuousClock.now
+            try await backend.setRead(value, for: [id])
+            let duration = ContinuousClock.now - start
+            durations.append(duration)
+            let reopened = try BrevSyncEngine(databaseURL: fixture.databaseURL)
+            #expect(try await reopened.imapHeaders(ids: [id], folderID: folderID, account: account).first?.isRead == value)
+        }
+        #expect(await legacy.probes == 1)
+        #expect(await legacy.decodes == 0)
+        #expect(await legacy.writes == 0)
+        await backend.disconnect()
+        await print(
+            "PERF flag-persist rows=\(fixture.rowCount) samples=6 stub_server=true median_ms=\(ms(median(durations))) max_ms=\(ms(durations.max()!)) legacy_probes=\(legacy.probes) legacy_decodes=\(legacy.decodes) legacy_writes=\(legacy.writes)"
+        )
+    }
+
+    private actor LegacyReadCounter: IMAPMailboxHeaderCache {
+        private let cache: LegacyIMAPMailboxHeaderCache
+        var probes = 0
+        var decodes = 0
+        var writes = 0
+        init(root: URL) { cache = LegacyIMAPMailboxHeaderCache(rootDirectory: root) }
+        func snapshot(accountID: String, folderID: String) async -> IMAPMailboxHeaderCacheSnapshot? {
+            probes += 1
+            let snapshot = await cache.snapshot(accountID: accountID, folderID: folderID)
+            if snapshot != nil { decodes += 1 }
+            return snapshot
+        }
+
+        func setSnapshot(_: IMAPMailboxHeaderCacheSnapshot, accountID _: String, folderID _: String) { writes += 1 }
+        func clear(accountID _: String, folderID _: String) {}
+        func clear(accountID _: String) {}
     }
 
     private static func median(_ durations: [Duration]) -> Duration {
