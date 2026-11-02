@@ -6806,15 +6806,23 @@ public struct BrevMailRootView: View {
         accountID: BrevAccount.ID,
         sourceID: MailSourceID?
     ) async {
-        guard let request = MailRootComposeCompletionResponsePolicy.requestForCompletion(
+        let request = MailRootComposeCompletionResponsePolicy.requestForCompletion(
             capturedRequest: request,
             activeRequest: activeComposeCompletionRequest,
             capturedComposePresentationID: composePresentationID
-        ) else {
+        )
+        let canApplyResponse = request.map(canApplyComposeCompletionResponse) ?? false
+        BrevMail.updateComposeDraftRecovery(
+            for: completion,
+            accountID: accountID,
+            sourceID: sourceID,
+            isCurrentPresentation: canApplyResponse
+        )
+        guard let request else {
             applyOrphanedDraftSaveFeedbackIfNeeded(completion)
             return
         }
-        guard canApplyComposeCompletionResponse(request) else {
+        guard canApplyResponse else {
             applyOrphanedDraftSaveFeedbackIfNeeded(completion)
             finishComposeCompletion(request)
             return
@@ -6822,11 +6830,6 @@ public struct BrevMailRootView: View {
         for event in ComposeCompletionRefreshPolicy.events(for: completion, folders: folders) {
             navigation.requestReloadIfVisibleFolderChanged(event)
         }
-        updateComposeDraftRecovery(
-            for: completion,
-            accountID: accountID,
-            sourceID: sourceID
-        )
         applyComposeCompletionFeedback(ComposeCompletionPresentation.feedback(for: completion))
         finishComposeCompletion(request)
         // Refresh the folder list/counts in the background. Awaiting it here kept
@@ -6855,18 +6858,6 @@ public struct BrevMailRootView: View {
             return nil
         }
         return ComposeDraftRecoveryStore.load(accountID: accountID, sourceID: sourceID)
-    }
-
-    private func updateComposeDraftRecovery(
-        for completion: ComposeCompletion,
-        accountID: BrevAccount.ID,
-        sourceID: MailSourceID?
-    ) {
-        BrevMail.updateComposeDraftRecovery(
-            for: completion,
-            accountID: accountID,
-            sourceID: sourceID
-        )
     }
 
     /// Routes from an attachment search result to its message by selecting the

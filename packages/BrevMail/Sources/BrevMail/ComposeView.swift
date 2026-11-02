@@ -3244,11 +3244,14 @@ public struct ComposeView: View {
         guard !isInteractionBlocked else { return }
         cancelAutoSaveDraftTask()
         let backend = selectedComposeBackend
+        let sourceID = selectedComposeSourceID
+        let draft = currentDraft()
+        let pendingOperation = activeComposeOperationRequest
         do {
-            if let sourceID = selectedComposeSourceID {
-                try await backend.discard(draftID: draftID, sourceID: sourceID)
+            if let sourceID {
+                try await backend.discard(draftID: draft.id, sourceID: sourceID)
             } else {
-                try await backend.discard(draftID: draftID)
+                try await backend.discard(draftID: draft.id)
             }
         } catch {
             errorMessage = String(
@@ -3257,6 +3260,10 @@ public struct ComposeView: View {
             )
             return
         }
+        if let pendingOperation, pendingOperation.kind == .autoSaveDraft {
+            finishComposeOperation(pendingOperation)
+        }
+        ComposeDraftRecoveryStore.clear(matching: draft, accountID: backend.account.id, sourceID: sourceID)
         savedDraftRemoteID = nil
         hasCompletedExplicitOperation = true
         close()
