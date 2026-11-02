@@ -71,6 +71,9 @@ outside the test process.
 
 ## References
 
+- [ADR-0092](0092-isolated-mock-content-qa.md) adds a separately opted-in
+  content-QA profile; this ADR's sandbox-only default remains unchanged.
+
 Port provenance: the reader/storage/navigation stack reuses the approved decision
 from `37919030f65808b7b27375d9757696e125215fb0`, implementation
 `e855797c17bb3b65e6a5e609efc2a50c6c5495b6`, and Xcode source wiring

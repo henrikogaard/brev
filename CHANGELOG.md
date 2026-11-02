@@ -4,6 +4,9 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Add an explicitly approved isolated mock content-QA build option for native
+  body rendering and read-only attachment picking; strict and shipping permissions stay unchanged.
+
 ### Changed
 
 - Ambiguous historical IMAP cache records are retained locally for recovery

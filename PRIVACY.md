@@ -120,6 +120,15 @@ Settings may still use its bundle-derived UUID Keychain service for AI provider
 secrets; this is not a claim that every Keychain API is disabled. Production
 credential migration is skipped.
 
+For explicitly authorized body/attachment QA only, the separate
+`--isolated-mock-content-qa` flag adds network-client and user-selected-file
+read-only permissions to the sandbox (ADR-0092). The signed bundle marker and
+exact permission set must match at build verification and startup. This removes
+the OS-level outbound-network prohibition, not the mock-only data boundary or
+default remote-content blocking. Generated picker fixtures are the only files
+authorized for these tests. No App Group, broad filesystem, file-write, system
+Contacts/Calendar or iCloud access is granted. Strict and shipping defaults remain unchanged.
+
 The mail widget extension renders a `WidgetSnapshot.json` file the app
 writes into the shared App Group container after each sync — unread
 count and, when notification previews are enabled, the newest senders

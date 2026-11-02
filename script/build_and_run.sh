@@ -5,10 +5,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${BREV_ENV_FILE:-$ROOT_DIR/.env.local}"
 OAUTH_SECRET_XCCONFIG=""
 ISOLATED_MOCK_REQUESTED=0
+ISOLATED_MOCK_PROFILE="strict"
 for argument in "$@"; do
-  if [[ "$argument" == "--isolated-mock" ]]; then
-    ISOLATED_MOCK_REQUESTED=1
-  fi
+  case "$argument" in
+    --isolated-mock) ISOLATED_MOCK_REQUESTED=1 ;;
+    --isolated-mock-content-qa)
+      ISOLATED_MOCK_REQUESTED=1
+      ISOLATED_MOCK_PROFILE="content-qa"
+      ;;
+  esac
 done
 
 cleanup_oauth_secret_xcconfig() {
@@ -256,6 +261,7 @@ INSTALLED_APP_BUNDLE=""
 MACOS_INFO_PLIST="$ROOT_DIR/apps/macOS/Resources/Info.plist"
 MACOS_ENTITLEMENTS="$ROOT_DIR/apps/macOS/Resources/BrevMacOS.entitlements"
 MACOS_MOCK_ENTITLEMENTS="$ROOT_DIR/apps/macOS/Resources/BrevMacOSMock.entitlements"
+MACOS_MOCK_CONTENT_ENTITLEMENTS="$ROOT_DIR/apps/macOS/Resources/BrevMacOSMockContentQA.entitlements"
 MACOS_RELEASE_ENTITLEMENTS="$ROOT_DIR/apps/macOS/Resources/BrevMacOSRelease.entitlements"
 LOCAL_BUILD_VERSION_SCRIPT="$ROOT_DIR/scripts/local-build-version.sh"
 
@@ -430,7 +436,7 @@ ensure_workspace_dependencies() {
 }
 
 usage() {
-  echo "usage: $0 [run|install|install-run|--debug|--logs|--telemetry|--verify|--build-only|--print-config|--preflight|--setup-env] [--mock|--live|--isolated-mock] [--release-main]" >&2
+  echo "usage: $0 [run|install|install-run|--debug|--logs|--telemetry|--verify|--build-only|--print-config|--preflight|--setup-env] [--mock|--live|--isolated-mock|--isolated-mock-content-qa] [--release-main]" >&2
 }
 
 set_mode() {
@@ -485,7 +491,7 @@ parse_args() {
         MOCK_FLAG_REQUESTED=1
         MOCK_MODE="1"
         ;;
-      --isolated-mock)
+      --isolated-mock|--isolated-mock-content-qa)
         MOCK_FLAG_REQUESTED=1
         MOCK_MODE="1"
         ;;
@@ -802,9 +808,11 @@ stamp_built_app_config() {
   plist_set_string "$plist" BRBuildKind "$BUILD_KIND"
   if [[ "$ISOLATED_MOCK_REQUESTED" -eq 1 ]]; then
     plist_set_string "$plist" BRIsolatedMock "1"
+    plist_set_string "$plist" BRIsolatedMockProfile "$ISOLATED_MOCK_PROFILE"
     plist_delete_key_if_present "$plist" CFBundleURLTypes
   else
     plist_delete_key_if_present "$plist" BRIsolatedMock
+    plist_delete_key_if_present "$plist" BRIsolatedMockProfile
   fi
   if [[ "$BUILD_KIND" == "test" ]]; then
     plist_set_string "$plist" BRTestBuildDate "$TEST_BUILD_DATE"
@@ -824,7 +832,11 @@ stamp_built_app_config() {
 
 macos_entitlements_path() {
   if [[ "$ISOLATED_MOCK_REQUESTED" -eq 1 ]]; then
-    printf '%s' "$MACOS_MOCK_ENTITLEMENTS"
+    if [[ "$ISOLATED_MOCK_PROFILE" == "content-qa" ]]; then
+      printf '%s' "$MACOS_MOCK_CONTENT_ENTITLEMENTS"
+    else
+      printf '%s' "$MACOS_MOCK_ENTITLEMENTS"
+    fi
   elif [[ "$BUILD_KIND" == "release" ]]; then
     printf '%s' "$MACOS_RELEASE_ENTITLEMENTS"
   else
@@ -935,6 +947,9 @@ print_config() {
   echo "BREV_ENV_FILE=$ENV_FILE"
   echo "BREV_BUILD_KIND=$BUILD_KIND"
   echo "BREV_ISOLATED_MOCK=$ISOLATED_MOCK_REQUESTED"
+  if [[ "$ISOLATED_MOCK_REQUESTED" -eq 1 ]]; then
+    echo "BREV_ISOLATED_MOCK_PROFILE=$ISOLATED_MOCK_PROFILE"
+  fi
   echo "BREV_APP_NAME=$APP_NAME"
   echo "BREV_BUNDLE_ID=$BUNDLE_ID"
   echo "BREV_USE_MOCK=${MOCK_MODE:-<unset>}"
@@ -1022,9 +1037,20 @@ verify_isolated_mock_bundle() {
   codesign --verify --deep --strict "$APP_BUNDLE" || return 1
   codesign -d --entitlements :- "$APP_BUNDLE" 2>/dev/null | python3 -c '
 import plistlib, sys
-if plistlib.loads(sys.stdin.buffer.read()) != {"com.apple.security.app-sandbox": True}:
-    sys.exit("error: isolated mock requires sandbox-only entitlements")
-' || return 1
+profile = sys.argv[1]
+with open(sys.argv[2], "rb") as handle:
+    info = plistlib.load(handle)
+if info.get("BRIsolatedMockProfile", "strict") != profile:
+    sys.exit("error: isolated mock profile does not match build request")
+expected = {"com.apple.security.app-sandbox"}
+if profile == "content-qa":
+    expected.update({"com.apple.security.network.client", "com.apple.security.files.user-selected.read-only"})
+elif profile != "strict":
+    sys.exit("error: unknown isolated mock profile")
+entitlements = plistlib.loads(sys.stdin.buffer.read())
+if set(entitlements) != expected or any(value is not True for value in entitlements.values()):
+    sys.exit("error: isolated mock permissions do not match profile")
+' "$ISOLATED_MOCK_PROFILE" "$APP_BUNDLE/Contents/Info.plist" || return 1
   [[ ! -e "$APP_BUNDLE/Contents/PlugIns" ]] || return 1
   [[ "$(/usr/libexec/PlistBuddy -c 'Print :BRIsolatedMock' "$APP_BUNDLE/Contents/Info.plist")" == "1" ]] || return 1
   [[ "$(/usr/libexec/PlistBuddy -c 'Print :BRBuildKind' "$APP_BUNDLE/Contents/Info.plist")" == "test" ]] || return 1
