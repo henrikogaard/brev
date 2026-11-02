@@ -6980,3 +6980,16 @@ buttons, and package-aware localization.
   for the one-line label follow-up belongs to fresh hosted CI. Existing README,
   CHANGELOG, privacy and environment guidance already cover this layout-only
   change; no new setup or network/data behavior.
+- Native9b73f39 on the verified CI host reproduces Add / DAV Sour… despite
+  vertical sizing on the composite Label. Consent identities/titles, footer,
+  code switch off/on/off, all three source identities/statuses, eight contact
+  groups/markers, QA Calendar and collection on/off/on passed before the required
+  stop. Notifications, normal-size native matrix, connect navigation and final
+  PIM footer remain untested, not accepted. Native23F73 is not hosted23F77.
+- Replace only the accessibility action label with a full-width baseline-aligned
+  symbol/text row: unlimited vertically fixed text, leading alignment, decorative
+  hidden icon. Keep the native Button/action/style/hint and ordinary Label.
+  ADR-0002 is amended first. Existing diagnostic PIM-bottom coverage provides
+  the red image; fresh captures/native retest must establish green without
+  changing any references. Format/lint/parsing and fresh hosted compile/tests
+  are required; local package rerun remains skipped for disk constraints above.

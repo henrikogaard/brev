@@ -172,11 +172,22 @@ struct PIMSourcesSettingsView: View {
                     Button {
                         isShowingConnectSheet = true
                     } label: {
-                        Label(
-                            String(localized: "Add DAV Source…", bundle: .module),
-                            systemImage: "plus"
-                        )
-                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
+                        if dynamicTypeSize.isAccessibilitySize {
+                            HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
+                                Image(systemName: "plus")
+                                    .accessibilityHidden(true)
+                                Text(String(localized: "Add DAV Source…", bundle: .module))
+                                    .lineLimit(nil)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            Label(
+                                String(localized: "Add DAV Source…", bundle: .module),
+                                systemImage: "plus"
+                            )
+                        }
                     }
                     .settingsButtonStyle()
                     .accessibilityHint(String(
