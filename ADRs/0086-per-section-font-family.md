@@ -57,6 +57,11 @@ Constraints:
    distinguishing it from the previous appearance default so untouched empty
    editors can still follow reader preferences.
 
+   Preserving rich typography does not freeze theme-owned foreground colors
+   (ADR-0002). The macOS editor updates body and typing foregrounds with the
+   appearance, then restores the protected quote's separate color. These color
+   updates preserve authored font traits and do not alter serialized HTML.
+
 2. **Same four families.** Sections offer the existing `MailboxFontFamily`
    cases only. No installed-font picker in this ADR.
 

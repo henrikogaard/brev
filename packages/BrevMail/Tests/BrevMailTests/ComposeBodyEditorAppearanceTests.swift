@@ -20,16 +20,22 @@ import Testing
 @Suite("Compose body editor appearance", .serialized)
 @MainActor
 struct ComposeBodyEditorAppearanceTests {
-    @Test("rich editor rerenders preserve storage and typing emphasis through publication", arguments: [false, true])
-    func richRerender(selectedText: Bool) throws {
+    @Test("rich editor rerenders preserve formatting and update theme foregrounds", arguments: [false, true], [false, true])
+    func richRerender(selectedText: Bool, typedBody: Bool) throws {
         let fixture = Self.richFixture()
-        let harness = Harness(text: fixture.string, format: .richTextHTML)
+        let harness = Harness(text: typedBody ? "" : fixture.string, format: .richTextHTML)
         let host = harness.host()
         let editor = try #require(Self.editor(in: host))
-        editor.textStorage?.setAttributedString(fixture)
+        if typedBody {
+            editor.insertText(fixture.string, replacementRange: NSRange(location: 0, length: 0))
+        }
+        fixture.enumerateAttributes(in: NSRange(location: 0, length: fixture.length)) { attributes, range, _ in
+            editor.textStorage?.addAttributes(attributes, range: range)
+        }
         let selection = selectedText ? Self.range("Both", in: fixture.string) : NSRange(location: 0, length: 0)
         editor.setSelectedRange(selection)
-        editor.typingAttributes = [.font: Self.emphasizedFont(.boldFontMask.union(.italicFontMask)), .kern: 1.25]
+        editor.typingAttributes[.font] = Self.emphasizedFont([.boldFontMask, .italicFontMask])
+        editor.typingAttributes[.kern] = 1.25
         harness.flush.performFlush()
         Self.expectEmphasis(in: editor, html: harness.html)
         let originalHTML = harness.html
@@ -63,6 +69,53 @@ struct ComposeBodyEditorAppearanceTests {
                 in: fixture.string as NSString,
                 protection: Harness.quote
             ))
+            let primary = NSColor(appearance.editorTheme.textPrimary.color)
+            for word in ["Regular", "Bold", "Italic", "Both", "Link"] {
+                let color = editor.textStorage?.attribute(
+                    .foregroundColor, at: Self.range(word, in: fixture.string).location, effectiveRange: nil
+                ) as? NSColor
+                #expect(color == primary)
+            }
+            #expect(editor.typingAttributes[.foregroundColor] as? NSColor == primary)
+            let quoteRange = try #require(editor.quoteBarRange)
+            let quoteColor = editor.textStorage?.attribute(
+                .foregroundColor, at: quoteRange.location, effectiveRange: nil
+            ) as? NSColor
+            #expect(quoteColor == NSColor(appearance.editorTheme.textTertiary.color))
+            #expect(editor.quoteBarColor == NSColor(appearance.editorTheme.accent.color))
+        }
+    }
+
+    @Test("native text color setter preserves non-color storage and typing attributes", arguments: [false, true])
+    func nativeTextColorSetter(selectedText: Bool) throws {
+        let editor = NSTextView()
+        editor.isRichText = true
+        let fixture = Self.richFixture()
+        editor.textStorage?.setAttributedString(fixture)
+        let selection = selectedText ? Self.range("Both", in: fixture.string) : NSRange(location: 0, length: 0)
+        editor.setSelectedRange(selection)
+        editor.typingAttributes = [.font: Self.emphasizedFont([.boldFontMask, .italicFontMask]), .kern: 1.25]
+        let originalTyping = editor.typingAttributes
+        let original = NSMutableAttributedString(attributedString: editor.attributedString())
+        original.removeAttribute(.foregroundColor, range: NSRange(location: 0, length: original.length))
+        for appearance in [ComposeBodyAppearance.light, .dark, .light] {
+            let color = NSColor(appearance.editorTheme.textPrimary.color)
+            editor.textColor = color
+            editor.textStorage?.enumerateAttribute(
+                .foregroundColor, in: NSRange(location: 0, length: fixture.length)
+            ) { value, _, _ in
+                #expect(value as? NSColor == color)
+            }
+            let actual = NSMutableAttributedString(attributedString: editor.attributedString())
+            actual.removeAttribute(.foregroundColor, range: NSRange(location: 0, length: actual.length))
+            #expect(actual.isEqual(to: original))
+            #expect(editor.selectedRange() == selection)
+            var typing = editor.typingAttributes
+            typing.removeValue(forKey: .foregroundColor)
+            var expectedTyping = originalTyping
+            expectedTyping.removeValue(forKey: .foregroundColor)
+            #expect(NSDictionary(dictionary: typing).isEqual(to: expectedTyping))
+            #expect(editor.typingAttributes[.foregroundColor] as? NSColor == color)
         }
     }
 
@@ -148,9 +201,13 @@ struct ComposeBodyEditorAppearanceTests {
         #expect(editor.selectedRange() == NSRange(location: 0, length: 0))
         #expect(editor.typingAttributes[.font] as? NSFont == emphasized)
 
-        try harness.rerender(host, editor: editor)
-        #expect(editor.typingAttributes[.font] as? NSFont == emphasized)
-        #expect(editor.typingAttributes[.kern] as? Double == 1.25)
+        for appearance in [ComposeBodyAppearance.light, .dark, .light] {
+            harness.appearance = appearance
+            try harness.rerender(host, editor: editor)
+            #expect(editor.typingAttributes[.font] as? NSFont == emphasized)
+            #expect(editor.typingAttributes[.kern] as? Double == 1.25)
+            #expect(editor.typingAttributes[.foregroundColor] as? NSColor == NSColor(appearance.editorTheme.textPrimary.color))
+        }
         if changePreferences {
             for family in MailboxFontFamily.allCases {
                 for size in MailboxTextSize.allCases {

@@ -13,6 +13,8 @@ All notable changes to Brev are documented here.
   editor updates, including pending emphasis before the first character.
   Existing rich text and authored typing fonts keep their formatting when reader
   typography changes; new, untouched empty and plain-text editors follow reader defaults.
+  Body and typing colors still follow Light/Dark appearance changes, with protected
+  quotes retaining their separate theme color.
 
 - Message bodies with rich rendering disabled now follow the selected reader
   font and text size, retaining bold, italic and links. Font changes also apply
