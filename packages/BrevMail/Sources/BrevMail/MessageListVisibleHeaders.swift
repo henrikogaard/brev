@@ -98,6 +98,8 @@ struct MessageListPresentationSnapshot {
     let headersByThreadID: [String: [MessageHeader]]
 
     private let visibleIndexesByHeaderID: [MessageHeader.ID: Int]
+    private let selectionProjection: MessageListSelectionProjection<MessageHeader.ID>
+    private let sourceID: MailSourceID?
 
     init(
         headers: [MessageHeader],
@@ -107,9 +109,12 @@ struct MessageListPresentationSnapshot {
         referenceDate: Date = Date(),
         calendar: Calendar = .current,
         sourceHeaders: [MessageHeader]? = nil,
-        navigationHeaders: [MessageHeader]? = nil
+        navigationHeaders: [MessageHeader]? = nil,
+        sourceID: MailSourceID? = nil,
+        groupsThreads: Bool = false
     ) {
         self.headers = headers
+        self.sourceID = sourceID
         self.navigationHeaders = navigationHeaders ?? headers
         let sourceHeaders = sourceHeaders ?? headers
         unreadHeaderCount = sourceHeaders.reduce(into: 0) { count, header in
@@ -135,6 +140,19 @@ struct MessageListPresentationSnapshot {
                 collapsedIDs: collapsedDateSectionIDs
             )
             : []
+        selectionProjection = MessageListSelectionProjection(
+            sourceRows: sourceHeaders,
+            visibleRows: groupByDate ? dateSections.flatMap(\.visibleHeaders) : headers,
+            id: { $0.id }, threadKey: { groupsThreads ? $0.threadID : nil }
+        )
+    }
+
+    func selectedRowID(
+        selectedMessageID: MessageHeader.ID?, selectedSourceID: MailSourceID?,
+        expandedThreadIDs: Set<String>
+    ) -> MessageHeader.ID? {
+        guard selectedSourceID == sourceID else { return nil }
+        return selectionProjection.visibleID(for: selectedMessageID, expandedThreadIDs: expandedThreadIDs)
     }
 
     func visibleIndex(for headerID: MessageHeader.ID) -> Int? {
