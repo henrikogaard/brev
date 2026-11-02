@@ -95,7 +95,8 @@ final class NavigationSelectionAcceptanceFixture {
             return MessageListPresentationSnapshot(
                 headers: sorted, pinnedMessageIDs: [], groupByDate: true, collapsedDateSectionIDs: [],
                 referenceDate: now, calendar: calendar, sourceHeaders: headers,
-                navigationHeaders: MessageListNavigationHeaders.headers(from: visible, threadContext: headers)
+                navigationHeaders: MessageListNavigationHeaders.headers(from: visible, threadContext: headers),
+                sourceID: sourceID, groupsThreads: true
             )
         }
     }

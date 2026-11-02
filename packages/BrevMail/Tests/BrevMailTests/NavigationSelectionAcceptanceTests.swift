@@ -18,6 +18,18 @@ import Testing
 @Suite("Navigation projection acceptance")
 @MainActor
 struct NavigationSelectionAcceptanceTests {
+    @Test("acceptance fixture builds source-owned grouped selection representation")
+    func fixtureRowRepresentation() {
+        let fixture = NavigationSelectionAcceptanceFixture(count: 6)
+        defer { fixture.cleanup() }
+        let snapshot = fixture.presentation()
+        let child = fixture.headers[1]
+        #expect(snapshot.selectedRowID(selectedMessageID: child.id, selectedSourceID: fixture.sourceID,
+                                       expandedThreadIDs: []) == fixture.headers[0].id)
+        #expect(snapshot.selectedRowID(selectedMessageID: child.id, selectedSourceID: fixture.sourceID,
+                                       expandedThreadIDs: [child.threadID]) == child.id)
+    }
+
     @Test("same IDs in another source cannot reuse workflow membership")
     func sourceAndFolderChange() {
         let fixture = NavigationSelectionAcceptanceFixture(count: 6)
