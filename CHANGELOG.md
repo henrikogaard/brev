@@ -6,6 +6,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Consent account labels and calendar/contact source and collection names wrap
+  at accessibility text sizes, with badges below their names; normal text sizes
+  retain the compact layout.
+
 - iPhone Settings snapshot tooling uses a dedicated scene-hosted capture path
   with explicit runtime provenance instead of unhosted native-control rendering.
   Shared synthetic review fixtures and lower-page captures include icon artwork,

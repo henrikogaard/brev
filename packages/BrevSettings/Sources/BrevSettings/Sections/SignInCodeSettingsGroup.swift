@@ -22,6 +22,7 @@ import SwiftUI
 /// enabled instead of a switch that silently does nothing.
 struct SignInCodeSettingsGroup: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let accounts: [BrevAccount]
     /// Whether the account's backend advertises
@@ -77,9 +78,11 @@ struct SignInCodeSettingsGroup: View {
                 Text(account.displayName.isEmpty ? account.emailAddress : account.displayName)
                     .brevFont(.body)
                     .foregroundStyle(theme.textPrimary.color)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                 Text(account.emailAddress)
                     .brevFont(.caption)
                     .foregroundStyle(theme.textSecondary.color)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
             }
             if isAvailable(account.id) {
                 SettingsToggleRow(

@@ -6922,3 +6922,33 @@ buttons, and package-aware localization.
 - Keep the existing branch/PR draft, no merge or baseline acceptance. Issue269
   remains open, intended In review; board access remains unavailable. Product
   acceptance of AX3 truncation versus an accessibility layout repair is open.
+
+## 2026-11-02 — Devin — PR #265 / issue #269 accessibility wrapping
+
+- Henrik selected wrapping accessibility layouts. Amend ADR-0002/0092 first;
+  continue `fix/macos-settings-native-form` and the existing draft PR to main.
+  Allow consent names/addresses and PIM source/status/control/collection labels
+  their full wrapped height at accessibility Dynamic Type sizes. Stack
+  collection badges and the unavailable-feature badge below their names there;
+  preserve normal-size layout, collection ellipsis, controls and bindings.
+- Existing seeded AX3 captures/native review provide the failing readability
+  evidence. Retain all canonical fixtures/names/geometry/reference files and
+  add three diagnostic-only bottom consent captures to check content displaced
+  by wrapping. No TDD/summary skills were available in plugin/project discovery;
+  visual regression uses the existing captures and fresh native review rather
+  than claiming a passing pixel-reference red/green cycle.
+- Local verification: the focused Settings consent/PIM suites pass 40 tests in
+  three suites, including model and collection bindings; Swift parsing, format
+  (zero edits), strict lint, repository self-tests (including six provenance
+  checks), privacy audit and whitespace checks pass. The package build also
+  typechecks the changed macOS view branches. iOS rendering awaits pinned CI
+  and a fresh isolated native review; the earlier local runtime/actool mismatch
+  still makes the complete CI-built host the appropriate native artifact.
+- README and CHANGELOG record the layout/coverage change. No privacy/network,
+  storage, translations, dependencies, build setup or AGENTS change is needed.
+  Existing blueprint remains applicable; no new environment setup was required.
+- Outstanding: confirm ordinary Light/Dark pixels remain unchanged and AX3
+  labels/control/footer reachability, inspect hosted output and rerun native
+  interactions. Do not accept references or merge. Cross-run scroll-edge
+  reproducibility, exact hosted-runtime acceptance and separate stack gates
+  remain open. Issue269 stays open, intended In review; board access unavailable.

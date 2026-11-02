@@ -103,7 +103,7 @@ struct SettingsFormSnapshotTests {
         try await snapshot("appearance", variant: variant) { $0.appearance }
     }
 
-    @Test("calendar & contacts sources list one line per collection", arguments: Variant.allCases)
+    @Test("calendar & contacts sources adapt collection labels to text size", arguments: Variant.allCases)
     func pimSources(variant: Variant) async throws {
         let model = try await PIMSourcesFixture.model()
         try await snapshot("pim-sources", variant: variant) { $0.pimSources(model) }
@@ -128,6 +128,12 @@ struct SettingsFormSnapshotTests {
         let model = try await PIMSourcesFixture.model()
         try await snapshot("pim-sources-bottom", variant: variant,
                            scrollToBottom: true, compareReference: false) { $0.pimSources(model) }
+    }
+
+    @Test("lower consent content remains visible with wrapping labels", arguments: Variant.allCases)
+    func signInCodesBottom(variant: Variant) async throws {
+        try await snapshot("signin-codes-bottom", variant: variant,
+                           scrollToBottom: true, compareReference: false) { $0.signInCodes }
     }
 }
 

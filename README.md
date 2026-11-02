@@ -631,7 +631,7 @@ requests. This pins appearance, not production System-follow behavior.
 
 Supplemental `*-bottom-*-hierarchy.png` attachments cover the icon cards and
 lower Notifications with quiet hours both disabled and enabled, plus the final
-seeded PIM source, collection and footer. Their scroll
+seeded PIM source, collection and footer, plus lower consent content. Their scroll
 geometry is attached separately; capture requires one outer scroll view and
 three stable frames at its current bottom. These images are review candidates,
 not approved baselines. Existing top-of-pane names, dimensions and references
@@ -640,9 +640,11 @@ the capture canvas; shared fixtures do not imply whole-image pixel equality.
 Consecutive-frame stability also does not establish cross-run reproducibility:
 three Notifications bottom candidates differed in their navigation/scroll-edge
 region across two pinned runs while lower content and geometry matched. Keep
-these diagnostic-only until that compositing variation is resolved. Native AX3
-review also exposes truncated consent/PIM labels; the collection rows retain
-their existing single-line policy, not an accepted accessibility redesign.
+these diagnostic-only until that compositing variation is resolved. Consent
+account labels and PIM source/status/collection labels wrap at accessibility
+text sizes, with collection and unavailable-feature badges below their names.
+Normal-size layouts retain compact single-line collection names. Verify both
+layouts with the shared fixtures; reference acceptance remains separate.
 
 ```sh
 # Run the required iOS snapshot lane. The helper selects the newest installed
