@@ -116,19 +116,60 @@ struct ComposeBodyEditorAppearanceTests {
         let host = harness.host()
         let editor = try #require(Self.editor(in: host))
         if !rich { harness.html = "<strong>Stale publication</strong>" }
-        harness.family = .monospaced
-        harness.size = .large
-        try harness.rerender(host, editor: editor)
-        harness.flush.performFlush()
-        let expected = ComposeEditorTypography.nsFont(family: .monospaced, textSize: .large)
-        #expect(editor.font == expected)
-        #expect(editor.typingAttributes[.font] as? NSFont == expected)
-        #expect(editor.isRichText == rich)
-        #expect(editor.string == harness.text)
-        #expect(rich ? harness.html == "" : harness.html == nil)
+        for family in MailboxFontFamily.allCases {
+            for size in MailboxTextSize.allCases {
+                harness.family = family
+                harness.size = size
+                try harness.rerender(host, editor: editor)
+                harness.flush.performFlush()
+                let expected = ComposeEditorTypography.nsFont(family: family, textSize: size)
+                #expect(editor.font == expected)
+                #expect(editor.typingAttributes[.font] as? NSFont == expected)
+                #expect(editor.isRichText == rich)
+                #expect(editor.string == harness.text)
+                #expect(rich ? harness.html == "" : harness.html == nil)
+            }
+        }
     }
 
     private static let link = URL(string: "https://example.invalid/compose-fixture")!
+
+    @Test("empty rich editors preserve pending emphasis through rerender and first character", arguments: [
+        NSFontTraitMask.boldFontMask, .italicFontMask, [.boldFontMask, .italicFontMask]
+    ], [false, true])
+    func emptyRichTyping(traits: NSFontTraitMask, changePreferences: Bool) throws {
+        let harness = Harness(text: "", format: .richTextHTML)
+        let host = harness.host()
+        let editor = try #require(Self.editor(in: host))
+        let emphasized = Self.emphasizedFont(traits)
+        editor.typingAttributes[.font] = emphasized
+        editor.typingAttributes[.kern] = 1.25
+        #expect(editor.string.isEmpty)
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 0))
+        #expect(editor.typingAttributes[.font] as? NSFont == emphasized)
+
+        try harness.rerender(host, editor: editor)
+        #expect(editor.typingAttributes[.font] as? NSFont == emphasized)
+        #expect(editor.typingAttributes[.kern] as? Double == 1.25)
+        if changePreferences {
+            for family in MailboxFontFamily.allCases {
+                for size in MailboxTextSize.allCases {
+                    harness.family = family
+                    harness.size = size
+                    try harness.rerender(host, editor: editor)
+                    #expect(editor.typingAttributes[.font] as? NSFont == emphasized)
+                }
+            }
+        }
+        editor.insertText("X", replacementRange: NSRange(location: 0, length: 0))
+        harness.flush.performFlush()
+        #expect(editor.string == "X")
+        #expect(harness.text == "X")
+        #expect(editor.textStorage?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont == emphasized)
+        #expect(editor.selectedRange() == NSRange(location: 1, length: 0))
+        #expect(harness.html?.contains("<strong>") == traits.contains(.boldFontMask))
+        #expect(harness.html?.contains("<em>") == traits.contains(.italicFontMask))
+    }
 
     private static func richFixture() -> NSMutableAttributedString {
         let value = NSMutableAttributedString(
@@ -226,12 +267,9 @@ struct ComposeBodyEditorAppearanceTests {
         func rerender(_ host: NSHostingView<ComposeBodyEditor>, editor: ComposeRichTextView) throws {
             generation += 1
             host.rootView = root()
-            for _ in 0 ..< 20 {
-                host.layoutSubtreeIfNeeded()
-                editor.onFileDragTargetChanged?(false)
-                if deliveredGeneration == generation { break }
-                RunLoop.main.run(until: Date().addingTimeInterval(0.01))
-            }
+            host.needsLayout = true
+            host.layoutSubtreeIfNeeded()
+            editor.onFileDragTargetChanged?(false)
             try #require(deliveredGeneration == generation, "Production updateNSView must deliver the new callback")
             let currentEditor = ComposeBodyEditorAppearanceTests.editor(in: host)
             try #require(currentEditor === editor, "Rerender must reuse the native editor")

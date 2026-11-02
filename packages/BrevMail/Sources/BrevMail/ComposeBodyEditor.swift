@@ -134,6 +134,9 @@ final class ComposeRichTextView: NSTextView, ComposeBodyEditorRichActions {
 
     var quoteBarColor: NSColor?
 
+    /// Distinguishes untouched empty-editor defaults from authored typing fonts.
+    fileprivate var lastAppearanceFont: NSFont?
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         guard let quoteBarRange,
@@ -382,7 +385,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         context.coordinator.isUpdatingFromSwiftUI = false
     }
 
-    private func applyAppearance(to scrollView: NSScrollView, textView: NSTextView) {
+    private func applyAppearance(to scrollView: NSScrollView, textView: ComposeRichTextView) {
         let appKitAppearance = NSAppearance(named: appearance.nsAppearanceName)
         // Transparent so the window's (opacity-aware) surface shows through. The
         // body then matches the rest of the window instead of painting its own
@@ -398,11 +401,15 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         textView.backgroundColor = .clear
         let font = ComposeEditorTypography.nsFont(family: fontFamily, textSize: textSize)
         let textColor = NSColor(appearance.editorTheme.textPrimary.color)
+        let typingFont = textView.typingAttributes[.font] as? NSFont
+        let usesDefaultTypingFont = textView.lastAppearanceFont == nil || typingFont == nil
+            || typingFont == textView.lastAppearanceFont
         // Global setters replace attributed runs; rich content owns its formatting.
-        if !textView.isRichText || textView.string.isEmpty {
+        if !textView.isRichText || (textView.string.isEmpty && usesDefaultTypingFont) {
             textView.font = font
             textView.textColor = textColor
         }
+        textView.lastAppearanceFont = font
         textView.insertionPointColor = NSColor(appearance.editorTheme.accent.color)
         var typing = textView.typingAttributes
         if typing[.font] == nil || !textView.isRichText {
