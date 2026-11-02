@@ -466,7 +466,7 @@ struct ThreadMessageCard: View {
 
         case .attributedHTML(let html):
             if let renderedHTML {
-                Text(renderedHTML)
+                Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
                     .font(messageBodyFont)
                     .foregroundStyle(theme.textPrimary.color)
                     .textSelection(.enabled)
