@@ -609,7 +609,7 @@ public struct ComposeView: View {
                             }
                         ),
                         MacComposeToolbarItemIdentifier.more: AnyView(composeSecondaryActionsMenu)
-                    ])
+                    ], sendAction: isSendButtonDisabled ? nil : performSendButtonAction)
                 }
                 .frame(width: 0, height: 0)
             }
@@ -1473,17 +1473,24 @@ public struct ComposeView: View {
         }
     }
 
-    private var sendButton: some View {
-        let isDisabled = isInteractionBlocked || (!canSend && pendingUndoSendTask == nil)
-        return Button {
-            if pendingUndoSendTask != nil {
-                cancelUndoSend()
-            } else {
-                beginUndoSend {
-                    await send()
-                }
+    private var isSendButtonDisabled: Bool {
+        isInteractionBlocked || (!canSend && pendingUndoSendTask == nil)
+    }
+
+    private func performSendButtonAction() {
+        guard !isSendButtonDisabled else { return }
+        if pendingUndoSendTask != nil {
+            cancelUndoSend()
+        } else {
+            beginUndoSend {
+                await send()
             }
-        } label: {
+        }
+    }
+
+    private var sendButton: some View {
+        let isDisabled = isSendButtonDisabled
+        return Button(action: performSendButtonAction) {
             #if os(macOS)
             Image(systemName: "paperplane.fill")
                 .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
@@ -1504,33 +1511,27 @@ public struct ComposeView: View {
         .buttonStyle(.plain)
         #endif
         .disabled(isDisabled)
-        // Cmd+Return sends, matching Apple Mail's compose accelerator.
-        .keyboardShortcut(.return, modifiers: .command)
-        .accessibilityLabel(
-            pendingUndoSendTask != nil
-                ? String(localized: "Cancel Send", bundle: .module)
-                : sendButtonLabel
-        )
-        .accessibilityRepresentation {
-            Button(
+        #if !os(macOS)
+            .keyboardShortcut(.return, modifiers: .command)
+        #endif
+            .accessibilityLabel(
                 pendingUndoSendTask != nil
                     ? String(localized: "Cancel Send", bundle: .module)
                     : sendButtonLabel
-            ) {
-                if pendingUndoSendTask != nil {
-                    cancelUndoSend()
-                } else {
-                    beginUndoSend {
-                        await send()
-                    }
-                }
+            )
+            .accessibilityRepresentation {
+                Button(
+                    pendingUndoSendTask != nil
+                        ? String(localized: "Cancel Send", bundle: .module)
+                        : sendButtonLabel,
+                    action: performSendButtonAction
+                )
             }
-        }
-        .help(
-            pendingUndoSendTask != nil
-                ? String(localized: "Cancel Send", bundle: .module)
-                : sendButtonLabel
-        )
+            .help(
+                pendingUndoSendTask != nil
+                    ? String(localized: "Cancel Send", bundle: .module)
+                    : sendButtonLabel
+            )
     }
 
     private var sendButtonLabel: String {
@@ -4042,28 +4043,39 @@ private struct ComposeWindowTitleBridge: NSViewRepresentable {
 
 private struct ComposeNativeToolbarContentBridge: NSViewRepresentable {
     let items: [NSToolbarItem.Identifier: AnyView]
+    let sendAction: (() -> Void)?
 
     func makeNSView(context _: Context) -> ComposeNativeToolbarContentView {
-        ComposeNativeToolbarContentView(items: items)
+        ComposeNativeToolbarContentView(items: items, sendAction: sendAction)
     }
 
     func updateNSView(_ view: ComposeNativeToolbarContentView, context: Context) {
         view.items = items
+        view.sendAction = sendAction
         view.updateToolbar()
     }
 }
 
 @MainActor
-private final class ComposeNativeToolbarContentView: NSView {
+final class ComposeNativeToolbarContentView: NSView {
     var items: [NSToolbarItem.Identifier: AnyView]
+    var sendAction: (() -> Void)?
 
-    init(items: [NSToolbarItem.Identifier: AnyView]) {
+    init(items: [NSToolbarItem.Identifier: AnyView], sendAction: (() -> Void)?) {
         self.items = items
+        self.sendAction = sendAction
         super.init(frame: .zero)
     }
 
     required init?(coder: NSCoder) {
         nil
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow !== window {
+            (window?.toolbar?.delegate as? MacComposeToolbarDelegate)?.sendAction = nil
+        }
+        super.viewWillMove(toWindow: newWindow)
     }
 
     override func viewDidMoveToWindow() {
@@ -4077,6 +4089,7 @@ private final class ComposeNativeToolbarContentView: NSView {
             return
         }
         delegate.updateContentViews(items, in: toolbar)
+        delegate.sendAction = sendAction
     }
 }
 

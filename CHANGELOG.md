@@ -35,6 +35,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Command-Return in a detached macOS composer now reaches Send while a message
+  field or body editor has focus, using the same validation and undo-send action
+  as the toolbar button. Holding the keys does not repeatedly trigger Send.
+
 - Double-clicking a Drafts row no longer opens an extra reader window alongside
   the composer. Other folders retain double-click reader detachment.
 
