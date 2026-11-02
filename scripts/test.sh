@@ -57,6 +57,9 @@ cd "$ROOT"
 echo "── build/run env ──"
 scripts/test-build-run-env.sh
 
+echo "── isolated macOS mock profile ──"
+/bin/bash scripts/test-isolated-mock.sh
+
 echo "── local build versioning ──"
 scripts/test-local-build-version.sh
 

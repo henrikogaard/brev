@@ -42,6 +42,9 @@ All notable changes to Brev are documented here.
   reply is selected, and keyboard/menu navigation scrolls to that row. Expanded
   conversations highlight only the selected reply; the reader target is unchanged.
 
+- macOS native UI validation can use `--isolated-mock` for a fresh, mock-only
+  sandbox with no production App Group or live-account access.
+
 - If an IMAP recovery index cannot open, stale external body/source caches
   stay unavailable rather than bypassing recovery checks. Fresh server reads
   remain available.
