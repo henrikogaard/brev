@@ -248,9 +248,15 @@ GitHub Actions. Workflows:
   reaches this invocation's SwiftPM test PID; ownership is rechecked directly
   before tracer attachment. An early runner or unrelated matching process is
   never selected. Background test/tracer jobs own separate process groups;
-  cleanup also snapshots their descendants because SwiftPM helpers create
-  separate groups. It terminates owned descendants/groups and reaps leaders
-  on success, failure or interruption, escalating after a bounded grace period.
+  cleanup snapshots descendants only of roots whose captured start time,
+  process group and direct parent still match. Each PID's start time and group
+  are rechecked before individual TERM and KILL signals; group-wide signals
+  are not used. Waited roots are retired immediately, including failed jobs.
+  This retains bounded cleanup of tracked detached/stubborn descendants and
+  leader reaping on success, failure or interruption. Portable `ps` checks
+  are best-effort: start times have limited precision, snapshots can miss new
+  descendants, and identity checks cannot eliminate the check-to-signal race.
+  They are not atomic process handles or adversarial PID-reuse isolation.
   Each run requires a new owner-only output directory so failure reporting
   cannot reuse old logs. Trace exports may include process environments;
   inspect only allowlisted aggregate fields, never print or upload raw exports.

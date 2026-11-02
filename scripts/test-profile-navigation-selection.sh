@@ -7,6 +7,38 @@ trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/home" "$TMP/tmp" "$TMP/Developer"
 printf '%s' "$TMP/bin:$PATH" > "$TMP/path"
 
+cat > "$TMP/bin/git" <<'STUB'
+#!/usr/bin/env bash
+echo fixture-source-revision
+STUB
+
+cat > "$TMP/intercept-signals.sh" <<'STUB'
+# Loaded only by the harness shell; env -i removes BASH_ENV from its children.
+kill() {
+  local fixture_root target scenario
+  fixture_root="$(dirname "$BASH_ENV")"
+  scenario="$(cat "$fixture_root/case")"
+  target="${!#}"
+  if [[ "$scenario" == cleanup-* ]]; then
+    [[ "$1" == -0 ]] || printf '%s\n' "$*" >> "$fixture_root/signals"
+    if [[ "$scenario" == cleanup-escalation-reused && "$1" == -TERM && "$target" == 99991 ]]; then
+      touch "$fixture_root/child-reused"
+    fi
+    if [[ "$scenario" == cleanup-root-escalation-reused && "$1" == -TERM && "$target" == 99990 ]]; then
+      touch "$fixture_root/root-reused"
+    fi
+    return 0
+  fi
+  if [[ -f "$fixture_root/reuse-ready" ]] &&
+    [[ "$target" == 99991 || "$target" == "-$(cat "$fixture_root/test-pid")" ||
+       "$target" == "$(cat "$fixture_root/test-pid")" ]]; then
+    [[ "$1" == -0 ]] || printf '%s\n' "$*" >> "$fixture_root/unowned-signals"
+    return 0
+  fi
+  builtin kill "$@"
+}
+STUB
+
 cat > "$TMP/fixture.sh" <<'STUB'
 fixture_root="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE_TEST_CASE="$(cat "$fixture_root/case")"
@@ -101,9 +133,36 @@ STUB
 cat > "$TMP/bin/ps" <<'STUB'
 #!/usr/bin/env bash
 source "$(dirname "$0")/../fixture.sh"
+if [[ "$PROFILE_TEST_CASE" == cleanup-* ]]; then
+  owner="$(cat "$fixture_root/cleanup-owner")"
+  root_start='Mon Nov 2 22:00:00 2026'
+  if [[ "$PROFILE_TEST_CASE" == cleanup-root-reused || -f "$fixture_root/root-reused" ]]; then
+    root_start='Mon Nov 2 22:00:01 2026'
+  fi
+  if [[ "$1" == -axo ]]; then
+    printf '99990 %s 99990 %s\n99991 99990 99991 Mon Nov 2 22:00:00 2026\n' "$owner" "$root_start"
+  elif [[ "$2" == 99990 ]]; then
+    printf '99990 %s\n' "$root_start"
+  elif [[ "$2" == 99991 ]]; then
+    if [[ "$PROFILE_TEST_CASE" == cleanup-child-reused || -f "$fixture_root/child-reused" ]]; then
+      echo '99991 Mon Nov 2 22:00:01 2026'
+    else
+      echo '99991 Mon Nov 2 22:00:00 2026'
+    fi
+  else
+    exit 1
+  fi
+  exit 0
+fi
+if [[ "$PROFILE_TEST_CASE" == recycled-root && "$1" == -axo && -f "$fixture_root/reuse-ready" ]]; then
+  root="$(cat "$fixture_root/test-pid")"
+  printf '%s 1 %s Mon Nov 2 22:00:01 2026\n99991 %s 99991 Mon Nov 2 22:00:01 2026\n' "$root" "$root" "$root"
+  exit 0
+fi
 if [[ "$2" == 99999 ]]; then echo 1; exit; fi
 if [[ "$2" == 12345 ]]; then cat "$fixture_root/test-pid"; exit; fi
-if [[ "$PROFILE_TEST_CASE" == ownership-lost && "$2" == "$(cat "$fixture_root/workload-pid")" ]]; then
+if [[ "$PROFILE_TEST_CASE" == ownership-lost && "$4" == ppid= &&
+      "$2" == "$(cat "$fixture_root/workload-pid")" ]]; then
   if [[ -f "$fixture_root/ownership-checked" ]]; then echo 1; exit; fi
   touch "$fixture_root/ownership-checked"
 fi
@@ -114,6 +173,7 @@ cat > "$TMP/bin/xcrun" <<'STUB'
 source "$(dirname "$0")/../fixture.sh"
 echo tracer-log
 if [[ "$2" == export ]]; then
+  [[ "$PROFILE_TEST_CASE" != recycled-root ]] || touch "$fixture_root/reuse-ready"
   [[ "$PROFILE_TEST_CASE" != export-failure ]] || exit 44
   exit 0
 fi
@@ -169,10 +229,11 @@ run_case() {
   : > "$PROFILE_TEST_CALLS"
   : > "$TMP/$1.env"
   local status=0
-  # Exercise the system Bash used by hosted macOS workflows, not a newer PATH shell.
+  # Use the suite's shell so system-Bash runs cannot fall back to a newer PATH shell.
   HOME="$TMP/home" PATH="$TMP/bin:$PATH" TMPDIR="$TMP/tmp" DEVELOPER_DIR="$TMP/Developer" \
+    BASH_ENV="$TMP/intercept-signals.sh" \
     PROFILE_SENTINEL_SECRET=not-a-real-secret \
-    /bin/bash "$ROOT/scripts/profile-navigation-selection.sh" "$TMP/$1 output" \
+    "$BASH" "$ROOT/scripts/profile-navigation-selection.sh" "$TMP/$1 output" \
     > "$TMP/$1.log" 2>&1 &
   local harness_pid=$! attempt
   if [[ "$1" == interrupted ]]; then
@@ -184,6 +245,7 @@ run_case() {
   fi
   wait "$harness_pid" || status=$?
   check test "$status" -eq "$2"
+  if [[ "$status" -ne "$2" ]]; then cat "$TMP/$1.log" >&2; fi
   check test "$(grep -c 'inherited secret' "$TMP/$1.env" || true)" -eq 0
   for pid_file in "$TMP/"*-pid; do
     [[ -f "$pid_file" ]] || continue
@@ -255,6 +317,51 @@ run_case unrelated-only 1
 check test "$(grep -c '^xcrun ' "$PROFILE_TEST_CALLS" || true)" -eq 0
 run_case ownership-lost 1
 check test "$(grep -c '^xcrun ' "$PROFILE_TEST_CALLS" || true)" -eq 0
+
+run_case recycled-root 0
+check test ! -s "$TMP/unowned-signals"
+rm -f "$TMP/reuse-ready"
+
+# Exercise cleanup with an entirely simulated process table. No signal in these
+# cases is ever delegated to the OS, including signals to the invented roots.
+sed '/^trap cleanup EXIT/,$d' "$ROOT/scripts/profile-navigation-selection.sh" > "$TMP/cleanup-functions.sh"
+for scenario in cleanup-root-reused cleanup-child-reused cleanup-escalation-reused \
+  cleanup-root-escalation-reused cleanup-stable; do
+  PROFILE_TEST_CASE="$scenario"
+  printf '%s' "$scenario" > "$TMP/case"
+  : > "$TMP/signals"
+  rm -f "$TMP/child-reused" "$TMP/root-reused"
+  HOME="$TMP/home" PATH="$TMP/bin:$PATH" TMPDIR="$TMP/tmp" DEVELOPER_DIR="$TMP/Developer" \
+    BASH_ENV="$TMP/intercept-signals.sh" \
+    "$BASH" -c '
+      source "$1" "$2"
+      echo "$$" > "$(dirname "$2")/cleanup-owner"
+      test_pid=99990
+      test_identity="99990 Mon Nov 2 22:00:00 2026"
+      cleanup
+    ' cleanup "$TMP/cleanup-functions.sh" "$TMP/$scenario output" > "$TMP/$scenario.log" 2>&1
+  if [[ "$scenario" == cleanup-root-reused ]]; then
+    check test ! -s "$TMP/signals"
+  else
+    check grep -qx -- '-TERM 99990' "$TMP/signals"
+    check test "$(grep -c -- '-- -' "$TMP/signals" || true)" -eq 0
+    if [[ "$scenario" == cleanup-root-escalation-reused ]]; then
+      check test "$(grep -c -- '-KILL 99990' "$TMP/signals" || true)" -eq 0
+    else
+      check grep -qx -- '-KILL 99990' "$TMP/signals"
+    fi
+    if [[ "$scenario" == cleanup-child-reused ]]; then
+      check test "$(grep -c '99991' "$TMP/signals" || true)" -eq 0
+    else
+      check grep -qx -- '-TERM 99991' "$TMP/signals"
+      if [[ "$scenario" == cleanup-escalation-reused ]]; then
+        check test "$(grep -c -- '-KILL 99991' "$TMP/signals" || true)" -eq 0
+      else
+        check grep -qx -- '-KILL 99991' "$TMP/signals"
+      fi
+    fi
+  fi
+done
 
 mkdir "$TMP/existing-output output"
 echo stale-sensitive-content > "$TMP/existing-output output/test.log"
