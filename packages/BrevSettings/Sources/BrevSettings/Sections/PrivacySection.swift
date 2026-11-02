@@ -48,7 +48,6 @@ struct PrivacySection: View {
                 remoteImagesGroup
                 senderIconGroup
                 remoteContentAllowlist
-                privacyDefaults
             }
             .onAppear {
                 avatarSettings = settingsStore.avatarPrivacySettings()
@@ -76,45 +75,15 @@ struct PrivacySection: View {
         #endif
     }
 
-    private var privacyDefaults: some View {
-        SettingsGroup(
-            title: String(localized: "Defaults", bundle: .module),
-            subtitle: String(localized: "Brev starts with conservative mail-rendering choices.", bundle: .module),
-            symbolName: "lock.shield"
-        ) {
-            SettingsRowStack(spacing: BrevSpacing.md) {
-                privacyRow(
-                    symbolName: "eye.slash",
-                    title: String(localized: "Remote content starts blocked", bundle: .module),
-                    subtitle: String(
-                        localized: "Images, web fonts, and tracking pixels remain off unless you allow remote content.",
-                        bundle: .module
-                    )
-                )
-                privacyRow(
-                    symbolName: "person.crop.circle",
-                    title: String(localized: "Sender icons are explicit", bundle: .module),
-                    subtitle: String(
-                        localized: "Contacts stay local; external sender image sources require your permission above.",
-                        bundle: .module
-                    )
-                )
-                privacyRow(
-                    symbolName: "wand.and.stars",
-                    title: String(localized: "AI Writer requires consent", bundle: .module),
-                    subtitle: String(
-                        localized: "Draft text is only sent when you enable AI Writer and choose an AI action.",
-                        bundle: .module
-                    )
-                )
-            }
-        }
-    }
-
     private var remoteContentAllowlist: some View {
         SettingsGroup(
             title: String(localized: "Remote content allowlist", bundle: .module),
-            subtitle: String(localized: "Review senders and domains allowed to load remote images.", bundle: .module),
+            subtitle: remoteContentPolicy.hasAllowlistEntries
+                ? String(localized: "Review senders and domains allowed to load remote images.", bundle: .module)
+                : String(
+                    localized: "No senders or domains are allowed to load remote content automatically.",
+                    bundle: .module
+                ),
             symbolName: "photo.badge.checkmark"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -123,7 +92,6 @@ struct PrivacySection: View {
                         allowlistRow(
                             symbolName: "person.crop.circle",
                             title: sender,
-                            subtitle: String(localized: "Sender", bundle: .module),
                             onRevoke: { revokeSender(sender) }
                         )
                     }
@@ -132,19 +100,9 @@ struct PrivacySection: View {
                         allowlistRow(
                             symbolName: "globe",
                             title: domain,
-                            subtitle: String(localized: "Domain", bundle: .module),
                             onRevoke: { revokeDomain(domain) }
                         )
                     }
-                } else {
-                    SettingsInfoCallout(
-                        symbolName: "checkmark.shield",
-                        message: String(
-                            localized: "No senders or domains are allowed to load remote content automatically.",
-                            bundle: .module
-                        ),
-                        tone: .success
-                    )
                 }
             }
         }
@@ -157,47 +115,20 @@ struct PrivacySection: View {
         return String(localized: "Remote images are not loaded by default.", bundle: .module)
     }
 
-    private func privacyRow(
-        symbolName: String,
-        title: String,
-        subtitle: String
-    ) -> some View {
-        HStack(alignment: .top, spacing: BrevSpacing.sm) {
-            Image(systemName: symbolName)
-                .foregroundStyle(theme.accent.color)
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text(title)
-                    .brevFont(.subheadline)
-                    .foregroundStyle(theme.textPrimary.color)
-                Text(subtitle)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
     private func allowlistRow(
         symbolName: String,
         title: String,
-        subtitle: String,
         onRevoke: @escaping () -> Void
     ) -> some View {
         HStack(alignment: .center, spacing: BrevSpacing.sm) {
             Image(systemName: symbolName)
                 .foregroundStyle(theme.accent.color)
                 .frame(width: 18)
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text(title)
-                    .brevFont(.subheadline)
-                    .foregroundStyle(theme.textPrimary.color)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(subtitle)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-            }
+            Text(title)
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(1)
+                .truncationMode(.middle)
             Spacer(minLength: BrevSpacing.md)
             Button {
                 #if os(iOS)
@@ -230,32 +161,22 @@ struct PrivacySection: View {
 
     private var remoteImagesGroup: some View {
         SettingsGroup(title: String(localized: "Remote content", bundle: .module),
-                      subtitle: String(
-                          localized: "Images, web fonts, and tracking pixels are blocked until you allow them.",
-                          bundle: .module
-                      ),
+                      subtitle: remoteContentStatus,
                       symbolName: "photo") {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                SettingsToggleRow(
-                    symbolName: "photo",
-                    title: String(localized: "Always load remote images", bundle: .module),
-                    subtitle: String(localized: "Allows remote images after rich HTML rendering is enabled.", bundle: .module),
-                    isOn: mailboxBinding(for: \.allowRemoteContent),
-                    isEnabled: mailboxSettings.useRichRenderer
-                )
-
-                SettingsInfoCallout(symbolName: "checkmark.shield", message: remoteContentStatus, tone: .info)
-            }
+            SettingsToggleRow(
+                symbolName: "photo",
+                title: String(localized: "Always load remote images", bundle: .module),
+                subtitle: String(localized: "Allows remote images after rich HTML rendering is enabled.", bundle: .module),
+                isOn: mailboxBinding(for: \.allowRemoteContent),
+                isEnabled: mailboxSettings.useRichRenderer
+            )
         }
     }
 
     private var senderIconGroup: some View {
         SettingsGroup(
             title: String(localized: "Sender image sources", bundle: .module),
-            subtitle: String(
-                localized: "Choose which avatar sources Brev may use when sender images are visible.",
-                bundle: .module
-            ),
+            subtitle: avatarFooterText,
             symbolName: "person.crop.circle.badge.checkmark"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -291,23 +212,25 @@ struct PrivacySection: View {
                     isEnabled: mailboxSettings.showSenderAvatars
                 )
 
-                SettingsButtonRow {
+                HStack {
+                    Text("Sender images", bundle: .module)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textPrimary.color)
+                    Spacer(minLength: BrevSpacing.md)
                     SettingsButton(String(localized: "Initials only", bundle: .module), style: .secondary) {
                         updateAvatarSettings { $0.useInitialsOnly() }
                     }
-                    SettingsButton(String(localized: "Clear cached avatars", bundle: .module), style: .tertiary) {
-                        Task { await AvatarResolver.shared.clearCache() }
-                    }
-                    Spacer(minLength: BrevSpacing.md)
                 }
                 .disabled(!mailboxSettings.showSenderAvatars)
                 .opacity(mailboxSettings.showSenderAvatars ? 1 : 0.55)
 
-                SettingsInfoCallout(
-                    symbolName: avatarFooterSymbolName,
-                    message: avatarFooterText,
-                    tone: avatarFooterTone
-                )
+                SettingsButtonRow {
+                    SettingsButton(String(localized: "Clear cached avatars", bundle: .module), style: .tertiary) {
+                        Task { await AvatarResolver.shared.clearCache() }
+                    }
+                }
+                .disabled(!mailboxSettings.showSenderAvatars)
+                .opacity(mailboxSettings.showSenderAvatars ? 1 : 0.55)
             }
         }
     }
@@ -329,32 +252,6 @@ struct PrivacySection: View {
             )
         }
         return String(localized: "All sender icon sources are off. Brev uses generated initials only.", bundle: .module)
-    }
-
-    private var avatarFooterSymbolName: String {
-        if !mailboxSettings.showSenderAvatars {
-            return "eye.slash"
-        }
-        if avatarSettings.usesExternalSources {
-            return "network"
-        }
-        if avatarSettings.useContacts {
-            return "checkmark.shield"
-        }
-        return "person.crop.circle"
-    }
-
-    private var avatarFooterTone: SettingsCalloutTone {
-        if !mailboxSettings.showSenderAvatars {
-            return .info
-        }
-        if avatarSettings.usesExternalSources {
-            return .warning
-        }
-        if avatarSettings.useContacts {
-            return .success
-        }
-        return .info
     }
 
     private func avatarBinding(

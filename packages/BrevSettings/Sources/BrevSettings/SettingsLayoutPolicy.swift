@@ -58,3 +58,20 @@ enum SettingsDismissButtonPolicy {
         }
     }
 }
+
+enum SettingsDeveloperModePolicy {
+    static func availability(
+        base: SettingsSectionAvailability,
+        showDeveloperSettings: Bool
+    ) -> SettingsSectionAvailability {
+        var sections = base.visibleSections.filter { $0 != .developer }
+        if showDeveloperSettings {
+            sections.append(.developer)
+        }
+        return SettingsSectionAvailability(visibleSections: sections)
+    }
+
+    static func showsDeveloperEntries(showDeveloperSettings: Bool) -> Bool {
+        showDeveloperSettings
+    }
+}

@@ -98,6 +98,34 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D5C7392940B4B998B65B4CB2"
+               BuildableName = "BrevSettingsSnapshotHost.app"
+               BlueprintName = "BrevSettingsSnapshotHost"
+               ReferencedContainer = "container:apps/SettingsSnapshots/BrevSettingsSnapshots.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "DBB45391E703B57A698DF601"
+               BuildableName = "BrevSettingsSnapshotTests.xctest"
+               BlueprintName = "BrevSettingsSnapshotTests"
+               ReferencedContainer = "container:apps/SettingsSnapshots/BrevSettingsSnapshots.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "B9E47609F4D07E2061D02481"
                BuildableName = "BrevShareExtension.appex"
                BlueprintName = "BrevShareExtension"
@@ -121,6 +149,17 @@
                BuildableName = "BrevIOSTests.xctest"
                BlueprintName = "BrevIOSTests"
                ReferencedContainer = "container:apps/iOS/BrevIOS.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "DBB45391E703B57A698DF601"
+               BuildableName = "BrevSettingsSnapshotTests.xctest"
+               BlueprintName = "BrevSettingsSnapshotTests"
+               ReferencedContainer = "container:apps/SettingsSnapshots/BrevSettingsSnapshots.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>

@@ -20,6 +20,7 @@ let workspace = Workspace(
     name: "Brev",
     projects: [
         "apps/macOS",
-        "apps/iOS"
+        "apps/iOS",
+        "apps/SettingsSnapshots"
     ]
 )

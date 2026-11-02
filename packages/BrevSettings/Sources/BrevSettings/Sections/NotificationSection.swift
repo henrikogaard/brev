@@ -89,7 +89,7 @@ struct NotificationSection: View {
     private var backgroundMailGroup: some View {
         SettingsGroup(
             title: String(localized: "Background mail", bundle: .module),
-            subtitle: String(localized: "Run checks while no window is open.", bundle: .module),
+            subtitle: backgroundMailFooter,
             symbolName: "envelope.badge"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -131,20 +131,16 @@ struct NotificationSection: View {
                         }
                     }
                 }
-
-                if settings.backgroundMailEnabled,
-                   FetchScheduleSettings.load().interval == .manual {
-                    SettingsInfoCallout(
-                        symbolName: "hand.raised",
-                        message: String(
-                            localized: "Your fetch schedule is set to Manually, so background checking only listens for server pushes.",
-                            bundle: .module
-                        ),
-                        tone: .info
-                    )
-                }
             }
         }
+    }
+
+    private var backgroundMailFooter: String {
+        guard settings.backgroundMailEnabled, FetchScheduleSettings.load().interval == .manual else { return "" }
+        return String(
+            localized: "Your fetch schedule is set to Manually, so background checking only listens for server pushes.",
+            bundle: .module
+        )
     }
 
     private var launchAtLoginSubtitle: String {
@@ -216,14 +212,6 @@ struct NotificationSection: View {
                 )
 
                 testNotificationButton
-
-                #if os(macOS)
-                SettingsInfoCallout(
-                    symbolName: "bell",
-                    message: NotificationDeliveryExpectation.settingsCalloutMessage,
-                    tone: .info
-                )
-                #endif
             }
         }
     }
@@ -232,27 +220,20 @@ struct NotificationSection: View {
         #if os(iOS)
         NotificationPanePresentation.deliveryFooter(platform: .iOS)
         #else
-        String(localized: "Control how new messages alert you.", bundle: .module)
+        NotificationDeliveryExpectation.settingsCalloutMessage
         #endif
     }
 
     private var accountScopeGroup: some View {
         SettingsGroup(
             title: String(localized: "Accounts", bundle: .module),
-            subtitle: String(localized: "Choose which accounts can produce notifications, badges, and sounds.", bundle: .module),
+            subtitle: accounts.isEmpty
+                ? String(localized: "Connect an account to customize notification scope per mailbox.", bundle: .module)
+                : "",
             symbolName: "person.2.badge.gearshape"
         ) {
             SettingsRowStack {
-                if accounts.isEmpty {
-                    SettingsInfoCallout(
-                        symbolName: "person.crop.circle.badge.questionmark",
-                        message: String(
-                            localized: "Connect an account to customize notification scope per mailbox.",
-                            bundle: .module
-                        ),
-                        tone: .info
-                    )
-                } else {
+                if !accounts.isEmpty {
                     ForEach(accounts) { account in
                         #if os(iOS)
                         NavigationLink {
@@ -359,7 +340,7 @@ struct NotificationSection: View {
     private var quietHoursGroup: some View {
         SettingsGroup(
             title: String(localized: "Quiet hours", bundle: .module),
-            subtitle: quietHoursFooter,
+            subtitle: settings.quietHoursEnabled ? NotificationDeliveryExpectation.quietHoursCalloutMessage : "",
             symbolName: "moon.zzz"
         ) {
             SettingsRowStack {
@@ -394,25 +375,9 @@ struct NotificationSection: View {
                     ) {
                         hourOptions
                     }
-
-                    #if os(macOS)
-                    SettingsInfoCallout(
-                        symbolName: "clock",
-                        message: NotificationDeliveryExpectation.quietHoursCalloutMessage,
-                        tone: .info
-                    )
-                    #endif
                 }
             }
         }
-    }
-
-    private var quietHoursFooter: String {
-        #if os(iOS)
-        NotificationDeliveryExpectation.quietHoursCalloutMessage
-        #else
-        String(localized: "Silence notifications during specific hours.", bundle: .module)
-        #endif
     }
 
     @ViewBuilder
@@ -495,15 +460,9 @@ struct NotificationSection: View {
     }
 
     private var authorizationText: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Authorization", bundle: .module)
-                .brevFont(.body)
-                .foregroundStyle(theme.textPrimary.color)
-            Text(authorizationStatus.displaySubtitle)
-                .brevFont(.caption)
-                .foregroundStyle(theme.textSecondary.color)
-        }
-        .fixedSize(horizontal: false, vertical: true)
+        Text("Authorization", bundle: .module)
+            .brevFont(.body)
+            .foregroundStyle(theme.textPrimary.color)
     }
 
     private var authorizationActions: some View {

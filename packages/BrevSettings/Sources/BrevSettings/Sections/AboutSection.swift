@@ -34,23 +34,41 @@ enum AboutSectionPresentation {
     }
 }
 
-struct AboutSection: View {
-    @Environment(\.brevTheme) private var theme
-
-    private var version: String {
+private struct SettingsAboutVersionKey: EnvironmentKey {
+    static var defaultValue: String {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String ?? "0.0"
         let build = info?["CFBundleVersion"] as? String ?? "0"
         return "\(short) (\(build))"
     }
+}
+
+extension EnvironmentValues {
+    var settingsAboutVersion: String {
+        get { self[SettingsAboutVersionKey.self] }
+        set { self[SettingsAboutVersionKey.self] = newValue }
+    }
+}
+
+struct AboutSection: View {
+    @Environment(\.brevTheme) private var theme
+    @Environment(\.settingsAboutVersion) private var version
+    @Binding private var showDeveloperSettings: Bool
+
+    init(showDeveloperSettings: Binding<Bool> = .constant(false)) {
+        _showDeveloperSettings = showDeveloperSettings
+    }
 
     var body: some View {
         SectionScaffold(title: String(localized: "About", bundle: .module)) {
-            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            SettingsGroup(
+                title: String(localized: "About", bundle: .module),
+                subtitle: "",
+                symbolName: "info.circle"
+            ) {
+                SettingsRowStack {
                     ForEach(AboutSectionPresentation.infoRows(version: version), id: \.label) { item in
                         row(label: item.label, value: item.value)
-                        Rectangle().fill(theme.separator.color).frame(height: 1)
                     }
                     linkRow(
                         label: String(localized: "Repository", bundle: .module),
@@ -58,12 +76,21 @@ struct AboutSection: View {
                         destination: AboutSectionPresentation.repositoryURL
                     )
                 }
-                .settingsGroupedSurface()
-
-                Text("Brev is free software. Source code, ADRs, and the privacy promise live in the repository.", bundle: .module)
-                    .brevFont(.footnote)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .padding(.top, BrevSpacing.sm)
+            }
+            SettingsGroup(
+                title: String(localized: "Developer", bundle: .module),
+                subtitle: String(
+                    localized: "Show developer tools and plugin settings in the sidebar.",
+                    bundle: .module
+                ),
+                symbolName: "hammer"
+            ) {
+                SettingsToggleRow(
+                    symbolName: "hammer",
+                    title: String(localized: "Show Developer Settings", bundle: .module),
+                    subtitle: "",
+                    isOn: $showDeveloperSettings
+                )
             }
         }
     }

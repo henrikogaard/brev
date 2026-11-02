@@ -28,7 +28,7 @@ struct BrowserSettingsGroup: View {
     private var browserGroup: some View {
         SettingsGroup(
             title: String(localized: "Browser", bundle: .module),
-            subtitle: String(localized: "Choose where Brev opens links from messages and settings.", bundle: .module),
+            subtitle: browserOpeningMessage,
             symbolName: "safari"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -42,12 +42,6 @@ struct BrowserSettingsGroup: View {
                         Text(browser.title).tag(browser)
                     }
                 }
-
-                SettingsInfoCallout(
-                    symbolName: "arrow.up.right.square",
-                    message: browserOpeningMessage,
-                    tone: .info
-                )
             }
         }
     }

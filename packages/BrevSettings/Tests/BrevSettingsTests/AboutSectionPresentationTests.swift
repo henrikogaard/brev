@@ -11,10 +11,20 @@
  */
 
 @testable import BrevSettings
+import Foundation
+import SwiftUI
 import Testing
 
 @Suite("AboutSectionPresentation")
 struct AboutSectionPresentationTests {
+    @Test("About version defaults to the application bundle")
+    func versionDefaultsToApplicationBundle() {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "0.0"
+        let build = info?["CFBundleVersion"] as? String ?? "0"
+        #expect(EnvironmentValues().settingsAboutVersion == "\(version) (\(build))")
+    }
+
     @Test("About metadata credits the author and Brev repository")
     func aboutMetadataCreditsAuthorAndRepository() {
         let rows = AboutSectionPresentation.infoRows(version: "1.2.3 (45)")

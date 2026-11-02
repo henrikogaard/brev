@@ -3714,6 +3714,28 @@
         }
       }
     },
+    "Show Developer Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis utviklerinnstillinger"
+          }
+        }
+      }
+    },
+    "Show developer tools and plugin settings in the sidebar.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis utviklerverktøy og tilleggsinnstillinger i sidestolpen."
+          }
+        }
+      }
+    },
     "Demo mailbox mode": {
       "extractionState": "manual",
       "localizations": {

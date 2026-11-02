@@ -110,6 +110,7 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
 /// ships — never labeled ready.
 struct PIMSourcesSettingsView: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let model: PIMSourceSettingsModel
     /// Google mail accounts eligible for feature enablement. Empty in
@@ -171,10 +172,22 @@ struct PIMSourcesSettingsView: View {
                     Button {
                         isShowingConnectSheet = true
                     } label: {
-                        Label(
-                            String(localized: "Add DAV Source…", bundle: .module),
-                            systemImage: "plus"
-                        )
+                        if dynamicTypeSize.isAccessibilitySize {
+                            HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
+                                Image(systemName: "plus")
+                                    .accessibilityHidden(true)
+                                Text(String(localized: "Add DAV Source…", bundle: .module))
+                                    .lineLimit(nil)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            Label(
+                                String(localized: "Add DAV Source…", bundle: .module),
+                                systemImage: "plus"
+                            )
+                        }
                     }
                     .settingsButtonStyle()
                     .accessibilityHint(String(
@@ -285,9 +298,11 @@ struct PIMSourcesSettingsView: View {
                     Text(row.displayName)
                         .brevFont(.subheadline)
                         .foregroundStyle(theme.textPrimary.color)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                     Text(statusLine(for: row))
                         .brevFont(.caption)
                         .foregroundStyle(theme.textSecondary.color)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                     if let detail = row.statusDetail {
                         Text(detail)
                             .brevFont(.caption)
@@ -346,6 +361,7 @@ struct PIMSourcesSettingsView: View {
             Text(title)
                 .brevFont(.footnote)
                 .foregroundStyle(theme.textPrimary.color)
+                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .toggleStyle(.switch)
@@ -428,27 +444,18 @@ struct PIMSourcesSettingsView: View {
                 .fill(collectionColor(for: collection))
                 .frame(width: 7, height: 7)
                 .accessibilityHidden(true)
-            // One line per collection: name, then the primary and
-            // read-only markers inline, so long group lists stay scannable.
-            Text(collection.displayName)
-                .brevFont(.footnote)
-                .foregroundStyle(theme.textPrimary.color)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .help(collection.displayName)
-            if collection.isPrimary {
-                Text(String(localized: "Primary", bundle: .module))
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-            }
-            if collection.isReadOnly {
-                Image(systemName: "lock")
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .accessibilityLabel(String(
-                        localized: "Read-only",
-                        bundle: .module
-                    ))
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                    collectionName(collection)
+                    if collection.isPrimary || collection.isReadOnly {
+                        HStack(spacing: BrevSpacing.xs) {
+                            collectionMarkers(collection)
+                        }
+                    }
+                }
+            } else {
+                collectionName(collection)
+                collectionMarkers(collection)
             }
             Spacer(minLength: BrevSpacing.xs)
             Toggle(
@@ -469,6 +476,35 @@ struct PIMSourcesSettingsView: View {
                     bundle: .module
                 ))
                 .disabled(model.pendingSourceID == sourceID)
+        }
+    }
+
+    private func collectionName(_ collection: PIMCollection) -> some View {
+        Text(collection.displayName)
+            .brevFont(.footnote)
+            .foregroundStyle(theme.textPrimary.color)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            .truncationMode(.middle)
+            .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
+            .help(collection.displayName)
+    }
+
+    @ViewBuilder
+    private func collectionMarkers(_ collection: PIMCollection) -> some View {
+        if collection.isPrimary {
+            Text(String(localized: "Primary", bundle: .module))
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
+        }
+        if collection.isReadOnly {
+            Image(systemName: "lock")
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+                .accessibilityLabel(String(
+                    localized: "Read-only",
+                    bundle: .module
+                ))
         }
     }
 
@@ -640,13 +676,15 @@ struct PIMSourcesSettingsView: View {
         HStack(alignment: .firstTextBaseline, spacing: SettingsLayout.symbolSpacing) {
             SettingsSymbol(symbolName: "g.circle", color: theme.textTertiary)
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                HStack(spacing: BrevSpacing.xs) {
+                googlePlaceholderTitleLayout {
                     Text(String(localized: "Google Calendar & Contacts", bundle: .module))
                         .brevFont(.body)
                         .foregroundStyle(theme.textTertiary.color)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                     Text(String(localized: "Not available yet", bundle: .module))
                         .brevFont(.caption)
                         .foregroundStyle(theme.textTertiary.color)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                         .padding(.horizontal, BrevSpacing.xxs)
                         .padding(.vertical, 1)
                         .settingsInlineSurface(cornerRadius: BrevRadius.sm)
@@ -661,6 +699,12 @@ struct PIMSourcesSettingsView: View {
             }
         }
         .padding(.vertical, BrevSpacing.xxs)
+    }
+
+    private var googlePlaceholderTitleLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: BrevSpacing.xs))
+            : AnyLayout(HStackLayout(spacing: BrevSpacing.xs))
     }
 
     private func syncBinding(for sourceID: PIMSource.ID, enabled: Bool) -> Binding<Bool> {

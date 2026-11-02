@@ -59,39 +59,35 @@ struct FontSectionSettings: View {
                     }
                 }
 
-                // No fixedSize: at accessibility sizes the label must wrap
-                // rather than widen the whole pane.
-                Menu(String(localized: "Use One Font Everywhere", bundle: .module)) {
-                    ForEach(MailboxFontFamily.allCases) { family in
-                        Button(family.title) {
-                            Self.applyToAll(family, in: defaults)
+                HStack {
+                    Spacer(minLength: 0)
+                    Menu {
+                        ForEach(MailboxFontFamily.allCases) { family in
+                            Button(family.title) {
+                                Self.applyToAll(family, in: defaults)
+                            }
                         }
-                    }
-                }
-
-                preview
-            }
-        }
-    }
-
-    private var preview: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-            ForEach(BrevFontSection.allCases) { section in
-                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                    Text(verbatim: section.title)
-                        .brevFont(.caption)
-                        .foregroundStyle(theme.textTertiary.color)
-                    Text("Brev keeps message text calm, readable, and easy to scan.", bundle: .module)
-                        .brevFont(.body)
-                        .environment(\.brevFontFamily, family(for: section))
+                    } label: {
+                        #if os(macOS)
+                        HStack(spacing: BrevSpacing.xs) {
+                            Text("Use One Font Everywhere", bundle: .module)
+                            Image(systemName: "chevron.down")
+                                .imageScale(.small)
+                                .accessibilityHidden(true)
+                        }
                         .foregroundStyle(theme.textPrimary.color)
-                        .fixedSize(horizontal: false, vertical: true)
+                        #else
+                        Text("Use One Font Everywhere", bundle: .module)
+                        #endif
+                    }
+                    #if os(macOS)
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    #endif
                 }
+                .frame(maxWidth: .infinity)
             }
         }
-        .padding(BrevSpacing.sm)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .settingsInlineSurface(cornerRadius: BrevRadius.sm)
     }
 
     private func family(for section: BrevFontSection) -> MailboxFontFamily {

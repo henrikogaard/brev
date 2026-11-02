@@ -1,0 +1,185 @@
+name: Native Settings review
+on:
+  workflow_dispatch:
+    inputs:
+      record:
+        description: 'Record candidate images only (not visual acceptance)'
+        type: boolean
+        default: false
+  push:
+    branches: [fix/macos-settings-native-form]
+  pull_request:
+    paths:
+      - '.github/workflows/settings-native-review.yml'
+      - 'packages/**'
+      - 'apps/SettingsSnapshots/**'
+      - 'apps/iOS/Resources/Assets.xcassets/**'
+      - 'Brev.xcworkspace/**'
+      - 'Tuist/**'
+      - 'Tuist.swift'
+      - '.mise.toml'
+      - '.github/workflows/build.yml'
+      - 'scripts/prepare-xcode-workspace.sh'
+      - 'scripts/settings-snapshot-environment.py'
+      - 'scripts/test-settings-snapshot-environment.py'
+      - 'Workspace.swift'
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+concurrency:
+  group: settings-native-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  settings-snapshots:
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macOS, iPhone]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install pinned project generator
+        if: matrix.platform == 'iPhone'
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac
+      - name: Validate pinned iOS capture environment
+        if: matrix.platform == 'iPhone'
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+        run: |
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          python3 scripts/settings-snapshot-environment.py | tee "$RUNNER_TEMP/settings-environment.json"
+          runtime="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime_identifier"])' "$RUNNER_TEMP/settings-environment.json")"
+          device="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["device_identifier"])' "$RUNNER_TEMP/settings-environment.json")"
+          udid="$(xcrun simctl create "Settings snapshots $GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$device" "$runtime")"
+          echo "SETTINGS_SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          echo "TEST_RUNNER_BREV_SETTINGS_EXPECTED_RUNTIME_BUILD=23F77" >> "$GITHUB_ENV"
+          scripts/prepare-xcode-workspace.sh
+      - name: Prepare synthetic Settings snapshot tests
+        id: prepare
+        run: |
+          if [[ '${{ matrix.platform }}' == 'macOS' ]]; then
+            destination='platform=macOS,arch=arm64'
+            suite='BrevSettingsTests/AIWriterSectionMacSnapshotTests'
+            scheme=BrevSettings
+            directory=packages/BrevSettings
+            project=''
+          else
+            destination="platform=iOS Simulator,id=$SETTINGS_SIMULATOR_UDID"
+            suite=BrevSettingsSnapshotTests
+            scheme=BrevSettingsSnapshots
+            directory=.
+            project=apps/SettingsSnapshots/BrevSettingsSnapshots.xcodeproj
+          fi
+          echo "destination=$destination" >> "$GITHUB_OUTPUT"
+          echo "suite=$suite" >> "$GITHUB_OUTPUT"
+          echo "scheme=$scheme" >> "$GITHUB_OUTPUT"
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+          args=(-scheme "$scheme")
+          if [[ -n "$project" ]]; then args+=(-project "$project"); fi
+          cd "$directory"
+          xcodebuild "${args[@]}" -destination "$destination" \
+            -derivedDataPath "$RUNNER_TEMP/settings-review" -skipMacroValidation \
+            -testLanguage en -testRegion en_US -parallel-testing-enabled NO \
+            -only-testing:"$suite" build-for-testing \
+            2>&1 | tee "$RUNNER_TEMP/settings-build.log"
+      - name: Verify committed Settings references
+        if: ${{ !inputs.record }}
+        env:
+          TEST_RUNNER_RECORD_SNAPSHOTS: 'NO'
+          DESTINATION: ${{ steps.prepare.outputs.destination }}
+          SUITE: ${{ steps.prepare.outputs.suite }}
+          SCHEME: ${{ steps.prepare.outputs.scheme }}
+          DIRECTORY: ${{ steps.prepare.outputs.directory }}
+          PROJECT: ${{ steps.prepare.outputs.project }}
+        run: |
+          args=(-scheme "$SCHEME")
+          if [[ -n "$PROJECT" ]]; then args+=(-project "$PROJECT" -collect-test-diagnostics never); fi
+          cd "$DIRECTORY"
+          xcodebuild "${args[@]}" -destination "$DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/settings-review" -skipMacroValidation \
+            -resultBundlePath "$RUNNER_TEMP/settings-verify.xcresult" \
+            -testLanguage en -testRegion en_US -parallel-testing-enabled NO \
+            -only-testing:"$SUITE" test-without-building \
+            2>&1 | tee "$RUNNER_TEMP/settings-verify.log"
+      - name: Record Settings candidates for review
+        if: ${{ inputs.record }}
+        env:
+          TEST_RUNNER_RECORD_SNAPSHOTS: 'YES'
+          TEST_RUNNER_BREV_SETTINGS_SNAPSHOT_CANDIDATES: 'YES'
+          DESTINATION: ${{ steps.prepare.outputs.destination }}
+          SUITE: ${{ steps.prepare.outputs.suite }}
+          SCHEME: ${{ steps.prepare.outputs.scheme }}
+          DIRECTORY: ${{ steps.prepare.outputs.directory }}
+          PROJECT: ${{ steps.prepare.outputs.project }}
+        run: |
+          args=(-scheme "$SCHEME")
+          if [[ -n "$PROJECT" ]]; then args+=(-project "$PROJECT" -collect-test-diagnostics never); fi
+          cd "$DIRECTORY"
+          xcodebuild "${args[@]}" -destination "$DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/settings-review" -skipMacroValidation \
+            -resultBundlePath "$RUNNER_TEMP/settings-record.xcresult" \
+            -testLanguage en -testRegion en_US -parallel-testing-enabled NO \
+            -only-testing:"$SUITE" test-without-building \
+            2>&1 | tee "$RUNNER_TEMP/settings-record.log"
+      - name: Shut down only the owned snapshot simulator
+        if: ${{ always() && matrix.platform == 'iPhone' && env.SETTINGS_SIMULATOR_UDID != '' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          identifier = os.environ["SETTINGS_SIMULATOR_UDID"]
+          devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "--json"]))
+          matches = [
+              device for group in devices["devices"].values() for device in group
+              if device["udid"] == identifier
+          ]
+          if len(matches) != 1:
+              raise SystemExit("Owned snapshot simulator is missing or ambiguous")
+          if matches[0]["state"] != "Shutdown":
+              subprocess.run(["xcrun", "simctl", "shutdown", identifier], check=True)
+          PY
+      - name: Package the synthetic iPhone host for native comparison
+        if: ${{ always() && matrix.platform == 'iPhone' && steps.prepare.outcome == 'success' }}
+        run: |
+          git rev-parse HEAD > "$RUNNER_TEMP/settings-host-source.txt"
+          git rev-parse HEAD^{tree} >> "$RUNNER_TEMP/settings-host-source.txt"
+          ditto -c -k --keepParent \
+            "$RUNNER_TEMP/settings-review/Build/Products/Debug-iphonesimulator/BrevSettingsSnapshotHost.app" \
+            "$RUNNER_TEMP/settings-synthetic-host.zip"
+      - name: Upload the synthetic iPhone host
+        if: ${{ always() && matrix.platform == 'iPhone' && steps.prepare.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: settings-synthetic-host-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/settings-synthetic-host.zip
+            ${{ runner.temp }}/settings-host-source.txt
+            ${{ runner.temp }}/settings-environment.json
+      - name: Upload diagnostics even when tests fail
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: settings-diagnostics-${{ matrix.platform }}-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/settings-*.log
+            ${{ runner.temp }}/settings-*.xcresult
+            ${{ runner.temp }}/settings-environment.json
+      - name: Upload candidate references for visual review (not acceptance)
+        if: ${{ always() && inputs.record && matrix.platform == 'macOS' && steps.prepare.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: settings-review-${{ matrix.platform }}-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/BrevSettingsSnapshotTests/*.png

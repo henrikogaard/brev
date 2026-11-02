@@ -23,6 +23,29 @@
 - Documentation sweep: README, CHANGELOG, PRIVACY, ADRs, release/QA reports and AGENTS need no change for a Draft coordination plan that preserves existing accepted decisions and changes no behavior. Later slices update their actual changed contracts and evidence.
 - Handoff: publish the docs-only PR for review and stop for design approval before Phase 2. No merge, release, app-version change, data deletion or issue closure is authorized by this plan.
 
+## 2026-10-29 — Agent — PR #265 review repair
+
+- Goal: address review comment 6498243627 on isolated `fix/pr-265-review-16784`, based on original head `8cfee2b75b6c4c368399a617e4f347c0cc505fb0`; leave the original branch and final integration to the parent.
+- Changes: split committed-reference verification from explicit candidate recording, forward `TEST_RUNNER_RECORD_SNAPSHOTS`, preserve failing exit status, and upload logs/result bundles even on failure. Recording remains fail-closed, not acceptance. Update only the inspected macOS provider-setup reference for the intended native Form. Preserve both WORKLOG histories with an additive patch; no local merge/rebase or source changes.
+- Verified: provider snapshot failed before and passed after the reference update; repeated candidate captures were byte-identical. iPhone PIM sources passed light/dark/AX3 without reference changes. Focused navigation/developer/provider run passed 46 tests. Pinned lint/format, actionlint, workflow structural/failure-pipeline assertions and diff checks passed.
+- Baseline: pristine main `5ad74c0b388466a5f842dcb43b8834f74cc413ee` on the same macOS 26.5.2 host passed all 18 iPhone form variants; this head has 12 mismatches. macOS AI Writer suite has 30 head versus 35 main mismatches, with 28 shared. All four MailStorage mismatches reported by PR #274 also reproduce on main; host causality is not established.
+- Remaining: root drawer search visibility, quieter Accounts/Notifications layouts and Appearance snapshots require native/design acceptance; no blanket rebaseline. Search placement/timing experiments did not validate a safe fix and were reverted. Failing iOS runs can leave unfinished xcresults on this host; logs are diagnostic evidence, not successful result bundles. Combined-main CI and native UI are not run here (integration/approval pending). No live provider actions or daily-driver app changes.
+- Handoff: parent integrates this coherent repair, preserves main's consent/Appearance additions, checks the combined merge ref, and settles CI/review before any merge. Documentation sweep: no new architecture, user behavior, privacy, release or setup change; existing ADR-0002/changelog cover native Forms, so only this worklog needs updating.
+
+## 2026-10-29 — Agent — #269 / #265 native Settings review slice
+
+- Continued the existing `fix/macos-settings-native-form` branch at `4904353b` in a clean dedicated worktree. #265 remains the native Settings outcome, targets main and is draft. No duplicate Settings PR or unrelated branch rewrite.
+- Added isolated macOS-26 and iPhone snapshot recording for the existing changed Settings/Appearance suites, with synthetic PNG artifacts for the subsequent review/fix pass. Existing native grouped forms/compact root implementation is preserved.
+- Verification: workflow/diff/ADR checks before push; actual CI capture/image inspection pending. This PR conflicts with current main, so head-only recording cannot prove combined consent/Appearance rendering; conflict resolution remains explicit review work. No host-native tests, merge/rebase, release or accepted-baseline claim.
+- The approved shared plan in #268/#277 maps slice 8 and the full PR stack. Instrumentation-only addition needs no CHANGELOG/privacy/README/ADR architecture update. No versioned QA report without fresh native evidence.
+
+## 2026-10-28 — Agent — PR #265 integration review
+
+- Integrated main and preserved the native grouped forms plus the already-merged equal-width Appearance controls. The mail preview stays in its own section; no duplicate preview was retained.
+- Resolved additive worklog conflict and retained native-form Appearance snapshot references pending a rendered check of the combined layout.
+- Verification pending: compatible macOS snapshot run and updated-head CI. The previous BrevMail failure is the rich-text bold serializer assertion, not evidence of a Settings regression; it must not be ignored without a clean updated run or a reproduced fix.
+- Documentation sweep: existing ADR-0002 amendment and changelog cover the behavior. No new network, privacy or release changes.
+
 ## 2026-10-28 — Agent — PR #256 integration review
 
 - Reviewed per-account capability resolution, independent default-off consent switches and device-local persistence. No backend advertises the capability and the controller remains unconnected.
@@ -6537,6 +6560,24 @@ buttons, and package-aware localization.
 - Limits: no Swift tests, builds, DMG, app/runtime/UI or CI checks were run. The four additions are the exact tested main files already covered by PR #241; the frozen PR #245 focused 22 Calendar, 138 Mail, six snapshot cases, and 40 settings/8 detector results were not rerun. The new automatic CI run is the combined gate.
 - Handoff: parent owns PR description, CI and PR merge. No PR/issue actions performed.
 
+## 2026-10-25 — Devin — macOS Settings native forms (#14/#15)
+
+- Goal: move macOS Settings to grouped native forms and standardize iPhone Settings headers and compact search placement.
+- Changes: amended ADR-0002; migrated shared Settings rows and all requested panes to the grouped `Form` path; gated Developer and Extensions entries behind developer availability; changed iPhone root headers and search placement. The root snapshots for light, dark, and AX3 were re-recorded.
+- Verification: `DeveloperSettingsTests` passed; `scripts/format.sh` passed after code edits and `scripts/lint.sh` passed after the documentation update; the focused iPhone root snapshot test passed for all three variants. A Debug iOS mock app build succeeded and ran on an iOS 27 simulator. Mock macOS builds launched on clean `origin/main` and the feature branch. The clean-main snapshot comparison showed 15 mismatches on this host; only the three root variants changed on this branch.
+- Visual evidence: window-only before/after Appearance and Accounts screenshots in Light and Dark, remaining migrated panes in Light, and Norwegian Appearance are in `~/evidence/settings-form/`. Live iPhone Settings root captures in Light and Dark show the small grey headers and the search drawer under the large title; the three root snapshot captures are also retained there.
+- Limits: Release-build sidebar visibility and full macOS Settings snapshot coverage were not verified. DEBUG mock builds retain Developer and Example Plugin entries. Custom account, import/export, and folder-sync controls remain purpose-built subviews inside the native form sections; their behavior was not changed. No clean-main drift-only snapshots were re-recorded.
+- Handoff: work remains uncommitted and unpushed for lead review; do not open a PR or change PR #264.
+
+## 2026-10-25 — Devin — Native Settings review follow-up
+
+- Goal: apply Henrik's follow-up review to native Settings rows and verify the mock build.
+- Changes: Developer and Extensions remain hidden in mock builds unless the persisted About toggle is enabled. Removed the notification authorization subtext; moved preference-sync privacy/status copy to the group footer; removed the Folder Sync and Mail Storage scope subtitles on macOS; moved Import/Export privacy and capability notes from icon callouts into group footers. Existing section footers remain for undo-send and privacy details; redundant group subtitles were dropped.
+- Verification: `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check` passed. `DeveloperSettingsTests` and the selected Settings surface snapshots passed (7 tests in 2 suites); only `folder-workspace-light` and `folder-workspace-dark` were re-recorded. `./script/build_and_run.sh --mock` succeeded.
+- Evidence: refreshed Light captures for Accounts, About with the developer toggle visible, Notifications, Folder Sync, and Preferences in `/Users/devin/evidence/settings-form/`.
+- Limits: Appearance Dark/Accounts Dark and Norwegian Appearance captures were not refreshed in this handoff. Host appearance remains Light. No commit or push was made.
+- Handoff: source and evidence are ready for review; no PR was opened and #264 was not changed.
+
 ## 2026-10-25 — Devin — PR #264
 
 - Goal: finish the Calendar, Contacts and Tasks no-sources empty-state pass on
@@ -6671,3 +6712,284 @@ buttons, and package-aware localization.
 - Limits: iOS snapshot tests remain unavailable through the `BrevIOS` scheme because `BrevMailTests` is not part of its test plan; live iPhone captures were inspected instead. The Mac build retains existing warnings for deprecated `EventModifiers.function` and non-Sendable closure conversions.
 - Evidence: refreshed after captures are in `/Users/devin/evidence/mailboxes-compose/`; valid base Mailboxes captures remain there. The Mac screenshots are window-only and contain no notification banners.
 - Handoff: host appearance is Light. Commit and push the completed follow-up; do not open a PR or watch CI.
+
+## 2026-10-29 — Devin — PR265 hosted snapshot fixture isolation
+
+- Goal: repair proven host-input leaks from hosted run 40892033386 at `ab9d9110808cb98b276d6af5304c6f33eb2fc5a3`, without changing accepted references or production appearance.
+- Changes: About metadata accepts an internal environment value whose default remains the application bundle version. Settings transparency controls accept an optional environment value, defaulting to the system accessibility setting; the preview uses the same resolved value. Mac snapshot fixtures pin both inputs. No host-global settings or reference images changed.
+- Verification: the new pixel regression failed twice without fixture overrides; version isolation alone left only the enabled-transparency case failing; both overrides passed. Seven focused macOS tests passed, including production-default checks and the provider reference. Full pinned lint, format check and SwiftLint coverage self-test passed. The broad macOS suite retained the same 30 pre-existing local reference mismatches. Local toolchain: macOS 26.5.2 (25F84), Xcode 26.6 (17F113).
+- iOS verification: Xcode 27.0 (27A266a), iPhone 18 Pro / iOS 27.0 (24A434) build, five metadata/transparency tests and all three PIM variants passed. The three root snapshots still failed and are pixel-identical to the saved pre-follow-up PR candidates; this is not the hosted iOS 26.5 result, where root passed.
+- Hosted evidence: full xcresult export supplied all reference/failure/difference PNGs for 33 macOS and 12 iPhone mismatches. Hosted macOS was 26.6.2 (25G83), Xcode path 26.6, iPhone 17 Pro / iOS 26.5 (23F77). Twenty-three macOS candidates exactly matched local PR pixels; About leaked runner version `16.0 (24904)` and transparency inherited host accessibility. PIM candidates lacked switch thumbs on the hosted runtime; no production PIM regression was established.
+- Handoff: parent integrates this repair branch and reruns hosted CI. Remaining layout/runtime mismatches still require comparison and native/design acceptance, not blanket recording. No UI-driven testing, merge/rebase, original-branch push or app installation occurred. Documentation sweep: no README, CHANGELOG, privacy, ADR or accepted-baseline changes are needed because production defaults, architecture and user-facing behavior are unchanged.
+
+## 2026-11-01 — Devin — PR #265 approved main integration
+
+- Henrik approved isolated native tests and `git merge origin/main`. Integrated main `e476096` into the existing Settings branch in a separate worktree, leaving the reader stack unchanged. The only textual conflict was additive WORKLOG history; every entry from both parents is preserved without duplicating the shared entries.
+- Main's per-account sign-in consent capability gating and Settings deep-link binding merged with the grouped-form changes. Appearance source is unchanged from the pre-integration Settings head. The localization catalog preserves every entry from both parents; no reference images were re-recorded or accepted.
+- Verification: 93 focused Settings tests across nine suites pass with Xcode 26.6 (17F113), covering consent, navigation/search, notification and Appearance policies, About defaults and transparency. Pinned full SwiftFormat/SwiftLint, coverage self-test and diff checks pass. The named Xcode directory was absent; the installed `/Applications/Xcode.app` supplies that same verified toolchain.
+- Remaining: fresh combined-head hosted CI and native Settings acceptance. macOS app launch is paused because the dated test identity still resolves the shared App Group; no shared data or daily-driver app was touched. Isolated simulator testing proceeds separately. No PR merge, release, issue closure or blanket snapshot acceptance.
+- Documentation sweep: existing ADR-0002, ADR-0088 and CHANGELOG cover the integrated behavior. No new architecture, privacy, setup or release policy was introduced; only this integration record is needed.
+
+## 2026-11-01 — Devin — PR #265 restore iPhone Settings entry
+
+- Native mock testing reproduced a missing Settings menu item: the sidebar gear offered profile actions only. The root explicitly passed `nil` while its toolbar policy intentionally hid duplicate Settings buttons. The same disconnected action exists on current main; this is not attributed to the reader changes.
+- Restored the existing guarded Settings action only for iOS when an application Settings callback is available. macOS keeps its app-menu command, and no new sheet, route, string or persistence mechanism was introduced. ADR-0002 and CHANGELOG record the entry-point contract and user-visible repair.
+- Verification: the native reproduction is the red case. Ten existing Settings-toolbar/sheet-policy tests and full BrevMail compilation pass; full pinned lint/format, coverage and diff checks pass. Combined-head simulator retest is still required for the green UI case and remaining Settings behavior.
+- Separate findings remain open: landscape compose toolbar clipping and an unmeasured initial thread-body delay. Neither was changed by this narrowly scoped repair. No live accounts, daily-driver changes, snapshot rebaselining, release or PR merge.
+
+## 2026-11-01 — Devin — PR #265 accessible theme-pair row
+
+- Native combined-head iPhone retest confirmed Settings access, search navigation, theme/text-size selection persistence across closing Settings, Developer visibility and unsupported-provider consent explanations. At genuine accessibility-extra-large, the theme row compressed its label into `Theme` and `s`.
+- The iOS theme row now places selected names below the label at accessibility sizes; ordinary-size trailing layout and the existing picker action remain. macOS is unchanged. ADR-0002 and CHANGELOG record the layout repair. No snapshot reference was updated.
+- Verification: all 93 focused Settings tests and pinned full lint/format pass. Native iOS retest remains pending; no claim is made for macOS, trusted-provider consent, process-relaunch persistence or existing snapshot acceptance. The native failed rendering supplies the red case; host package tests cannot exercise the iOS-only layout.
+
+## 2026-11-01 — Devin — PR #265 mock-only macOS isolation decision
+
+- Henrik approved mock-only macOS isolation after the shared production App Group blocked native testing. ADR-0091 records a fresh sandbox identity, no shared-group/extension access, restricted entitlements and in-memory mock-only wiring; production storage/signing stay unchanged.
+- This ADR-first commit precedes implementation and negative regression tests. Native validation, signed-artifact checks and hosted CI remain outstanding. No app launch, existing-data access, snapshot rebaseline or merge. #269 remains open; board access is unavailable and implementation status is In progress.
+
+## 2026-11-01 — Devin — PR #265 isolated macOS mock profile
+
+- Added `--isolated-mock` and its build-only inspection option to the existing local build script. Each invocation generates a UUID sandbox identity/private DerivedData, strips embedded extensions from that generated product, stamps mock-only configuration and signs with sandbox-only entitlements. Live/release/install combinations fail before building; normal signing files and release behavior are unchanged.
+- Startup validates the signed permissions, Debug test marker, UUID identity and actual sandbox home before SwiftUI initialization. Isolated sessions use in-memory accounts/tokens/AI secrets without production account coordinators. App Group lookup, shared attachment handoff, iCloud activation and retired-keychain migration are bypassed. The generated bundle cannot be switched into live mode by its environment. No normal account persistence schema changed.
+- Red/green: the new CLI test first rejected the unknown flag; negative artifact tests then exposed Bash conditional-call error masking, repaired with explicit guard returns. Final shell tests cover unique identity, invalid modes, signature failure, production entitlements, missing marker and embedded extensions, including optimized Python. Five Swift isolation-policy tests cover identity/home/Release/entitlement rejection and no App Group resolver call. 45 focused mail/session/compose tests, 8 widget/policy tests, 78 Settings tests, Debug/Release entry-point type checks, full pinned lint/format/hooks, repository self-tests, privacy audit and diff checks pass.
+- Documentation sweep updates README, CHANGELOG, PRIVACY, ADR-0006 and ADR-0091. No new endpoint, user-facing translation key or snapshot reference. Full native build, actual signed-artifact/container validation and macOS UI evidence remain for the approved testing agent; telemetry artifact scan is deferred until that build exists. Hosted Settings snapshot failures remain unaccepted. No app launch, live account, daily-driver change, release or merge in this implementation pass. #269 remains open; board access is unavailable, intended status In review after push.
+
+## 2026-11-01 — Devin — PR #265 native entry-point project wiring
+
+- Approved native setup found that the clean pushed project omitted `BrevAppMain.swift`: isolated build failed linking `_main`. The agent stopped without launching. Diagnostic workspace regeneration added four references and built successfully, but that uncommitted product was not accepted or launched.
+- Regenerated with the documented `scripts/prepare-xcode-workspace.sh`; committed only its four macOS source/build references. No settings source, signing, production data path or snapshot reference changed. This repairs clean-checkout builds and CI's generated-project reproducibility gate. The same generation and pinned lint/format/hooks pass; native signed-artifact/container and UI acceptance must rerun on this new pushed revision. No user decision needed, no app launch/release/merge. #269 stays open and intended In review.
+
+## 2026-11-01 — Devin — PR #265 native font-menu contrast plan
+
+- Native validation at clean pushed 9f3a90f passed build/signature/fresh UUID sandbox checks and bounded mock Settings navigation, forms/search/scrolling, visible switch thumbs, Developer gating, unavailable-consent explanation, minimum window layout and preference persistence through relaunch. One red reproduction: Light/Paper → Dark leaves “Use One Font Everywhere” black on dark; switching back leaves white on light until pane reconstruction.
+- ADR-first amendment selects a theme-driven macOS menu label rather than remounting the entire pane. Preserve iOS, menu actions, keys and snapshot references. Follow with focused font/theme tests and targeted native transition/menu retest; current native evidence does not accept hosted references, enabled trusted-provider consent, storage/migrations or reader-stack behavior. No production data/provider/daily-driver changes or merge.
+
+## 2026-11-01 — Devin — PR #265 native font-menu label repair
+
+- The existing font menu now supplies an explicit localized Text label, with the macOS foreground bound to `theme.textPrimary`. iOS keeps its inherited label style; popup choices and the existing apply-to-all implementation are unchanged. No pane-wide identity/state reset or arbitrary redraw delay.
+- TDD red evidence is the approved native Light → Dark → Light recording; the focused existing font/theme/navigation checks and pinned lint/format pass after the change. The agent must retest the dynamic transition and menu actions at the new clean pushed head before this repair is accepted. No snapshot references updated. Documentation sweep: ADR-0002/CHANGELOG/WORKLOG updated; no new privacy, network, setup or localization change. Hosted snapshot acceptance and other stack gates remain separate; no merge.
+
+## 2026-11-01 — Devin — PR #265 whole-menu contrast follow-up
+
+- Targeted native retest at b4d7a87 passed the explicit text foreground and menu actions/persistence regressions, but its native disclosure chevron retained the preceding mode's color. Whole-control acceptance failed; the agent stopped and retained the UUID artifact/evidence. No production data or snapshot changes.
+- ADR-first extension recreates only the stateless font menu when the resolved theme mode changes. The pane and font preference state stay mounted. Both label and chevron must pass repeated in-pane mode transitions on a new clean pushed isolated build; no broader native/snapshot acceptance inferred.
+
+## 2026-11-01 — Devin — PR #265 theme-driven menu disclosure
+
+- Native test at 7ee642c again failed the dark disclosure chevron despite readable text; testing stopped before later regressions. Full-window evidence confirms the native indicator retains the wrong foreground. Mode-keyed reconstruction is ineffective and will be removed.
+- ADR-first revision retains the native menu and actions, but gives the macOS label an explicit themed SF Symbol disclosure and hides the native indicator, following the existing borderless menu pattern. No global AppKit appearance changes, delays, pane recreation, new localization keys or iOS styling changes. Both glyph and text require a new isolated native retest; snapshot references stay untouched.
+
+## 2026-11-01 — Devin — PR #265 scene-hosted snapshot decision
+
+- Approved synthetic diagnostic reproduced all four missing UIKit/SwiftUI switch thumbs with the existing unhosted strategy; scene-hosted hierarchy drawing retained them in Light and Dark. Six draws succeeded; three repeats per mode/method were stable. Actual runtime was iOS 26.5/23F73, not CI's 23F77; content traits were 2× while the native screen was 3×. No exact hosted reproduction, reference acceptance or macOS inference.
+- ADR-0092 precedes a dedicated synthetic host and provenance-pinned iOS harness repair. Actual Settings and tall accessibility captures require verification before acceptance. No references, production controls or other stack gates change. #269 remains open; board access is unavailable, intended status In progress.
+
+## 2026-11-01 — Devin — PR #265 scene-hosted Settings capture
+
+- Added the dedicated synthetic `BrevSettingsSnapshots` app/test project and
+  routed the existing iPhone form fixtures through a real foreground scene and
+  key window. Kept fixture source/reference paths, strict comparison and all
+  production controls unchanged. Candidate mode writes only test attachments.
+  The package target no longer compiles this scene-dependent suite; the separate
+  native Settings CI gate owns it. The macOS renderer is unchanged.
+- Two initial root captures changed between adjacent display frames. Capture now
+  requires three identical consecutive frames within a bounded display budget,
+  with explicit failed-draw, invalid-size, settling, never-settling and
+  ordinary/tall canvas tests. No timer delay or weaker pixel precision is used.
+- Xcode 26.6/17F113 and simulator SDK 26.5/23F81a compiled both targets.
+  Local scheme destination resolution incorrectly reported the installed iOS
+  platform unavailable; direct target builds with common SYMROOT/OBJROOT and an
+  official-format xctestrun exercised the same artifacts/toolchain on an owned
+  iPhone 16e, iOS 26.5/23F73. Candidate execution passed 11 test methods,
+  24 executions: 18 pane variants plus six guard/canvas cases. The ordinary
+  reference comparison reports 18 differences, all unaccepted. No references
+  were modified. This is explicitly not the pinned CI runtime 23F77.
+- All 461 non-snapshot Settings Swift tests, provenance self-tests, repository
+  self-tests, pinned format/lint, privacy audit, built-host telemetry scan and
+  diff checks pass. README, CHANGELOG and ADR-0092 cover the new capture setup.
+  No new external calls or production data lifecycle changes require PRIVACY
+  or ADR-0006 edits. Generator/configuration changes are not TDD; runtime
+  capture instability was reproduced before its repair.
+- Independent review, a native comparison of actual Settings and the hosted
+  23F77 run remain pending. Snapshot acceptance is separate. PR #265 stays a
+  draft; no remaining stack PR is merged or accepted by this change.
+  #269 stays open; board access remains unavailable, intended status In review.
+- Independent read-only review found a replacement CI path-filter gap; the
+  dedicated gate now includes shared package and toolchain/generator inputs.
+  Strengthened the canvas guard with top/bottom switch-thumb contrast and blank
+  image rejection. The original dimensions-only guard did not prove thumbs.
+  Local reference verification completed with the expected failure exit after
+  disabling verbose system diagnostics; image attachments and test failures are
+  retained. The iPhone CI route uses the same diagnostic setting; macOS is
+  unchanged.
+- The strengthened final capture run passes all 11 methods/24 executions,
+  including both top/bottom thumb checks and blank-image rejection on both
+  canvas heights. Repository self-tests, privacy and lint pass again.
+
+## 2026-11-01 — Devin — PR #265 / issue #269: host artwork and cleanup
+
+- Native testing of the synthetic host found blank icon artwork. All three
+  preview lookups reproduce the missing main-bundle resources in a new guard.
+  ADR-0092 was amended first. Reuse the shipping static iOS asset catalog without
+  shipping startup, entitlements or provider wiring, and trigger the gate for
+  artwork changes. No production view, fixture or reference pixels changed.
+- The first hosted canonical scheme run passes the exact Xcode/SDK/23F77
+  preflight, build, draw/stability and switch guards. All18 strict comparisons
+  fail against unchanged references. Cleanup additionally failed because Xcode
+  had already shut down the owned simulator; make that state idempotent without
+  hiding other failures. A focused mock check covers shutdown/booted/missing/
+  duplicate identities and preserves an unrelated device.
+- Local source/test compilation and the red asset test ran under26.6; resource
+  compilation is blocked by actool rejecting installed runtimes23F73/24A434
+  for SDK23F81a. Do not use the partial failed-build artifact as green evidence.
+  Hosted CI now preserves its complete synthetic app plus source/provenance
+  metadata for a native diagnostic. Fresh hosted tests and a clean native
+  resource/actual-pane retest remain pending; no rebaseline or merge.
+- Generator/configuration changes are outside TDD; the artwork regression is
+  red before the resource repair. Repository self-tests, format/lint/privacy
+  and the focused cleanup checks pass. README covers the artifact route;
+  existing CHANGELOG/ADR entries cover the harness. No privacy/network change.
+
+## 2026-11-01 — Devin — PR #265 / issue #269: shared review coverage
+
+- Continue the existing Settings branch against main under Henrik's approved
+  coverage/visual-review follow-up. ADR-0092 was amended before implementation.
+  Compile the same Appearance, Notifications, two-account consent and seeded
+  PIM panes into the host and test bundle, including their environment styling.
+  Explicit native review flags fail closed; defaults reset within the synthetic
+  identity. PIM stores are in memory and all fixture transports reject requests.
+- Preserve the 18 original reference names, geometry and pixels. Add nine
+  bottom-of-pane candidate attachments for icon artwork and Notifications with
+  quiet hours disabled/enabled across Light, Dark and AX3. Scroll selection
+  rejects missing/ambiguous views and follows layout changes until three stable
+  frames agree at the bottom. Geometry accompanies each candidate. These are
+  review artifacts, not accepted new baselines or whole-image equality claims.
+- Add selection, defaults-isolation, PIM seed/network-denial, ambiguous-scroll
+  and growing-content/bottom-control guards. Source parsing, project generation,
+  six provenance tests, repository self-tests, privacy audit, pinned format/lint
+  and diff checks pass locally. Local resource compilation retains the known
+  SDK/runtime incompatibility; hosted compilation/runtime guards and native
+  comparison are pending. Guard tests were written before the scroll repair,
+  but no executable local red/green run is claimed under that toolchain limit.
+  Both host and test sources also typecheck with Xcode 26.6/17F113 against the
+  unchanged cached package modules, using the toolchain's Testing macro plugin;
+  this does not substitute for the complete hosted resource build.
+- README/CHANGELOG document review flags and candidate coverage. No shipping
+  view, provider integration, network/privacy policy, macOS renderer or reference
+  file changed. Keep #265 draft and #269 open, intended status In review (board
+  access unavailable). No reference acceptance, production data or merge.
+
+### Hosted capture follow-up
+
+- The pinned 23F77 run built the shared host and produced all nine stable lower
+  captures. Native fixture guards passed. One synthetic geometry assertion
+  failed because the Testing macro compared CGFloat with an inferred integer;
+  a standalone macOS reproduction failed at exactly 1188 versus 1188 and passed
+  with an explicitly CGFloat expected value. Fix only that expected type; retain
+  exact equality, thumb-pixel checks, image precision and three-frame stability.
+  Hosted rerun and native visual acceptance remain outstanding.
+
+## 2026-11-01 — Devin — PR #265 / issue #269: lower PIM review coverage
+
+- The corrected scroll-geometry guard passes in pinned run41348344305.
+  All scene/resource/fixture guards and nine lower captures pass; CI settles
+  at21 passed and two Settings jobs failing18 iPhone/31 macOS strict reference
+  comparisons. All18 canonical images are pixel-identical to04dccc6. No
+  references accepted or changed. Six bottom images match across two runs;
+  three Notifications cases vary only within the top135–140pt navigation/
+  scroll-edge region, despite identical geometry and three stable frames per
+  run. Cross-run compositing reproducibility remains unproven.
+- Native review atba9a257 used the complete CI host (artifact13100910952,
+  packaged mergebcdab19/tree6e176f0) and a fresh owned iPhone16e on23F73.
+  All five seeded panes in Light/Dark/AX3 were reviewed with real scrolling;
+  artwork, quiet-hours states/times/footers, assessed/unassessed consent,
+  three PIM sources/eight contact collections, defaults reset and invalid-flag
+  rejection pass. One annotated72-second recording is retained. AX3 consent
+  email and several PIM labels ellipsize; no new source regression is claimed.
+- Native inspection reached CalDAV/QA Calendar/final footer beyond the PIM
+  canonical captures. Amend ADR-0092 first, then add three diagnostic-only PIM
+  bottom cases using the same fixture and capture guards. Leave production
+  views and their explicit single-line collection policy unchanged. README
+  records coverage and limitations; the existing CHANGELOG entry already
+  covers seeded PIM tooling. No privacy, release, provider or AGENTS change.
+- Verification: syntax parsing, six provenance checks, repository self-tests,
+  privacy audit, pinned format/lint and diff checks pass. New PIM captures need
+  hosted execution/image inspection; local full resource build remains blocked
+  by the documented runtime/actool mismatch. No new product behavior warrants
+  a unit red/green cycle; this adds diagnostic coverage itself. Native evidence
+  is still23F73/390pt/3x, not exact23F77/375pt/2x acceptance or System-follow.
+- Keep the existing branch/PR draft, no merge or baseline acceptance. Issue269
+  remains open, intended In review; board access remains unavailable. Product
+  acceptance of AX3 truncation versus an accessibility layout repair is open.
+
+## 2026-11-02 — Devin — PR #265 / issue #269 accessibility wrapping
+
+- Henrik selected wrapping accessibility layouts. Amend ADR-0002/0092 first;
+  continue `fix/macos-settings-native-form` and the existing draft PR to main.
+  Allow consent names/addresses and PIM source/status/control/collection labels
+  their full wrapped height at accessibility Dynamic Type sizes. Stack
+  collection badges and the unavailable-feature badge below their names there;
+  preserve normal-size layout, collection ellipsis, controls and bindings.
+- Existing seeded AX3 captures/native review provide the failing readability
+  evidence. Retain all canonical fixtures/names/geometry/reference files and
+  add three diagnostic-only bottom consent captures to check content displaced
+  by wrapping. No TDD/summary skills were available in plugin/project discovery;
+  visual regression uses the existing captures and fresh native review rather
+  than claiming a passing pixel-reference red/green cycle.
+- Local verification: the focused Settings consent/PIM suites pass 40 tests in
+  three suites, including model and collection bindings; Swift parsing, format
+  (zero edits), strict lint, repository self-tests (including six provenance
+  checks), privacy audit and whitespace checks pass. The package build also
+  typechecks the changed macOS view branches. iOS rendering awaits pinned CI
+  and a fresh isolated native review; the earlier local runtime/actool mismatch
+  still makes the complete CI-built host the appropriate native artifact.
+- README and CHANGELOG record the layout/coverage change. No privacy/network,
+  storage, translations, dependencies, build setup or AGENTS change is needed.
+  Existing blueprint remains applicable; no new environment setup was required.
+- Outstanding: confirm ordinary Light/Dark pixels remain unchanged and AX3
+  labels/control/footer reachability, inspect hosted output and rerun native
+  interactions. Do not accept references or merge. Cross-run scroll-edge
+  reproducibility, exact hosted-runtime acceptance and separate stack gates
+  remain open. Issue269 stays open, intended In review; board access unavailable.
+
+### Same-day capture follow-up — PIM connect label
+
+- Pinned head run41410575515 at d05e2e6 passes all guards and all15 diagnostic
+  bottom cases; 18 canonical reference issues remain. Against5ad2cd7, decoded
+  common captures change only for consent AX3 and PIM AX3 top/bottom. All shared
+  ordinary-size captures are pixel-identical. Names/status text and moved badges
+  now wrap, but the lower PIM image still truncates Add DAV Source. The button
+  implementation was unchanged at5ad2cd7; this is remaining accessibility scope,
+  not an introduced normal-size regression. Bounded source review found no
+  actionable issue, without claiming runtime/pixel acceptance.
+- Stop the native run before changing its revision. Its verified CI host on the
+  retained owned iPhone16e/23F73 confirms full consent names/emails and an eligible
+  switch off/on/off; remaining panes/scrolling were not completed and that partial
+  recording is not acceptance. Synthetic-host-only reset and absent app/data
+  were verified before reinstalling; no live or production data was touched.
+- Extend ADR-0002 first, then give the existing native Add DAV Source label the
+  same accessibility-only full-height sizing. Keep its string, plus icon, action,
+  style, hint and normal-size layout. Reuse the three lower PIM diagnostics for
+  this regression without reference changes. Fresh hosted output and native
+  retest on the new artifact remain required.
+- Local follow-up checks: format (zero edits), strict lint/hooks, Swift syntax
+  parsing and diff checks pass. Do not rebuild the unchanged model suites after
+  freeing their session-owned cache for the low-disk native run: their40 passing
+  tests above remain scoped to d05e2e6. Complete type/build/package verification
+  for the one-line label follow-up belongs to fresh hosted CI. Existing README,
+  CHANGELOG, privacy and environment guidance already cover this layout-only
+  change; no new setup or network/data behavior.
+- Native9b73f39 on the verified CI host reproduces Add / DAV Sour… despite
+  vertical sizing on the composite Label. Consent identities/titles, footer,
+  code switch off/on/off, all three source identities/statuses, eight contact
+  groups/markers, QA Calendar and collection on/off/on passed before the required
+  stop. Notifications, normal-size native matrix, connect navigation and final
+  PIM footer remain untested, not accepted. Native23F73 is not hosted23F77.
+- Replace only the accessibility action label with a full-width baseline-aligned
+  symbol/text row: unlimited vertically fixed text, leading alignment, decorative
+  hidden icon. Keep the native Button/action/style/hint and ordinary Label.
+  ADR-0002 is amended first. Existing diagnostic PIM-bottom coverage provides
+  the red image; fresh captures/native retest must establish green without
+  changing any references. Format/lint/parsing and fresh hosted compile/tests
+  are required; local package rerun remains skipped for disk constraints above.

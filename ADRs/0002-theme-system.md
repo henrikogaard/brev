@@ -182,7 +182,56 @@ bordered `BrevButton` pill inside a row. `SettingsButton` is the pane-level
 wrapper: it delegates to `BrevButton` on macOS and renders a plain accent
 row on iOS (`Button(role: .destructive)` for destructive actions, with a
 `confirmationDialog` where the action is not already confirmed). macOS
-Settings keeps the card layout unchanged.
+Settings followed on 2026-10-25 (below).
+
+**macOS Settings forms (2026-10-25).** macOS Settings panes move from the
+card layout to the same native grouped `Form` the iOS panes use, drawn with
+`.formStyle(.grouped)`. This supersedes "macOS Settings keeps the card layout
+unchanged" above. Inside a macOS Settings pane:
+
+- **Structure is native.** `SectionScaffold` renders a `Form`; every
+  `SettingsGroup` is a `Section` with a plain header (the group title) and an
+  optional footer. Panes draw no in-pane page title, no subtitle under the
+  title and no custom card (`settingsGroupedSurface()`, `brevQuietSurface()`)
+  around rows; the selected sidebar row names the pane.
+- **Rows are native.** Each Settings component (`SettingsToggleRow`, `SettingsPickerRow`, `SettingsSegmentedRow`, `SettingsButton`, `SettingsRowLabel`) renders the same Form row on macOS as on iOS, using the system controls with their row label, so every control ends on the Form's one trailing edge with no nested indent. `SettingsLayout.trailingControlWidth` and the symbol-column indent no longer apply on macOS. Platform branches remain only where a control differs by platform.
+- **Explanation is sparing.** A row carries no grey text beneath its title.
+  Its explanation stays available as the control's help tag and accessibility
+  hint. Text that a user needs before acting (consequences, privacy, data
+  loss) moves into the section footer; everything else is dropped from view.
+- **Theming still applies through tokens only.** The system grouped
+  background is hidden (`scrollContentBackground(.hidden)`) and replaced with
+  the window content surface; row backgrounds use `theme.bgPrimary`,
+  separators `theme.separator`, header and footer text `theme.textSecondary`,
+  row titles `theme.textPrimary`, and control tint `theme.accent`. Fonts keep
+  the `brevFont` scale and the per-section font family (ADR-0086). Density
+  only adjusts the vertical row padding the Form already exposes; it does not
+  reintroduce custom spacing between groups.
+- **Standalone recipes are unchanged.** `BrevButton`, `BrevChip`,
+  `BrevStatusBanner` and `brevQuietSurface()` remain the sanctioned recipes
+  outside Settings forms. Inside a form, `SettingsButton` renders a
+  standard push button aligned to the trailing edge (or a row of buttons in a
+  section's last row), not a bordered pill in a card.
+- **Sheets and pushed detail panes** opened from Settings (account details,
+  rule editors, source connection) follow the same rules.
+
+**Settings access.** The iOS sidebar menu forwards the application's existing
+Settings action through the mail root's sheet-presentation guard. Omitting
+duplicate toolbar items must not remove that entry point. macOS continues to
+use the app-menu command and does not add Settings to the sidebar chrome.
+At accessibility text sizes, the iOS theme-pair row places the selected names
+below its label rather than compressing the label beside a trailing column.
+
+**Accessible consent and PIM labels.** At accessibility Dynamic Type sizes,
+account names/addresses, consent toggle titles, PIM source/status/connect-button
+labels and collection names may grow vertically instead of truncating. Collection badges
+sit below the name, and the unavailable Google feature badge sits below its
+title. Keep native controls, their labels, eligibility and bindings unchanged.
+The connect action uses the full row width and explicit wrapping text at
+accessibility sizes; its ordinary native label remains unchanged.
+Ordinary text sizes retain the compact layout and one-line collection names.
+Verify both layouts with the isolated seeded panes; this decision does not
+accept snapshot references or change the capture contract in ADR-0092.
 
 ### Theme distribution
 
@@ -259,6 +308,26 @@ them, not just inverted values. Treating them as pairs respects the
 original designs.
 
 ## Consequences
+
+### 2026-11-01 — macOS Settings font-menu contrast
+
+The macOS “Use One Font Everywhere” menu label consumes the active theme's
+`textPrimary` token explicitly. Native validation found its automatic title
+color retained the preceding mode after in-app light/dark changes. Updating
+the label through the theme environment preserves the native menu and font
+actions without rebuilding the whole pane or changing stored preferences.
+iOS retains its existing menu treatment. Verify both transition directions
+while the Appearance pane stays open; static launch snapshots do not cover
+this regression.
+
+Native retests proved that an explicit text foreground and then mode-keyed
+menu reconstruction did not refresh AppKit's disclosure chevron. The macOS
+menu therefore uses a themed text-and-SF-Symbol label and hides the framework
+indicator, following the existing borderless native-menu pattern. Its menu
+actions, keyboard behavior and localized accessible label remain native;
+the decorative glyph is accessibility-hidden. No identity reset, pane rebuild
+or delayed redraw remains. Verify the complete label and disclosure glyph,
+including repeated transitions and opening the menu in both modes.
 
 ### Accepted
 

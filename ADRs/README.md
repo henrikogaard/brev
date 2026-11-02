@@ -100,6 +100,8 @@ repository checks.
 | 87 | Serve IMAP header pages from SQLite and retire whole-folder JSON | Accepted |
 | 88 | Show sign-in codes and links on screen as they arrive | Accepted |
 | 89 | [Bounded calendar occurrence projection](0089-bounded-calendar-occurrences.md) | Accepted |
+| 91 | [Isolated macOS mock validation](0091-isolated-macos-mock-validation.md) | Accepted |
+| 92 | [Scene-hosted iOS Settings snapshots](0092-scene-hosted-settings-snapshots.md) | Accepted |
 
 ## Conventions
 

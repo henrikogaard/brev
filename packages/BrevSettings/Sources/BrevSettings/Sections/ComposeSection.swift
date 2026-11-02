@@ -40,8 +40,7 @@ struct ComposeSection: View {
     var body: some View {
         SectionScaffold(
             title: String(localized: "Compose", bundle: .module),
-            subtitle: String(localized: "Local defaults for replies, forwarding, formatting, and send safety.", bundle: .module),
-            showsTitle: false
+            subtitle: String(localized: "Local defaults for replies, forwarding, formatting, and send safety.", bundle: .module)
         ) {
             SettingsGroupStack {
                 defaultsGroup
@@ -55,7 +54,7 @@ struct ComposeSection: View {
     private var defaultsGroup: some View {
         SettingsGroup(
             title: String(localized: "Defaults", bundle: .module),
-            subtitle: String(localized: "Choose the behavior Brev should preselect in the composer.", bundle: .module),
+            subtitle: "",
             symbolName: "square.and.pencil"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -100,7 +99,10 @@ struct ComposeSection: View {
     private var safetyGroup: some View {
         SettingsGroup(
             title: String(localized: "Send safety", bundle: .module),
-            subtitle: String(localized: "Keep small guardrails active while composing mail.", bundle: .module),
+            subtitle: String(
+                localized: "When enabled, Send holds the draft locally for the selected delay so you can cancel before backend handoff.",
+                bundle: .module
+            ),
             symbolName: "checkmark.shield"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -137,15 +139,6 @@ struct ComposeSection: View {
                         Text(delay.title).tag(delay)
                     }
                 }
-
-                SettingsInfoCallout(
-                    symbolName: "tray",
-                    message: String(
-                        localized: "When enabled, Send holds the draft locally for the selected delay so you can cancel before backend handoff.",
-                        bundle: .module
-                    ),
-                    tone: .info
-                )
             }
         }
     }
@@ -154,7 +147,7 @@ struct ComposeSection: View {
         SettingsGroup(
             title: String(localized: "Recipient suggestions", bundle: .module),
             subtitle: String(
-                localized: "Use device contacts and Brev's separate local correspondence list while addressing mail.",
+                localized: "Recent recipients are stored only in Brev on this device. Removing one never changes the Contacts app.",
                 bundle: .module
             ),
             symbolName: "person.crop.circle.badge.plus"
@@ -202,15 +195,6 @@ struct ComposeSection: View {
                         .settingsStackedControl()
                     }
                 }
-
-                SettingsInfoCallout(
-                    symbolName: "hand.raised",
-                    message: String(
-                        localized: "Recent recipients are stored only in Brev on this device. Removing one never changes the Contacts app.",
-                        bundle: .module
-                    ),
-                    tone: .info
-                )
             }
         }
     }

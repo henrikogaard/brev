@@ -1491,7 +1491,7 @@ public struct BrevMailRootView: View {
             onOpenOutbox: {
                 navigation.presentedSheet = .outbox
             },
-            onOpenSettings: nil,
+            onOpenSettings: toolbarPlatform == .iOS && onOpenSettings != nil ? presentSettings : nil,
             onOpenCalendar: onOpenCalendar,
             onOpenContacts: onOpenContacts,
             onOpenTasks: onOpenTasks,

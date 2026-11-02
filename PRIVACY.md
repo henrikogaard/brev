@@ -109,6 +109,14 @@ Defaults to off.
 
 ### Home Screen widgets
 
+The optional macOS `--isolated-mock` development profile uses a fresh sandbox
+identity with in-memory synthetic accounts and no production credential-store
+or connector wiring. It disables App Group lookup and embedded extensions, so
+it cannot read or overwrite the daily driver's widget snapshot or share handoff.
+Its sandbox has no network, system Contacts/Calendar, or iCloud permissions;
+local test preferences remain in that generated sandbox until explicitly
+removed. Normal release and ordinary test builds keep their existing behavior.
+
 The mail widget extension renders a `WidgetSnapshot.json` file the app
 writes into the shared App Group container after each sync — unread
 count and, when notification previews are enabled, the newest senders

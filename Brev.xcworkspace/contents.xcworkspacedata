@@ -5,6 +5,9 @@
       location = "group:apps"
       name = "apps">
       <FileRef
+         location = "group:SettingsSnapshots/BrevSettingsSnapshots.xcodeproj">
+      </FileRef>
+      <FileRef
          location = "group:iOS/BrevIOS.xcodeproj">
       </FileRef>
       <FileRef

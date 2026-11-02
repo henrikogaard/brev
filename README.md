@@ -502,6 +502,8 @@ The script also supports:
 
 ```sh
 ./script/build_and_run.sh --mock
+./script/build_and_run.sh --isolated-mock
+./script/build_and_run.sh --isolated-mock --build-only
 ./script/build_and_run.sh --live
 ./script/build_and_run.sh --preflight
 ./script/build_and_run.sh --verify
@@ -511,6 +513,25 @@ The script also supports:
 ./script/build_and_run.sh --setup-env
 ./script/build_and_run.sh --help
 ```
+
+For native UI validation without existing account data, use `--isolated-mock`
+(ADR-0091). Each invocation creates a UUID sandbox identity and a private build
+directory, keeping the dated `Brev Test (YYYY-MM-DD).app` name. It never installs
+into Applications, opens production App Groups, or constructs live account
+connectors. The sandbox has no network, Contacts, Calendar or iCloud permissions;
+embedded widgets and shared attachment handoff are disabled. Local environment
+files and OAuth build values are ignored. Ordinary `--mock` is **not** this
+isolation guarantee.
+
+Use `--build-only` to verify the generated bundle and empty sandbox location
+before launching it explicitly. The command prints that build's exact identity
+and artifact path. Relaunch the same generated bundle to retain its isolated
+settings; a new script invocation creates a new profile. The bundle always starts mock-only,
+even if the surrounding environment requests live mode. Do not redirect HOME:
+startup checks its real sandbox home and signed entitlements before SwiftUI
+initializes. Retained build products and sandbox data must be cleaned up only
+by their generated identity, never by a production path. This profile cannot
+validate account setup, storage migration, widgets, sharing or provider sync.
 
 After every `tuist install` (or when package dependencies change), run
 `scripts/prepare-xcode-workspace.sh` before direct `xcodebuild` or
@@ -566,6 +587,64 @@ in the same file, no new file to create per language.
 primitives with [`swift-snapshot-testing`](https://github.com/pointfreeco/swift-snapshot-testing).
 UIKit snapshots run on iOS and AppKit snapshots run on macOS; references live
 next to the test file under `__Snapshots__/`.
+
+The iPhone Settings form suite is an exception to unhosted package capture:
+`BrevSettingsSnapshots` uses the dedicated synthetic app in
+`apps/SettingsSnapshots` (ADR-0092). Run
+`python3 scripts/settings-snapshot-environment.py` first with
+`DEVELOPER_DIR` set to Xcode 26.6/17F113, then
+`scripts/prepare-xcode-workspace.sh`. Its pinned profile requires simulator SDK
+26.5/23F81a, iOS 26.5/23F77 and a freshly owned iPhone 16e simulator. Do not use a
+personal simulator or select the newest available runtime implicitly.
+The Native Settings review workflow records the complete profile.
+
+Run the generated `BrevSettingsSnapshots` scheme with an explicit simulator
+UDID, `-testLanguage en -testRegion en_US -parallel-testing-enabled NO`, and
+`TEST_RUNNER_BREV_SETTINGS_EXPECTED_RUNTIME_BUILD=23F77`. The host has its own
+bundle identity, synthetic in-memory account and no shipping-app initialization,
+extensions or App Group entitlement. Individual form tests remain in their
+original source location and use their unchanged reference directory.
+Hierarchy draws must succeed and repeat identically; candidate PNGs are retained
+as test attachments. An explicit local preflight
+`--diagnostic-runtime-build <build>` labels a noncanonical runtime and is
+rejected in CI. It is diagnostic evidence, not pinned reference acceptance.
+`TEST_RUNNER_BREV_SETTINGS_SNAPSHOT_CANDIDATES=YES` records attachments without
+comparing or overwriting references. Ordinary verification never records them.
+The independent macOS capture path is unchanged.
+
+The host reuses the shipping iOS static asset catalog for main-bundle icon
+previews, without shipping-app startup or entitlements. The review workflow also
+uploads the synthetic host with its source commit/tree and capture-environment
+metadata. A native diagnostic may use that artifact when local asset compilation
+is unavailable, after checking its source identity and on a fresh owned simulator;
+a different runtime build still does not count as pinned reference acceptance.
+
+Native fixture review can launch that synthetic bundle with both
+`BREV_SETTINGS_REVIEW_PANE` (`appearance`, `notifications`,
+`notifications-quiet-hours`, `signin-codes`, or `pim-sources`) and
+`BREV_SETTINGS_REVIEW_VARIANT` (`light`, `dark`, or `ax3`). Invalid or incomplete
+selections fail closed. With neither flag, the ordinary synthetic Settings root
+remains available. The pane source, account/PIM seeds, theme, locale and text
+size are shared with the capture tests; review defaults reset on launch. PIM
+stores/credentials are in memory and all fixture network transports reject
+requests. This pins appearance, not production System-follow behavior.
+
+Supplemental `*-bottom-*-hierarchy.png` attachments cover the icon cards and
+lower Notifications with quiet hours both disabled and enabled, plus the final
+seeded PIM source, collection and footer, plus lower consent content. Their scroll
+geometry is attached separately; capture requires one outer scroll view and
+three stable frames at its current bottom. These images are review candidates,
+not approved baselines. Existing top-of-pane names, dimensions and references
+remain unchanged. Native screen size/scale and safe areas still differ from
+the capture canvas; shared fixtures do not imply whole-image pixel equality.
+Consecutive-frame stability also does not establish cross-run reproducibility:
+three Notifications bottom candidates differed in their navigation/scroll-edge
+region across two pinned runs while lower content and geometry matched. Keep
+these diagnostic-only until that compositing variation is resolved. Consent
+account labels and PIM source/status/collection labels wrap at accessibility
+text sizes, with collection and unavailable-feature badges below their names.
+Normal-size layouts retain compact single-line collection names. Verify both
+layouts with the shared fixtures; reference acceptance remains separate.
 
 ```sh
 # Run the required iOS snapshot lane. The helper selects the newest installed

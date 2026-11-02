@@ -23,6 +23,8 @@ struct AppearanceSection: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(AppearancePreferenceKey.transparentMainTitlebar)
     private var transparentMainTitlebar = true
+    @AppStorage private var previewTextSizeRaw: String
+    @AppStorage private var previewDensityRaw: String
     @Binding var activeTheme: BrevTheme
     @Binding var activeAppIcon: AppIconVariant
     @State private var themeSettings: AppearanceThemeSettings
@@ -49,6 +51,16 @@ struct AppearanceSection: View {
         _activeTheme = activeTheme
         _activeAppIcon = activeAppIcon
         self.settingsStore = settingsStore
+        _previewTextSizeRaw = AppStorage(
+            wrappedValue: MailboxTextSize.medium.rawValue,
+            MailboxViewPreferenceKey.textSize,
+            store: settingsStore.defaults
+        )
+        _previewDensityRaw = AppStorage(
+            wrappedValue: MailboxListDensity.platformDefault.rawValue,
+            MailboxViewPreferenceKey.listDensity,
+            store: settingsStore.defaults
+        )
         _themeSettings = State(initialValue: settingsStore.appearanceThemeSettings())
         _windowAppearance = State(initialValue: settingsStore.windowAppearancePreferences())
         _mailboxSettings = State(initialValue: settingsStore.mailboxViewSettings())
@@ -64,12 +76,21 @@ struct AppearanceSection: View {
                 DesktopInterfaceSettings(settingsStore: settingsStore)
                 #endif
                 FontSectionSettings(settingsStore: settingsStore)
+                #if os(macOS)
+                SettingsGroup(
+                    title: String(localized: "Preview", bundle: .module),
+                    subtitle: "",
+                    symbolName: "text.bubble"
+                ) {
+                    SettingsMailPreview(settings: previewSettings)
+                }
+                #endif
                 themeGroup
                 #if os(iOS)
                 Section {
                     SettingsMailPreview(settings: mailboxSettings)
                 } header: {
-                    Text("Mail preview", bundle: .module)
+                    Text("Preview", bundle: .module)
                         .textCase(nil)
                         .brevFont(.footnote)
                         .foregroundStyle(theme.textSecondary.color)
@@ -86,9 +107,27 @@ struct AppearanceSection: View {
 
                 SettingsGroup(
                     title: String(localized: "App icon", bundle: .module),
-                    subtitle: appIconSubtitle,
+                    subtitle: {
+                        #if os(macOS)
+                        ""
+                        #else
+                        appIconSubtitle
+                        #endif
+                    }(),
                     symbolName: "app.badge"
                 ) {
+                    #if os(macOS)
+                    SettingsPickerRow(
+                        symbolName: "app.badge",
+                        title: String(localized: "App icon", bundle: .module),
+                        subtitle: appIconSubtitle,
+                        selection: $activeAppIcon
+                    ) {
+                        ForEach(AppIconVariant.allCases) { variant in
+                            Text(variant.title).tag(variant)
+                        }
+                    }
+                    #else
                     LazyVGrid(columns: iconColumns, alignment: .leading, spacing: BrevSpacing.sm) {
                         ForEach(AppIconVariant.allCases) { candidate in
                             AppIconVariantButton(
@@ -99,6 +138,7 @@ struct AppearanceSection: View {
                             }
                         }
                     }
+                    #endif
                 }
 
                 resetRow
@@ -158,9 +198,15 @@ struct AppearanceSection: View {
     }
 
     private var macResetRow: some View {
-        HStack {
-            Spacer(minLength: 0)
-            Button(String(localized: "Reset to Defaults", bundle: .module)) {
+        SettingsGroup(
+            title: String(localized: "Reset to Defaults", bundle: .module),
+            subtitle: resetMessage,
+            symbolName: "arrow.counterclockwise"
+        ) {
+            SettingsButton(
+                String(localized: "Reset Appearance", bundle: .module),
+                style: .secondary
+            ) {
                 isResetConfirmationPresented = true
             }
             .help(resetMessage)
@@ -217,10 +263,23 @@ struct AppearanceSection: View {
         #endif
     }
 
+    private var previewSettings: MailboxViewSettings {
+        var settings = mailboxSettings
+        settings.textSize = MailboxTextSize(rawValue: previewTextSizeRaw) ?? .medium
+        settings.listDensity = MailboxListDensity(rawValue: previewDensityRaw) ?? .comfortable
+        return settings
+    }
+
     private var themeGroup: some View {
         SettingsGroup(
             title: String(localized: "Color and themes", bundle: .module),
-            subtitle: String(localized: "Choose how Brev follows your system and colors its controls.", bundle: .module),
+            subtitle: {
+                #if os(macOS)
+                ""
+                #else
+                String(localized: "Choose how Brev follows your system and colors its controls.", bundle: .module)
+                #endif
+            }(),
             symbolName: "paintpalette"
         ) {
             SettingsRowStack {
@@ -415,16 +474,17 @@ struct AppearanceSection: View {
             isThemePickerPresented = true
         } label: {
             HStack(spacing: BrevSpacing.md) {
-                Text("Themes", bundle: .module)
-                    .brevFont(.body)
-                    .foregroundStyle(theme.textPrimary.color)
-                Spacer(minLength: BrevSpacing.sm)
-                VStack(alignment: .trailing, spacing: BrevSpacing.xxs) {
-                    Text(themeSettings.selectedTheme(for: .light).name)
-                    Text(themeSettings.selectedTheme(for: .dark).name)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                        iOSThemePairTitle
+                        iOSThemePairNames
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    iOSThemePairTitle
+                    Spacer(minLength: BrevSpacing.sm)
+                    iOSThemePairNames
                 }
-                .brevFont(.footnote)
-                .foregroundStyle(theme.textSecondary.color)
                 Image(systemName: "chevron.right")
                     .imageScale(.small)
                     .foregroundStyle(theme.textTertiary.color)
@@ -439,6 +499,23 @@ struct AppearanceSection: View {
                 bundle: .module
             )
         )
+    }
+
+    private var iOSThemePairTitle: some View {
+        Text("Themes", bundle: .module)
+            .brevFont(.body)
+            .foregroundStyle(theme.textPrimary.color)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var iOSThemePairNames: some View {
+        VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: BrevSpacing.xxs) {
+            Text(themeSettings.selectedTheme(for: .light).name)
+            Text(themeSettings.selectedTheme(for: .dark).name)
+        }
+        .brevFont(.footnote)
+        .foregroundStyle(theme.textSecondary.color)
+        .fixedSize(horizontal: false, vertical: true)
     }
     #endif
 
@@ -793,7 +870,7 @@ struct DesktopInterfaceSettings: View {
     var body: some View {
         SettingsGroup(
             title: String(localized: "Text and spacing", bundle: .module),
-            subtitle: String(localized: "Customize the whole desktop app without changing message formatting.", bundle: .module),
+            subtitle: "",
             symbolName: "textformat.size"
         ) {
             SettingsEqualWidthSegmentedRow(
@@ -815,15 +892,7 @@ struct DesktopInterfaceSettings: View {
                 segments: MailboxListDensity.allCases.map { SettingsSegment(title: $0.title, value: $0.rawValue) },
                 controlWidth: SettingsLayout.segmentedControlWidth
             )
-            SettingsMailPreview(settings: previewSettings)
         }
-    }
-
-    private var previewSettings: MailboxViewSettings {
-        var settings = settingsStore.mailboxViewSettings()
-        settings.textSize = MailboxTextSize(rawValue: textSizeRaw) ?? .medium
-        settings.listDensity = MailboxListDensity(rawValue: densityRaw) ?? .comfortable
-        return settings
     }
 }
 #endif
