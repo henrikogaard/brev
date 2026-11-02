@@ -101,6 +101,7 @@ repository checks.
 | 88 | Show sign-in codes and links on screen as they arrive | Accepted |
 | 89 | [Bounded calendar occurrence projection](0089-bounded-calendar-occurrences.md) | Accepted |
 | 90 | [Quarantine unverified legacy mail until server confirmation](0090-quarantine-unverified-legacy-mail.md) | Accepted |
+| 91 | [Isolated macOS mock validation](0091-isolated-macos-mock-validation.md) | Accepted |
 
 ## Conventions
 
