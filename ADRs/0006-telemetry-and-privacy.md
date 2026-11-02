@@ -303,3 +303,14 @@ test identity until explicitly cleaned up. The signed bundle forces mock mode
 before SwiftUI initialization; invalid signatures, identity/home combinations
 and Release builds fail closed. No network destination or release default in
 the table above changes. External-app actions are outside this bounded test.
+
+### 2026-11-02 opt-in isolated content QA
+
+ADR-0092 adds the explicit `--isolated-mock-content-qa` development flag after
+maintainer approval. Its exact sandbox/network-client/user-selected-read-only
+signature permits WebKit infrastructure and generated attachment-picker fixtures.
+No new application network call or destination is added; existing remote-content
+loading remains off by default. Unlike ADR-0091's strict profile, this profile
+cannot claim OS-level outbound-network denial. It retains UUID/Debug/mock/private
+container guards and excludes App Groups, broad file access and live providers.
+Normal, strict and release signing defaults remain unchanged.

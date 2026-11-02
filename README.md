@@ -523,6 +523,13 @@ embedded widgets and shared attachment handoff are disabled. Local environment
 files and OAuth build values are ignored. Ordinary `--mock` is **not** this
 isolation guarantee.
 
+Only with explicit approval for body/attachment QA, select
+`--isolated-mock-content-qa` instead (ADR-0092). It retains every UUID/mock/data
+guard, but adds network-client and user-selected-file read-only permissions.
+This profile no longer has an OS-level outbound-network block. Remote message
+content remains blocked by default; use generated picker fixtures only, never
+live accounts or personal files. The strict flag and release signing are unchanged.
+
 Use `--build-only` to verify the generated bundle and empty sandbox location
 before launching it explicitly. The command prints that build's exact identity
 and artifact path. Relaunch the same generated bundle to retain its isolated

@@ -70,9 +70,12 @@ struct IsolatedMockConfigurationTests {
     @Test("Only the sandbox entitlement is accepted")
     func rejectsSharedOrExternalPermissions() {
         let sandbox: [String: Any] = ["com.apple.security.app-sandbox": true]
-        #expect(IsolatedMockConfiguration.hasOnlySandboxEntitlement(sandbox))
-        #expect(!IsolatedMockConfiguration.hasOnlySandboxEntitlement([:]))
-        #expect(!IsolatedMockConfiguration.hasOnlySandboxEntitlement(["com.apple.security.app-sandbox": false]))
+        #expect(IsolatedMockConfiguration.hasExpectedEntitlements(sandbox, info: info))
+        #expect(IsolatedMockConfiguration.hasExpectedEntitlements(
+            sandbox, info: ["BRIsolatedMockProfile": "strict"]
+        ))
+        #expect(!IsolatedMockConfiguration.hasExpectedEntitlements([:], info: info))
+        #expect(!IsolatedMockConfiguration.hasExpectedEntitlements(["com.apple.security.app-sandbox": false], info: info))
         for extra in [
             "com.apple.security.application-groups", "com.apple.security.network.client",
             "com.apple.security.network.server", "com.apple.developer.ubiquity-kvstore-identifier",
@@ -80,7 +83,64 @@ struct IsolatedMockConfigurationTests {
         ] {
             var entitlements = sandbox
             entitlements[extra] = true
-            #expect(!IsolatedMockConfiguration.hasOnlySandboxEntitlement(entitlements))
+            #expect(!IsolatedMockConfiguration.hasExpectedEntitlements(entitlements, info: info))
+        }
+    }
+
+    @Test("Content QA requires a matching marker and exactly the three approved permissions")
+    func contentProfile() {
+        var content = info
+        content["BRIsolatedMockProfile"] = "content-qa"
+        let permissions: [String: Any] = [
+            "com.apple.security.app-sandbox": true,
+            "com.apple.security.network.client": true,
+            "com.apple.security.files.user-selected.read-only": true
+        ]
+        #expect(IsolatedMockConfiguration.isRequested(info: ["BRIsolatedMockProfile": "content-qa"]))
+        #expect(IsolatedMockConfiguration.hasExpectedEntitlements(permissions, info: content))
+        #expect(!IsolatedMockConfiguration.hasExpectedEntitlements(
+            ["com.apple.security.app-sandbox": true], info: content
+        ))
+        #expect(IsolatedMockConfiguration.permitsLaunch(info: content, home: home, isDebugBuild: true))
+        #expect(!IsolatedMockConfiguration.permitsLaunch(info: content, home: home, isDebugBuild: false))
+        #expect(!IsolatedMockConfiguration.permitsLaunch(
+            info: content, home: URL(fileURLWithPath: "/Users/mock"), isDebugBuild: true
+        ))
+        for key in ["BRIsolatedMock", "BRBuildKind", "CFBundleIdentifier"] {
+            var invalid = content
+            invalid.removeValue(forKey: key)
+            #expect(!IsolatedMockConfiguration.permitsLaunch(info: invalid, home: home, isDebugBuild: true))
+        }
+        #expect(!IsolatedMockConfiguration.hasExpectedEntitlements(permissions, info: info))
+        #expect(!IsolatedMockConfiguration.hasExpectedEntitlements(
+            permissions, info: ["BRIsolatedMockProfile": "strict"]
+        ))
+        for key in permissions.keys {
+            var invalid = permissions
+            invalid.removeValue(forKey: key)
+            #expect(!IsolatedMockConfiguration.hasExpectedEntitlements(invalid, info: content))
+            for value: Any in [false, "true", 1, NSNumber(value: 1)] {
+                invalid[key] = value
+                #expect(!IsolatedMockConfiguration.hasExpectedEntitlements(invalid, info: content))
+            }
+        }
+        for key in [
+            "com.apple.security.application-groups", "com.apple.security.network.server",
+            "com.apple.security.files.user-selected.read-write", "keychain-access-groups",
+            "com.apple.security.personal-information.addressbook", "com.apple.security.personal-information.calendars",
+            "com.apple.developer.ubiquity-kvstore-identifier"
+        ] {
+            var invalid = permissions
+            invalid[key] = true
+            #expect(!IsolatedMockConfiguration.hasExpectedEntitlements(invalid, info: content))
+        }
+        for marker: Any in ["unknown", "", 1, false] {
+            var invalid = content
+            invalid["BRIsolatedMockProfile"] = marker
+            #expect(!IsolatedMockConfiguration.hasExpectedEntitlements(permissions, info: invalid))
+            #expect(!IsolatedMockConfiguration.hasExpectedEntitlements(
+                ["com.apple.security.app-sandbox": true], info: invalid
+            ))
         }
     }
 
