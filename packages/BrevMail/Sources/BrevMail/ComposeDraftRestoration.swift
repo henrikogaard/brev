@@ -89,8 +89,9 @@ enum ComposeDraftRestoration {
     static func validationError(draft: Draft, attachments: [MIMEMessageAttachment]) -> String? {
         guard attachments.map(\.id) == draft.attachmentIDs,
               Set(draft.attachmentIDs).count == draft.attachmentIDs.count else { return unavailableMessage }
+        // The compose sanitizer retains only CID-backed image tags, not literal CID text.
         if attachments.contains(where: { $0.isInline || $0.contentID != nil })
-            || draft.htmlBody.range(of: "cid:", options: .caseInsensitive) != nil {
+            || ComposeHTMLBodyPolicy.richHTML(fromEditorHTML: draft.htmlBody).contains("<img src=") {
             return String(
                 localized: "This draft contains inline images that cannot be restored safely yet. The draft was left unchanged.",
                 bundle: .module
