@@ -9,6 +9,14 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Reopening locally saved mock and IMAP drafts restores attachment rows from
+  their owned staged bytes. Saving, autosaving and adding or removing files
+  preserve the intended attachment set without uploading retained files again.
+  Reopened drafts stay in their original account/mailbox. Unavailable,
+  oversized and inline-image drafts are left unchanged with an explanation
+  rather than opened for unsafe editing; server-only attachment downloads are
+  not added.
+
 - Ambiguous historical IMAP cache records are retained locally for recovery
   but hidden until ordinary server fetches confirm them. Temporary offline
   gaps replace potentially resurrected deleted mail. Clear Cache discards

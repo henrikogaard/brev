@@ -16,6 +16,135 @@ import Testing
 
 @Suite("IMAP SMTP backend")
 struct IMAPSMTPBackendTests {
+    @Test("file-backed local restore preserves inline metadata and account isolation after recreation")
+    func fileBackedLocalDraftPayloads() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = FileIMAPDraftStagingStore(rootDirectory: directory)
+        var draft = Draft(id: "local", remoteID: "Drafts:41", htmlBody: "<img src=\"cid:photo\">", attachmentIDs: ["part"])
+        await store.setDraft(draft, accountID: Self.account.id)
+        let original = IMAPDraftStagedAttachment(
+            id: "part",
+            draftID: "Drafts:41",
+            filename: "photo.png",
+            mimeType: "image/png",
+            data: Data([1]),
+            isInline: true,
+            contentID: "photo"
+        )
+        await store.setAttachment(original, accountID: Self.account.id)
+        await store.setDraft(draft, accountID: "other-account")
+        await store.setAttachment(
+            IMAPDraftStagedAttachment(id: "part", draftID: "local", filename: "other.png", mimeType: "image/png",
+                                      data: Data([2])),
+            accountID: "other-account"
+        )
+        draft.remoteID = "Drafts:42"
+        await store.setDraft(draft, accountID: Self.account.id)
+        let reopenedStore = FileIMAPDraftStagingStore(rootDirectory: directory)
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in
+                Issue.record("Local restore must not connect")
+                return []
+            },
+            draftStagingStore: reopenedStore
+        )
+        let service = try #require(backend.extensionService(LocalDraftAttachmentProviding.self))
+        let restoredDraft = try #require(await backend.draft(for: "Drafts:42", sourceID: Self.sourceID))
+        let payloads = try await service.localDraftAttachments(for: restoredDraft, sourceID: Self.sourceID)
+        #expect(payloads == [MIMEMessageAttachment(
+            id: "part",
+            filename: "photo.png",
+            mimeType: "image/png",
+            data: Data([1]),
+            isInline: true,
+            contentID: "photo"
+        )])
+        #expect(await reopenedStore.attachment(accountID: Self.account.id, attachmentID: "part") == original)
+    }
+
+    @Test("local draft payloads are source owned, offline and survive remote UID rollover")
+    func localDraftPayloadOwnership() async throws {
+        let store = InMemoryIMAPDraftStagingStore()
+        var draft = Draft(id: "local", remoteID: "Drafts:41", attachmentIDs: ["part"])
+        await store.setDraft(draft, accountID: Self.account.id)
+        await store.setAttachment(
+            IMAPDraftStagedAttachment(id: "part", draftID: "Drafts:41", filename: "owned.txt", mimeType: "text/plain",
+                                      data: Data([
+                                          1,
+                                          2
+                                      ])),
+            accountID: Self.account.id
+        )
+        draft.remoteID = "Drafts:42"
+        await store.setDraft(draft, accountID: Self.account.id)
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in
+                Issue.record("Local restore must not connect")
+                return []
+            },
+            fetchMessageSource: { _, _, _, _ in
+                Issue.record("Local restore must not fetch")
+                throw MailBackendError.notConnected
+            },
+            draftStagingStore: store
+        )
+        let service = try #require(backend.extensionService(LocalDraftAttachmentProviding.self))
+        let payloads = try await service.localDraftAttachments(for: draft, sourceID: Self.sourceID)
+        #expect(payloads.map(\.id) == ["part"])
+        #expect(payloads.map(\.data) == [Data([1, 2])])
+        #expect(try await service.localDraftAttachments(for: draft) == payloads)
+        await #expect(throws: (any Error).self) {
+            try await service.localDraftAttachments(
+                for: draft,
+                sourceID: MailSourceID(accountID: "other", mailboxID: Self.account.id)
+            )
+        }
+        await #expect(throws: (any Error).self) {
+            try await service.localDraftAttachments(
+                for: draft,
+                sourceID: MailSourceID(accountID: Self.account.id, mailboxID: "other")
+            )
+        }
+        let forged = Draft(id: "foreign", remoteID: draft.remoteID, attachmentIDs: draft.attachmentIDs)
+        await #expect(throws: (any Error).self) { try await service.localDraftAttachments(for: forged) }
+        await store.setAttachment(
+            IMAPDraftStagedAttachment(id: "part", draftID: "foreign", filename: "wrong.txt", mimeType: "text/plain",
+                                      data: Data([9])),
+            accountID: Self.account.id
+        )
+        await #expect(throws: (any Error).self) { try await service.localDraftAttachments(for: draft) }
+    }
+
+    @Test("missing local bytes never return partial draft payloads")
+    func missingLocalDraftPayload() async throws {
+        let store = InMemoryIMAPDraftStagingStore()
+        let draft = Draft(id: "local", attachmentIDs: ["first", "missing"])
+        await store.setDraft(draft, accountID: Self.account.id)
+        await store.setAttachment(
+            IMAPDraftStagedAttachment(id: "first", draftID: draft.id, filename: "first", mimeType: "text/plain", data: Data([1])),
+            accountID: Self.account.id
+        )
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in
+                Issue.record("Unexpected network operation")
+                return []
+            },
+            draftStagingStore: store
+        )
+        let service = try #require(backend.extensionService(LocalDraftAttachmentProviding.self))
+        await #expect(throws: (any Error).self) { try await service.localDraftAttachments(for: draft) }
+    }
+
     @Test("connect leaves non-critical draft work for the UI startup phase")
     func connectLeavesNonCriticalDraftWorkForUIStartupPhase() async throws {
         let listingRecorder = MessageListingRecorder(messages: [])

@@ -475,6 +475,15 @@ public protocol MailBackend: AnyObject, Sendable {
     func setContactLookupProvider(_ provider: (any ContactLookupProviding)?)
 }
 
+/// Optional, read-only access to a saved draft's complete locally staged payloads.
+/// Discover through `extensionService`; never connect, fetch, download or re-stage.
+public protocol LocalDraftAttachmentProviding: Sendable {
+    /// Returns all canonical draft payloads in ID order, or throws if any is unavailable.
+    func localDraftAttachments(for draft: Draft) async throws -> [MIMEMessageAttachment]
+    /// Validates the owning account/mailbox before resolving any local staging IDs.
+    func localDraftAttachments(for draft: Draft, sourceID: MailSourceID) async throws -> [MIMEMessageAttachment]
+}
+
 /// Default implementations so existing backends compile without
 /// implementing new optional surface immediately. Concrete backends
 /// that can satisfy the call should override.

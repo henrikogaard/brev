@@ -877,6 +877,9 @@ provider's own synchronization settings apply.
   evictable cache content; submitted Send Later messages can also keep
   frozen MIME content and delivery state until resolved or removed.
   Local Maildir folders are persistent user data, not a disposable cache.
+  Reopening a locally saved draft can read its account-owned staged attachment
+  bytes into the composer; it does not download or re-stage missing provider
+  attachments. Unsupported or unavailable attachment drafts remain unchanged.
 - **Calendar, contacts, and tasks:** when you connect and sync a source,
   its collection metadata, event/contact/task fields, provider payloads,
   and sync cursors are saved in the app's Application Support directory
