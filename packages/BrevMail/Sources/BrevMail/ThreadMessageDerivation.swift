@@ -90,6 +90,49 @@ enum ThreadConversationAccessibilityPolicy {
     }
 }
 
+/// Cached row representation; selection and expansion need only indexed lookups.
+struct MessageListSelectionProjection<ID: Hashable> {
+    private struct Entry {
+        let representativeID: ID
+        let expandableThreadKey: String?
+    }
+
+    private let entries: [ID: Entry]
+
+    init<Row>(
+        sourceRows: [Row], visibleRows: [Row],
+        id: (Row) -> ID, threadKey: (Row) -> String?,
+        canExpand: (String) -> Bool = { _ in true }
+    ) {
+        let visibleIDs = Set(visibleRows.map(id))
+        var representatives: [String: ID] = [:]
+        for row in visibleRows {
+            if let key = threadKey(row), representatives[key] == nil {
+                representatives[key] = id(row)
+            }
+        }
+        var entries: [ID: Entry] = [:]
+        for row in sourceRows {
+            let rowID = id(row)
+            if visibleIDs.contains(rowID) {
+                entries[rowID] = Entry(representativeID: rowID, expandableThreadKey: nil)
+            } else if let key = threadKey(row), let representative = representatives[key] {
+                entries[rowID] = Entry(representativeID: representative,
+                                       expandableThreadKey: canExpand(key) ? key : nil)
+            }
+        }
+        self.entries = entries
+    }
+
+    func visibleID(for selectedID: ID?, expandedThreadIDs: Set<String>) -> ID? {
+        guard let selectedID, let entry = entries[selectedID] else { return nil }
+        if let key = entry.expandableThreadKey, expandedThreadIDs.contains(key) {
+            return selectedID
+        }
+        return entry.representativeID
+    }
+}
+
 /// Helpers for inline thread expansion in MessageListView.
 enum MessageListInlineExpansion {
     /// Toggles the presence of `threadID` in the expansion set.

@@ -17,6 +17,69 @@ import Testing
 
 @Suite("Unified Inbox presentation snapshot")
 struct UnifiedInboxPresentationSnapshotTests {
+    @Test("collapsed and expanded selections are source-owned and capability gated", arguments: [true, false])
+    func visibleThreadSelection(grouped: Bool) {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let folder = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        func item(_ id: String, account: String = "personal", mailbox: String = "primary",
+                  thread: String = "thread") -> UnifiedInboxItem {
+            Self.item(accountID: account, mailboxID: mailbox, folder: folder, messageID: id,
+                      subject: id, date: now, threadID: thread)
+        }
+        let parent = item("parent")
+        let child = item("child")
+        let foreign = item("child", account: "work")
+        let otherMailbox = item("child", mailbox: "other")
+        let otherThread = item("other", thread: "other-thread")
+        let key = UnifiedInboxThreadGrouping.key(for: parent)
+        let snapshot = UnifiedInboxPresentationSnapshot(
+            visibleItems: [foreign, parent], pinnedMessageIDs: [], groupByDate: false, collapsedDateSectionIDs: [],
+            threadCounts: grouped ? [key: 2] : [:], sourceItems: [parent, child, foreign, otherMailbox, otherThread]
+        )
+        func row(_ item: UnifiedInboxItem, expanded: Set<String> = []) -> String? {
+            snapshot.selectedRowID(selectedMessageID: item.header.id, selectedSourceID: item.sourceID,
+                                   expandedThreadIDs: expanded)
+        }
+        #expect(row(child) == (grouped ? parent.id : nil))
+        #expect(row(child, expanded: [key]) == (grouped ? child.id : nil))
+        #expect(row(parent) == parent.id)
+        #expect(row(parent, expanded: [key]) == parent.id)
+        #expect(row(foreign, expanded: [key]) == foreign.id)
+        #expect(row(otherMailbox) == nil)
+        #expect(row(otherThread) == nil)
+        #expect(snapshot.selectedRowID(selectedMessageID: nil, selectedSourceID: parent.sourceID,
+                                       expandedThreadIDs: []) == nil)
+        #expect(snapshot.selectedRowID(selectedMessageID: child.header.id, selectedSourceID: nil,
+                                       expandedThreadIDs: []) == nil)
+    }
+
+    @Test("unified selection uses displayed representative and rejects removed or date-hidden rows")
+    func filteredSelectionRepresentative() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let folder = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let first = Self.item(accountID: "personal", mailboxID: "primary", folder: folder,
+                              messageID: "first", subject: "First", date: now, threadID: "thread")
+        let second = Self.item(accountID: "personal", mailboxID: "primary", folder: folder,
+                               messageID: "second", subject: "Second", date: now, threadID: "thread")
+        let key = UnifiedInboxThreadGrouping.key(for: first)
+        func row(visible: [UnifiedInboxItem], source: [UnifiedInboxItem], collapsed: Set<String> = [],
+                 count: Int = 2, expanded: Set<String> = []) -> String? {
+            let snapshot = UnifiedInboxPresentationSnapshot(
+                visibleItems: visible, pinnedMessageIDs: [second.pinID], groupByDate: true,
+                collapsedDateSectionIDs: collapsed, referenceDate: now,
+                threadCounts: [key: count], sourceItems: source
+            )
+            return snapshot.selectedRowID(selectedMessageID: first.header.id, selectedSourceID: first.sourceID,
+                                          expandedThreadIDs: expanded)
+        }
+        #expect(row(visible: [second], source: [first, second]) == second.id)
+        #expect(row(visible: [first], source: [second, first]) == first.id)
+        #expect(row(visible: [second], source: [first, second], collapsed: ["Pinned"]) == nil)
+        #expect(row(visible: [second], source: [second]) == nil)
+        #expect(row(visible: [second, first], source: [first, second]) == first.id)
+        #expect(row(visible: [second], source: [first, second], count: 1, expanded: [key]) == second.id)
+    }
+
     @Test("date sections preserve source identity when message IDs collide")
     func dateSectionsPreserveSourceIdentityWhenMessageIDsCollide() throws {
         let referenceDate = Date(timeIntervalSince1970: 1_700_000_000)

@@ -874,6 +874,10 @@ public struct MessageListView: View {
 
     @ViewBuilder
     private func listContent(presentation: MessageListPresentationSnapshot) -> some View {
+        let selectedRowID = presentation.selectedRowID(
+            selectedMessageID: navigation.selectedMessageID, selectedSourceID: navigation.selectedSourceID,
+            expandedThreadIDs: expandedThreadIDs
+        )
         if let errorMessage {
             let status = MessageListPresentation.errorStatus(errorMessage)
             MessageListEmptyStateView(status: status) {
@@ -904,7 +908,8 @@ public struct MessageListView: View {
                                         for: header,
                                         visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
                                         visibleCount: presentation.headers.count,
-                                        threadChildrenByID: presentation.headersByThreadID
+                                        threadChildrenByID: presentation.headersByThreadID,
+                                        selectedRowID: selectedRowID
                                     )
                                 }
                             }
@@ -914,7 +919,8 @@ public struct MessageListView: View {
                                     for: header,
                                     visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
                                     visibleCount: presentation.headers.count,
-                                    threadChildrenByID: presentation.headersByThreadID
+                                    threadChildrenByID: presentation.headersByThreadID,
+                                    selectedRowID: selectedRowID
                                 )
                             }
                         }
@@ -943,9 +949,9 @@ public struct MessageListView: View {
                         .refreshable { await pullToRefresh() }
                         .brevBottomBarScrollInset()
                     #if os(macOS)
-                        .onChange(of: navigation.selectedMessageID) { _, selection in
-                            guard let selection else { return }
-                            proxy.scrollTo(selection)
+                        .onChange(of: [navigation.selectedMessageID, selectedRowID]) { _, _ in
+                            guard let selectedRowID else { return }
+                            proxy.scrollTo(selectedRowID)
                         }
                         .onChange(of: rangeCursorID) { _, cursor in
                             // Shift-arrow can run past the visible rows.
@@ -1049,13 +1055,14 @@ public struct MessageListView: View {
     private func parentMessageRow(
         for header: MessageHeader,
         visibleIndex: Int,
-        visibleCount: Int
+        visibleCount: Int,
+        selectedRowID: MessageHeader.ID?
     ) -> some View {
         let followUpReminder = followUpReminderIndex.reminder(for: header.id, sourceID: sourceID)
         MessageListRow(
             header: header,
             threadCount: threadCount(for: header),
-            isSelected: navigation.selectedMessageID == header.id,
+            isSelected: selectedRowID == header.id,
             isFocusedPane: listSelectionIsFocused,
             isChecked: navigation.bulkSelection.contains(header.id),
             isInSelectionMode: navigation.isInSelectionMode,
@@ -1684,12 +1691,14 @@ public struct MessageListView: View {
         for header: MessageHeader,
         visibleIndex: Int,
         visibleCount: Int,
-        threadChildrenByID: [String: [MessageHeader]]
+        threadChildrenByID: [String: [MessageHeader]],
+        selectedRowID: MessageHeader.ID?
     ) -> some View {
         parentMessageRow(
             for: header,
             visibleIndex: visibleIndex,
-            visibleCount: visibleCount
+            visibleCount: visibleCount,
+            selectedRowID: selectedRowID
         )
         if backend.groupsMessagesIntoThreads,
            threadCount(for: header) > 1,
@@ -1702,7 +1711,7 @@ public struct MessageListView: View {
             ForEach(children) { child in
                 ThreadInlineChildRow(
                     header: child,
-                    isSelected: navigation.selectedMessageID == child.id,
+                    isSelected: selectedRowID == child.id,
                     isFocusedPane: listSelectionIsFocused,
                     onSelect: {
                         if !navigation.isInSelectionMode {
@@ -1968,7 +1977,9 @@ public struct MessageListView: View {
                     from: workflowHeaders,
                     threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
                     pinnedIDs: pinnedMessageIDs
-                )
+                ),
+                sourceID: sourceID,
+                groupsThreads: groupByThread && backend.groupsMessagesIntoThreads
             )
         }
     }
