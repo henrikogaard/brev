@@ -25,7 +25,7 @@ public extension IMAPAccountConnector {
         configurationStore: any IMAPAccountConfigurationStore,
         credentialStore: any MailCredentialStore,
         folderCache: (any IMAPFolderSnapshotCache)? = FileBackedIMAPFolderSnapshotCache(),
-        headerCache: (any IMAPMailboxHeaderCache)? = FileBackedIMAPMailboxHeaderCache(),
+        headerCache: (any IMAPMailboxHeaderCache)? = LegacyIMAPMailboxHeaderCache(),
         sourceCache: (any IMAPMessageSourceCache)? = FileBackedIMAPMessageSourceCache(),
         bodyCache: (any IMAPMessageBodyCache)? = FileBackedIMAPMessageBodyCache(),
         localSearchIndex: IMAPAccountConnector.LocalSearchIndexFactory? = nil,

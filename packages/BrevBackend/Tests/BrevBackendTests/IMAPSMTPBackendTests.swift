@@ -10283,6 +10283,8 @@ struct IMAPSMTPBackendTests {
 }
 
 private actor DelayedSizeIMAPMessageSourceCache: IMAPMessageSourceCache {
+    func cachedMessageIDs(accountID: BrevAccount.ID, folderID: Folder.ID) -> Set<MessageHeader.ID> { [] }
+
     func source(accountID: BrevAccount.ID, messageID: MessageHeader.ID) -> IMAPMessageSource? {
         nil
     }
@@ -12500,6 +12502,10 @@ struct OfflineMutationReplayGuardTests {
 /// live header cache mid-repair. Forwards all other calls to an in-memory cache.
 private actor GatedIMAPMessageSourceCache: IMAPMessageSourceCache {
     private let inner = InMemoryIMAPMessageSourceCache()
+    func cachedMessageIDs(accountID: BrevAccount.ID, folderID: Folder.ID) async -> Set<MessageHeader.ID> {
+        await inner.cachedMessageIDs(accountID: accountID, folderID: folderID)
+    }
+
     private var sourceCallWaiters: [CheckedContinuation<Void, Never>] = []
     private var sourceReleaseWaiters: [CheckedContinuation<Void, Never>] = []
     private var sourceCalled = false

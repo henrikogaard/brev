@@ -6,6 +6,16 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Ambiguous historical IMAP cache records are retained locally for recovery
+  but hidden until ordinary server fetches confirm them. Temporary offline
+  gaps replace potentially resurrected deleted mail. Clear Cache discards
+  recovery payloads while retaining minimal anti-replay identifiers; account
+  removal deletes those identifiers too.
+
+- IMAP cache maintenance uses selective header queries and row-level updates.
+  The historical JSON header writer is now test-only; production keeps a
+  read-only migration reader and a memory-only fallback when the index is unavailable.
+
 - Indexed IMAP accounts migrate legacy header caches on first folder access.
   Cached page cursors and individual header lookups use bounded index reads;
   legacy files are removed only after a successful import.
@@ -19,15 +29,28 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- If an IMAP recovery index cannot open, stale external body/source caches
+  stay unavailable rather than bypassing recovery checks. Fresh server reads
+  remain available.
+
 - Destructive IMAP actions now complete legacy-cache migration before
   changing server messages. Migration failure stops the action instead of
   silently queueing it, and headers deleted by these actions cannot return
-  through a later first import. Previously ambiguous cache histories remain
-  unresolved.
+  through a later first import. Pre-marker historical ambiguity is handled
+  by the recovery quarantine; already-completed imports are not reclassified.
+
+- Cached attachment enumeration retains messages whose attachments exist only
+  in raw-source or parsed-body caches, even when the header flag is false.
+  Cache schema v9 adds the selective attachment index to existing v7/v8 stores
+  transactionally instead of limiting it to fresh databases.
 
 - Retrying a legacy IMAP cache import after failed file cleanup no longer
   restores messages already removed from the index. Cached-page threading
   shares bounded reply-link lookups instead of traversing once per message.
+
+- Cache-only IMAP search includes legacy folders before their first open.
+  Date repair now targets only missing-date sentinels and starts only from
+  cached pages that need it; retention preserves exact fractional-date cutoffs.
 
 - Calendar, Contacts and Tasks now show a centered, per-surface empty state
   with a single action to open Calendar & Contacts settings and connect an

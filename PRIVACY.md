@@ -702,6 +702,41 @@ Import adds messages to the chosen mailbox. A provider-backed import can upload
 the imported messages to that provider. Current import availability depends on
 the account's importer support.
 
+## Local IMAP header cache
+
+IMAP header rows and paging metadata are stored in the account's local
+SQLite index. Before a folder's legacy import marker exists, missing records
+from its historical JSON header file are retained in a separate local recovery
+archive. They are not shown in mail lists, search, conversations, attachments,
+or cached body/source reads until confirmed by existing authorized server
+fetches. Offline gaps are deliberate: an interrupted old cache write cannot
+prove whether a missing message was deleted. Existing indexed headers and
+server paging metadata remain authoritative; old cursors are not proof.
+
+The original JSON is removed only after the archive and import marker commit
+together. A failed transaction leaves it intact for retry. Header confirmation
+does not release old raw-source or parsed-body files: a fresh server source
+must be persisted successfully before recovery-aware cached source reads work.
+Recovery uses normal refresh, older pagination and explicit index rebuild,
+without a new endpoint, background sweep or consent path. While unconfirmed
+records remain, unchanged CONDSTORE may still lead to the existing first-page
+request on each ordinary refresh, including for messages no longer on server.
+
+Recovery payloads have no automatic expiry and are not backups. Clear Cache,
+targeted deletion and generation invalidation discard the affected recovery
+payloads; minimal account/folder/message suppression IDs and folder import
+markers remain so stale files cannot revive them. Clear Cache also requests
+deletion of unvisited legacy files and normal external content caches.
+Account removal deletes the account's indexed rows, including recovery and
+import markers, and requests external-cache cleanup. SQLite deletion is
+logical: physical destruction of database, WAL, SHM or disk bytes is not
+guaranteed. Other accounts are unaffected. Already-completed historical
+imports cannot be retroactively classified by this policy. If the index
+cannot open, new header caching remains memory-only and the connector does
+not read or write persisted source/body caches whose recovery state cannot
+be checked. Fresh server reads remain available; offline reads cannot fall
+back to those unverified files.
+
 ## Local mail folders
 
 Brev can keep mail in local folders ("On My Mac" / "On My iPhone"), stored as

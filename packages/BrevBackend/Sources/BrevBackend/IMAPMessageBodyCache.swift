@@ -13,6 +13,8 @@
 import Foundation
 
 public protocol IMAPMessageBodyCache: Sendable {
+    /// Lists cached message IDs in one account/folder without decoding body payloads.
+    func cachedMessageIDs(accountID: BrevAccount.ID, folderID: Folder.ID) async -> Set<MessageHeader.ID>
     func body(accountID: BrevAccount.ID, messageID: MessageHeader.ID) async -> MessageBody?
     func setBody(_ body: MessageBody, accountID: BrevAccount.ID, messageID: MessageHeader.ID) async
     func removeBody(accountID: BrevAccount.ID, messageID: MessageHeader.ID) async
@@ -45,6 +47,11 @@ public actor InMemoryIMAPMessageBodyCache: IMAPMessageBodyCache {
     private var bodiesByMessageByAccount: [BrevAccount.ID: [MessageHeader.ID: MessageBody]] = [:]
 
     public init() {}
+
+    /// Lists keys in the requested folder without reading body payloads.
+    public func cachedMessageIDs(accountID: BrevAccount.ID, folderID: Folder.ID) -> Set<MessageHeader.ID> {
+        Set((bodiesByMessageByAccount[accountID] ?? [:]).keys.filter { Self.messageID($0, belongsToFolder: folderID) })
+    }
 
     public func body(accountID: BrevAccount.ID, messageID: MessageHeader.ID) -> MessageBody? {
         bodiesByMessageByAccount[accountID]?[messageID]
@@ -94,6 +101,20 @@ public actor FileIMAPMessageBodyCache: IMAPMessageBodyCache {
     private let rootDirectory: URL
     private let maximumAccountSizeBytes: Int?
     private var knownSizeBytesByAccountID: [BrevAccount.ID: Int] = [:]
+
+    /// Reads scoped cache filenames only; payload decoding remains on demand.
+    public func cachedMessageIDs(accountID: BrevAccount.ID, folderID: Folder.ID) -> Set<MessageHeader.ID> {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: accountDirectory(accountID: accountID), includingPropertiesForKeys: [.isRegularFileKey]
+        )) ?? []
+        return Set(urls.compactMap { url in
+            guard url.pathExtension == "json",
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  let id = Self.value(fromFileKey: url.deletingPathExtension().lastPathComponent),
+                  Self.messageID(id, belongsToFolder: folderID) else { return nil }
+            return id
+        })
+    }
 
     public init(rootDirectory: URL, maximumAccountSizeBytes: Int? = nil) {
         self.rootDirectory = rootDirectory
@@ -255,6 +276,11 @@ public actor FileIMAPMessageBodyCache: IMAPMessageBodyCache {
 public actor FileBackedIMAPMessageBodyCache: IMAPMessageBodyCache {
     public static let defaultMaximumAccountSizeBytes = 20 * 1024 * 1024
     private let inner: FileIMAPMessageBodyCache
+
+    /// Lists IDs through the underlying account/folder-scoped file cache.
+    public func cachedMessageIDs(accountID: BrevAccount.ID, folderID: Folder.ID) async -> Set<MessageHeader.ID> {
+        await inner.cachedMessageIDs(accountID: accountID, folderID: folderID)
+    }
 
     public init() {
         let base = FileManager.default

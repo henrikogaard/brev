@@ -13,6 +13,7 @@
 @testable import BrevBackend
 @testable import BrevSyncEngine
 import Foundation
+import SQLite3
 import Testing
 
 @Suite("IMAP destructive mutation migration preflight")
@@ -46,12 +47,14 @@ struct IMAPMutationPreflightTests {
         try await perform(operation, backend: backend)
         #expect(await fixture.calls.count == 1)
         #expect(try fixture.store.headersByID(["INBOX:1"], accountID: Self.account.id, folderID: "INBOX").isEmpty)
-        #expect(try fixture.store.headersByID(["INBOX:99"], accountID: Self.account.id, folderID: "INBOX").count == 1)
+        #expect(try fixture.store.headersByID(["INBOX:99"], accountID: Self.account.id, folderID: "INBOX").isEmpty)
+        #expect(try fixture.store.hasPendingIMAPRecovery(accountID: Self.account.id, folderID: "INBOX"))
         let reopened = try BrevSyncEngine(databaseURL: fixture.databaseURL)
         try await IndexedIMAPMailboxHeaderCache(index: reopened, account: Self.account, legacy: fixture.legacy)
             .prepare(folderID: "INBOX")
         #expect(try await reopened.imapHeaders(ids: ["INBOX:1"], folderID: "INBOX", account: Self.account).isEmpty)
-        #expect(try await reopened.imapHeaders(ids: ["INBOX:99"], folderID: "INBOX", account: Self.account).count == 1)
+        #expect(try await reopened.imapHeaders(ids: ["INBOX:99"], folderID: "INBOX", account: Self.account).isEmpty)
+        #expect(try await reopened.hasPendingIMAPRecovery(folderID: "INBOX", account: Self.account))
     }
 
     @Test("all source folders preflight before the first move or delete", arguments: [Operation.move, .trash])
@@ -95,7 +98,8 @@ struct IMAPMutationPreflightTests {
                 .prepare(folderID: "Z-Archive")
             #expect(try await reopened.imapHeaders(ids: ["Z-Archive:1"], folderID: "Z-Archive", account: Self.account).isEmpty)
             #expect(try await reopened.imapHeaders(ids: ["Z-Archive:99"], folderID: "Z-Archive", account: Self.account)
-                .count == 1)
+                .isEmpty)
+            #expect(try await reopened.hasPendingIMAPRecovery(folderID: "Z-Archive", account: Self.account))
         }
     }
 
@@ -144,6 +148,17 @@ struct IMAPMutationPreflightTests {
                                                                    uidValidity: folder == failingFolder ? 999 : 777)
             }
             legacy = RetainedLegacyCache(snapshots: snapshots)
+            if let failingFolder {
+                var db: OpaquePointer?
+                #expect(sqlite3_open(databaseURL.path, &db) == SQLITE_OK)
+                defer { sqlite3_close(db) }
+                let sql = """
+                    CREATE TRIGGER fail_archive BEFORE INSERT ON imap_legacy_recovery
+                    WHEN NEW.folder_id = '\(failingFolder)'
+                    BEGIN SELECT RAISE(ABORT, 'synthetic archive failure'); END;
+                """
+                #expect(sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK)
+            }
         }
 
         func cleanUp() { try? FileManager.default.removeItem(at: root) }
