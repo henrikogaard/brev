@@ -14,7 +14,18 @@ import BrevDesign
 @testable import BrevMail
 import BrevThemes
 import Foundation
+import SwiftUI
 import Testing
+
+#if canImport(AppKit)
+import AppKit
+
+private typealias BodyTestFont = NSFont
+#elseif canImport(UIKit)
+import UIKit
+
+private typealias BodyTestFont = UIFont
+#endif
 
 @Suite("MessageBodyStyle")
 struct MessageBodyStyleTests {
@@ -89,6 +100,137 @@ struct MessageBodyStyleTests {
         var stripped = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if stripped.hasPrefix("#") { stripped.removeFirst() }
         return "#\(stripped)"
+    }
+
+    @Test("native attributed bodies use reader family and size without losing emphasis",
+          arguments: MailboxFontFamily.allCases, MailboxTextSize.allCases)
+    func nativeAttributedTypography(family: MailboxFontFamily, size: MailboxTextSize) async throws {
+        let imported = try #require(await MessageHTMLImporter.importAttributedHTML(
+            "<p>Regular <strong>Bold</strong> <em>Italic</em> <strong><em>Both</em></strong></p><blockquote>Quote</blockquote>"
+        ))
+        let original = imported
+        let style = bodyStyle(family: family, size: size)
+        let displayed = style.nativeAttributedBody(imported)
+        try assertNativeTypography(displayed, style: style, original: imported)
+
+        for word in ["Regular", "Bold", "Italic", "Both", "Quote"] {
+            let range = try #require(displayed.range(of: word))
+            var expected = family.font(size: size.bodyPointSize)
+            if ["Bold", "Both"].contains(word) { expected = expected.bold() }
+            if ["Italic", "Both"].contains(word) { expected = expected.italic() }
+            #expect(displayed[range].font == expected)
+        }
+        #expect(withoutFonts(displayed) == withoutFonts(imported))
+        #expect(imported == original)
+    }
+
+    @Test("native attributed preference changes reuse the original without mutation or compounding scale")
+    func nativeAttributedPreferenceChanges() async throws {
+        let imported = try #require(await MessageHTMLImporter.importAttributedHTML("<p>Text <b><i>Both</i></b></p>"))
+        let original = imported
+        let styles = [
+            bodyStyle(family: .system, size: .medium),
+            bodyStyle(family: .serif, size: .large),
+            bodyStyle(family: .rounded, size: .medium, scale: 2),
+            bodyStyle(family: .monospaced, size: .small),
+            bodyStyle(family: .system, size: .medium)
+        ]
+        #expect(styles[2].bodyPointSize == 30)
+        var first: AttributedString?
+        for style in styles {
+            let displayed = style.nativeAttributedBody(imported)
+            try assertNativeTypography(displayed, style: style, original: imported)
+            #expect(withoutFonts(displayed) == withoutFonts(original))
+            #expect(imported == original)
+            if first == nil { first = displayed }
+        }
+        #expect(styles.last?.nativeAttributedBody(imported) == first)
+    }
+
+    @Test("native attributed transform preserves links, paragraphs and mixed or missing font attributes")
+    func nativeAttributedMixedRuns() throws {
+        let text = "Bare Styled Link\n"
+        let native = NSMutableAttributedString(string: text)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.firstLineHeadIndent = 12
+        paragraph.paragraphSpacing = 9
+        native.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: native.length))
+        let styledRange = (text as NSString).range(of: "Styled")
+        native.addAttribute(.font, value: expectedFont(family: .serif, size: .small), range: styledRange)
+        let linkRange = (text as NSString).range(of: "Link")
+        try native.addAttribute(.link, value: #require(URL(string: "mailto:qa@example.test")), range: linkRange)
+        native.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: linkRange)
+        var imported = AttributedString(native)
+        imported.tracking = 2
+        let original = imported
+        let style = bodyStyle(family: .rounded, size: .large)
+        let displayed = style.nativeAttributedBody(imported)
+        try assertNativeTypography(displayed, style: style, original: imported)
+        #expect(withoutFonts(displayed) == withoutFonts(imported))
+        #expect(imported == original)
+
+        let plain = AttributedString("No font attributes")
+        try assertNativeTypography(style.nativeAttributedBody(plain), style: style, original: plain)
+        #expect(style.nativeAttributedBody(AttributedString()).characters.isEmpty)
+    }
+
+    private func bodyStyle(family: MailboxFontFamily, size: MailboxTextSize, scale: CGFloat = 1) -> MessageBodyStyle {
+        MessageBodyStyle.resolve(theme: .brevPaper, fontFamily: family, textSize: size,
+                                 renderingMode: .original, bodyInsetPoints: 0, bodyScale: scale)
+    }
+
+    private func assertNativeTypography(_ value: AttributedString, style: MessageBodyStyle, original: AttributedString) throws {
+        for run in original.runs {
+            var expected = style.fontFamily.font(size: style.bodyPointSize)
+            #if canImport(AppKit)
+            let originalFont = run.appKit.font
+            #expect(value[run.range].appKit.font == nil)
+            #else
+            let originalFont = run.uiKit.font
+            #expect(value[run.range].uiKit.font == nil)
+            #endif
+            if let originalFont {
+                if isBold(originalFont) { expected = expected.bold() }
+                if isItalic(originalFont) { expected = expected.italic() }
+            }
+            let font = try #require(value[run.range].font)
+            #expect(font == expected)
+        }
+    }
+
+    private func withoutFonts(_ value: AttributedString) -> AttributedString {
+        var result = value
+        result.font = nil
+        #if canImport(AppKit)
+        result.appKit.font = nil
+        #elseif canImport(UIKit)
+        result.uiKit.font = nil
+        #endif
+        return result
+    }
+
+    private func expectedFont(family: MailboxFontFamily, size: MailboxTextSize) -> BodyTestFont {
+        #if canImport(AppKit)
+        ComposeEditorTypography.nsFont(family: family, textSize: size)
+        #else
+        ComposeEditorTypography.uiFont(family: family, textSize: size)
+        #endif
+    }
+
+    private func isBold(_ font: BodyTestFont) -> Bool {
+        #if canImport(AppKit)
+        font.fontDescriptor.symbolicTraits.contains(.bold)
+        #else
+        font.fontDescriptor.symbolicTraits.contains(.traitBold)
+        #endif
+    }
+
+    private func isItalic(_ font: BodyTestFont) -> Bool {
+        #if canImport(AppKit)
+        font.fontDescriptor.symbolicTraits.contains(.italic)
+        #else
+        font.fontDescriptor.symbolicTraits.contains(.traitItalic)
+        #endif
     }
 
     @Test("reading measure scales with typography without constraining sender HTML")

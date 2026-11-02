@@ -15,6 +15,12 @@ import BrevThemes
 import Foundation
 import SwiftUI
 
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
+
 /// Shared typography and color tokens for HTML and native message bodies.
 ///
 /// Reader WKWebView CSS, plain/attributed SwiftUI bodies, print wrappers,
@@ -167,6 +173,27 @@ struct MessageBodyStyle: Equatable, Sendable {
 
     var swiftUIBodyFont: Font {
         fontFamily.font(size: bodyPointSize)
+    }
+
+    func nativeAttributedBody(_ imported: AttributedString) -> AttributedString {
+        var displayed = imported
+        for run in imported.runs {
+            var font = swiftUIBodyFont
+            #if canImport(AppKit)
+            let traits = run.appKit.font?.fontDescriptor.symbolicTraits ?? []
+            if traits.contains(.bold) { font = font.bold() }
+            if traits.contains(.italic) { font = font.italic() }
+            displayed[run.range].appKit.font = nil
+            #elseif canImport(UIKit)
+            let traits = run.uiKit.font?.fontDescriptor.symbolicTraits ?? []
+            if traits.contains(.traitBold) { font = font.bold() }
+            if traits.contains(.traitItalic) { font = font.italic() }
+            displayed[run.range].uiKit.font = nil
+            #endif
+            // Keep italic in the run font even when a native face lacks it.
+            displayed[run.range].font = font
+        }
+        return displayed
     }
 
     static func cssColor(_ hex: String) -> String {

@@ -2516,7 +2516,7 @@ public struct MessageDetailView: View {
                 }
             case .attributedHTML:
                 if let renderedHTML {
-                    Text(renderedHTML)
+                    Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
                         .font(messageBodyFont)
                         .foregroundStyle(theme.textPrimary.color)
                         .textSelection(.enabled)
