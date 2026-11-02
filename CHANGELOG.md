@@ -9,6 +9,10 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Message bodies with rich rendering disabled now follow the selected reader
+  font and text size, retaining bold, italic and links. Font changes also apply
+  to already displayed native message bodies; original HTML rendering is unchanged.
+
 - Reopening locally saved mock and IMAP drafts restores attachment rows from
   their owned staged bytes. Saving, autosaving and adding or removing files
   preserve the intended attachment set without uploading retained files again.

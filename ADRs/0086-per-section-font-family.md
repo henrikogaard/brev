@@ -154,6 +154,30 @@ Henrik accepted with two choices: compose follows the reader (three
 pickers, not four), and the mailbox title in the macOS toolbar stays
 System like other toolbar text.
 
+## Native attributed reader clarification (2026-11-02)
+
+When rich rendering is disabled, Detail and Thread still prefer safe attributed
+HTML over the plain alternative so emphasis and links survive. Native HTML
+import can supply explicit default fonts even for style-free generated markup;
+an outer SwiftUI font modifier does not replace those run attributes.
+
+`MessageBodyStyle.nativeAttributedBody` derives a display-only copy from the
+original imported value at each body recomputation. It replaces native run fonts
+with SwiftUI run fonts using the current reader family and already-resolved
+`bodyPointSize`, retaining bold/italic combinations and all text, link, paragraph and other non-font
+attributes. It does not scale the resolved size again. Both native attributed
+reader sites use this same transform, so preference changes need neither a
+body reload nor another HTML import. The original imported value stays intact.
+Native run fonts are removed only from the display copy. Emphasis stays in
+SwiftUI's font value, including italic when the selected native font family
+does not supply an italic face.
+
+Stored/sender HTML, the rich WKWebView renderer, print output and the
+attributed-before-plain presentation contract are unchanged. Import privacy
+gates, size limits, color stripping and actor serialization remain in the
+existing importer. No provider, persistence, network or permission change is
+introduced.
+
 ## References
 
 - `packages/BrevDesign/Sources/BrevDesign/Tokens/BrevFont.swift`
