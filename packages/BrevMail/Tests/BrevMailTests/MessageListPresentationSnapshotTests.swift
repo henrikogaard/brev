@@ -19,6 +19,100 @@ import Testing
 
 @Suite("Message list presentation snapshot")
 struct MessageListPresentationSnapshotTests {
+    @Test("row representation does not change the reader target or expansion state")
+    @MainActor
+    func selectionTargetIsUnchanged() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let parent = Self.header(id: "parent", threadID: "thread", date: now)
+        let child = Self.header(id: "child", threadID: "thread", date: now)
+        let source = MailSourceID(accountID: "account", mailboxID: "mailbox")
+        let navigation = MailNavigationState()
+        navigation.selectMessage(child, in: source, headers: [parent, child], expandsSelectedMessage: false)
+        let snapshot = MessageListPresentationSnapshot(
+            headers: [parent], pinnedMessageIDs: [], groupByDate: false, collapsedDateSectionIDs: [],
+            sourceHeaders: [parent, child], sourceID: source, groupsThreads: true
+        )
+        for expanded: Set<String> in [[], ["thread"]] {
+            let row = snapshot.selectedRowID(selectedMessageID: navigation.selectedMessageID,
+                                             selectedSourceID: navigation.selectedSourceID,
+                                             expandedThreadIDs: expanded)
+            #expect(row == (expanded.isEmpty ? parent.id : child.id))
+            #expect(navigation.selectedHeader?.id == child.id)
+            #expect(navigation.selectedMessageID == child.id)
+            #expect(navigation.selectedSourceID == source)
+            #expect(navigation.readerExpansionSelectionID == nil)
+        }
+    }
+
+    @Test("selection and expansion reuse the precomputed map without inspecting source rows")
+    func indexedSelectionCost() {
+        var inspected = 0
+        let ids = (0 ..< 10000).map(String.init)
+        let projection = MessageListSelectionProjection(
+            sourceRows: ids, visibleRows: [ids[0]], id: { $0 },
+            threadKey: { _ in inspected += 1; return "thread" }
+        )
+        let builtCount = inspected
+        for id in ids {
+            #expect(projection.visibleID(for: id, expandedThreadIDs: []) == ids[0])
+            #expect(projection.visibleID(for: id, expandedThreadIDs: ["thread"]) == id)
+        }
+        #expect(inspected == builtCount)
+    }
+
+    @Test("collapsed selection represents hidden replies; expanded selection stays exact", arguments: [true, false])
+    func visibleSelection(groupsThreads: Bool) {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let parent = Self.header(id: "parent", threadID: "thread", date: now)
+        let child = Self.header(id: "child", threadID: "thread", date: now.addingTimeInterval(-60))
+        let other = Self.header(id: "other", date: now)
+        let source = MailSourceID(accountID: "account", mailboxID: "mailbox")
+        let snapshot = MessageListPresentationSnapshot(
+            headers: [other, parent], pinnedMessageIDs: [], groupByDate: false, collapsedDateSectionIDs: [],
+            sourceHeaders: [parent, child, other], sourceID: source, groupsThreads: groupsThreads
+        )
+        func row(_ id: String?, expanded: Set<String> = []) -> String? {
+            snapshot.selectedRowID(selectedMessageID: id, selectedSourceID: source, expandedThreadIDs: expanded)
+        }
+        #expect(row(child.id) == (groupsThreads ? parent.id : nil))
+        #expect(row(child.id, expanded: ["thread"]) == (groupsThreads ? child.id : nil))
+        #expect(row(parent.id) == parent.id)
+        #expect(row(parent.id, expanded: ["thread"]) == parent.id)
+        #expect(row(other.id) == other.id)
+        #expect(row(nil) == nil)
+        #expect(row("missing") == nil)
+        #expect(snapshot.selectedRowID(selectedMessageID: child.id,
+                                       selectedSourceID: MailSourceID(accountID: "other", mailboxID: "mailbox"),
+                                       expandedThreadIDs: []) == nil)
+        #expect(snapshot.selectedRowID(selectedMessageID: parent.id, selectedSourceID: nil,
+                                       expandedThreadIDs: []) == nil)
+    }
+
+    @Test("selection follows filtered representative, date visibility and current header membership")
+    func filteredSelectionRepresentative() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let newest = Self.header(id: "newest", threadID: "thread", date: now)
+        let match = Self.header(id: "match", threadID: "thread", date: now.addingTimeInterval(-60))
+        let other = Self.header(id: "other", date: now)
+        func snapshot(_ visible: [MessageHeader], source: [MessageHeader], collapsed: Set<String> = [])
+            -> MessageListPresentationSnapshot {
+            MessageListPresentationSnapshot(
+                headers: visible, pinnedMessageIDs: [match.id], groupByDate: true,
+                collapsedDateSectionIDs: collapsed, referenceDate: now,
+                sourceHeaders: source, groupsThreads: true
+            )
+        }
+        func row(_ snapshot: MessageListPresentationSnapshot, _ id: String) -> String? {
+            snapshot.selectedRowID(selectedMessageID: id, selectedSourceID: nil, expandedThreadIDs: [])
+        }
+        #expect(row(snapshot([other, match], source: [newest, match, other]), newest.id) == match.id)
+        #expect(row(snapshot([newest, other], source: [match, newest, other]), match.id) == newest.id)
+        #expect(row(snapshot([match], source: [newest, match, other]), other.id) == nil)
+        #expect(row(snapshot([match], source: [newest, match], collapsed: ["Pinned"]), newest.id) == nil)
+        #expect(row(snapshot([match], source: [match]), newest.id) == nil)
+        #expect(row(snapshot([newest, match], source: [newest, match]), match.id) == match.id)
+    }
+
     @Test("snapshot derives indexes and collapsed date sections once")
     func derivesIndexesAndDateSections() throws {
         let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)

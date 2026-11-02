@@ -90,6 +90,7 @@ struct UnifiedInboxPresentationSnapshot {
     let itemsByThreadKey: [String: [UnifiedInboxItem]]
 
     private let visibleIndexesByItemID: [UnifiedInboxItem.ID: Int]
+    private let selectionProjection: MessageListSelectionProjection<SourceMessageID>
 
     init(
         visibleItems: [UnifiedInboxItem],
@@ -149,6 +150,28 @@ struct UnifiedInboxPresentationSnapshot {
                 calendar: calendar
             )
             : []
+        selectionProjection = MessageListSelectionProjection(
+            sourceRows: sourceItems,
+            visibleRows: groupByDate ? dateSections.flatMap(\.visibleItems) : visibleItems,
+            id: { SourceMessageID(sourceID: $0.sourceID, messageID: $0.header.id) },
+            threadKey: {
+                let key = UnifiedInboxThreadGrouping.key(for: $0)
+                return threadCounts[key] != nil ? key : nil
+            },
+            canExpand: { (threadCounts[$0] ?? 1) > 1 }
+        )
+    }
+
+    func selectedRowID(
+        selectedMessageID: MessageHeader.ID?, selectedSourceID: MailSourceID?,
+        expandedThreadIDs: Set<String>
+    ) -> UnifiedInboxItem.ID? {
+        guard let selectedMessageID, let selectedSourceID,
+              let row = selectionProjection.visibleID(
+                  for: SourceMessageID(sourceID: selectedSourceID, messageID: selectedMessageID),
+                  expandedThreadIDs: expandedThreadIDs
+              ) else { return nil }
+        return "\(row.sourceID.accountID):\(row.sourceID.mailboxID):\(row.messageID)"
     }
 
     static func pinnedMessageIDs(from rawValue: String) -> Set<MessageHeader.ID> {
