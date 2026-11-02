@@ -227,6 +227,8 @@ account names/addresses, consent toggle titles, PIM source/status/connect-button
 labels and collection names may grow vertically instead of truncating. Collection badges
 sit below the name, and the unavailable Google feature badge sits below its
 title. Keep native controls, their labels, eligibility and bindings unchanged.
+The connect action uses the full row width and explicit wrapping text at
+accessibility sizes; its ordinary native label remains unchanged.
 Ordinary text sizes retain the compact layout and one-line collection names.
 Verify both layouts with the isolated seeded panes; this decision does not
 accept snapshot references or change the capture contract in ADR-0092.
