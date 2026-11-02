@@ -17,6 +17,48 @@ import Testing
 
 @Suite("ComposeDraftRestoration")
 struct ComposeDraftRestorationTests {
+    @Test("literal CID text remains editable without attachments", arguments: [
+        "<p>Please explain cid:photo in this text</p>",
+        "<p>Please explain CID:photo in this text</p>",
+        "<p>Example: src=\"cid:photo\"</p>",
+        "<p>&lt;img src=\"cid:photo\"&gt;</p>",
+        "<p title=\"cid:photo\">Ordinary text</p>",
+        "<img src=\"https://example.test/photo.png\" alt=\"cid:photo\">"
+    ])
+    func literalCIDTextRemainsEditable(html: String) async throws {
+        let backend = MockBackend()
+        let saved = try await backend.save(draft: Draft(id: "literal-cid", htmlBody: html))
+        #expect(ComposeDraftRestoration.validationError(draft: saved, attachments: []) == nil)
+        let folder = try #require(await backend.folders().first { $0.role == .drafts })
+        let header = try #require(await backend.messages(in: folder, pageToken: nil).0.first { $0.id == saved.remoteID })
+        let restored = try await ComposeDraftRestoration.resolve(header: header, backend: backend, sourceID: nil)
+        #expect(restored.draft == saved)
+        #expect(restored.attachments.isEmpty)
+    }
+
+    @Test("real quoted and unquoted CID images remain blocked without payload metadata", arguments: [
+        "<img src=\"cid:photo\">",
+        "<img src='cid:photo'>",
+        "<img src=cid:photo>",
+        "<IMG SRC = CID:photo>",
+        "<img alt='Photo' src = ' cid:photo '>",
+        "<img src=cid:photo />"
+    ])
+    func cidImageReferencesFailClosed(html: String) {
+        #expect(ComposeDraftRestoration.validationError(draft: Draft(id: "local", htmlBody: html), attachments: []) != nil)
+    }
+
+    @Test("inline flags and content IDs independently block restoration without body references")
+    func inlineMetadataRemainsBlocked() {
+        let draft = Draft(id: "local", htmlBody: "<p>Ordinary text</p>", attachmentIDs: ["part"])
+        for payload in [
+            MIMEMessageAttachment(id: "part", filename: "photo.png", mimeType: "image/png", data: Data([1]), isInline: true),
+            MIMEMessageAttachment(id: "part", filename: "photo.png", mimeType: "image/png", data: Data([1]), contentID: "photo")
+        ] {
+            #expect(ComposeDraftRestoration.validationError(draft: draft, attachments: [payload]) != nil)
+        }
+    }
+
     @Test("navigation hands off payloads and clears them when starting another draft")
     @MainActor
     func navigationPayloadLifecycle() {
