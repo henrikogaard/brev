@@ -59,8 +59,10 @@ explanation of hosted reference differences. The hosted runtime was 23F77.
    These supplemental attachments are review coverage, not approved references
    or a substitute for native inspection of the requested content.
    Native review reached the final CalDAV source, calendar and footer outside
-   the canonical PIM viewport; include these in supplemental coverage without
-   changing the single-line collection layout or accepting its AX3 truncation.
+   the canonical PIM viewport; include these in supplemental coverage. The
+   accessibility wrapping decision in ADR-0002 supersedes the earlier choice
+   to preserve single-line collection names at every text size. Include lower
+   consent content after wrapping, without accepting any reference changes.
 
 ## Rationale
 

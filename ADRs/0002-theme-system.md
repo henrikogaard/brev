@@ -222,6 +222,15 @@ use the app-menu command and does not add Settings to the sidebar chrome.
 At accessibility text sizes, the iOS theme-pair row places the selected names
 below its label rather than compressing the label beside a trailing column.
 
+**Accessible consent and PIM labels.** At accessibility Dynamic Type sizes,
+account names/addresses, consent toggle titles, PIM source/status labels and
+collection names may grow vertically instead of truncating. Collection badges
+sit below the name, and the unavailable Google feature badge sits below its
+title. Keep native controls, their labels, eligibility and bindings unchanged.
+Ordinary text sizes retain the compact layout and one-line collection names.
+Verify both layouts with the isolated seeded panes; this decision does not
+accept snapshot references or change the capture contract in ADR-0092.
+
 ### Theme distribution
 
 Three tiers:
