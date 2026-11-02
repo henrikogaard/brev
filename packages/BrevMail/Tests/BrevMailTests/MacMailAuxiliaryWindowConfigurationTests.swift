@@ -18,9 +18,11 @@ import Testing
 
 @Suite("MacMailAuxiliaryWindowConfiguration")
 struct MacMailAuxiliaryWindowConfigurationTests {
-    @Test("Command-Return reaches a detached composer's toolbar from its text responder", arguments: [false, true])
+    @Test("Command-Return reaches a detached composer's toolbar with Caps Lock off or on", arguments: [
+        false, true
+    ], [NSEvent.ModifierFlags.command, [.command, .capsLock]])
     @MainActor
-    func composeAcceleratorReachesToolbar(fieldFocus: Bool) throws {
+    func composeAcceleratorReachesToolbar(fieldFocus: Bool, modifiers: NSEvent.ModifierFlags) throws {
         var invocations = 0
         let fixture = ComposeAcceleratorFixture { invocations += 1 }
         let window = fixture.window
@@ -31,13 +33,15 @@ struct MacMailAuxiliaryWindowConfigurationTests {
         #expect(window.makeFirstResponder(responder))
         #expect(window.firstResponder is NSTextView)
 
-        #expect(try window.performKeyEquivalent(with: fixture.event()))
+        #expect(try window.performKeyEquivalent(with: fixture.event(modifiers: modifiers)))
         #expect(invocations == 1)
     }
 
     @Test("compose accelerator rejects other modifier combinations", arguments: [
         NSEvent.ModifierFlags(), .shift, .option, .control,
-        [.command, .shift], [.command, .option], [.command, .control], [.command, .function]
+        [.command, .shift], [.command, .option], [.command, .control], [.command, .function],
+        .capsLock, [.command, .capsLock, .shift], [.command, .capsLock, .option],
+        [.command, .capsLock, .control], [.command, .capsLock, .function]
     ])
     @MainActor
     func composeAcceleratorRejectsModifiers(modifiers: NSEvent.ModifierFlags) throws {
@@ -49,17 +53,19 @@ struct MacMailAuxiliaryWindowConfigurationTests {
         #expect(invocations == 0)
     }
 
-    @Test("compose accelerator leaves other keys and key-up events unhandled")
+    @Test("compose accelerator leaves other keys and key-up events unhandled", arguments: [
+        NSEvent.ModifierFlags.command, [.command, .capsLock]
+    ])
     @MainActor
-    func composeAcceleratorRejectsOtherKeys() throws {
+    func composeAcceleratorRejectsOtherKeys(modifiers: NSEvent.ModifierFlags) throws {
         var invocations = 0
         let fixture = ComposeAcceleratorFixture { invocations += 1 }
         defer { fixture.window.close() }
 
         for keyCode: UInt16 in [0, 48, 53, 76] {
-            #expect(try !fixture.window.performKeyEquivalent(with: fixture.event(keyCode: keyCode)))
+            #expect(try !fixture.window.performKeyEquivalent(with: fixture.event(modifiers: modifiers, keyCode: keyCode)))
         }
-        #expect(try !fixture.window.performKeyEquivalent(with: fixture.event(type: .keyUp)))
+        #expect(try !fixture.window.performKeyEquivalent(with: fixture.event(modifiers: modifiers, type: .keyUp)))
         #expect(invocations == 0)
     }
 
