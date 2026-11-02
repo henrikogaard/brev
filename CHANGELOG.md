@@ -32,6 +32,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Collapsed conversations keep their visible row highlighted when a hidden
+  reply is selected, and keyboard/menu navigation scrolls to that row. Expanded
+  conversations highlight only the selected reply; the reader target is unchanged.
+
 - If an IMAP recovery index cannot open, stale external body/source caches
   stay unavailable rather than bypassing recovery checks. Fresh server reads
   remain available.
