@@ -35,6 +35,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Double-clicking a Drafts row no longer opens an extra reader window alongside
+  the composer. Other folders retain double-click reader detachment.
+
 - Collapsed conversations keep their visible row highlighted when a hidden
   reply is selected, and keyboard/menu navigation scrolls to that row. Expanded
   conversations highlight only the selected reply; the reader target is unchanged.
