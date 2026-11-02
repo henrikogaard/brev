@@ -32,6 +32,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Clicking a conversation's disclosure chevron now preserves its hit target
+  through adaptive row layout instead of activating the parent message.
+
 - Collapsed conversations keep their visible row highlighted when a hidden
   reply is selected, and keyboard/menu navigation scrolls to that row. Expanded
   conversations highlight only the selected reply; the reader target is unchanged.

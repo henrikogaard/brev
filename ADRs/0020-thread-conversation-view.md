@@ -90,3 +90,13 @@ the source's grouping capability, and never borrow a representative from another
 source. Missing current headers have no representative. Build the lookup once per
 cached presentation snapshot; selection and expansion lookups remain O(1), without
 another folder scan or a selected-ID-dependent cache key (ADR-0061).
+
+## Amendment (2026-11-02): disclosure geometry preference identity
+
+The chevron frame preference treats empty contributions as identity. A default
+value emitted alongside the rendered glyph must not erase its valid frame when
+SwiftUI reduces the adaptive metadata hierarchy. A tree without a glyph still
+starts and finishes at the empty default, clearing the row's previous target.
+Keep the existing named row coordinate space, exclusive toggle/activation
+routing and four-point hit slop. Hosted AppKit tests must exercise production
+layout and gesture delivery, not only fabricated routing rectangles.
