@@ -26,30 +26,47 @@ struct MessageListRowGestureTests {
     func hoverDelivery(width: Double) async throws {
         let fixture = HostedGestureRow(selected: false, width: width)
         defer { fixture.close() }
-        try await fixture.settle()
+        try await fixture.waitForRow()
         #expect(fixture.toggleFrame == .zero)
-        fixture.hover(CGPoint(x: fixture.rowFrame.midX, y: fixture.rowFrame.midY))
-        try await fixture.settle()
+        try await fixture.hover()
         let point = try fixture.chevronCenter()
         fixture.click(point)
-        try await fixture.settle()
+        try await fixture.waitUntil("collapse callback") { fixture.toggles == 1 }
         #expect(fixture.toggles == 1)
         #expect(fixture.activations == 0)
         #expect(!fixture.state.expanded)
         #expect(fixture.state.selectedID == "child")
+        try await fixture.waitForChevron()
         try fixture.click(fixture.chevronCenter())
-        try await fixture.settle()
+        try await fixture.waitUntil("reexpand callback") { fixture.toggles == 2 }
         #expect(fixture.toggles == 2)
         #expect(fixture.activations == 0)
         #expect(fixture.state.expanded)
         #expect(fixture.state.selectedID == "child")
-        fixture.hover(CGPoint(x: 2, y: 2), entered: false)
-        try await fixture.settle()
+        try await fixture.hover(entered: false)
         #expect(fixture.toggleFrame == .zero)
         fixture.click(point)
-        try await fixture.settle()
+        try await fixture.waitUntil("activation after hover exit") { fixture.activations == 1 }
         #expect(fixture.toggles == 2)
         #expect(fixture.activations == 1)
+    }
+
+    @Test("hover waits for deferred row geometry and tracking registration")
+    func deferredRowHover() async throws {
+        let fixture = HostedGestureRow(selected: false, width: 600, deferRow: true)
+        defer { fixture.close() }
+        let render = Task { @MainActor in
+            // Keep real row rendering beyond the former fixed 150 ms wait.
+            try await Task.sleep(for: .milliseconds(350))
+            fixture.showRow()
+        }
+        defer { render.cancel() }
+        try await fixture.hover()
+        try await render.value
+        try fixture.click(fixture.chevronCenter())
+        try await fixture.waitUntil("deferred row toggle") { fixture.toggles == 1 }
+        #expect(fixture.activations == 0)
+        #expect(fixture.state.selectedID == "child")
     }
 
     @Test("selected disclosure routes through wide, compact and stacked layouts",
@@ -57,7 +74,7 @@ struct MessageListRowGestureTests {
     func chevronDelivery(width: Double, compact: Bool) async throws {
         let fixture = HostedGestureRow(width: width, compact: compact)
         defer { fixture.close() }
-        try await fixture.settle()
+        try await fixture.waitForChevron()
         let point = try fixture.chevronCenter()
         let frame = try #require(fixture.toggleFrame)
         #expect(frame.size == CGSize(width: 18, height: 18))
@@ -68,15 +85,15 @@ struct MessageListRowGestureTests {
             #expect(frame.minY < 20)
         }
         fixture.click(point)
-        try await fixture.settle()
+        try await fixture.waitUntil("center toggle callback") { fixture.toggles == 1 }
         #expect(fixture.toggles == 1)
         #expect(fixture.activations == 0)
         fixture.click(CGPoint(x: fixture.rowFrame.minX + frame.minX - 3, y: point.y))
-        try await fixture.settle()
+        try await fixture.waitUntil("hit-slop toggle callback") { fixture.toggles == 2 }
         #expect(fixture.toggles == 2)
         #expect(fixture.activations == 0)
         fixture.click(CGPoint(x: fixture.rowFrame.minX + 25, y: fixture.rowFrame.midY))
-        try await fixture.settle()
+        try await fixture.waitUntil("body activation callback") { fixture.activations == 1 }
         #expect(fixture.activations == 1)
         #expect(fixture.toggles == 2)
     }
@@ -85,9 +102,9 @@ struct MessageListRowGestureTests {
     func listDelivery(width: Double) async throws {
         let fixture = HostedGestureRow(width: width, inList: true)
         defer { fixture.close() }
-        try await fixture.settle()
+        try await fixture.waitForChevron()
         try fixture.click(fixture.chevronCenter())
-        try await fixture.settle()
+        try await fixture.waitUntil("List row toggle callback") { fixture.toggles == 1 }
         #expect(fixture.toggles == 1)
         #expect(fixture.activations == 0)
         #expect(fixture.siblingToggles == 0)
@@ -98,22 +115,24 @@ struct MessageListRowGestureTests {
     func changedLayoutAndMissingGlyph() async throws {
         let fixture = HostedGestureRow()
         defer { fixture.close() }
-        try await fixture.settle()
+        try await fixture.waitForChevron()
         let oldFrame = try #require(fixture.toggleFrame)
         fixture.state.width = 190
-        try await fixture.settle()
+        try await fixture.waitUntil("resized row and chevron") {
+            fixture.rowFrame.width == 190 && fixture.hasChevron && fixture.toggleFrame != oldFrame
+        }
         let frame = try #require(fixture.toggleFrame)
         #expect(frame != oldFrame)
         #expect(frame.minY > oldFrame.minY)
         let point = try fixture.chevronCenter()
         fixture.click(point)
-        try await fixture.settle()
+        try await fixture.waitUntil("resized row toggle callback") { fixture.toggles == 1 }
         #expect(fixture.toggles == 1)
         fixture.state.threadCount = 1
-        try await fixture.settle()
+        try await fixture.waitUntil("removed chevron preference") { fixture.toggleFrame == .zero }
         #expect(fixture.toggleFrame == .zero)
         fixture.click(point)
-        try await fixture.settle()
+        try await fixture.waitUntil("activation after glyph removal") { fixture.activations == 1 }
         #expect(fixture.toggles == 1)
         #expect(fixture.activations == 1)
     }
@@ -142,7 +161,8 @@ private final class HostedGestureRow {
     var host: NSHostingView<AnyView>!
     let window: GestureTestWindow
 
-    init(selected: Bool = true, width: CGFloat = 340, compact: Bool = false, inList: Bool = false) {
+    init(selected: Bool = true, width: CGFloat = 340, compact: Bool = false, inList: Bool = false,
+         deferRow: Bool = false) {
         self.compact = compact
         self.inList = inList
         state.width = width
@@ -151,10 +171,15 @@ private final class HostedGestureRow {
                                    styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.acceptsMouseMovedEvents = true
-        host = NSHostingView(rootView: AnyView(HostedRowContent(fixture: self)))
+        host = NSHostingView(rootView: deferRow ? AnyView(EmptyView()) : AnyView(HostedRowContent(fixture: self)))
         host.frame = CGRect(x: 0, y: 0, width: 800, height: 700)
         window.contentView = host
         window.orderFront(nil)
+        host.layoutSubtreeIfNeeded()
+    }
+
+    func showRow() {
+        host.rootView = AnyView(HostedRowContent(fixture: self))
         host.layoutSubtreeIfNeeded()
     }
 
@@ -201,9 +226,38 @@ private final class HostedGestureRow {
                       date: Date(timeIntervalSince1970: 1_700_000_000), isRead: true)
     }
 
-    func settle() async throws {
-        host.layoutSubtreeIfNeeded()
-        try await Task.sleep(for: .milliseconds(150))
+    var hasChevron: Bool {
+        guard let toggleFrame, !toggleFrame.isEmpty else { return false }
+        return CGRect(origin: .zero, size: rowFrame.size).contains(toggleFrame)
+    }
+
+    var hoverTrackingAreas: [NSTrackingArea] {
+        host.trackingAreas.filter { $0.options.contains(.mouseEnteredAndExited) }
+    }
+
+    func waitForRow() async throws {
+        try await waitUntil("row geometry and tracking registration") {
+            !rowFrame.isEmpty && toggleFrame != nil && !hoverTrackingAreas.isEmpty
+        }
+    }
+
+    func waitForChevron() async throws {
+        try await waitUntil("published chevron geometry") { hasChevron }
+    }
+
+    func waitUntil(_ stage: String, sourceLocation: SourceLocation = #_sourceLocation,
+                   _ condition: () -> Bool) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        repeat {
+            host.layoutSubtreeIfNeeded()
+            host.updateTrackingAreas()
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        } while clock.now < deadline
+        try #require(condition(),
+                     "Timed out: \(stage); row=\(rowFrame), chevron=\(String(describing: toggleFrame)), trackingAreas=\(host.trackingAreas.count)",
+                     sourceLocation: sourceLocation)
     }
 
     func chevronCenter() throws -> CGPoint {
@@ -229,17 +283,21 @@ private final class HostedGestureRow {
         }
     }
 
-    func hover(_ point: CGPoint, entered: Bool = true) {
-        host.updateTrackingAreas()
+    func hover(entered: Bool = true) async throws {
+        try await waitForRow()
+        let point = entered ? CGPoint(x: rowFrame.midX, y: rowFrame.midY) : CGPoint(x: 2, y: 2)
         let location = host.convert(point, to: nil)
         window.pointerLocation = location
-        for area in host.trackingAreas {
+        for area in hoverTrackingAreas {
             let event = HostingTrackingEvent(area: area, point: location, hostWindow: window, entered: entered)
             if entered {
                 host.mouseEntered(with: event)
             } else {
                 host.mouseExited(with: event)
             }
+        }
+        try await waitUntil(entered ? "hover chevron publication" : "hover exit clears chevron") {
+            entered ? hasChevron : toggleFrame == .zero
         }
     }
 }
