@@ -13,10 +13,139 @@
 #if os(macOS)
 import AppKit
 @testable import BrevMail
+import SwiftUI
 import Testing
 
 @Suite("MacMailAuxiliaryWindowConfiguration")
 struct MacMailAuxiliaryWindowConfigurationTests {
+    @Test("Command-Return reaches a detached composer's toolbar from its text responder", arguments: [false, true])
+    @MainActor
+    func composeAcceleratorReachesToolbar(fieldFocus: Bool) throws {
+        var invocations = 0
+        let fixture = ComposeAcceleratorFixture { invocations += 1 }
+        let window = fixture.window
+        defer { window.close() }
+        #expect(window.toolbar?.items.contains { $0.itemIdentifier == MacComposeToolbarItemIdentifier.send } == true)
+        let responder: NSView = fieldFocus ? NSTextField() : NSTextView()
+        fixture.host.view.addSubview(responder)
+        #expect(window.makeFirstResponder(responder))
+        #expect(window.firstResponder is NSTextView)
+
+        #expect(try window.performKeyEquivalent(with: fixture.event()))
+        #expect(invocations == 1)
+    }
+
+    @Test("compose accelerator rejects other modifier combinations", arguments: [
+        NSEvent.ModifierFlags(), .shift, .option, .control,
+        [.command, .shift], [.command, .option], [.command, .control], [.command, .function]
+    ])
+    @MainActor
+    func composeAcceleratorRejectsModifiers(modifiers: NSEvent.ModifierFlags) throws {
+        var invocations = 0
+        let fixture = ComposeAcceleratorFixture { invocations += 1 }
+        defer { fixture.window.close() }
+
+        #expect(try !fixture.window.performKeyEquivalent(with: fixture.event(modifiers: modifiers)))
+        #expect(invocations == 0)
+    }
+
+    @Test("compose accelerator leaves other keys and key-up events unhandled")
+    @MainActor
+    func composeAcceleratorRejectsOtherKeys() throws {
+        var invocations = 0
+        let fixture = ComposeAcceleratorFixture { invocations += 1 }
+        defer { fixture.window.close() }
+
+        for keyCode: UInt16 in [0, 48, 53, 76] {
+            #expect(try !fixture.window.performKeyEquivalent(with: fixture.event(keyCode: keyCode)))
+        }
+        #expect(try !fixture.window.performKeyEquivalent(with: fixture.event(type: .keyUp)))
+        #expect(invocations == 0)
+    }
+
+    @Test("compose accelerator consumes auto-repeat without sending or cancelling twice")
+    @MainActor
+    func composeAcceleratorIgnoresAutoRepeat() throws {
+        var invocations = 0
+        let fixture = ComposeAcceleratorFixture { invocations += 1 }
+        defer { fixture.window.close() }
+
+        #expect(try fixture.window.performKeyEquivalent(with: fixture.event()))
+        for _ in 0 ..< 3 {
+            #expect(try fixture.window.performKeyEquivalent(with: fixture.event(isRepeat: true)))
+        }
+        #expect(invocations == 1)
+        // A fresh press must still reach Cancel Send when undo-send is pending.
+        #expect(try fixture.window.performKeyEquivalent(with: fixture.event(timestamp: 2)))
+        #expect(invocations == 2)
+    }
+
+    @Test("disabled compose actions do not fall through and bridge updates restore the latest action")
+    @MainActor
+    func composeAcceleratorRespectsDisabledAndUpdatedActions() throws {
+        var invocations = 0
+        let fixture = ComposeAcceleratorFixture { invocations += 1 }
+        defer { fixture.window.close() }
+        fixture.bridge.sendAction = nil
+        fixture.bridge.updateToolbar()
+        #expect(try fixture.window.performKeyEquivalent(with: fixture.event()))
+        #expect(invocations == 0)
+
+        fixture.bridge.sendAction = { invocations += 10 }
+        fixture.bridge.updateToolbar()
+        #expect(try fixture.window.performKeyEquivalent(with: fixture.event()))
+        #expect(invocations == 10)
+
+        fixture.bridge.removeFromSuperview()
+        #expect(fixture.delegate.sendAction == nil)
+        #expect(try fixture.window.performKeyEquivalent(with: fixture.event()))
+        #expect(invocations == 10)
+    }
+
+    @Test("compose shortcuts cannot target another window or an auxiliary window without compose toolbar")
+    @MainActor
+    func composeAcceleratorIsWindowScoped() throws {
+        var firstInvocations = 0
+        var secondInvocations = 0
+        let first = ComposeAcceleratorFixture { firstInvocations += 1 }
+        let second = ComposeAcceleratorFixture { secondInvocations += 1 }
+        defer { first.window.close(); second.window.close() }
+
+        #expect(try !first.window.performKeyEquivalent(with: second.event()))
+        #expect(firstInvocations == 0)
+        #expect(secondInvocations == 0)
+        #expect(try second.window.performKeyEquivalent(with: second.event()))
+        #expect(firstInvocations == 0)
+        #expect(secondInvocations == 1)
+
+        first.window.toolbar = nil
+        #expect(try !first.window.performKeyEquivalent(with: first.event()))
+        #expect(firstInvocations == 0)
+    }
+
+    @Test("source contract: native and pointer Send share the live compose guards and undo action")
+    func composeAcceleratorUsesSharedSendAction() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/BrevMail")
+        let compose = try String(contentsOf: sources.appendingPathComponent("ComposeView.swift"), encoding: .utf8)
+        let presenter = try String(
+            contentsOf: sources.appendingPathComponent("MacMailAuxiliaryWindowPresenter.swift"), encoding: .utf8
+        )
+        #expect(presenter.contains("let window = MacMailAuxiliaryWindow("))
+        #expect(compose.contains("sendAction: isSendButtonDisabled ? nil : performSendButtonAction"))
+        #expect(compose.contains("Button(action: performSendButtonAction)"))
+        #expect(compose.contains("isInteractionBlocked || (!canSend && pendingUndoSendTask == nil)"))
+        #expect(compose.contains("guard !isSendButtonDisabled else { return }"))
+        #expect(compose.contains("""
+        if pendingUndoSendTask != nil {
+                    cancelUndoSend()
+                } else {
+                    beginUndoSend {
+                        await send()
+        """))
+    }
+
     @Test(
         "auxiliary presentations use standard resizable windows",
         arguments: [
@@ -149,6 +278,46 @@ struct MacMailAuxiliaryWindowConfigurationTests {
             frame,
             visibleFrame: visibleFrame
         ) == frame)
+    }
+}
+
+@MainActor
+private final class ComposeAcceleratorFixture {
+    let window: MacMailAuxiliaryWindow
+    let host = NSHostingController(rootView: Color.clear)
+    let delegate = MacComposeToolbarDelegate()
+    let bridge: ComposeNativeToolbarContentView
+
+    init(action: @escaping () -> Void) {
+        window = MacMailAuxiliaryWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 820, height: 700),
+            styleMask: MacMailAuxiliaryWindowConfiguration.configuration(for: .compose).styleMask,
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentViewController = host
+        let toolbar = NSToolbar(identifier: "ComposeAcceleratorTest")
+        toolbar.delegate = delegate
+        window.toolbar = toolbar
+        bridge = ComposeNativeToolbarContentView(items: [
+            MacComposeToolbarItemIdentifier.send: AnyView(Button("Send", action: action))
+        ], sendAction: action)
+        host.view.addSubview(bridge)
+    }
+
+    func event(
+        modifiers: NSEvent.ModifierFlags = .command,
+        keyCode: UInt16 = 36,
+        type: NSEvent.EventType = .keyDown,
+        isRepeat: Bool = false,
+        timestamp: TimeInterval = 1
+    ) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(
+            with: type, location: .zero, modifierFlags: modifiers, timestamp: timestamp,
+            windowNumber: window.windowNumber, context: nil,
+            characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: isRepeat, keyCode: keyCode
+        ))
     }
 }
 #endif
