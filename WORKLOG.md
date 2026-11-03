@@ -7252,3 +7252,10 @@ buttons, and package-aware localization.
 - Changes: new `DraftIdentityResolving` extension service; Gmail implements it through a new bounded `drafts.list` read (`GmailDraftPage`, 10 pages of 100). `ComposeDraftRestoration.resolve` uses it when no local copy matches the message ID, then retries the local lookup under the draft ID, and refuses without a body read when Gmail no longer lists the message as a draft. IMAP and mock have no resolver and are unchanged. ADR-0093 is amended; ADR-0006, `PRIVACY.md` and `CHANGELOG.md` are updated.
 - Red/green: tests failed to compile before implementation and pass after.
 - Limits: opening a Gmail Draft from the list needs a connection; more than 1,000 Drafts can refuse older ones; `drafts.list` has not been run against live Gmail (#284).
+
+## 2026-11-03 — Claude Code — Issue #279 handoff
+
+- Goal: start native Draft acceptance from #289. **No acceptance item was executed.**
+- Happened: built `--isolated-mock-content-qa` from `69f0ba5` on `macmini-agent` (UUID `17F87A2F-1D8E-406F-9E18-DDC5A5E911D0`, exact three-key entitlements, no extensions, ad-hoc signed because development signing failed with `errSecInternalComponent`). It launched twice and was stopped without being driven. System Events timed out with `-1712` even with the Mac unlocked, the available Computer Use controls a different Mac, and access to Screen Sharing was declined. The app did not open on Henrik's Mac from this remote session, and the cause is unknown. Henrik chose to continue locally.
+- CI: #277 is 23/23 green at `a36189e`. On #289 at `69f0ba5`, `repository-self-tests` failed in `scripts/test-release-dmg.sh` with no error text; the PR changes no scripts or workflows and the script passed twice locally, so it may be flaky but is unconfirmed. This commit triggers a new run.
+- Handoff: continue #279 on Henrik's Mac from this branch, in a fresh isolated app. Remaining worktrees on `macmini-agent`: `pr-277-integrate` and `adr-0093` (with the retained build under `.codex/build`), both clean and pushed.
