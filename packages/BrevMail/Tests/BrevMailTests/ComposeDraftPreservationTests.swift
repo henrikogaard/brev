@@ -149,10 +149,10 @@ struct ComposeDraftPreservationTests {
         let text = native.string
         native.insertText(" edited", replacementRange: NSRange(location: (text as NSString).length, length: 0))
         harness.mounted?.toggleHTMLPreview()
-        harness.host?.layoutSubtreeIfNeeded()
+        await harness.render { !native.isEditable }
         #expect(!native.isEditable)
         harness.mounted?.toggleHTMLPreview()
-        harness.host?.layoutSubtreeIfNeeded()
+        await harness.render { native.isEditable }
         #expect(native.isEditable)
         let returnedEditor = try #require(harness.editor)
         #expect(returnedEditor.string == text + " edited")
@@ -197,14 +197,14 @@ struct ComposeDraftPreservationTests {
         let native = try #require(harness.editor)
         for body in ["Sign 🌱", "Sign 🌿", "Sign e\u{301}", "Sign é"] {
             harness.mounted?.applySignatureSelection(ComposeSignatureOption(id: "signature", title: "Signature", body: body))
-            harness.host?.layoutSubtreeIfNeeded()
+            await harness.render { native.string.hasSuffix(body) }
             let html = ComposeRichTextHTMLSerializer.html(from: native.attributedString())
             #expect(html.contains("<strong>Bold 🌱</strong>"))
             #expect(html.contains("<em>Italic</em>"))
             #expect(native.string.hasSuffix(body))
         }
         harness.mounted?.applySignatureSelection(nil)
-        harness.host?.layoutSubtreeIfNeeded()
+        await harness.render { !native.string.contains("Sign") }
         await harness.mounted?.saveDraft()
         #expect(try await backend.draft(for: original.remoteID ?? original.id)?.htmlBody == original.htmlBody)
     }
@@ -444,6 +444,16 @@ struct ComposeDraftPreservationTests {
             let mounted = try #require(mounted)
             await mounted.restoreDraftIfNeeded()
             host?.layoutSubtreeIfNeeded()
+        }
+
+        /// Lays out until `condition` holds. macOS 15 can apply a SwiftUI state
+        /// change after the current pass, so one layout does not prove a render.
+        func render(until condition: () -> Bool) async {
+            for _ in 0 ..< 500 {
+                host?.layoutSubtreeIfNeeded()
+                if condition() { return }
+                try? await Task.sleep(for: .milliseconds(10))
+            }
         }
 
         var editor: ComposeRichTextView? {
