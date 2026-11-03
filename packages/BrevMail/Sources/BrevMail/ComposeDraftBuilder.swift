@@ -11,6 +11,7 @@
  */
 
 import BrevBackend
+import BrevWidgets
 import Foundation
 
 public struct ComposePrefill: Equatable, Sendable {
@@ -148,14 +149,10 @@ public enum SharedComposePayload {
         return prefill.isEmpty ? nil : prefill
     }
 
-    /// App group shared with the iOS share extension.
-    private static let shareHandoffAppGroupIdentifier = "group.eu.brevmail.brev"
-
     /// The share extension's app-group handoff directory, or `nil` if the
     /// container can't be resolved (then no attachment is accepted — fail safe).
     private static func shareHandoffRoot() -> URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: shareHandoffAppGroupIdentifier)?
+        WidgetSnapshotStore.defaultDirectory()?
             .appendingPathComponent("ShareHandoff", isDirectory: true)
     }
 
@@ -687,6 +684,18 @@ enum ComposeDraftRecoveryStore {
         defaults.removeObject(forKey: storageKey(accountID: accountID, sourceID: sourceID))
     }
 
+    static func clear(
+        matching draft: Draft,
+        accountID: BrevAccount.ID,
+        sourceID: MailSourceID?,
+        defaults: UserDefaults = .standard
+    ) {
+        guard let snapshot = load(accountID: accountID, sourceID: sourceID, defaults: defaults),
+              snapshot.draftID == draft.id
+              || (draft.remoteID != nil && snapshot.remoteID == draft.remoteID) else { return }
+        clear(accountID: accountID, sourceID: sourceID, defaults: defaults)
+    }
+
     private static func storageKey(accountID: BrevAccount.ID, sourceID: MailSourceID?) -> String {
         let mailboxID = sourceID?.mailboxID ?? "primary"
         return "compose.recovery.v1.\(accountID).\(mailboxID)"
@@ -706,21 +715,27 @@ enum ComposeDraftRecoveryStore {
 ///   - completion: The completion value reported by `ComposeView`.
 ///   - accountID: The account that owns the draft.
 ///   - sourceID: The mailbox source the draft belongs to.
+///   - isCurrentPresentation: Whether a saved draft may update recovery. Successful
+///     sends still remove matching recovery after presentation/request teardown.
+///   - defaults: The recovery store; tests use an isolated suite.
 func updateComposeDraftRecovery(
     for completion: ComposeCompletion,
     accountID: BrevAccount.ID,
-    sourceID: MailSourceID?
+    sourceID: MailSourceID?,
+    isCurrentPresentation: Bool = true,
+    defaults: UserDefaults = .standard
 ) {
     switch completion {
     case .savedDraft(let draft):
-        guard let snapshot = ComposeDraftRecoverySnapshot.recoverableNewMessageDraft(from: draft) else {
+        guard isCurrentPresentation,
+              let snapshot = ComposeDraftRecoverySnapshot.recoverableNewMessageDraft(from: draft) else {
             return
         }
-        ComposeDraftRecoveryStore.save(snapshot, accountID: accountID, sourceID: sourceID)
+        ComposeDraftRecoveryStore.save(snapshot, accountID: accountID, sourceID: sourceID, defaults: defaults)
     case .sentMessage(let draft, _, _):
         guard ComposeDraftRecoverySnapshot.recoverableNewMessageDraft(from: draft) != nil else {
             return
         }
-        ComposeDraftRecoveryStore.clear(accountID: accountID, sourceID: sourceID)
+        ComposeDraftRecoveryStore.clear(matching: draft, accountID: accountID, sourceID: sourceID, defaults: defaults)
     }
 }

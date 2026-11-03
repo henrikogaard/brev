@@ -208,6 +208,24 @@ deliberate user submission. Never via direct phone-home.
   private in new owner-only directories; share only reviewed aggregate fields,
   because tracing tools can capture target process environments.
 
+### Compose recovery lifecycle
+
+The existing account/mailbox-scoped recovery snapshot in local preferences
+contains new-message draft identifiers, recipients, subject and editor text.
+Successful send completion and successful discard remove recovery only when
+the local draft ID or non-nil remote draft ID matches. Presentation teardown
+must not prevent that cleanup; stale saved-draft callbacks must not overwrite
+current recovery. This correction introduces no new key, migration, payload,
+external call or consent boundary. Failed/cancelled sends preserve recovery.
+
+The text-only snapshot is a recovery hint, not proof of plain or attachment-free
+content. Restoring it requires a matching canonical local draft and complete,
+owned local attachment bytes. HTML is preflighted as a resource-free subset
+before native import. There is no provider-body reconstruction fallback.
+Pending, failed or cancelled restoration blocks persistence and Send; Close
+leaves both the canonical draft and recovery hint untouched. No snapshot schema,
+storage location, retention rule or external-call entry changes (ADR-0038).
+
 ## Rationale
 
 **Why zero telemetry, not opt-in telemetry.** Opt-in telemetry sounds
@@ -281,3 +299,26 @@ is under Writing. Connections are under Accounts & Connections, rules under
 Rules & Organisation, and updates under About & Updates. These are navigation
 changes only; no endpoint, payload, default, consent requirement, or retention
 policy in the table above changes.
+
+### 2026-11-01 isolated macOS mock validation
+
+ADR-0091 adds an explicitly selected development-only profile: a fresh UUID
+sandbox identity, in-memory mock account/token stores, no live provider wiring,
+and no App Group resolution or embedded extensions. Its only entitlement is
+App Sandbox, excluding direct network, system Contacts/Calendar, iCloud and
+shared-group access. Preferences and generated products remain local to that
+test identity until explicitly cleaned up. The signed bundle forces mock mode
+before SwiftUI initialization; invalid signatures, identity/home combinations
+and Release builds fail closed. No network destination or release default in
+the table above changes. External-app actions are outside this bounded test.
+
+### 2026-11-02 opt-in isolated content QA
+
+ADR-0092 adds the explicit `--isolated-mock-content-qa` development flag after
+maintainer approval. Its exact sandbox/network-client/user-selected-read-only
+signature permits WebKit infrastructure and generated attachment-picker fixtures.
+No new application network call or destination is added; existing remote-content
+loading remains off by default. Unlike ADR-0091's strict profile, this profile
+cannot claim OS-level outbound-network denial. It retains UUID/Debug/mock/private
+container guards and excludes App Groups, broad file access and live providers.
+Normal, strict and release signing defaults remain unchanged.

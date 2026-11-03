@@ -3732,52 +3732,22 @@ public struct BrevMailRootView: View {
         guard canPresentCompose() else { return }
         let resolvedSourceID = sourceID ?? navigation.selectedSourceID
         let draftBackend = backend(for: resolvedSourceID)
+        let presentationID = navigation.composePresentationID
+        let selectedSourceID = navigation.selectedSourceID
         Task {
-            let draft = await composeDraftSource(
-                for: header,
-                backend: draftBackend,
-                sourceID: resolvedSourceID
-            )
-            guard let draft, canPresentCompose() else { return }
-            navigation.presentDraft(draft, sourceID: resolvedSourceID)
+            do {
+                let restored = try await ComposeDraftRestoration.resolve(
+                    header: header, backend: draftBackend, sourceID: resolvedSourceID
+                )
+                guard canPresentCompose(), presentationID == navigation.composePresentationID,
+                      selectedSourceID == navigation.selectedSourceID else { return }
+                navigation.presentDraft(restored.draft, sourceID: resolvedSourceID, attachments: restored.attachments)
+            } catch {
+                guard canPresentCompose(), presentationID == navigation.composePresentationID,
+                      selectedSourceID == navigation.selectedSourceID else { return }
+                rootStatus = MessageCommandPresentation.mutationErrorStatus(for: error)
+            }
         }
-    }
-
-    /// The draft to reopen for `header`. The backend's locally staged copy
-    /// (kept when the draft was saved on this device) preserves attachment
-    /// ids and threading metadata, so it is preferred. When there is no
-    /// staged copy — the draft was composed elsewhere — one is rebuilt from
-    /// the header and cached body; `remoteID = header.id` makes the next
-    /// save supersede the same server-side draft.
-    private func composeDraftSource(
-        for header: MessageHeader,
-        backend: any MailBackend,
-        sourceID: MailSourceID?
-    ) async -> Draft? {
-        let staged: Draft?
-        if let sourceID {
-            staged = try? await backend.draft(for: header.id, sourceID: sourceID)
-        } else {
-            staged = try? await backend.draft(for: header.id)
-        }
-        if let staged { return staged }
-        let body: MessageBody?
-        if let sourceID {
-            body = try? await backend.body(for: header.id, sourceID: sourceID)
-        } else {
-            body = try? await backend.body(for: header.id)
-        }
-        return Draft(
-            id: UUID().uuidString,
-            remoteID: header.id,
-            threadID: header.threadID,
-            inReplyToMessageID: header.inReplyTo,
-            to: header.to,
-            cc: header.cc,
-            bcc: header.bcc,
-            subject: header.subject,
-            htmlBody: body?.html ?? ComposeHTMLBodyPolicy.html(fromEditorText: body?.plainText ?? "")
-        )
     }
 
     #if os(iOS)
@@ -4328,6 +4298,7 @@ public struct BrevMailRootView: View {
                 prefill: navigation.composePrefill,
                 recoveredDraft: recoveredDraft,
                 existingDraft: navigation.composeDraft,
+                existingDraftAttachments: navigation.composeDraftAttachments,
                 aiBackend: aiBackend(for: composeBackend.account),
                 signatureContext: signatureContextProvider?(composeBackend.account),
                 composeSecurityDefaults: composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled,
@@ -6806,15 +6777,23 @@ public struct BrevMailRootView: View {
         accountID: BrevAccount.ID,
         sourceID: MailSourceID?
     ) async {
-        guard let request = MailRootComposeCompletionResponsePolicy.requestForCompletion(
+        let request = MailRootComposeCompletionResponsePolicy.requestForCompletion(
             capturedRequest: request,
             activeRequest: activeComposeCompletionRequest,
             capturedComposePresentationID: composePresentationID
-        ) else {
+        )
+        let canApplyResponse = request.map(canApplyComposeCompletionResponse) ?? false
+        BrevMail.updateComposeDraftRecovery(
+            for: completion,
+            accountID: accountID,
+            sourceID: sourceID,
+            isCurrentPresentation: canApplyResponse
+        )
+        guard let request else {
             applyOrphanedDraftSaveFeedbackIfNeeded(completion)
             return
         }
-        guard canApplyComposeCompletionResponse(request) else {
+        guard canApplyResponse else {
             applyOrphanedDraftSaveFeedbackIfNeeded(completion)
             finishComposeCompletion(request)
             return
@@ -6822,11 +6801,6 @@ public struct BrevMailRootView: View {
         for event in ComposeCompletionRefreshPolicy.events(for: completion, folders: folders) {
             navigation.requestReloadIfVisibleFolderChanged(event)
         }
-        updateComposeDraftRecovery(
-            for: completion,
-            accountID: accountID,
-            sourceID: sourceID
-        )
         applyComposeCompletionFeedback(ComposeCompletionPresentation.feedback(for: completion))
         finishComposeCompletion(request)
         // Refresh the folder list/counts in the background. Awaiting it here kept
@@ -6855,18 +6829,6 @@ public struct BrevMailRootView: View {
             return nil
         }
         return ComposeDraftRecoveryStore.load(accountID: accountID, sourceID: sourceID)
-    }
-
-    private func updateComposeDraftRecovery(
-        for completion: ComposeCompletion,
-        accountID: BrevAccount.ID,
-        sourceID: MailSourceID?
-    ) {
-        BrevMail.updateComposeDraftRecovery(
-            for: completion,
-            accountID: accountID,
-            sourceID: sourceID
-        )
     }
 
     /// Routes from an attachment search result to its message by selecting the

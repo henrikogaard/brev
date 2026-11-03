@@ -22,6 +22,7 @@ import BrevPlugins
 import BrevSettings
 import BrevSyncEngine
 import BrevThemes
+import BrevWidgets
 import SwiftUI
 import UserNotifications
 
@@ -30,7 +31,6 @@ import UserNotifications
 /// Uses the IMAP/SMTP backend (ADR-0001). The app holds an `AppSession`
 /// that swaps between `LoginView` and `BrevMailRootView` once a
 /// real `MailBackend` is connected.
-@main
 struct BrevApp: App {
     @NSApplicationDelegateAdaptor(BrevMacOSAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
@@ -68,7 +68,9 @@ struct BrevApp: App {
         ContactsAccessPolicy.applyProcessWidePolicy()
         // Opt-in iCloud preference sync (ADR-0056); a no-op until the
         // user enables it in Settings → Privacy.
-        PreferenceSyncController.standard.activate()
+        if !IsolatedMockConfiguration.isRequested() {
+            PreferenceSyncController.standard.activate()
+        }
         let session = AppSession.makeDefault()
         _session = State(initialValue: session)
         _calendarBrowsingModel = State(
@@ -210,7 +212,9 @@ struct BrevApp: App {
             }
             .task {
                 reconcileBackgroundMail()
-                await RetiredSecurityMaterialMigration.run()
+                if !IsolatedMockConfiguration.isRequested() {
+                    await RetiredSecurityMaterialMigration.run()
+                }
                 updateController.startIfConfigured()
                 // A mailto: launch URL can arrive in the app delegate before
                 // this view subscribes to the notification below; drain it here.
@@ -860,6 +864,11 @@ extension AppSession {
     /// Default session for the macOS app.
     @MainActor
     static func makeDefault() -> AppSession {
+        #if DEBUG
+        if IsolatedMockConfiguration.isRequested() {
+            return AppSessionFactory.makeIsolatedMock()
+        }
+        #endif
         let gmailConfigurationStore = UserDefaultsGmailAccountConfigurationStore()
         let gmailConnector = GmailAccountConnector.standard(
             applicationSupportURL: applicationSupportURL,

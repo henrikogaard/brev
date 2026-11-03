@@ -109,6 +109,26 @@ Defaults to off.
 
 ### Home Screen widgets
 
+The optional macOS `--isolated-mock` development profile uses a fresh sandbox
+identity with in-memory synthetic accounts and no production credential-store
+or connector wiring. It disables App Group lookup and embedded extensions, so
+it cannot read or overwrite the daily driver's widget snapshot or share handoff.
+Its sandbox has no network, system Contacts/Calendar, or iCloud permissions;
+local test preferences remain in that generated sandbox until explicitly
+removed. Normal release and ordinary test builds keep their existing behavior.
+Settings may still use its bundle-derived UUID Keychain service for AI provider
+secrets; this is not a claim that every Keychain API is disabled. Production
+credential migration is skipped.
+
+For explicitly authorized body/attachment QA only, the separate
+`--isolated-mock-content-qa` flag adds network-client and user-selected-file
+read-only permissions to the sandbox (ADR-0092). The signed bundle marker and
+exact permission set must match at build verification and startup. This removes
+the OS-level outbound-network prohibition, not the mock-only data boundary or
+default remote-content blocking. Generated picker fixtures are the only files
+authorized for these tests. No App Group, broad filesystem, file-write, system
+Contacts/Calendar or iCloud access is granted. Strict and shipping defaults remain unchanged.
+
 The mail widget extension renders a `WidgetSnapshot.json` file the app
 writes into the shared App Group container after each sync — unread
 count and, when notification previews are enabled, the newest senders
@@ -345,6 +365,18 @@ Gmail cache under Application Support so downloaded mail can open offline and
 so one Gmail message is not duplicated for every label. The cache can contain
 headers, bodies, raw source, attachment metadata, labels, and sync cursors, but
 never OAuth access or refresh tokens.
+
+Brev also keeps a new-message recovery snapshot in local app preferences,
+scoped by account and mailbox source: draft identifiers, recipients, subject
+and editor text. A successful send completion or discard removes only a
+matching snapshot, not another draft's recovery. Failed or cancelled sends do
+not clear it. This uses the existing local store and adds no network request.
+
+Recovery treats that text-only snapshot as a hint: Brev requires a matching
+locally stored draft and its complete owned attachment bytes before editing.
+It does not fetch a provider message body to reconstruct missing recovery data.
+Unsafe or unproven content cannot be saved, autosaved or sent; closing a blocked
+recovery leaves both the original draft and the snapshot unchanged.
 
 Gmail compose drafts and staged attachment bytes are also stored locally in
 that database until send/discard cleanup or account removal. They are separate
@@ -851,6 +883,9 @@ provider's own synchronization settings apply.
   evictable cache content; submitted Send Later messages can also keep
   frozen MIME content and delivery state until resolved or removed.
   Local Maildir folders are persistent user data, not a disposable cache.
+  Reopening a locally saved draft can read its account-owned staged attachment
+  bytes into the composer; it does not download or re-stage missing provider
+  attachments. Unsupported or unavailable attachment drafts remain unchanged.
 - **Calendar, contacts, and tasks:** when you connect and sync a source,
   its collection metadata, event/contact/task fields, provider payloads,
   and sync cursors are saved in the app's Application Support directory

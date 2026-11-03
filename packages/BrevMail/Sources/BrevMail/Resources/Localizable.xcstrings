@@ -1,6 +1,42 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "This draft cannot be restored safely from local storage. Close this window to leave the original unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Dette utkastet kan ikke gjenopprettes trygt fra lokal lagring. Lukk vinduet for å beholde originalen uendret." } }
+      }
+    },
+    "This draft's formatting cannot be restored safely in the current editor mode. Close this window to leave the original unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Formateringen i dette utkastet kan ikke gjenopprettes trygt i den valgte redigeringsmodusen. Lukk vinduet for å beholde originalen uendret." } }
+      }
+    },
+    "Restoring draft…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Gjenoppretter utkast…" } }
+      }
+    },
+    "Attachments for this draft are not available locally. The draft was left unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Vedleggene i dette utkastet er ikke tilgjengelige lokalt. Utkastet er ikke endret." } }
+      }
+    },
+    "This draft contains inline images that cannot be restored safely yet. The draft was left unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Dette utkastet inneholder innebygde bilder som ennå ikke kan gjenopprettes trygt. Utkastet er ikke endret." } }
+      }
+    },
+    "A reopened draft must stay in its original account and mailbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Et gjenåpnet utkast må beholdes i den opprinnelige kontoen og postkassen." } }
+      }
+    },
     "Work": {
       "extractionState": "manual",
       "localizations": {
