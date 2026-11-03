@@ -10,7 +10,6 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-import AppKit
 import BrevBackend
 @testable import BrevMail
 import Foundation
