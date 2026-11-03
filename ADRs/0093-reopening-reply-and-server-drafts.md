@@ -1,6 +1,6 @@
 # ADR-0093: Reopening reply, forward and server-sourced Drafts
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-03
 - **Deciders:** Henrik
 - **Amends:** ADR-0038 decision 6 (saved-body restoration)
