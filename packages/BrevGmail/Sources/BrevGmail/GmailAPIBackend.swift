@@ -1736,7 +1736,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             guard relatedConversationConsent != nil else { return nil }
             return self as? Service
         case ObjectIdentifier(ProgressiveMailSearching.self),
-             ObjectIdentifier(LocalDraftAttachmentProviding.self):
+             ObjectIdentifier(LocalDraftAttachmentProviding.self),
+             ObjectIdentifier(DraftIdentityResolving.self):
             return self as? Service
         case ObjectIdentifier(ScheduledSendManaging.self), ObjectIdentifier(ScheduledSendEditing.self):
             guard scheduledStore != nil else { return nil }
@@ -2797,6 +2798,23 @@ extension GmailAPIBackend: LocalDraftAttachmentProviding {
     public func localDraftAttachments(for draft: Draft, sourceID: MailSourceID) async throws -> [MIMEMessageAttachment] {
         try validateSource(sourceID)
         return try await localDraftAttachments(for: draft)
+    }
+}
+
+extension GmailAPIBackend: DraftIdentityResolving {
+    /// Gmail headers carry the message ID, while saves need the draft ID. Message
+    /// IDs change on every save, so this asks Gmail rather than caching them.
+    /// Searches at most 1,000 drafts; beyond that the Draft is treated as not found.
+    public func remoteDraftID(forMessageID messageID: String, sourceID: MailSourceID?) async throws -> String? {
+        try validateSource(sourceID)
+        var pageToken: String?
+        for _ in 0 ..< 10 {
+            let page = try await transport.listDrafts(maxResults: 100, pageToken: pageToken)
+            if let draft = page.drafts.first(where: { $0.message?.id == messageID }) { return draft.id }
+            guard let next = page.nextPageToken else { return nil }
+            pageToken = next
+        }
+        return nil
     }
 }
 

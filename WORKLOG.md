@@ -7245,3 +7245,10 @@ buttons, and package-aware localization.
 - Verification: `scripts/lint.sh`, `scripts/privacy-audit.sh`, BrevGmail 198 tests, iOS `BrevMail` build. BrevMail with CI's exclusions: 2,277 tests, failing only 2 `KeychainSMIMEResolverTests`. BrevBackend: 1,170 tests, failing only 3 keychain tests with `-25308` (interaction not allowed), which fits this Mac's locked keychain.
 - Open gap (not fixed, pre-existing on `main`): Gmail message headers use the Gmail message ID, while staging and `updateDraft` use the provider draft ID. Opening from the list therefore misses the local copy, and the server-sourced path sets `remoteID` to the message ID, so a later Save or Send that needs the provider draft can fail or leave it behind. Read from code, not run against Gmail. ADR-0093's "Gmail Drafts saved in Brev reopen" acceptance is met only for lookups by local or provider draft ID.
 - Skipped: native app acceptance (#279, #281), live providers (#284), hosted iOS editor tests, snapshots (no view layout change).
+
+## 2026-11-03 — Claude Code — Issue #282 / Gmail draft identity
+
+- Goal: close the gap between Gmail message IDs and provider draft IDs found while implementing ADR-0093. Henrik approved the fix.
+- Changes: new `DraftIdentityResolving` extension service; Gmail implements it through a new bounded `drafts.list` read (`GmailDraftPage`, 10 pages of 100). `ComposeDraftRestoration.resolve` uses it when no local copy matches the message ID, then retries the local lookup under the draft ID, and refuses without a body read when Gmail no longer lists the message as a draft. IMAP and mock have no resolver and are unchanged. ADR-0093 is amended; ADR-0006, `PRIVACY.md` and `CHANGELOG.md` are updated.
+- Red/green: tests failed to compile before implementation and pass after.
+- Limits: opening a Gmail Draft from the list needs a connection; more than 1,000 Drafts can refuse older ones; `drafts.list` has not been run against live Gmail (#284).

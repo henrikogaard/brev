@@ -107,11 +107,23 @@ enum ComposeDraftRestoration {
         backend: any MailBackend,
         sourceID: MailSourceID?
     ) async throws -> ComposeRestoredDraft {
-        let staged: Draft?
+        var staged: Draft?
         if let sourceID {
             staged = try await backend.draft(for: header.id, sourceID: sourceID)
         } else {
             staged = try await backend.draft(for: header.id)
+        }
+        var remoteID = header.id
+        if staged == nil, let resolver = backend.extensionService(DraftIdentityResolving.self) {
+            guard let draftID = try await resolver.remoteDraftID(forMessageID: header.id, sourceID: sourceID) else {
+                throw MailBackendError.backendSpecific(message: recoveryUnavailableMessage)
+            }
+            remoteID = draftID
+            if let sourceID {
+                staged = try await backend.draft(for: draftID, sourceID: sourceID)
+            } else {
+                staged = try await backend.draft(for: draftID)
+            }
         }
         if let staged {
             var attachments: [MIMEMessageAttachment] = []
@@ -148,7 +160,7 @@ enum ComposeDraftRestoration {
         }
         let restored = ComposeRestoredDraft(draft: Draft(
             id: UUID().uuidString,
-            remoteID: header.id,
+            remoteID: remoteID,
             threadID: header.threadID,
             inReplyToMessageID: header.inReplyTo,
             to: header.to,

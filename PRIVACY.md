@@ -31,7 +31,7 @@ account:
 | Email domain, and sometimes full email address during account setup | Your mail provider's DNS and provider-local autoconfig hosts | To discover IMAP/SMTP (and, where advertised, ManageSieve) server settings after you choose to add an account |
 | IMAP account credentials and mail requests | Your selected mail provider's IMAP server | To authenticate, list folders, sync, search, read, view or export original message source, copy, and manage mail after you add an account |
 | SMTP submission credentials and message payloads | Your selected mail provider's SMTP submission server | To send mail after you add an account |
-| Google OAuth token and Gmail mail requests | `gmail.googleapis.com` | For a Gmail API account: to load Gmail labels, messages, threads, bodies, raw source and attachments; run Gmail search; synchronize mailbox history; save drafts; apply label/read/star/archive/trash actions; and send mail after you add the account |
+| Google OAuth token and Gmail mail requests | `gmail.googleapis.com` | For a Gmail API account: to load Gmail labels, messages, threads, bodies, raw source and attachments; run Gmail search; synchronize mailbox history; find and save drafts; apply label/read/star/archive/trash actions; and send mail after you add the account |
 | Update check | `henrikogaard.github.io` (appcast and release notes), `github.com` / `objects.githubusercontent.com` (DMG download) | Direct-download macOS builds of either release ring only; checks the signed Sparkle appcast using Settings -> About & Updates -> Updates cadence |
 
 For standards-first IMAP/SMTP setup, Brev first checks built-in

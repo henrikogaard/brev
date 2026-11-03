@@ -115,6 +115,26 @@ Failing tests come first and cover, on macOS and iOS where the editor is hosted:
 
 Native acceptance stays with #279 and #281, and live-provider checks with #284.
 
+## Amendment: Gmail draft identity
+
+Implementation found that Gmail headers carry the message ID, while staging and
+`updateDraft` use the provider draft ID, so a lookup from the Drafts list could not
+find a local copy and a server-sourced Draft could not save back.
+
+An optional `DraftIdentityResolving` service now maps the message ID to the draft ID
+when the user explicitly opens a Draft and no local copy matches the message ID.
+Gmail implements it with `drafts.list`, reading at most 10 pages of 100 drafts. A
+message that is not found is refused without reading its body.
+
+- **Message ID stored locally instead.** Rejected because Gmail changes the message
+  ID on every save, and Drafts written elsewhere would still need this lookup.
+- **Accepted:** opening a Gmail Draft from the list now needs a connection, even with
+  a local copy, and an account with more than 1,000 Drafts may refuse older ones.
+- **Network:** a new read to `gmail.googleapis.com`, on the explicitly added account
+  and only on an explicit open, sending only the OAuth token and page parameters.
+  Documented in ADR-0006 and `PRIVACY.md`. This replaces the statement above that
+  this ADR adds no new network call.
+
 ## References
 
 - ADR-0006: privacy and network calls (no new entry required)

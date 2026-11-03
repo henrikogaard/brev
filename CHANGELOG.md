@@ -20,7 +20,9 @@ All notable changes to Brev are documented here.
   and links, plus `<p>` and `<div>` as line structure and Brev's own flat quotes.
   Saved replies and forwards reopen, and lock their quote again when it was saved
   with this version. A Draft with no local copy opens from the Drafts folder unless
-  it has attachments. Lists, nested or styled quotes and inline/CID images are
+  it has attachments. Opening a Gmail Draft from the list now asks Gmail for its
+  draft ID, so it needs a connection and saves back to the same Draft. Lists,
+  nested or styled quotes and inline/CID images are
   currently refused rather than flattened. Recovery still uses a
   text-only hint: missing or stale canonical proof is refused, so arbitrary
   unsaved/pre-autosave formatted content cannot be reconstructed.

@@ -112,6 +112,47 @@ struct ComposeRecoveryProofTests {
         }
     }
 
+    @Test("a mapped Draft with no local copy saves back to the provider draft")
+    func mappedServerDraftUsesProviderID() async throws {
+        let header = try await Self.inboxHeader()
+        let probe = DraftLookupProbe(canonical: nil, providerDraftIDs: [header.id: "provider-draft"])
+        let restored = try await ComposeDraftRestoration.resolve(header: header, backend: probe, sourceID: nil)
+        #expect(restored.draft.remoteID == "provider-draft")
+        #expect(restored.isServerSourced)
+        #expect(await probe.bodyReadCount == 1)
+    }
+
+    @Test("a mapped Draft finds its local copy under the provider draft ID")
+    func mappedDraftFindsLocalCopy() async throws {
+        let header = try await Self.inboxHeader()
+        let saved = Draft(id: "local", remoteID: "provider-draft", htmlBody: "Saved")
+        let probe = DraftLookupProbe(
+            canonical: saved,
+            canonicalLookupID: "provider-draft",
+            providerDraftIDs: [header.id: "provider-draft"]
+        )
+        let restored = try await ComposeDraftRestoration.resolve(header: header, backend: probe, sourceID: nil)
+        #expect(restored.draft == saved)
+        #expect(!restored.isServerSourced)
+        #expect(await probe.bodyReadCount == 0)
+    }
+
+    @Test("a message the provider no longer lists as a draft is refused without a body read")
+    func unmappedDraftRefused() async throws {
+        let header = try await Self.inboxHeader()
+        let probe = DraftLookupProbe(canonical: nil, providerDraftIDs: [:])
+        await #expect(throws: (any Error).self) {
+            _ = try await ComposeDraftRestoration.resolve(header: header, backend: probe, sourceID: nil)
+        }
+        #expect(await probe.bodyReadCount == 0)
+    }
+
+    private static func inboxHeader() async throws -> MessageHeader {
+        let backend = MockBackend()
+        let inbox = try #require(await backend.folders().first { $0.role == .inbox })
+        return try #require(await backend.messages(in: inbox, pageToken: nil).0.first { !$0.hasAttachments })
+    }
+
     @Test("reply and forward drafts without a quote boundary still prepare", arguments: [false, true])
     @MainActor
     func unprovenQuoteBoundary(forward: Bool) async throws {
@@ -126,7 +167,7 @@ struct ComposeRecoveryProofTests {
     }
 }
 
-actor DraftLookupProbe: MailBackend, LocalDraftAttachmentProviding {
+actor DraftLookupProbe: MailBackend, LocalDraftAttachmentProviding, DraftIdentityResolving {
     nonisolated let account = MockBackend().account
     nonisolated let capabilities = MockBackend().capabilities
     private let canonical: Draft?
@@ -138,8 +179,19 @@ actor DraftLookupProbe: MailBackend, LocalDraftAttachmentProviding {
     private(set) var bodyReadCount = 0
     private(set) var writeCount = 0
 
-    init(canonical: Draft?, payloads: [MIMEMessageAttachment] = [], holdsLookup: Bool = false) {
+    private let canonicalLookupID: String?
+    private let providerDraftIDs: [String: String]?
+
+    init(
+        canonical: Draft?,
+        canonicalLookupID: String? = nil,
+        providerDraftIDs: [String: String]? = nil,
+        payloads: [MIMEMessageAttachment] = [],
+        holdsLookup: Bool = false
+    ) {
         self.canonical = canonical
+        self.canonicalLookupID = canonicalLookupID
+        self.providerDraftIDs = providerDraftIDs
         self.payloads = payloads
         self.holdsLookup = holdsLookup
     }
@@ -149,7 +201,16 @@ actor DraftLookupProbe: MailBackend, LocalDraftAttachmentProviding {
         lookupStarted?.resume()
         lookupStarted = nil
         if holdsLookup { await withCheckedContinuation { lookupRelease = $0 } }
+        if let canonicalLookupID, canonicalLookupID != messageID { return nil }
         return canonical
+    }
+
+    func remoteDraftID(forMessageID messageID: String, sourceID _: MailSourceID?) async throws -> String? {
+        providerDraftIDs?[messageID]
+    }
+
+    nonisolated func extensionService<Service>(_: Service.Type) -> Service? {
+        providerDraftIDs == nil ? nil : self as? Service
     }
 
     func waitForLookup() async {
