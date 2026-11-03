@@ -13,6 +13,22 @@
 import BrevDesign
 import SwiftUI
 
+private func updateAttributedEditorText(_ text: String, storage: NSMutableAttributedString) {
+    let previous = storage.string as NSString
+    let incoming = text as NSString
+    let prefixLength = zip(storage.string.unicodeScalars, text.unicodeScalars)
+        .prefix { $0.0 == $0.1 }
+        .reduce(0) { $0 + ($1.0.value > 0xFFFF ? 2 : 1) }
+    let previousTail = previous.substring(from: prefixLength)
+    let incomingTail = incoming.substring(from: prefixLength)
+    let suffixLength = zip(previousTail.unicodeScalars.reversed(), incomingTail.unicodeScalars.reversed())
+        .prefix { $0.0 == $0.1 }
+        .reduce(0) { $0 + ($1.0.value > 0xFFFF ? 2 : 1) }
+    let replacedRange = NSRange(location: prefixLength, length: previous.length - prefixLength - suffixLength)
+    let incomingRange = NSRange(location: prefixLength, length: incoming.length - prefixLength - suffixLength)
+    storage.replaceCharacters(in: replacedRange, with: incoming.substring(with: incomingRange))
+}
+
 struct ComposeBodyEditor: View {
     @Binding var text: String
     @Binding var richHTML: String?
@@ -44,6 +60,7 @@ struct ComposeBodyEditor: View {
     /// Asks the iOS text view to take keyboard focus (and place the caret);
     /// ignored on macOS, where the window's first responder logic applies.
     var focusRequest: ComposeBodyFocusRequest?
+    var restoredAttributedText: NSAttributedString?
 
     var body: some View {
         PlatformComposeBodyEditor(
@@ -63,7 +80,8 @@ struct ComposeBodyEditor: View {
             onDropFileURLs: onDropFileURLs,
             onFileDragTargetChanged: onFileDragTargetChanged,
             quoteProtection: quoteProtection,
-            focusRequest: focusRequest
+            focusRequest: focusRequest,
+            restoredAttributedText: restoredAttributedText
         )
     }
 }
@@ -285,6 +303,7 @@ final class ComposeRichTextView: NSTextView, ComposeBodyEditorRichActions {
 // MARK: - NSViewRepresentable
 
 private struct PlatformComposeBodyEditor: NSViewRepresentable {
+    @Environment(\.isEnabled) private var isEnabled
     @Binding var text: String
     @Binding var richHTML: String?
     @Binding var selection: ComposeBodyTextSelection?
@@ -304,6 +323,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
     var quoteProtection: ComposeQuoteProtection?
     /// Unused on macOS.
     var focusRequest: ComposeBodyFocusRequest?
+    var restoredAttributedText: NSAttributedString?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -330,7 +350,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         textView.isRichText = bodyFormat == .richTextHTML
         textView.importsGraphics = false
         textView.allowsUndo = true
-        textView.isEditable = true
+        textView.isEditable = isEnabled
         textView.isSelectable = true
         textView.textContainerInset = NSSize(width: 0, height: 0)
         textView.textContainer?.widthTracksTextView = true
@@ -341,6 +361,10 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         applyAppearance(to: scrollView, textView: textView)
         textView.string = text
+        if let restoredAttributedText, bodyFormat == .richTextHTML {
+            textView.textStorage?.setAttributedString(restoredAttributedText)
+            applyAppearance(to: scrollView, textView: textView)
+        }
         textView.setAccessibilityLabel(String(localized: "Message body", bundle: .module))
         if bodyFormat == .richTextHTML {
             context.coordinator.publishRichHTML(from: textView)
@@ -359,14 +383,19 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
             return
         }
         context.coordinator.isUpdatingFromSwiftUI = true
+        textView.isEditable = isEnabled
         let shouldUseRichText = bodyFormat == .richTextHTML
         if textView.isRichText != shouldUseRichText {
             textView.isRichText = shouldUseRichText
         }
         applyAppearance(to: scrollView, textView: textView)
         applyTextChecking(to: textView)
-        if textView.string != text {
-            textView.string = text
+        if !(textView.string as NSString).isEqual(to: text) {
+            if shouldUseRichText, let storage = textView.textStorage, storage.length > 0 {
+                updateAttributedEditorText(text, storage: storage)
+            } else {
+                textView.string = text
+            }
             context.coordinator.updateSelection(from: textView)
         }
         if shouldUseRichText {
@@ -872,6 +901,7 @@ private extension ComposeBodyAppearance {
 import UIKit
 
 private struct PlatformComposeBodyEditor: UIViewRepresentable {
+    @Environment(\.isEnabled) private var isEnabled
     @Binding var text: String
     @Binding var richHTML: String?
     @Binding var selection: ComposeBodyTextSelection?
@@ -890,6 +920,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     var onFileDragTargetChanged: ((Bool) -> Void)?
     var quoteProtection: ComposeQuoteProtection?
     var focusRequest: ComposeBodyFocusRequest?
+    var restoredAttributedText: NSAttributedString?
 
     private var isRichText: Bool { bodyFormat == .richTextHTML }
 
@@ -910,7 +941,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let textView = ComposeBodyTextView()
         textView.delegate = context.coordinator
-        textView.isEditable = true
+        textView.isEditable = isEnabled
         textView.isSelectable = true
         textView.alwaysBounceVertical = true
         textView.backgroundColor = .clear
@@ -929,6 +960,10 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         )
         textView.textColor = UIColor(appearance.editorTheme.textPrimary.color)
         textView.text = text
+        if let restoredAttributedText, isRichText {
+            textView.attributedText = restoredAttributedText
+            textView.textColor = UIColor(appearance.editorTheme.textPrimary.color)
+        }
         textView.accessibilityLabel = String(localized: "Message body", bundle: .module)
         applyTextChecking(to: textView)
         context.coordinator.textView = textView
@@ -948,6 +983,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
+        textView.isEditable = isEnabled
         context.coordinator.isUpdatingFromSwiftUI = true
         context.coordinator.isRichText = isRichText
         context.coordinator.quoteProtection = quoteProtection
@@ -956,8 +992,12 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         context.coordinator.targetBox = iosRichTextTargetBox
         iosRichTextTargetBox?.target = context.coordinator
         textView.allowsEditingTextAttributes = isRichText
-        if textView.text != text {
-            textView.text = text
+        if !((textView.text ?? "") as NSString).isEqual(to: text) {
+            if isRichText, textView.textStorage.length > 0 {
+                updateAttributedEditorText(text, storage: textView.textStorage)
+            } else {
+                textView.text = text
+            }
             context.coordinator.updateSelection(from: textView, deferringStateWrite: true)
         }
         if isRichText {

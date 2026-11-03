@@ -372,6 +372,12 @@ and editor text. A successful send completion or discard removes only a
 matching snapshot, not another draft's recovery. Failed or cancelled sends do
 not clear it. This uses the existing local store and adds no network request.
 
+Recovery treats that text-only snapshot as a hint: Brev requires a matching
+locally stored draft and its complete owned attachment bytes before editing.
+It does not fetch a provider message body to reconstruct missing recovery data.
+Unsafe or unproven content cannot be saved, autosaved or sent; closing a blocked
+recovery leaves both the original draft and the snapshot unchanged.
+
 Gmail compose drafts and staged attachment bytes are also stored locally in
 that database until send/discard cleanup or account removal. They are separate
 from the evictable message cache, so clearing downloaded mail or synchronizing
