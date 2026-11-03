@@ -7229,3 +7229,10 @@ buttons, and package-aware localization.
 - CI: `test (BrevMail)` failed on `f918023` on the `macos-15` runner in two new `ComposeDraftPreservationTests` (`previewRetainsEdits`, `signaturePreservesBody`), which pass on the local macOS 27 host. Both expected a SwiftUI state change to be rendered after one `layoutSubtreeIfNeeded()`. The harness now lays out until the rendered result appears, bounded at 5 seconds. Test-only change; this reads as a timing problem but is unproven until CI passes on the new head, because macOS 15 is not available locally.
 - Local verification: 13 preservation tests pass in 6 consecutive runs; swiftformat and swiftlint strict clean on the file. A full local BrevMail run with CI's exclusions (before this change) passed except 2 `KeychainSMIMEResolverTests`, which this work does not touch; they did not fail on CI, so this looks host-specific, not investigated.
 - #282 findings, code reading plus one temporary characterization test (not committed): `GmailAPIBackend` does not implement `draft(for:)`, so the protocol default returns nil and `resolveExisting` refuses every Gmail Draft. Reply bodies contain `<blockquote>` in both plain and rich mode, so removing the reply/forward guard alone still refuses them. Gmail refusal not run end to end.
+
+## 2026-11-03 — Claude Code — Issue #282 / ADR-0093
+
+- Goal: propose the smallest design for reopening saved replies and forwards, Gmail Drafts and Drafts with no local copy. Henrik chose the three recommended decisions before this draft.
+- Changes: added ADR-0093 as Proposed and its index row. Documentation only, so TDD does not apply. No implementation is written; it waits for acceptance.
+- Verification: `git diff --check`, `scripts/check-adr-required.sh` and the Lint workflow on the PR. Code claims in the ADR come from reading the #277 stack and one temporary characterization test; the Gmail and no-local-copy refusals are not run end to end.
+- Handoff: the riskiest assumption is the blockquote round trip through the native editor, so implementation starts with failing tests for it. Some webmail Drafts stay refused because only `dir` is tolerated on `<p>` and `<div>`.
