@@ -19,6 +19,85 @@ struct ComposeRestoredDraft: Sendable {
 }
 
 enum ComposeDraftRestoration {
+    static func resolveExisting(
+        draft: Draft,
+        backend: any MailBackend,
+        sourceID: MailSourceID?
+    ) async throws -> ComposeRestoredDraft {
+        try Task.checkCancellation()
+        guard sourceID == nil || sourceID?.accountID == backend.account.id else {
+            throw MailBackendError.backendSpecific(message: recoveryUnavailableMessage)
+        }
+        let canonical: Draft?
+        if let sourceID {
+            canonical = try await backend.draft(for: draft.remoteID ?? draft.id, sourceID: sourceID)
+        } else {
+            canonical = try await backend.draft(for: draft.remoteID ?? draft.id)
+        }
+        guard canonical == draft else {
+            throw MailBackendError.backendSpecific(message: recoveryUnavailableMessage)
+        }
+        try Task.checkCancellation()
+        let attachments = try await localAttachments(for: draft, backend: backend, sourceID: sourceID)
+        try Task.checkCancellation()
+        if let message = validationError(draft: draft, attachments: attachments) {
+            throw MailBackendError.backendSpecific(message: message)
+        }
+        return ComposeRestoredDraft(draft: draft, attachments: attachments)
+    }
+
+    static func resolveRecovery(
+        snapshot: ComposeDraftRecoverySnapshot,
+        backend: any MailBackend,
+        sourceID: MailSourceID?
+    ) async throws -> ComposeRestoredDraft {
+        try Task.checkCancellation()
+        guard sourceID == nil || sourceID?.accountID == backend.account.id else {
+            throw MailBackendError.backendSpecific(message: recoveryUnavailableMessage)
+        }
+        let staged: Draft?
+        if let sourceID {
+            staged = try await backend.draft(for: snapshot.remoteID ?? snapshot.draftID, sourceID: sourceID)
+        } else {
+            staged = try await backend.draft(for: snapshot.remoteID ?? snapshot.draftID)
+        }
+        guard let draft = staged,
+              draft.id == snapshot.draftID,
+              draft.remoteID == snapshot.remoteID,
+              ComposeDraftRecoverySnapshot.recoverableNewMessageDraft(from: draft) == snapshot else {
+            throw MailBackendError.backendSpecific(message: recoveryUnavailableMessage)
+        }
+        try Task.checkCancellation()
+        let attachments = try await localAttachments(for: draft, backend: backend, sourceID: sourceID)
+        try Task.checkCancellation()
+        if let message = validationError(draft: draft, attachments: attachments) {
+            throw MailBackendError.backendSpecific(message: message)
+        }
+        return ComposeRestoredDraft(draft: draft, attachments: attachments)
+    }
+
+    private static func localAttachments(
+        for draft: Draft,
+        backend: any MailBackend,
+        sourceID: MailSourceID?
+    ) async throws -> [MIMEMessageAttachment] {
+        guard !draft.attachmentIDs.isEmpty else { return [] }
+        guard let service = backend.extensionService(LocalDraftAttachmentProviding.self) else {
+            throw MailBackendError.backendSpecific(message: unavailableMessage)
+        }
+        if let sourceID {
+            return try await service.localDraftAttachments(for: draft, sourceID: sourceID)
+        }
+        return try await service.localDraftAttachments(for: draft)
+    }
+
+    static var recoveryUnavailableMessage: String {
+        String(
+            localized: "This draft cannot be restored safely from local storage. Close this window to leave the original unchanged.",
+            bundle: .module
+        )
+    }
+
     static func resolve(
         header: MessageHeader,
         backend: any MailBackend,

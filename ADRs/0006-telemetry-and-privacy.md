@@ -218,6 +218,14 @@ must not prevent that cleanup; stale saved-draft callbacks must not overwrite
 current recovery. This correction introduces no new key, migration, payload,
 external call or consent boundary. Failed/cancelled sends preserve recovery.
 
+The text-only snapshot is a recovery hint, not proof of plain or attachment-free
+content. Restoring it requires a matching canonical local draft and complete,
+owned local attachment bytes. HTML is preflighted as a resource-free subset
+before native import. There is no provider-body reconstruction fallback.
+Pending, failed or cancelled restoration blocks persistence and Send; Close
+leaves both the canonical draft and recovery hint untouched. No snapshot schema,
+storage location, retention rule or external-call entry changes (ADR-0038).
+
 ## Rationale
 
 **Why zero telemetry, not opt-in telemetry.** Opt-in telemetry sounds

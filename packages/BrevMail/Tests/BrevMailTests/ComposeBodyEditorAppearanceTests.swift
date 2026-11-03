@@ -20,6 +20,45 @@ import Testing
 @Suite("Compose body editor appearance", .serialized)
 @MainActor
 struct ComposeBodyEditorAppearanceTests {
+    @Test("programmatic rich text changes retain quote and attachment attributes")
+    func textDeltaPreservesAttributes() throws {
+        let fixture = Self.richFixture()
+        let harness = Harness(text: fixture.string, format: .richTextHTML)
+        let host = harness.host()
+        let editor = try #require(Self.editor(in: host))
+        editor.textStorage?.setAttributedString(fixture)
+        try harness.rerender(host, editor: editor)
+        let original = NSAttributedString(attributedString: editor.attributedString())
+        for prefix in ["🌱 ", "🌿 ", "e\u{301} ", "é ", ""] {
+            harness.text = prefix + fixture.string
+            try harness.rerender(host, editor: editor)
+            harness.flush.performFlush()
+            #expect(editor.string == harness.text)
+            let unchanged = editor.attributedString().attributedSubstring(from: NSRange(
+                location: prefix.utf16.count,
+                length: original.length
+            ))
+            #expect(unchanged.isEqual(to: original))
+            Self.expectEmphasis(in: editor, html: harness.html)
+            let image = Self.range("\u{FFFC}", in: editor.string)
+            #expect(editor.textStorage?
+                .attribute(.attachment, at: image.location, effectiveRange: nil) as? NSTextAttachment === fixture.attribute(
+                    .attachment,
+                    at: Self.range("\u{FFFC}", in: fixture.string).location,
+                    effectiveRange: nil
+                ) as? NSTextAttachment)
+            #expect(harness.html?.contains("cid:fixture@brev") == true)
+            let protected = try #require(ComposeQuoteEditGuard.protectedRange(
+                in: editor.string as NSString,
+                protection: Harness.quote
+            ))
+            #expect(editor.quoteBarRange == protected)
+            let before = editor.string
+            editor.insertText("Not permitted", replacementRange: NSRange(location: protected.location + 1, length: 1))
+            #expect(editor.string == before)
+        }
+    }
+
     @Test("rich editor rerenders preserve formatting and update theme foregrounds", arguments: [false, true], [false, true])
     func richRerender(selectedText: Bool, typedBody: Bool) throws {
         let fixture = Self.richFixture()

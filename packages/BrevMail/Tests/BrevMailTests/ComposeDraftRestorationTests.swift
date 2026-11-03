@@ -104,7 +104,7 @@ struct ComposeDraftRestorationTests {
         #expect(compose.contains("let reconciledAttachmentIDs = currentAttachmentIDs"))
         #expect(compose.contains("attachmentIDs: currentAttachmentIDs"))
         #expect(!compose.contains("for id in restoredDraft?.attachmentIDs"))
-        #expect(compose.contains("isBlocked: isWorkBlocked || draftRestorationError != nil"))
+        #expect(compose.contains("isBlocked: isWorkBlocked || restorationBlocksWork"))
         #expect(compose.contains("pendingAttachments.contains { restoredDraft == nil || $0.uploadedAttachmentID == nil }"))
         #expect(compose.contains("existingByteCount: pendingAttachments.reduce(0) { $0 + $1.data.count }"))
     }

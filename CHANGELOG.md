@@ -9,6 +9,19 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Reopening a supported locally saved formatted draft or new-message recovery
+  preserves its original HTML on an unchanged Save/autosave and its emphasis,
+  links, line breaks, owned attachments and metadata when edited. Pending,
+  cancelled or unproven restoration cannot overwrite or send the original.
+  Missing local proof, unsupported formatting, inline content and formatted
+  drafts opened in plain-text mode show an explanation and a non-destructive
+  Close action. Returning from HTML preview preserves the edited rich body.
+  The supported restoration subset is text, line breaks, bold, italic, underline
+  and links. Lists, block containers, quotes, reply/forward drafts and inline/CID
+  images are currently refused rather than flattened. Recovery still uses a
+  text-only hint: missing or stale canonical proof is refused, so arbitrary
+  unsaved/pre-autosave formatted content cannot be reconstructed.
+
 - macOS rich compose no longer resets bold, italic or typing emphasis during
   editor updates, including pending emphasis before the first character.
   Existing rich text and authored typing fonts keep their formatting when reader
