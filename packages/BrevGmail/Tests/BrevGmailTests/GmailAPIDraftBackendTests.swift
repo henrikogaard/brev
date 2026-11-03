@@ -697,6 +697,66 @@ struct GmailAPIDraftBackendTests {
     }
 }
 
+/// ADR-0093: Gmail answers local Draft lookups from its staging store.
+@Suite("Gmail local Draft lookup")
+struct GmailLocalDraftLookupTests {
+    private func makeBackend() throws -> (GmailAPIBackend, InMemoryGmailDraftStagingStore, BrevAccount, URL) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-draft-\(UUID().uuidString).sqlite")
+        let account = BrevAccount(id: UUID().uuidString, displayName: "Test", emailAddress: "primary@example.com")
+        let staging = InMemoryGmailDraftStagingStore()
+        let backend = try GmailAPIBackend(
+            account: account,
+            transport: DraftBackendTransport(),
+            store: SQLiteGmailAccountStore(databaseURL: url),
+            draftStaging: staging
+        )
+        return (backend, staging, account, url)
+    }
+
+    @Test("a staged Draft is found by local and provider ID, only in its own source")
+    func lookup() async throws {
+        let (backend, staging, account, url) = try makeBackend()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let draft = Draft(id: "local", remoteID: "r1", subject: "Saved")
+        await staging.setDraft(draft, accountID: account.id)
+
+        #expect(try await backend.draft(for: "local") == draft)
+        #expect(try await backend.draft(for: "r1") == draft)
+        #expect(try await backend.draft(for: "other") == nil)
+        let source = MailSourceID(accountID: account.id, mailboxID: "mailbox")
+        #expect(try await backend.draft(for: "r1", sourceID: source) == draft)
+        await #expect(throws: (any Error).self) {
+            _ = try await backend.draft(for: "r1", sourceID: MailSourceID(accountID: "foreign", mailboxID: "mailbox"))
+        }
+    }
+
+    @Test("owned attachment bytes load in order, and foreign or missing ones throw")
+    func attachments() async throws {
+        let (backend, staging, account, url) = try makeBackend()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let service = try #require(backend.extensionService(LocalDraftAttachmentProviding.self))
+        func staged(_ id: String, owner: String) -> GmailStagedAttachment {
+            GmailStagedAttachment(id: id, draftID: owner, filename: "\(id).txt", mimeType: "text/plain", data: Data(id.utf8))
+        }
+        try await staging.setAttachment(staged("a", owner: "local"), accountID: account.id)
+        try await staging.setAttachment(staged("b", owner: "local"), accountID: account.id)
+        try await staging.setAttachment(staged("foreign", owner: "other"), accountID: account.id)
+
+        let draft = Draft(id: "local", attachmentIDs: ["b", "a"])
+        await staging.setDraft(draft, accountID: account.id)
+        #expect(try await service.localDraftAttachments(for: draft).map(\.id) == ["b", "a"])
+
+        for ids in [["foreign"], ["missing"]] {
+            let unowned = Draft(id: "local", attachmentIDs: ids)
+            await staging.setDraft(unowned, accountID: account.id)
+            await #expect(throws: (any Error).self) { _ = try await service.localDraftAttachments(for: unowned) }
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await service.localDraftAttachments(for: Draft(id: "not-canonical", attachmentIDs: ["a"]))
+        }
+    }
+}
+
 private actor FailingDraftStaging: GmailDraftStagingStore {
     let failRemoteAcknowledgement: Bool
     init(failRemoteAcknowledgement: Bool) { self.failRemoteAcknowledgement = failRemoteAcknowledgement }

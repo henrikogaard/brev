@@ -179,6 +179,7 @@ public struct ComposeView: View {
     private let forwardingFrom: MessageHeader?
     private let prefill: ComposePrefill?
     private let recoveredDraft: ComposeDraftRecoverySnapshot?
+    private let existingDraftIsServerSourced: Bool
     /// The already-saved draft this compose session re-opened, when present.
     /// Threading metadata and scheduled send are carried forward on save;
     /// restored attachment rows own their staging IDs and explicit removals.
@@ -336,6 +337,7 @@ public struct ComposeView: View {
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
         existingDraft: Draft? = nil,
         existingDraftAttachments: [MIMEMessageAttachment] = [],
+        existingDraftIsServerSourced: Bool = false,
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -358,6 +360,7 @@ public struct ComposeView: View {
             recoveredDraft: recoveredDraft,
             existingDraft: existingDraft,
             existingDraftAttachments: existingDraftAttachments,
+            existingDraftIsServerSourced: existingDraftIsServerSourced,
             aiBackend: aiBackend,
             backendSupportsAIWriter: backendSupportsAIWriter,
             signatureContext: signatureContext,
@@ -382,6 +385,7 @@ public struct ComposeView: View {
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
         existingDraft: Draft? = nil,
         existingDraftAttachments: [MIMEMessageAttachment] = [],
+        existingDraftIsServerSourced: Bool = false,
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -407,6 +411,7 @@ public struct ComposeView: View {
             recoveredDraft: recoveredDraft,
             existingDraft: existingDraft,
             existingDraftAttachments: existingDraftAttachments,
+            existingDraftIsServerSourced: existingDraftIsServerSourced,
             aiBackend: aiBackend,
             backendSupportsAIWriter: backendSupportsAIWriter,
             signatureContext: signatureContext,
@@ -438,6 +443,7 @@ public struct ComposeView: View {
         existingDraft: Draft? = nil,
         /// Complete, source-owned local payloads in the draft's staging-ID order.
         existingDraftAttachments: [MIMEMessageAttachment] = [],
+        existingDraftIsServerSourced: Bool = false,
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -470,6 +476,7 @@ public struct ComposeView: View {
         self.forwardingFrom = forwardingFrom
         self.prefill = prefill
         self.recoveredDraft = recoveredDraft
+        self.existingDraftIsServerSourced = existingDraftIsServerSourced
         _restoredDraft = State(initialValue: existingDraft)
         let draftRestorationError = existingDraft.flatMap {
             ComposeDraftRestoration.validationError(draft: $0, attachments: existingDraftAttachments)
@@ -3366,6 +3373,7 @@ public struct ComposeView: View {
                 } else if let restoredDraft {
                     resolved = try await ComposeDraftRestoration.resolveExisting(
                         draft: restoredDraft,
+                        isServerSourced: existingDraftIsServerSourced,
                         backend: selectedComposeBackend,
                         sourceID: selectedComposeSourceID
                     )
@@ -3392,6 +3400,7 @@ public struct ComposeView: View {
                 encryptMessage = draft.securityMode.requiresEncryption
                 requestReadReceipt = draft.readReceiptRequest != nil
                 pendingAttachments = ComposeDraftRestoration.pendingAttachments(from: resolved.attachments)
+                quoteProtection = draft.quoteBoundary.map(ComposeQuoteProtection.init(boundary:))
                 bodyText = body.attributedText.string
                 bodyHTML = body.initialEditorHTML
                 restoredBody = body
@@ -3652,6 +3661,7 @@ public struct ComposeView: View {
                 encrypting: encryptMessage
             )
         )
+        draft.quoteBoundary = quoteProtection?.boundary
         if let restoredDraft {
             // Reopened drafts are neither reply nor forward sessions, but the
             // original draft may itself be a reply/forward — keep its

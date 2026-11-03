@@ -134,6 +134,51 @@ struct ComposeDraftPreservationTests {
         #expect(try await backend.draft(for: original.remoteID ?? original.id)?.htmlBody == html)
     }
 
+    @Test("a reopened reply relocks its quote only with a saved boundary", arguments: [true, false])
+    func replyQuoteBoundary(hasBoundary: Bool) async throws {
+        let backend = MockBackend()
+        let marker = "On Jan 1, Ada wrote:"
+        let original = try await backend.save(draft: Draft(
+            id: UUID().uuidString,
+            threadID: "thread",
+            inReplyToMessageID: "<reply@example.invalid>",
+            subject: "Re: Hello",
+            htmlBody: "Thanks<br>\(marker)<blockquote>first</blockquote>",
+            quoteBoundary: hasBoundary ? DraftQuoteBoundary(marker: marker, edge: .bottom) : nil
+        ))
+        let harness = try Harness(backend: backend, original: original)
+        defer { harness.dispose() }
+        try await harness.prepare()
+        let native = try #require(harness.editor)
+        let text = native.string
+        #expect(text == "Thanks\n\(marker)\n> first")
+        await harness.mounted?.saveDraft()
+        #expect(try await backend.draft(for: original.remoteID ?? original.id) == original)
+
+        let quoteLocation = (text as NSString).range(of: "first").location
+        native.insertText("X", replacementRange: NSRange(location: quoteLocation, length: 0))
+        #expect(native.string.contains("Xfirst") == !hasBoundary)
+        native.insertText(" edited", replacementRange: NSRange(location: 6, length: 0))
+        await harness.mounted?.saveDraft()
+        let edited = try #require(await backend.draft(for: original.remoteID ?? original.id))
+        #expect(edited.htmlBody.contains("Thanks edited"))
+        #expect(edited.inReplyToMessageID == original.inReplyToMessageID)
+        #expect(edited.threadID == original.threadID)
+        #expect(edited.quoteBoundary == original.quoteBoundary)
+    }
+
+    @Test("a server-sourced Draft opens only through the explicit path", arguments: [true, false])
+    func serverSourcedOpen(isServerSourced: Bool) async throws {
+        let backend = MockBackend()
+        let original = Draft(id: UUID().uuidString, remoteID: "server-message", subject: "Elsewhere",
+                             htmlBody: "<div dir=\"ltr\">Written elsewhere</div>")
+        let harness = try Harness(backend: backend, original: original, isServerSourced: isServerSourced)
+        defer { harness.dispose() }
+        try await harness.prepare()
+        #expect((harness.editor?.string == "Written elsewhere") == isServerSourced)
+        #expect((harness.editor == nil) == !isServerSourced)
+    }
+
     @Test("restored edits survive preview and editor return without reimport")
     func previewRetainsEdits() async throws {
         let backend = MockBackend()
@@ -322,7 +367,7 @@ struct ComposeDraftPreservationTests {
         ("<img src=\"cid:local\">", "richText"),
         ("<style>body { background: url(https://example.invalid/bg) }</style>Text", "richText"),
         ("<table><tr><td>Table</td></tr></table>", "richText"),
-        ("<blockquote>Original quote</blockquote>", "richText"),
+        ("<blockquote><blockquote>Nested quote</blockquote></blockquote>", "richText"),
         ("<strong>Formatted</strong>", "plainText")
     ])
     func unsafeRefused(fixture: (String, String)) async throws {
@@ -410,7 +455,8 @@ struct ComposeDraftPreservationTests {
             recovery: Bool = false,
             format: String = "richText",
             sourceID: MailSourceID? = nil,
-            attachments: [MIMEMessageAttachment] = []
+            attachments: [MIMEMessageAttachment] = [],
+            isServerSourced: Bool = false
         ) throws {
             defaults = try #require(UserDefaults(suiteName: defaultsName))
             accountID = backend.account.id
@@ -427,6 +473,7 @@ struct ComposeDraftPreservationTests {
                 recoveredDraft: recovery ? storedRecovery : nil,
                 existingDraft: recovery ? nil : original,
                 existingDraftAttachments: attachments,
+                existingDraftIsServerSourced: isServerSourced,
                 onClose: { [weak self] in self?.closeCount += 1 },
                 onCompletion: { [weak self] completion in
                     guard let self else { return }

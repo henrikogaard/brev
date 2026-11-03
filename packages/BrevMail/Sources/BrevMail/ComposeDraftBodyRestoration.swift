@@ -31,17 +31,14 @@ enum ComposeDraftBodyRestoration {
         try Task.checkCancellation()
         let html = draft.htmlBody
         // No resource-bearing or lossy markup reaches the native HTML parser.
-        guard draft.inReplyToMessageID == nil, draft.forwardedMessageID == nil,
-              html.utf8.count <= 1_048_576,
-              ComposeHTMLBodyPolicy.richHTML(fromEditorHTML: html) == html,
-              html.range(of: #"(?i)<\s*/?\s*(img|blockquote|ul|ol|li|p|div)\b"#, options: .regularExpression) == nil else {
+        guard html.utf8.count <= 1_048_576, let importable = importableHTML(from: html) else {
             throw MailBackendError.backendSpecific(message: unsupportedMessage)
         }
         let attributed: NSAttributedString
-        if html.isEmpty {
+        if importable.isEmpty {
             attributed = NSAttributedString(string: "")
         } else {
-            guard let imported = await MessageHTMLImporter.importAttributedHTML(html) else {
+            guard let imported = await MessageHTMLImporter.importAttributedHTML(importable) else {
                 throw MailBackendError.backendSpecific(message: unsupportedMessage)
             }
             attributed = NSAttributedString(imported)
@@ -49,7 +46,8 @@ enum ComposeDraftBodyRestoration {
         try Task.checkCancellation()
         let serialized = ComposeRichTextHTMLSerializer.html(from: attributed)
         if !serialized.isEmpty {
-            guard let importedAgain = await MessageHTMLImporter.importAttributedHTML(serialized),
+            guard let importableAgain = importableHTML(from: serialized),
+                  let importedAgain = await MessageHTMLImporter.importAttributedHTML(importableAgain),
                   semantics(of: attributed).isEqual(to: semantics(of: NSAttributedString(importedAgain))) else {
                 throw MailBackendError.backendSpecific(message: unsupportedMessage)
             }
@@ -67,6 +65,70 @@ enum ComposeDraftBodyRestoration {
             initialEditorHTML: serialized,
             editorFormat: format
         )
+    }
+
+    /// Reduces a stored body to text, inline formatting and `<br>`, or returns
+    /// nil when it holds markup that restoration cannot carry (ADR-0093).
+    static func importableHTML(from html: String) -> String? {
+        let withoutDirection = html.replacingOccurrences(
+            of: #"(?i)<(p|div)\s+dir="(?:ltr|rtl|auto)"\s*>"#,
+            with: "<$1>",
+            options: .regularExpression
+        )
+        guard ComposeHTMLBodyPolicy.richHTML(fromEditorHTML: withoutDirection) == withoutDirection,
+              withoutDirection.range(of: #"(?i)<\s*/?\s*(img|ul|ol|li)\b"#, options: .regularExpression) == nil,
+              let quoted = quoteLinesHTML(from: withoutDirection) else {
+            return nil
+        }
+        return lineStructureHTML(from: quoted)
+    }
+
+    /// Turns flat blockquotes into `> ` lines, the form the editor holds them in.
+    private static func quoteLinesHTML(from html: String) -> String? {
+        var result = ""
+        var remainder = Substring(html)
+        while let open = remainder.range(of: "<blockquote>") {
+            guard let close = remainder[open.upperBound...].range(of: "</blockquote>") else { return nil }
+            let inner = remainder[open.upperBound ..< close.lowerBound]
+            guard !inner.replacingOccurrences(of: "<br>", with: "").contains("<") else { return nil }
+            result += remainder[..<open.lowerBound]
+            if !result.isEmpty, !result.hasSuffix("<br>") { result += "<br>" }
+            result += inner.components(separatedBy: "<br>")
+                .map { $0.isEmpty ? "&gt;" : "&gt; \($0)" }
+                .joined(separator: "<br>")
+            remainder = remainder[close.upperBound...]
+            if !remainder.isEmpty, !remainder.hasPrefix("<br>") { result += "<br>" }
+        }
+        result += remainder
+        return result.contains("blockquote>") ? nil : result
+    }
+
+    /// Replaces unnested `<p>` and `<div>` with the line breaks they render as.
+    private static func lineStructureHTML(from html: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: "<(/?)(p|div)>") else { return nil }
+        var result = ""
+        var last = html.startIndex
+        var openBlock: (name: Substring, start: Int)?
+        for match in regex.matches(in: html, range: NSRange(html.startIndex..., in: html)) {
+            guard let whole = Range(match.range, in: html),
+                  let slash = Range(match.range(at: 1), in: html),
+                  let name = Range(match.range(at: 2), in: html) else { return nil }
+            result += html[last ..< whole.lowerBound]
+            last = whole.upperBound
+            if html[slash].isEmpty {
+                guard openBlock == nil else { return nil }
+                if !result.isEmpty, !result.hasSuffix("<br>") { result += "<br>" }
+                openBlock = (html[name], result.utf8.count)
+            } else {
+                guard let block = openBlock, block.name == html[name] else { return nil }
+                openBlock = nil
+                if result.utf8.count == block.start || !result.hasSuffix("<br>") { result += "<br>" }
+            }
+        }
+        guard openBlock == nil else { return nil }
+        let endsInBlock = html.hasSuffix("</p>") || html.hasSuffix("</div>")
+        result += html[last...]
+        return endsInBlock && result.hasSuffix("<br>") ? String(result.dropLast(4)) : result
     }
 
     private static func semantics(of attributed: NSAttributedString) -> NSAttributedString {

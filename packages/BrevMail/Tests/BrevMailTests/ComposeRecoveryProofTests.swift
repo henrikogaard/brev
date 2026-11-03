@@ -91,18 +91,38 @@ struct ComposeRecoveryProofTests {
         #expect(await backend.bodyReadCount == 0)
     }
 
-    @Test("reply and forward drafts with unpersisted quote boundaries are refused", arguments: [false, true])
+    @Test("the server-sourced flag excuses only a missing canonical copy")
+    func serverSourcedExcusesOnlyMissingCopy() async throws {
+        let draft = Draft(id: "server", remoteID: "message", htmlBody: "Body")
+        let missing = DraftLookupProbe(canonical: nil)
+        let resolved = try await ComposeDraftRestoration.resolveExisting(
+            draft: draft, isServerSourced: true, backend: missing, sourceID: nil
+        )
+        #expect(resolved.draft == draft)
+        await #expect(throws: (any Error).self) {
+            _ = try await ComposeDraftRestoration.resolveExisting(
+                draft: draft, isServerSourced: false, backend: missing, sourceID: nil
+            )
+        }
+        let different = DraftLookupProbe(canonical: Draft(id: "server", remoteID: "message", htmlBody: "Newer"))
+        await #expect(throws: (any Error).self) {
+            _ = try await ComposeDraftRestoration.resolveExisting(
+                draft: draft, isServerSourced: true, backend: different, sourceID: nil
+            )
+        }
+    }
+
+    @Test("reply and forward drafts without a quote boundary still prepare", arguments: [false, true])
     @MainActor
-    func unprovenQuoteBoundary(forward: Bool) async {
+    func unprovenQuoteBoundary(forward: Bool) async throws {
         let draft = Draft(
             id: "quote",
             inReplyToMessageID: forward ? nil : "reply",
             forwardedMessageID: forward ? "forward" : nil,
             htmlBody: "<strong>Body</strong>"
         )
-        await #expect(throws: (any Error).self) {
-            try await ComposeDraftBodyRestoration.prepare(draft: draft, format: .richTextHTML)
-        }
+        let body = try await ComposeDraftBodyRestoration.prepare(draft: draft, format: .richTextHTML)
+        #expect(body.originalHTML == draft.htmlBody)
     }
 }
 

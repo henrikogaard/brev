@@ -17,8 +17,11 @@ All notable changes to Brev are documented here.
   drafts opened in plain-text mode show an explanation and a non-destructive
   Close action. Returning from HTML preview preserves the edited rich body.
   The supported restoration subset is text, line breaks, bold, italic, underline
-  and links. Lists, block containers, quotes, reply/forward drafts and inline/CID
-  images are currently refused rather than flattened. Recovery still uses a
+  and links, plus `<p>` and `<div>` as line structure and Brev's own flat quotes.
+  Saved replies and forwards reopen, and lock their quote again when it was saved
+  with this version. A Draft with no local copy opens from the Drafts folder unless
+  it has attachments. Lists, nested or styled quotes and inline/CID images are
+  currently refused rather than flattened. Recovery still uses a
   text-only hint: missing or stale canonical proof is refused, so arbitrary
   unsaved/pre-autosave formatted content cannot be reconstructed.
 
