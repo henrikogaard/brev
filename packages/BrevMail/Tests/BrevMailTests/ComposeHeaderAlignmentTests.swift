@@ -13,6 +13,7 @@
 #if os(macOS)
 import AppKit
 import BrevBackend
+import BrevDesign
 @testable import BrevMail
 import SwiftUI
 import Testing
@@ -23,8 +24,9 @@ import Testing
 @Suite("Compose header alignment")
 @MainActor
 struct ComposeHeaderAlignmentTests {
-    @Test("header labels and body text share one left edge", arguments: [false, true])
-    func labelsAndBodyShareLeftEdge(expanded: Bool) async throws {
+    @Test("header labels and body text share one left edge",
+          arguments: [false, true], [MailboxTextSize.small, .medium, .large])
+    func labelsAndBodyShareLeftEdge(expanded: Bool, textSize: MailboxTextSize) async throws {
         let backend = MockBackend()
         let draft = try await backend.save(draft: Draft(
             id: UUID().uuidString,
@@ -36,6 +38,7 @@ struct ComposeHeaderAlignmentTests {
         let defaults = try #require(UserDefaults(suiteName: defaultsName))
         defer { defaults.removePersistentDomain(forName: defaultsName) }
         defaults.set("richText", forKey: "compose.messageFormat")
+        defaults.set(textSize.rawValue, forKey: MailboxViewPreferenceKey.textSize)
 
         var mounted: ComposeView?
         var view = ComposeView(
