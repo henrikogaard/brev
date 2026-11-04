@@ -3741,7 +3741,12 @@ public struct BrevMailRootView: View {
                 )
                 guard canPresentCompose(), presentationID == navigation.composePresentationID,
                       selectedSourceID == navigation.selectedSourceID else { return }
-                navigation.presentDraft(restored.draft, sourceID: resolvedSourceID, attachments: restored.attachments)
+                navigation.presentDraft(
+                    restored.draft,
+                    sourceID: resolvedSourceID,
+                    attachments: restored.attachments,
+                    isServerSourced: restored.isServerSourced
+                )
             } catch {
                 guard canPresentCompose(), presentationID == navigation.composePresentationID,
                       selectedSourceID == navigation.selectedSourceID else { return }
@@ -4299,6 +4304,7 @@ public struct BrevMailRootView: View {
                 recoveredDraft: recoveredDraft,
                 existingDraft: navigation.composeDraft,
                 existingDraftAttachments: navigation.composeDraftAttachments,
+                existingDraftIsServerSourced: navigation.composeDraftIsServerSourced,
                 aiBackend: aiBackend(for: composeBackend.account),
                 signatureContext: signatureContextProvider?(composeBackend.account),
                 composeSecurityDefaults: composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled,

@@ -203,10 +203,16 @@ public final class MailNavigationState {
     /// Existing draft being re-opened for editing, when the user activates
     /// a message inside the Drafts folder. Cleared on dismiss.
     public var composeDraft: Draft? {
-        didSet { composeDraftAttachments = [] }
+        didSet {
+            composeDraftAttachments = []
+            composeDraftIsServerSourced = false
+        }
     }
 
     var composeDraftAttachments: [MIMEMessageAttachment] = []
+
+    /// True when `composeDraft` came from the server body (ADR-0093).
+    var composeDraftIsServerSourced = false
 
     /// Headers currently loaded for the selected folder. Owned by
     /// `MessageListView` after each load so the detail pane can look
@@ -765,7 +771,12 @@ public final class MailNavigationState {
 
     /// Re-open an existing draft for editing, e.g. when the user activates
     /// a message inside the Drafts folder.
-    public func presentDraft(_ draft: Draft, sourceID: MailSourceID? = nil, attachments: [MIMEMessageAttachment] = []) {
+    public func presentDraft(
+        _ draft: Draft,
+        sourceID: MailSourceID? = nil,
+        attachments: [MIMEMessageAttachment] = [],
+        isServerSourced: Bool = false
+    ) {
         guard canPresentCompose else { return }
         composeReplyTo = nil
         composeReplyMode = .sender
@@ -774,6 +785,7 @@ public final class MailNavigationState {
         composePrefill = nil
         composeDraft = draft
         composeDraftAttachments = attachments
+        composeDraftIsServerSourced = isServerSourced
         presentCompose()
     }
 

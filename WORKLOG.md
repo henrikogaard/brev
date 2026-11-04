@@ -1,5 +1,36 @@
 # Worklog
 
+## 2026-11-04 — Agent — #279 native Draft QA on #289
+
+- Goal: native macOS Draft acceptance for #279 plus the ADR-0093 cases, on
+  isolated mock content-QA builds of `docs/adr-0093-draft-reopening`.
+- `repository-self-tests` passed on `f452a74` (CI 22/22 green).
+- First native pass on `f452a74` (UUID-only bundle, three entitlements, clean
+  container, verified before interaction): underline, line breaks,
+  save/reopen/resave with and without edit, reply/forward reopen with the quote
+  relocked and a no-edit save unchanged, and the Norwegian list refusal passed.
+- Defects found and fixed test-first: Bold/Italic/Clear Formatting did nothing;
+  Cmd-B/I/U missing (Cmd-U toggled read state); Insert Link lost the link; a
+  reopened Draft used small Times; a contrasting Light/Dark editor was
+  unreadable; a refused recovery blocked New Message for good and kept the
+  sender locked; untranslated strings; inconsistent header (labels not on the
+  body edge, doubled hairline, squeezed Cc/Bcc rows of uneven height).
+  Recovery is now for crashes only (ADR-0093 amendment, approved by Henrik).
+- Commits: `125a521`, `74347e3`, `89e846b`, `99ba749`, `bd928b6`. Only the
+  macOS compose header snapshots were re-recorded, as approved.
+- Verification: compose suites 435 tests pass; new pixel test
+  `ComposeHeaderAlignmentTests` (red on the old layout, 6 cases); lint, format,
+  iOS BrevMail compile. Native on `89e846b`: header alignment and Cmd-B/I/U
+  typing passed.
+- Not run on the final build (`99ba749`, identity verified, access not
+  granted): the full native checklist, attachments picker, Send/Sent,
+  crash recovery, reader typography matrix, image refusal, recording.
+- Handoff: the new header test scans pixels and is not on the macOS<26 skip
+  list; watch it on CI. iOS keeps the 8 pt label/body offset and doubled
+  hairline. The stale reader after save is mock-only (real backends change the
+  message ID). The header once expanded Cc/Bcc by itself during the
+  `89e846b` run; cause not investigated.
+
 ## 2026-10-29 — Agent — #269 recovery integration review
 
 - Reviewed ADR-0090 and the complete isolated recovery patch, then integrated
@@ -7229,3 +7260,33 @@ buttons, and package-aware localization.
 - CI: `test (BrevMail)` failed on `f918023` on the `macos-15` runner in two new `ComposeDraftPreservationTests` (`previewRetainsEdits`, `signaturePreservesBody`), which pass on the local macOS 27 host. Both expected a SwiftUI state change to be rendered after one `layoutSubtreeIfNeeded()`. The harness now lays out until the rendered result appears, bounded at 5 seconds. Test-only change; this reads as a timing problem but is unproven until CI passes on the new head, because macOS 15 is not available locally.
 - Local verification: 13 preservation tests pass in 6 consecutive runs; swiftformat and swiftlint strict clean on the file. A full local BrevMail run with CI's exclusions (before this change) passed except 2 `KeychainSMIMEResolverTests`, which this work does not touch; they did not fail on CI, so this looks host-specific, not investigated.
 - #282 findings, code reading plus one temporary characterization test (not committed): `GmailAPIBackend` does not implement `draft(for:)`, so the protocol default returns nil and `resolveExisting` refuses every Gmail Draft. Reply bodies contain `<blockquote>` in both plain and rich mode, so removing the reply/forward guard alone still refuses them. Gmail refusal not run end to end.
+
+## 2026-11-03 — Claude Code — Issue #282 / ADR-0093
+
+- Goal: propose the smallest design for reopening saved replies and forwards, Gmail Drafts and Drafts with no local copy. Henrik chose the three recommended decisions before this draft.
+- Changes: added ADR-0093 as Proposed and its index row. Documentation only, so TDD does not apply. No implementation is written; it waits for acceptance.
+- Verification: `git diff --check`, `scripts/check-adr-required.sh` and the Lint workflow on the PR. Code claims in the ADR come from reading the #277 stack and one temporary characterization test; the Gmail and no-local-copy refusals are not run end to end.
+- Handoff: the riskiest assumption is the blockquote round trip through the native editor, so implementation starts with failing tests for it. Some webmail Drafts stay refused because only `dir` is tolerated on `<p>` and `<div>`.
+
+## 2026-11-03 — Claude Code — Issue #282 / ADR-0093 implementation
+
+- Goal: reopen saved replies and forwards, Gmail Drafts and Drafts with no local copy without flattening them. Henrik accepted ADR-0093 before this work.
+- Changes: `ComposeDraftBodyRestoration` accepts flat blockquotes as `> ` lines and unnested `<p>`/`<div>` as line breaks, tolerating only `dir`. `Draft.quoteBoundary` (optional, local) relocks the quote on reopen. `GmailAPIBackend` implements `draft(for:)` and `LocalDraftAttachmentProviding`. `ComposeRestoredDraft.isServerSourced` flows through `MailNavigationState` to `resolveExisting`, excusing only a missing canonical copy; recovery never uses it.
+- Red/green: reopening tests failed with the refusal, the boundary and server-path tests failed to compile, and the Gmail tests failed at runtime before implementation; all pass after. Two old tests that asserted the removed refusals were updated.
+- Verification: `scripts/lint.sh`, `scripts/privacy-audit.sh`, BrevGmail 198 tests, iOS `BrevMail` build. BrevMail with CI's exclusions: 2,277 tests, failing only 2 `KeychainSMIMEResolverTests`. BrevBackend: 1,170 tests, failing only 3 keychain tests with `-25308` (interaction not allowed), which fits this Mac's locked keychain.
+- Open gap (not fixed, pre-existing on `main`): Gmail message headers use the Gmail message ID, while staging and `updateDraft` use the provider draft ID. Opening from the list therefore misses the local copy, and the server-sourced path sets `remoteID` to the message ID, so a later Save or Send that needs the provider draft can fail or leave it behind. Read from code, not run against Gmail. ADR-0093's "Gmail Drafts saved in Brev reopen" acceptance is met only for lookups by local or provider draft ID.
+- Skipped: native app acceptance (#279, #281), live providers (#284), hosted iOS editor tests, snapshots (no view layout change).
+
+## 2026-11-03 — Claude Code — Issue #282 / Gmail draft identity
+
+- Goal: close the gap between Gmail message IDs and provider draft IDs found while implementing ADR-0093. Henrik approved the fix.
+- Changes: new `DraftIdentityResolving` extension service; Gmail implements it through a new bounded `drafts.list` read (`GmailDraftPage`, 10 pages of 100). `ComposeDraftRestoration.resolve` uses it when no local copy matches the message ID, then retries the local lookup under the draft ID, and refuses without a body read when Gmail no longer lists the message as a draft. IMAP and mock have no resolver and are unchanged. ADR-0093 is amended; ADR-0006, `PRIVACY.md` and `CHANGELOG.md` are updated.
+- Red/green: tests failed to compile before implementation and pass after.
+- Limits: opening a Gmail Draft from the list needs a connection; more than 1,000 Drafts can refuse older ones; `drafts.list` has not been run against live Gmail (#284).
+
+## 2026-11-03 — Claude Code — Issue #279 handoff
+
+- Goal: start native Draft acceptance from #289. **No acceptance item was executed.**
+- Happened: built `--isolated-mock-content-qa` from `69f0ba5` on `macmini-agent` (UUID `17F87A2F-1D8E-406F-9E18-DDC5A5E911D0`, exact three-key entitlements, no extensions, ad-hoc signed because development signing failed with `errSecInternalComponent`). It launched twice and was stopped without being driven. System Events timed out with `-1712` even with the Mac unlocked, the available Computer Use controls a different Mac, and access to Screen Sharing was declined. The app did not open on Henrik's Mac from this remote session, and the cause is unknown. Henrik chose to continue locally.
+- CI: #277 is 23/23 green at `a36189e`. On #289 at `69f0ba5`, `repository-self-tests` failed in `scripts/test-release-dmg.sh` with no error text; the PR changes no scripts or workflows and the script passed twice locally, so it may be flaky but is unconfirmed. This commit triggers a new run.
+- Handoff: continue #279 on Henrik's Mac from this branch, in a fresh isolated app. Remaining worktrees on `macmini-agent`: `pr-277-integrate` and `adr-0093` (with the retained build under `.codex/build`), both clean and pushed.

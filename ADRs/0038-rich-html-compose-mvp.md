@@ -57,7 +57,8 @@ Brev accepts a staged rich HTML compose MVP.
    owned attachment payloads through `LocalDraftAttachmentProviding`. Recovery
    never reconstructs a draft from provider body fetches or from the legacy
    text-only hint. Missing, stale, foreign, inline/CID, oversized or server-only
-   payloads fail closed without changing the saved draft or recovery record.
+   payloads fail closed without changing the saved draft. (ADR-0093 amends how
+   the recovery record is kept.)
 
    Restoration currently accepts bounded, resource-free text, line breaks,
    bold, italic, underline and semantic links. Preflight must leave the HTML
@@ -85,7 +86,7 @@ Brev accepts a staged rich HTML compose MVP.
 
    Save, Send, autosave and dismissal persistence are blocked while restoration
    is pending, failed or cancelled. Closing cancels pending work and leaves the
-   original/recovery untouched; reopening starts a fresh validation attempt.
+   original untouched; reopening starts a fresh validation attempt.
 
 ## Rationale
 

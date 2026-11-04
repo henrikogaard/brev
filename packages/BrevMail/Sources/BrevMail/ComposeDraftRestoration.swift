@@ -16,11 +16,14 @@ import Foundation
 struct ComposeRestoredDraft: Sendable {
     let draft: Draft
     var attachments: [MIMEMessageAttachment] = []
+    /// True when the body came from the server because no local copy exists.
+    var isServerSourced = false
 }
 
 enum ComposeDraftRestoration {
     static func resolveExisting(
         draft: Draft,
+        isServerSourced: Bool = false,
         backend: any MailBackend,
         sourceID: MailSourceID?
     ) async throws -> ComposeRestoredDraft {
@@ -34,7 +37,8 @@ enum ComposeDraftRestoration {
         } else {
             canonical = try await backend.draft(for: draft.remoteID ?? draft.id)
         }
-        guard canonical == draft else {
+        // ADR-0093: a server-sourced open excuses a missing copy, never a different one.
+        guard canonical == draft || (isServerSourced && canonical == nil) else {
             throw MailBackendError.backendSpecific(message: recoveryUnavailableMessage)
         }
         try Task.checkCancellation()
@@ -103,11 +107,23 @@ enum ComposeDraftRestoration {
         backend: any MailBackend,
         sourceID: MailSourceID?
     ) async throws -> ComposeRestoredDraft {
-        let staged: Draft?
+        var staged: Draft?
         if let sourceID {
             staged = try await backend.draft(for: header.id, sourceID: sourceID)
         } else {
             staged = try await backend.draft(for: header.id)
+        }
+        var remoteID = header.id
+        if staged == nil, let resolver = backend.extensionService(DraftIdentityResolving.self) {
+            guard let draftID = try await resolver.remoteDraftID(forMessageID: header.id, sourceID: sourceID) else {
+                throw MailBackendError.backendSpecific(message: recoveryUnavailableMessage)
+            }
+            remoteID = draftID
+            if let sourceID {
+                staged = try await backend.draft(for: draftID, sourceID: sourceID)
+            } else {
+                staged = try await backend.draft(for: draftID)
+            }
         }
         if let staged {
             var attachments: [MIMEMessageAttachment] = []
@@ -144,7 +160,7 @@ enum ComposeDraftRestoration {
         }
         let restored = ComposeRestoredDraft(draft: Draft(
             id: UUID().uuidString,
-            remoteID: header.id,
+            remoteID: remoteID,
             threadID: header.threadID,
             inReplyToMessageID: header.inReplyTo,
             to: header.to,
@@ -152,7 +168,7 @@ enum ComposeDraftRestoration {
             bcc: header.bcc,
             subject: header.subject,
             htmlBody: body?.html ?? ComposeHTMLBodyPolicy.html(fromEditorText: body?.plainText ?? "")
-        ))
+        ), isServerSourced: true)
         if let message = validationError(draft: restored.draft, attachments: []) {
             throw MailBackendError.backendSpecific(message: message)
         }
