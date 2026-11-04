@@ -212,8 +212,9 @@ deliberate user submission. Never via direct phone-home.
 
 The existing account/mailbox-scoped recovery snapshot in local preferences
 contains new-message draft identifiers, recipients, subject and editor text.
-Successful send completion and successful discard remove recovery only when
-the local draft ID or non-nil remote draft ID matches. Presentation teardown
+Successful send, successful discard and any normal close of the compose window
+remove recovery only when the local draft ID or non-nil remote draft ID matches;
+only a crash or forced quit leaves it (ADR-0093). Presentation teardown
 must not prevent that cleanup; stale saved-draft callbacks must not overwrite
 current recovery. This correction introduces no new key, migration, payload,
 external call or consent boundary. Failed/cancelled sends preserve recovery.
@@ -222,8 +223,9 @@ The text-only snapshot is a recovery hint, not proof of plain or attachment-free
 content. Restoring it requires a matching canonical local draft and complete,
 owned local attachment bytes. HTML is preflighted as a resource-free subset
 before native import. There is no provider-body reconstruction fallback.
-Pending, failed or cancelled restoration blocks persistence and Send; Close
-leaves both the canonical draft and recovery hint untouched. No snapshot schema,
+Pending, failed or cancelled restoration blocks persistence and Send and never
+changes the canonical draft. A refused recovery opens a blank message and removes
+the hint. No snapshot schema,
 storage location, retention rule or external-call entry changes (ADR-0038).
 
 ## Rationale

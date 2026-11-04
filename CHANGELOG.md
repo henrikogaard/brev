@@ -9,6 +9,21 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- macOS compose: the Format menu's Bold, Italic and Clear Formatting now work,
+  Cmd-B, Cmd-I and Cmd-U format the message body instead of reaching the main
+  menu (where Cmd-U marked a message read), and Insert Link applies the link even
+  when the link sheet moved focus. Reopened Drafts use the editor font instead of
+  Times. A Light or Dark editor that differs from the window paints its own
+  background so the text stays readable.
+- macOS compose header: To, Cc, Bcc, From and Subject share one label column,
+  the collapsed row reads "From" with a Cc/Bcc control, all row dividers run to
+  the window edge, and a refused Draft shows its explanation once. The link
+  sheet's "Display text" label and the empty Templates text are now translated.
+- New-message recovery now only reopens a message after a crash or forced quit.
+  Closing a compose window normally forgets it, and a Draft that cannot be
+  restored no longer blocks New Message: it opens blank with a note that any
+  saved copy is still in Drafts. Drafts themselves are never changed.
+
 - Reopening a supported locally saved formatted draft or new-message recovery
   preserves its original HTML on an unchanged Save/autosave and its emphasis,
   links, line breaks, owned attachments and metadata when edited. Pending,

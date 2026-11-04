@@ -41,6 +41,36 @@ enum ComposeEditorTypography {
         }
         return NSFont(descriptor: descriptor, size: size) ?? system
     }
+
+    /// Replaces every run's font with `base`, keeping only its bold and italic
+    /// traits. Used for restored Drafts, whose importer fonts are not authored.
+    static func applyBaseFont(_ base: NSFont, to storage: NSTextStorage) {
+        let range = NSRange(location: 0, length: storage.length)
+        guard range.length > 0 else { return }
+        storage.beginEditing()
+        storage.enumerateAttribute(.font, in: range) { value, run, _ in
+            let emphasis = ((value as? NSFont)?.fontDescriptor.symbolicTraits ?? []).intersection(emphasisTraits)
+            storage.addAttribute(.font, value: font(base, emphasis: emphasis) ?? value ?? base, range: run)
+        }
+        storage.endEditing()
+    }
+
+    /// `font` with exactly the bold/italic `emphasis`, or the system font of the
+    /// same size when the family lacks it (SF Rounded has no italic). Nil when
+    /// neither can carry it, so callers keep the emphasis they already have.
+    static func font(_ font: NSFont, emphasis: NSFontDescriptor.SymbolicTraits) -> NSFont? {
+        let wanted = emphasis.intersection(emphasisTraits)
+        for candidate in [font, NSFont.systemFont(ofSize: font.pointSize)] {
+            let traits = candidate.fontDescriptor.symbolicTraits.subtracting(emphasisTraits).union(wanted)
+            let resolved = NSFont(descriptor: candidate.fontDescriptor.withSymbolicTraits(traits), size: font.pointSize)
+            if let resolved, resolved.fontDescriptor.symbolicTraits.intersection(emphasisTraits) == wanted {
+                return resolved
+            }
+        }
+        return nil
+    }
+
+    private static let emphasisTraits: NSFontDescriptor.SymbolicTraits = [.bold, .italic]
     #endif
 
     #if canImport(UIKit)

@@ -135,6 +135,26 @@ message that is not found is refused without reading its body.
   Documented in ADR-0006 and `PRIVACY.md`. This replaces the statement above that
   this ADR adds no new network call.
 
+## Amendment: recovery is for crashes only
+
+Native QA on #279 found that a saved new-message Draft stayed the recovery record
+until it was sent. When that Draft could not be restored, for example because it
+held a list, every New Message in that mailbox opened the refused Draft, even
+after the Draft was deleted.
+
+The recovery record only points at a Draft that is already saved locally. Restoring
+it requires the saved copy to match, so the record never holds content of its own.
+
+- A compose window that closes normally (Close, Save Draft, Send, Discard or closing
+  the window) forgets the record for its Draft. Only a crash or a forced quit leaves
+  it in place.
+- If restoring the record is refused, New Message opens blank with a note that any
+  saved copy is still in Drafts, and the record is forgotten. The Draft is not changed.
+
+This replaces the parts of ADR-0038 decision 6 and of ADR-0006's compose recovery
+lifecycle that kept the record unchanged on Close and on refusal. Every guarantee
+for the Draft itself stays as it was.
+
 ## References
 
 - ADR-0006: privacy and network calls (no new entry required)

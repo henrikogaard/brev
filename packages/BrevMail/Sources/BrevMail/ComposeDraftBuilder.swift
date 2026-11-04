@@ -654,6 +654,21 @@ public struct ComposeDraftRecoverySnapshot: Codable, Equatable, Sendable {
     }
 }
 
+/// What the compose window tells the user about new-message recovery.
+enum ComposeDraftRecoveryNotice: Equatable {
+    case recovered
+    case notReopened
+
+    var message: String {
+        switch self {
+        case .recovered:
+            String(localized: "Draft recovered from a previous session.", bundle: .module)
+        case .notReopened:
+            String(localized: "Your last draft couldn't be reopened here. Any saved copy is still in Drafts.", bundle: .module)
+        }
+    }
+}
+
 enum ComposeDraftRecoveryStore {
     static func save(
         _ snapshot: ComposeDraftRecoverySnapshot,
@@ -690,9 +705,21 @@ enum ComposeDraftRecoveryStore {
         sourceID: MailSourceID?,
         defaults: UserDefaults = .standard
     ) {
+        clear(draftID: draft.id, remoteID: draft.remoteID, accountID: accountID, sourceID: sourceID, defaults: defaults)
+    }
+
+    /// Removes the record only when it points at this draft, so one compose
+    /// window never forgets another window's recovery.
+    static func clear(
+        draftID: String,
+        remoteID: String?,
+        accountID: BrevAccount.ID,
+        sourceID: MailSourceID?,
+        defaults: UserDefaults = .standard
+    ) {
         guard let snapshot = load(accountID: accountID, sourceID: sourceID, defaults: defaults),
-              snapshot.draftID == draft.id
-              || (draft.remoteID != nil && snapshot.remoteID == draft.remoteID) else { return }
+              snapshot.draftID == draftID
+              || (remoteID != nil && snapshot.remoteID == remoteID) else { return }
         clear(accountID: accountID, sourceID: sourceID, defaults: defaults)
     }
 
