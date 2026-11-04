@@ -1,5 +1,36 @@
 # Worklog
 
+## 2026-11-04 — Agent — #279 native Draft QA on #289
+
+- Goal: native macOS Draft acceptance for #279 plus the ADR-0093 cases, on
+  isolated mock content-QA builds of `docs/adr-0093-draft-reopening`.
+- `repository-self-tests` passed on `f452a74` (CI 22/22 green).
+- First native pass on `f452a74` (UUID-only bundle, three entitlements, clean
+  container, verified before interaction): underline, line breaks,
+  save/reopen/resave with and without edit, reply/forward reopen with the quote
+  relocked and a no-edit save unchanged, and the Norwegian list refusal passed.
+- Defects found and fixed test-first: Bold/Italic/Clear Formatting did nothing;
+  Cmd-B/I/U missing (Cmd-U toggled read state); Insert Link lost the link; a
+  reopened Draft used small Times; a contrasting Light/Dark editor was
+  unreadable; a refused recovery blocked New Message for good and kept the
+  sender locked; untranslated strings; inconsistent header (labels not on the
+  body edge, doubled hairline, squeezed Cc/Bcc rows of uneven height).
+  Recovery is now for crashes only (ADR-0093 amendment, approved by Henrik).
+- Commits: `125a521`, `74347e3`, `89e846b`, `99ba749`, `bd928b6`. Only the
+  macOS compose header snapshots were re-recorded, as approved.
+- Verification: compose suites 435 tests pass; new pixel test
+  `ComposeHeaderAlignmentTests` (red on the old layout, 6 cases); lint, format,
+  iOS BrevMail compile. Native on `89e846b`: header alignment and Cmd-B/I/U
+  typing passed.
+- Not run on the final build (`99ba749`, identity verified, access not
+  granted): the full native checklist, attachments picker, Send/Sent,
+  crash recovery, reader typography matrix, image refusal, recording.
+- Handoff: the new header test scans pixels and is not on the macOS<26 skip
+  list; watch it on CI. iOS keeps the 8 pt label/body offset and doubled
+  hairline. The stale reader after save is mock-only (real backends change the
+  message ID). The header once expanded Cc/Bcc by itself during the
+  `89e846b` run; cause not investigated.
+
 ## 2026-10-29 — Agent — #269 recovery integration review
 
 - Reviewed ADR-0090 and the complete isolated recovery patch, then integrated
