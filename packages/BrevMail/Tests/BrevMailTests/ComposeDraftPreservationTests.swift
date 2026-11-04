@@ -154,6 +154,8 @@ struct ComposeDraftPreservationTests {
         #expect(text == "Thanks\n\(marker)\n> first")
         await harness.mounted?.saveDraft()
         #expect(try await backend.draft(for: original.remoteID ?? original.id) == original)
+        // Save briefly disables the editor; typing before SwiftUI re-enables it is dropped.
+        await harness.render { native.isEditable }
 
         let quoteLocation = (text as NSString).range(of: "first").location
         native.insertText("X", replacementRange: NSRange(location: quoteLocation, length: 0))
@@ -446,6 +448,7 @@ struct ComposeDraftPreservationTests {
         #expect(harness.completions.isEmpty)
         #expect(try await backend.draft(for: hint.remoteID ?? hint.id) == original)
         // Typing starts a new Draft; the refused one stays as it was.
+        #expect(!mounted.locksSenderToOriginalSource, "a blank message may use any sender")
         let editor = try #require(harness.editor)
         editor.insertText("Fresh start", replacementRange: NSRange(location: 0, length: 0))
         harness.host?.layoutSubtreeIfNeeded()
@@ -473,6 +476,7 @@ struct ComposeDraftPreservationTests {
         try await harness.prepare()
         #expect(harness.editor?.string == "Recovered body")
         let mounted = try #require(harness.mounted)
+        #expect(mounted.locksSenderToOriginalSource, "a recovered Draft stays in its own mailbox")
         await mounted.autoSaveDraftAfterInactivity()
         #expect(harness.storedRecovery != nil, "an autosave while open keeps crash recovery")
         switch path {

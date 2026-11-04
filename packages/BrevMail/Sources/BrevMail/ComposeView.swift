@@ -273,6 +273,9 @@ public struct ComposeView: View {
     // Draft autosave is driven by the inactivity task below. Keeping one
     // driver avoids a second 30-second timer racing the same save path.
     @State private var draftRecoveryNotice: ComposeDraftRecoveryNotice?
+    /// True while this window holds a recovered new message; false once a
+    /// refused recovery has been replaced by a blank message.
+    @State private var isRecoverySession: Bool
 
     // #150 Compose templates
     @State private var showTemplatePicker = false
@@ -572,6 +575,7 @@ public struct ComposeView: View {
         _signMessage = State(initialValue: composeSecurityDefaults.shouldSignByDefault)
         _encryptMessage = State(initialValue: composeSecurityDefaults.shouldEncryptByDefault)
         _draftRecoveryNotice = State(initialValue: nil)
+        _isRecoverySession = State(initialValue: recoveredDraft != nil)
         _currentSignatureContext = State(initialValue: signatureContext)
         _selectedSenderID = State(initialValue: selectedSenderOption.id)
     }
@@ -680,11 +684,8 @@ public struct ComposeView: View {
             .onAppear { captureDismissalBaselineIfNeeded() }
             .task { await applyInitialFocusIfNeeded() }
             .onDisappear {
-                // Closing the window without Close also ends crash recovery. A
-                // cancelled restoration keeps the record for the next attempt.
-                if !isDraftRestorationPending {
-                    forgetNewMessageRecovery(draftID: draftID, remoteID: savedDraftRemoteID)
-                }
+                // Closing the window without Close also ends crash recovery.
+                forgetNewMessageRecovery(draftID: draftID, remoteID: savedDraftRemoteID)
                 cancelDraftRestoration()
                 cancelAutoSaveDraftTask()
                 invalidateComposeOperation()
@@ -2002,7 +2003,7 @@ public struct ComposeView: View {
                 .disabled(!ComposeDraftRestoration.allowsSender(
                     option,
                     current: selectedSenderOption,
-                    isRestored: restoredDraft != nil || recoveredDraft != nil
+                    isRestored: locksSenderToOriginalSource
                 ))
             }
         }
@@ -3471,6 +3472,7 @@ public struct ComposeView: View {
 
     /// Replaces a refused recovery with the state of a fresh New Message.
     private func startBlankNewMessage() {
+        isRecoverySession = false
         draftID = UUID().uuidString
         savedDraftRemoteID = nil
         to = []
@@ -4189,12 +4191,17 @@ public struct ComposeView: View {
         try await backend.listAliases()
     }
 
+    /// A reopened or recovered Draft must stay in the account and mailbox it was saved in.
+    var locksSenderToOriginalSource: Bool {
+        restoredDraft != nil || isRecoverySession
+    }
+
     private func selectSender(_ option: ComposeSenderOption) {
         guard !isInteractionBlocked else { return }
         guard ComposeDraftRestoration.allowsSender(
             option,
             current: selectedSenderOption,
-            isRestored: restoredDraft != nil || recoveredDraft != nil
+            isRestored: locksSenderToOriginalSource
         ) else {
             errorMessage = String(localized: "A reopened draft must stay in its original account and mailbox.", bundle: .module)
             return

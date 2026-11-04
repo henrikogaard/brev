@@ -51,6 +51,26 @@ struct ComposeRichFormattingTests {
         #expect(harness.html == "Keep styled words")
     }
 
+    @Test("Clear Formatting with no selection clears the reply but leaves its protected quote")
+    func clearFormattingInReply() throws {
+        let harness = Harness(text: "Reply text\nQuoted original:\n> Keep this")
+        harness.quote = ComposeQuoteProtection(marker: "Quoted original:", edge: .bottom)
+        let editor = try harness.mount()
+        let reply = (editor.string as NSString).range(of: "Reply")
+        editor.setSelectedRange(reply)
+        try harness.perform(.bold, in: editor)
+        let before = try #require(editor.textStorage?.attributedSubstring(
+            from: (editor.string as NSString).range(of: "Quoted original:\n> Keep this")
+        ))
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        try harness.perform(.clearFormatting, in: editor)
+        #expect(!Self.traits(in: editor, at: reply.location).contains(.bold))
+        let after = try #require(editor.textStorage?.attributedSubstring(
+            from: (editor.string as NSString).range(of: "Quoted original:\n> Keep this")
+        ))
+        #expect(after.isEqual(to: before))
+    }
+
     @Test("Bold and Italic toggle the selection and keep the HTML in step", arguments: [false, true])
     func toggleSelection(italic: Bool) throws {
         let harness = Harness(text: "Plain word end")
@@ -205,6 +225,7 @@ struct ComposeRichFormattingTests {
         var family = MailboxFontFamily.system
         var size = MailboxTextSize.medium
         var restored: NSAttributedString?
+        var quote: ComposeQuoteProtection?
         let flush = ComposeHTMLPublicationFlushBox()
         let targetBox = ComposeMacRichTextTargetBox()
         private var host: NSHostingView<ComposeBodyEditor>?
@@ -226,6 +247,7 @@ struct ComposeRichFormattingTests {
                 textCheckingConfiguration: ComposeTextCheckingPolicy.configuration(isEnabled: false),
                 fontFamily: family,
                 textSize: size,
+                quoteProtection: quote,
                 macRichTextTargetBox: targetBox,
                 restoredAttributedText: restored
             ))

@@ -76,7 +76,7 @@ struct ComposeBodyEditor: View {
     var restoredAttributedText: NSAttributedString?
 
     var body: some View {
-        var editor = PlatformComposeBodyEditor(
+        PlatformComposeBodyEditor(
             text: $text,
             richHTML: $richHTML,
             selection: $selection,
@@ -94,12 +94,9 @@ struct ComposeBodyEditor: View {
             onFileDragTargetChanged: onFileDragTargetChanged,
             quoteProtection: quoteProtection,
             focusRequest: focusRequest,
+            macRichTextTargetBox: macRichTextTargetBox,
             restoredAttributedText: restoredAttributedText
         )
-        #if os(macOS)
-        editor.macRichTextTargetBox = macRichTextTargetBox
-        #endif
-        return editor
     }
 }
 
@@ -721,13 +718,25 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
             textView.didChangeText()
         }
 
-        /// Resets the selection (or the whole body when nothing is selected) to
-        /// plain body text: editor font, no underline, no link, no list.
+        /// The whole body outside a protected reply quote, which stays as quoted.
+        private func editableRange(in storage: NSTextStorage) -> NSRange {
+            let all = NSRange(location: 0, length: storage.length)
+            guard let quoteProtection,
+                  let quote = ComposeQuoteEditGuard.protectedRange(in: storage.mutableString, protection: quoteProtection),
+                  quote.length > 0 else { return all }
+            switch quoteProtection.edge {
+            case .bottom: return NSRange(location: 0, length: quote.location)
+            case .top: return NSRange(location: NSMaxRange(quote), length: storage.length - NSMaxRange(quote))
+            }
+        }
+
+        /// Resets the selection (or the editable body when nothing is selected)
+        /// to plain body text: editor font, no underline, no link, no list.
         private func clearRichFormatting() {
             guard let textView, textView.isRichText, let storage = textView.textStorage else { return }
             let base = textView.lastAppearanceFont ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
             let selected = textView.selectedRange()
-            let range = selected.length > 0 ? selected : NSRange(location: 0, length: storage.length)
+            let range = selected.length > 0 ? selected : editableRange(in: storage)
             textView.typingAttributes[.font] = base
             textView.typingAttributes[.underlineStyle] = nil
             textView.typingAttributes[.link] = nil
@@ -1059,6 +1068,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     var onFileDragTargetChanged: ((Bool) -> Void)?
     var quoteProtection: ComposeQuoteProtection?
     var focusRequest: ComposeBodyFocusRequest?
+    /// Unused on iOS; kept for call-site parity with the macOS representable.
+    var macRichTextTargetBox: ComposeMacRichTextTargetBox?
     var restoredAttributedText: NSAttributedString?
 
     private var isRichText: Bool { bodyFormat == .richTextHTML }
