@@ -1586,7 +1586,13 @@ public struct ComposeView: View {
     }
 
     private var flatHairlineFieldPanel: some View {
+        #if os(macOS)
+        // A hidden From row would still add its divider, doubling the line
+        // under the collapsed From summary.
+        let rows = ComposePresentation.chrome.fieldRows.filter { $0 != .sender || isFromFieldVisible }
+        #else
         let rows = ComposePresentation.chrome.fieldRows
+        #endif
         let horizontalInset = fieldPanelHorizontalInset
         return VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element) { index, row in
@@ -1607,7 +1613,12 @@ public struct ComposeView: View {
     }
 
     private var fieldPanelHorizontalInset: CGFloat {
+        #if os(macOS)
+        // Header labels start on the body text's left edge.
+        ComposeLayout.bodyHorizontalInset
+        #else
         isAccessibilityFieldLayout ? BrevSpacing.sm : BrevSpacing.lg
+        #endif
     }
 
     private var fieldLabelWidth: CGFloat {
@@ -1700,7 +1711,7 @@ public struct ComposeView: View {
                     // "Cc/Bcc, From:" label used to widen that whole column.
                     HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
                         ComposeFieldLabel(String(localized: "From", bundle: .module))
-                            .frame(width: fieldLabelWidth, alignment: .trailing)
+                            .frame(width: fieldLabelWidth, alignment: .leading)
                         Text(currentFromEmail)
                             .brevFont(.subheadline)
                             .foregroundStyle(theme.textSecondary.color)
@@ -2093,11 +2104,7 @@ public struct ComposeView: View {
         } else {
             HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
                 fieldLabel(label)
-                #if os(iOS)
                     .frame(width: fieldLabelWidth, alignment: .leading)
-                #else
-                    .frame(width: fieldLabelWidth, alignment: .trailing)
-                #endif
                 content()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -2241,7 +2248,7 @@ public struct ComposeView: View {
             macRichTextTargetBox: macRichTextTargetBox,
             restoredAttributedText: restoredBody?.attributedText
         )
-        .padding(.horizontal, BrevSpacing.xl)
+        .padding(.horizontal, ComposeLayout.bodyHorizontalInset)
         .padding(.vertical, BrevSpacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .environment(\.colorScheme, bodyAppearance.colorScheme)
@@ -4382,6 +4389,8 @@ private final class ComposeWindowTitleView: NSView {
 
 private enum ComposeLayout {
     static let fieldLabelWidth: CGFloat = 64
+    /// Left and right inset of the body text; macOS header rows share it.
+    static let bodyHorizontalInset: CGFloat = BrevSpacing.xl
     #if os(macOS)
     static func fieldLabelWidth(for labels: [String], textSize: MailboxTextSize) -> CGFloat {
         let adjustment: CGFloat = switch textSize {

@@ -405,6 +405,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         textView.isEditable = isEnabled
         textView.isSelectable = true
         textView.textContainerInset = NSSize(width: 0, height: 0)
+        // No hidden 5 pt padding, so body text lines up with the header labels.
+        textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(
             width: scrollView.contentSize.width,

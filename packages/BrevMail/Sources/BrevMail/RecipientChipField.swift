@@ -80,13 +80,8 @@ struct RecipientChipField<Accessory: View>: View {
                 }
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
-                    #if os(iOS)
                     labelView
                         .frame(width: labelWidth, alignment: .leading)
-                    #else
-                    labelView
-                        .frame(width: labelWidth, alignment: .trailing)
-                    #endif
                     fieldContent
                     trailingAccessory
                 }

@@ -15,9 +15,10 @@ All notable changes to Brev are documented here.
   when the link sheet moved focus. Reopened Drafts use the editor font instead of
   Times. A Light or Dark editor that differs from the window paints its own
   background so the text stays readable.
-- macOS compose header: To, Cc, Bcc, From and Subject share one label column,
-  the collapsed row reads "From" with a Cc/Bcc control, all row dividers run to
-  the window edge, and a refused Draft shows its explanation once. The link
+- macOS compose header: To, Cc, Bcc, From and Subject share one label column
+  whose labels start on the body text's left edge, the collapsed row reads
+  "From" with a Cc/Bcc control and one hairline below it, all row dividers run
+  to the window edge, and a refused Draft shows its explanation once. The link
   sheet's "Display text" label and the empty Templates text are now translated.
 - New-message recovery now only reopens a message after a crash or forced quit.
   Closing a compose window normally forgets it, and a Draft that cannot be
