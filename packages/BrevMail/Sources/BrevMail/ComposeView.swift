@@ -1662,7 +1662,7 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var recipientFields: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+        VStack(alignment: .leading, spacing: recipientRowSpacing) {
             if isAccessibilityFieldLayout {
                 RecipientChipField(
                     label: String(localized: "To", bundle: .module),
@@ -1679,7 +1679,7 @@ public struct ComposeView: View {
                     EmptyView()
                 }
             } else {
-                RecipientChipField(
+                headerRowHeight(RecipientChipField(
                     label: String(localized: "To", bundle: .module),
                     labelWidth: fieldLabelWidth,
                     recipients: $to,
@@ -1692,14 +1692,9 @@ public struct ComposeView: View {
                     onSubmit: { advanceFocus(from: .to) }
                 ) {
                     EmptyView()
-                }
+                })
             }
-            BrevDivider()
-                .padding(.vertical, fieldVerticalPadding)
-            #if os(macOS)
-                // Match the panel's row dividers, which run to the window edge.
-                .padding(.trailing, -fieldPanelHorizontalInset)
-            #endif
+            recipientRowDivider
             if isOptionalFieldsCollapsed {
                 Button {
                     showCc = true
@@ -1722,6 +1717,7 @@ public struct ComposeView: View {
                             .brevFont(.subheadline)
                             .foregroundStyle(theme.accent.color)
                     }
+                    .frame(minHeight: ComposeLayout.headerRowMinHeight, alignment: .leading)
                     .contentShape(Rectangle())
                     #else
                     Text(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
@@ -1736,7 +1732,7 @@ public struct ComposeView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
             } else if isCcFieldVisible {
-                RecipientChipField(
+                headerRowHeight(RecipientChipField(
                     label: String(localized: "Cc", bundle: .module),
                     labelWidth: fieldLabelWidth,
                     recipients: $cc,
@@ -1747,10 +1743,16 @@ public struct ComposeView: View {
                     focusedField: $focusedField,
                     field: .cc,
                     onSubmit: { advanceFocus(from: .cc) }
-                )
+                ))
             }
+            #if os(macOS)
+            if !isOptionalFieldsCollapsed && isCcFieldVisible && isBccFieldVisible {
+                // Cc and Bcc are full rows like To, each ending in a hairline.
+                recipientRowDivider
+            }
+            #endif
             if !isOptionalFieldsCollapsed && isBccFieldVisible {
-                RecipientChipField(
+                headerRowHeight(RecipientChipField(
                     label: String(localized: "Bcc", bundle: .module),
                     labelWidth: fieldLabelWidth,
                     recipients: $bcc,
@@ -1761,11 +1763,39 @@ public struct ComposeView: View {
                     focusedField: $focusedField,
                     field: .bcc,
                     onSubmit: { advanceFocus(from: .bcc) }
-                )
+                ))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, fieldVerticalPadding)
+    }
+
+    /// macOS rows get their spacing only from the divider padding, like the
+    /// From and Subject rows, so every header row has the same height.
+    private var recipientRowSpacing: CGFloat {
+        #if os(macOS)
+        0
+        #else
+        BrevSpacing.xs
+        #endif
+    }
+
+    /// Recipient fields keep the shared macOS header row height.
+    private func headerRowHeight(_ field: some View) -> some View {
+        #if os(macOS)
+        field.frame(minHeight: ComposeLayout.headerRowMinHeight, alignment: .leading)
+        #else
+        field
+        #endif
+    }
+
+    private var recipientRowDivider: some View {
+        BrevDivider()
+            .padding(.vertical, fieldVerticalPadding)
+        #if os(macOS)
+            // Match the panel's row dividers, which run to the window edge.
+            .padding(.trailing, -fieldPanelHorizontalInset)
+        #endif
     }
 
     private var isCcFieldVisible: Bool {
@@ -2107,6 +2137,9 @@ public struct ComposeView: View {
                     .frame(width: fieldLabelWidth, alignment: .leading)
                 content()
             }
+            #if os(macOS)
+            .frame(minHeight: ComposeLayout.headerRowMinHeight)
+            #endif
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -4392,6 +4425,10 @@ private enum ComposeLayout {
     /// Left and right inset of the body text; macOS header rows share it.
     static let bodyHorizontalInset: CGFloat = BrevSpacing.xl
     #if os(macOS)
+    /// One recipient chip's height at the default text size (a 12 pt icon
+    /// plus 2 pt padding above and below). Every macOS header row is at
+    /// least this tall, so rows with and without chips match.
+    static let headerRowMinHeight: CGFloat = 20
     static func fieldLabelWidth(for labels: [String], textSize: MailboxTextSize) -> CGFloat {
         let adjustment: CGFloat = switch textSize {
         case .small: -1

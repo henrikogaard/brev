@@ -17,16 +17,21 @@ import BrevBackend
 import SwiftUI
 import Testing
 
-/// Reads the rendered macOS compose window: the To, From and Subject labels
-/// and the body text must start on one left edge, and every row divider is
-/// one hairline (#279 QA).
+/// Reads the rendered macOS compose window: the header labels and the body
+/// text must start on one left edge, and every header row, Cc and Bcc
+/// included, has the same height and ends in one hairline (#279 QA).
 @Suite("Compose header alignment")
 @MainActor
 struct ComposeHeaderAlignmentTests {
-    @Test("header labels and body text share one left edge")
-    func labelsAndBodyShareLeftEdge() async throws {
+    @Test("header labels and body text share one left edge", arguments: [false, true])
+    func labelsAndBodyShareLeftEdge(expanded: Bool) async throws {
         let backend = MockBackend()
-        let draft = try await backend.save(draft: Draft(id: UUID().uuidString, htmlBody: "Hello alignment"))
+        let draft = try await backend.save(draft: Draft(
+            id: UUID().uuidString,
+            cc: expanded ? [Correspondent(email: "team@acme.example")] : [],
+            bcc: expanded ? [Correspondent(email: "audit@acme.example")] : [],
+            htmlBody: "Hello alignment"
+        ))
         let defaultsName = "ComposeHeaderAlignmentTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: defaultsName))
         defer { defaults.removePersistentDomain(forName: defaultsName) }
@@ -60,22 +65,26 @@ struct ComposeHeaderAlignmentTests {
         #expect(Self.editor(in: host)?.string == "Hello alignment")
 
         let (edges, dividers) = Self.scan(host, size: size)
-        // To, From, Subject and the body line.
-        #expect(edges.count >= 4, "left edges: \(edges)")
+        // To, (Cc, Bcc,) From, Subject and the body line.
+        #expect(edges.count >= (expanded ? 6 : 4), "left edges: \(edges)")
         let spread = (edges.max() ?? 0) - (edges.min() ?? 0)
         #expect(spread <= 2, "left edges: \(edges)")
-        // One line each below To, From and Subject. A doubled line carries
-        // twice the ink of a single one, even when 1x rendering splits a
-        // hairline across two pixel rows.
-        #expect(dividers.count == 3, "divider ink: \(dividers)")
-        let lightest = dividers.min() ?? 0
-        #expect(dividers.allSatisfy { $0 <= lightest * 1.5 }, "divider ink: \(dividers)")
+        // One line below each header row. A doubled line carries twice the
+        // ink of a single one, even when 1x rendering splits a hairline
+        // across two pixel rows.
+        #expect(dividers.count == (expanded ? 5 : 3), "dividers: \(dividers)")
+        let lightest = dividers.map(\.ink).min() ?? 0
+        #expect(dividers.allSatisfy { $0.ink <= lightest * 1.5 }, "dividers: \(dividers)")
+        // Rows with address chips and rows of plain text are equally tall.
+        let bottoms = dividers.map(\.y)
+        let heights = zip([0] + bottoms, bottoms).map { $1 - $0 }
+        #expect((heights.max() ?? 0) - (heights.min() ?? 0) <= 1, "row heights: \(heights)")
     }
 
     /// The leftmost inked pixel of each run of text rows in the left third of
-    /// the view, and the total ink of each faint line across the empty middle
-    /// of the view (dividers).
-    private static func scan(_ view: NSView, size: NSSize) -> (edges: [Int], dividers: [CGFloat]) {
+    /// the view, and the first row and total ink of each faint line across the
+    /// empty middle of the view (dividers).
+    private static func scan(_ view: NSView, size: NSSize) -> (edges: [Int], dividers: [(y: Int, ink: CGFloat)]) {
         let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: Int(size.width),
@@ -100,19 +109,19 @@ struct ComposeHeaderAlignmentTests {
 
         let width = Int(size.width)
         var edges: [Int] = []
-        var dividers: [CGFloat] = []
+        var dividers: [(y: Int, ink: CGFloat)] = []
         var runEdge: Int?
-        var lineInk: CGFloat?
+        var line: (y: Int, ink: CGFloat)?
         for y in 0 ..< Int(size.height) {
             guard let background = bitmap.colorAt(x: 2, y: y)?.usingColorSpace(.deviceRGB) else { continue }
             let leftmost = (4 ..< width / 3).first { ink($0, y, against: background) > 0.3 }
             // Hairlines are faint; sample the empty middle of the row.
             let isDivider = [300, 400, 500].allSatisfy { ink($0, y, against: background) > 0.05 }
             if isDivider {
-                lineInk = (lineInk ?? 0) + ink(400, y, against: background)
-            } else if let total = lineInk {
-                dividers.append(total)
-                lineInk = nil
+                line = (line?.y ?? y, (line?.ink ?? 0) + ink(400, y, against: background))
+            } else if let finished = line {
+                dividers.append(finished)
+                line = nil
             }
             if let leftmost, !isDivider {
                 runEdge = min(runEdge ?? leftmost, leftmost)

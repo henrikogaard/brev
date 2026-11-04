@@ -108,7 +108,7 @@ struct RecipientChipField<Accessory: View>: View {
     private var labelView: some View {
         // One shared label column with the other compose header rows
         // (From/Subject via ComposeView.fieldRow): same type, colour,
-        // width, trailing alignment and baseline alignment.
+        // width, leading alignment and baseline alignment.
         ComposeFieldLabel(label)
     }
 
