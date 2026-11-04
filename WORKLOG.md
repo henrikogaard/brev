@@ -1,5 +1,29 @@
 # Worklog
 
+## 2026-11-04 — Agent — iOS compose header, follow-up to #289 (#279 QA)
+
+- Goal: bring the iOS compose header in line with the macOS fix on #289.
+- Changes: labels and body share one left edge (24 pt; 8 pt in the stacked
+  accessibility layout, where the body moved in so large text keeps its width on
+  a narrow phone). The hidden From row adds no divider, Cc and Bcc are full rows
+  with a hairline, recipient dividers run to the screen edge, and rows share a
+  minimum height that follows Dynamic Type. The label column also follows Dynamic
+  Type, because "Subject" wrapped to two lines at extra-extra-extra-large.
+- New suite `ComposeHeaderAlignmentIOSTests` (6 cases, red on the old layout)
+  joins the iOS lane in `build.yml`.
+- Verification on the iOS 27.0 iPhone 17 Pro simulator with Xcode 27.2: the new
+  suite and `ComposeAccessibilityBoundsTests` pass. macOS
+  `ComposeHeaderAlignmentTests`, `ComposeViewMacOSSnapshotTests` and
+  `ComposePresentationTests` pass. Full `scripts/lint.sh` is clean.
+- Not done: seven iOS references were not re-recorded and do not match, because
+  re-recording needs Henrik's approval: `emptyCompose`, `replyCompose`,
+  `composeViewRendersSignaturePicker`, `ccBccExpanded`, `narrowCompose` and both
+  `phoneCompose` cases. The first four also failed on the unchanged code. All
+  seven references show an older compose design.
+- Handoff: CI defers this lane (runner has iOS 26.2, baselines need 27+), so CI
+  compares none of these and does not run the new suite. At accessibility 5 the
+  collapsed row still truncates to "Cc/Bc...ample"; unchanged here.
+
 ## 2026-11-04 — Agent — #279 native Draft QA on #289
 
 - Goal: native macOS Draft acceptance for #279 plus the ADR-0093 cases, on
