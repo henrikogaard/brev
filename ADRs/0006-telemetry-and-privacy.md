@@ -83,7 +83,7 @@ sign-in, platform distribution infrastructure, or off by default
 | IMAP/SMTP account autodiscovery | Email domain for DNS SRV probes; full email address only for provider-local HTTPS autoconfig requests | During user-initiated account setup | Off until the user starts account setup | Account setup/manual entry |
 | IMAP mail access | Account credentials, mailbox commands, folder/message identifiers, search queries, message/attachment fetch requests, raw RFC 822 source fetches (cache-first; on miss only, for View Source / Show Headers / Save As), and server-side message copies (`UID COPY`, originals left in place) | During signed-in mail use after the user adds an account | On after account add | Account add/remove |
 | SMTP submission | Account credentials plus the draft headers, body, and attachments being sent | When the user sends mail | On after account add | Account add/remove |
-| Gmail API mail access | Google OAuth access token; account-wide Gmail message, thread, label, draft, attachment, and history identifiers; Gmail search queries; requested message metadata, bodies, raw source, attachments, label mutations, drafts, and outgoing MIME payloads | Through `gmail.googleapis.com` after the user explicitly adds a Google account using the native Gmail provider; full and delta sync continue while that account remains configured | Off until Google account add | Account add/remove; explicit IMAP/SMTP fallback |
+| Gmail API mail access | Google OAuth access token; account-wide Gmail message, thread, label, draft, attachment, and history identifiers; Gmail search queries; requested message metadata, bodies, raw source, attachments, label mutations, drafts, and outgoing MIME payloads | Through `gmail.googleapis.com` after the user explicitly adds a Google account using the native Gmail provider; full and delta sync continue while that account remains configured. Opening a Draft from the Drafts folder also reads `drafts.list` to find its draft ID (ADR-0093) | Off until Google account add | Account add/remove; explicit IMAP/SMTP fallback |
 | Keep Offline body prefetch | Existing IMAP account credentials or Gmail OAuth token plus mailbox/message identifiers and a message-body fetch request to the configured provider, when needed by the backend | Only when the user turns Keep Offline on in a message list, Unified Inbox, reader or conversation menu; cache-first and best-effort | **Off** | Explicit per-message Keep Offline toggle; removing the local pin does not fetch or immediately delete cached content |
 | ManageSieve server-side filter sync | Account credentials plus a generated Brev-owned Sieve script derived from local rules | Only after the user enters a ManageSieve endpoint during account setup and later chooses to sync local rules from Settings | **Off** | Account setup / Settings → Rules |
 | Sparkle update check | Appcast request metadata such as app version, release ring, IP address, and user agent; the appcast and release notes are fetched from `henrikogaard.github.io` and the DMG from `github.com` / `objects.githubusercontent.com` | Once per launch in configured direct-download macOS releases of either ring (Stable or Nightly) | On for direct-download macOS only | Settings → Updates |
@@ -208,6 +208,26 @@ deliberate user submission. Never via direct phone-home.
   private in new owner-only directories; share only reviewed aggregate fields,
   because tracing tools can capture target process environments.
 
+### Compose recovery lifecycle
+
+The existing account/mailbox-scoped recovery snapshot in local preferences
+contains new-message draft identifiers, recipients, subject and editor text.
+Successful send, successful discard and any normal close of the compose window
+remove recovery only when the local draft ID or non-nil remote draft ID matches;
+only a crash or forced quit leaves it (ADR-0093). Presentation teardown
+must not prevent that cleanup; stale saved-draft callbacks must not overwrite
+current recovery. This correction introduces no new key, migration, payload,
+external call or consent boundary. Failed/cancelled sends preserve recovery.
+
+The text-only snapshot is a recovery hint, not proof of plain or attachment-free
+content. Restoring it requires a matching canonical local draft and complete,
+owned local attachment bytes. HTML is preflighted as a resource-free subset
+before native import. There is no provider-body reconstruction fallback.
+Pending, failed or cancelled restoration blocks persistence and Send and never
+changes the canonical draft. A refused recovery opens a blank message and removes
+the hint. No snapshot schema,
+storage location, retention rule or external-call entry changes (ADR-0038).
+
 ## Rationale
 
 **Why zero telemetry, not opt-in telemetry.** Opt-in telemetry sounds
@@ -281,3 +301,26 @@ is under Writing. Connections are under Accounts & Connections, rules under
 Rules & Organisation, and updates under About & Updates. These are navigation
 changes only; no endpoint, payload, default, consent requirement, or retention
 policy in the table above changes.
+
+### 2026-11-01 isolated macOS mock validation
+
+ADR-0091 adds an explicitly selected development-only profile: a fresh UUID
+sandbox identity, in-memory mock account/token stores, no live provider wiring,
+and no App Group resolution or embedded extensions. Its only entitlement is
+App Sandbox, excluding direct network, system Contacts/Calendar, iCloud and
+shared-group access. Preferences and generated products remain local to that
+test identity until explicitly cleaned up. The signed bundle forces mock mode
+before SwiftUI initialization; invalid signatures, identity/home combinations
+and Release builds fail closed. No network destination or release default in
+the table above changes. External-app actions are outside this bounded test.
+
+### 2026-11-02 opt-in isolated content QA
+
+ADR-0092 adds the explicit `--isolated-mock-content-qa` development flag after
+maintainer approval. Its exact sandbox/network-client/user-selected-read-only
+signature permits WebKit infrastructure and generated attachment-picker fixtures.
+No new application network call or destination is added; existing remote-content
+loading remains off by default. Unlike ADR-0091's strict profile, this profile
+cannot claim OS-level outbound-network denial. It retains UUID/Debug/mock/private
+container guards and excludes App Groups, broad file access and live providers.
+Normal, strict and release signing defaults remain unchanged.

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ISOLATED_MOCK_REQUESTED=0
 TMP_ENV="$(mktemp)"
 TMP_SETUP_ENV="$(mktemp -u)"
 TMP_APP_BUNDLE="$(mktemp -d)"

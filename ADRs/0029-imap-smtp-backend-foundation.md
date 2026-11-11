@@ -133,6 +133,40 @@ staged/persisted draft mapping to delete the corresponding server `Drafts:<uid>`
 row after backend recreation. Server-saved draft cleanup also prunes cached Drafts headers and
 emits `messagesRemoved` so visible Drafts lists do not keep stale remote draft
 rows after send, discard, or replacement cleanup.
+
+**Local draft attachment restoration.**
+
+`LocalDraftAttachmentProviding`, discovered through `extensionService`, is an
+optional, read-only extension rather than a new `MailBackend` requirement.
+Mock mailboxes and IMAP adapters with an existing draft staging store expose
+complete, ordered `MIMEMessageAttachment` values: opaque staged ID, filename,
+MIME type, real bytes and inline/CID metadata. Lookup validates the canonical
+saved draft and account/mailbox ownership before reading any attachment.
+IMAP upload owners may be earlier remote UIDs; the account-owned draft alias
+must still resolve to the same canonical local draft. Missing, foreign or
+noncanonical payloads fail the whole lookup. No provider connection, download,
+re-staging, new persisted schema or storage/permission expansion is involved.
+
+Compose resolves these payloads before opening an editable draft, seeds its
+existing attachment rows with real bytes and uploaded IDs, and uses that same
+authoritative row/inline set for draft construction and upload reconciliation.
+Explicit removal is not undone by appending the original draft's IDs. Existing
+staged payloads are not uploaded again. The aggregate 25 MiB budget includes
+restored bytes and subsequent imports; save/send also check later inline
+additions. Persisted reopened drafts cannot switch accounts or mailboxes;
+same-source aliases remain available. Fresh-compose sender behavior is unchanged.
+
+Server-only body attachment IDs are never treated as upload staging IDs. The
+existing no-attachment fallback can still reconstruct a draft from its header
+and body, but missing bodies, unresolved attachment references, or unsupported
+local restoration leave the draft unopened. Inline/CID drafts currently fail
+closed with localized English/Norwegian feedback: the existing plain editor
+initialization strips CID markup, so restoring inline bytes alone would lose
+their body references on save/autosave. This boundary preserves the stored
+body and IDs instead of expanding the HTML editor in the local-restoration
+repair. Inline editing and server-only attachment restoration remain separate
+work; local adapter metadata preservation is not native UI acceptance.
+
 First-page IMAP listing/refresh calls also maintain known message ids
 and emit `messagesAdded` events when later refreshes observe new UIDs,
 feeding the existing local notification path without adding an always-on

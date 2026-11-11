@@ -404,6 +404,31 @@ public struct GmailDraft: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
+/// A page of Gmail drafts with their message identifiers.
+public struct GmailDraftPage: Codable, Sendable, Equatable {
+    /// Drafts on this page; Gmail omits the field when there are none.
+    public let drafts: [GmailDraft]
+    /// Token for the next page, when one exists.
+    public let nextPageToken: String?
+
+    /// Creates a draft page.
+    public init(drafts: [GmailDraft] = [], nextPageToken: String? = nil) {
+        self.drafts = drafts
+        self.nextPageToken = nextPageToken
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case drafts
+        case nextPageToken
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        drafts = try container.decodeIfPresent([GmailDraft].self, forKey: .drafts) ?? []
+        nextPageToken = try container.decodeIfPresent(String.self, forKey: .nextPageToken)
+    }
+}
+
 /// A raw MIME message request encoded for Gmail's API.
 public struct GmailRawMessage: Codable, Sendable, Equatable {
     /// Base64url-encoded RFC 2822 message source.

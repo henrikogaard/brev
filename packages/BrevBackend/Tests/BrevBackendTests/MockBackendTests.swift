@@ -15,6 +15,51 @@ import Foundation
 import Testing
 
 @Suite("MockBackend") struct MockBackendTests {
+    @Test("local draft staging IDs can collide across mailboxes without crossing sources")
+    func localDraftSourceIsolation() async throws {
+        let account = BrevAccount(id: "account", displayName: "Account", emailAddress: "me@example.test")
+        let sourceA = MailSourceID(accountID: account.id, mailboxID: "a")
+        let sourceB = MailSourceID(accountID: account.id, mailboxID: "b")
+        let backend = MockBackend(
+            account: account,
+            folders: [Folder(id: "drafts", name: "Drafts", role: .drafts)],
+            messagesByFolder: [:],
+            mailboxes: [
+                Mailbox(id: "a", email: "a@example.test", displayName: "A", isPrimary: true),
+                Mailbox(id: "b", email: "b@example.test", displayName: "B")
+            ]
+        )
+        let firstID = try await backend.uploadAttachment(
+            draftID: "same",
+            data: Data([1]),
+            filename: "first.txt",
+            mimeType: "text/plain",
+            sourceID: sourceA
+        )
+        let secondID = try await backend.uploadAttachment(
+            draftID: "same",
+            data: Data([2]),
+            filename: "second.txt",
+            mimeType: "text/plain",
+            sourceID: sourceB
+        )
+        #expect(firstID == secondID)
+        let draft = Draft(id: "same", attachmentIDs: [firstID])
+        let first = try await backend.save(draft: draft, sourceID: sourceA)
+        let second = try await backend.save(draft: draft, sourceID: sourceB)
+        let service = try #require(backend.extensionService(LocalDraftAttachmentProviding.self))
+        #expect(try await service.localDraftAttachments(for: first, sourceID: sourceA).map(\.data) == [Data([1])])
+        #expect(try await service.localDraftAttachments(for: second, sourceID: sourceB).map(\.data) == [Data([2])])
+        #expect(try await backend.draft(for: #require(first.remoteID), sourceID: sourceA) == first)
+        let foreign = MailSourceID(accountID: "foreign", mailboxID: "a")
+        await #expect(throws: (any Error).self) { try await service.localDraftAttachments(for: first, sourceID: foreign) }
+        let forged = try await backend.save(draft: Draft(id: "other", attachmentIDs: [firstID]), sourceID: sourceA)
+        await #expect(throws: (any Error).self) { try await service.localDraftAttachments(for: forged, sourceID: sourceA) }
+        try await backend.discard(draftID: first.id, sourceID: sourceA)
+        #expect(try await backend.draft(for: #require(first.remoteID), sourceID: sourceA) == nil)
+        #expect(try await service.localDraftAttachments(for: second, sourceID: sourceB).map(\.data) == [Data([2])])
+    }
+
     @Test("seeded folders are returned in order")
     func seededFoldersAreReturnedInOrder() async throws {
         let backend = MockBackend()
