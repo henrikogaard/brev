@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import CoreFoundation
 import Foundation
 
 /// Bundle-level isolation policy shared by the app and App Group consumers.
@@ -19,6 +20,7 @@ public enum IsolatedMockConfiguration {
     /// Recognizes isolated identities even if their required marker is missing.
     public static func isRequested(info: [String: Any] = Bundle.main.infoDictionary ?? [:]) -> Bool {
         info["BRIsolatedMock"] as? String == "1"
+            || info["BRIsolatedMockProfile"] != nil
             || (info["CFBundleIdentifier"] as? String)?.hasPrefix(bundlePrefix) == true
     }
 
@@ -36,8 +38,20 @@ public enum IsolatedMockConfiguration {
             .hasSuffix("/Library/Containers/\(identifier)/Data")
     }
 
-    /// Rejects shared groups, network, iCloud, system-data and other permissions.
-    public static func hasOnlySandboxEntitlement(_ entitlements: [String: Any]) -> Bool {
-        entitlements.count == 1 && entitlements["com.apple.security.app-sandbox"] as? Bool == true
+    /// Requires the exact permission allowlist for the signed bundle's QA profile.
+    public static func hasExpectedEntitlements(_ entitlements: [String: Any], info: [String: Any]) -> Bool {
+        guard let profile = (info["BRIsolatedMockProfile"] ?? "strict") as? String else { return false }
+        var expected: Set<String> = ["com.apple.security.app-sandbox"]
+        switch profile {
+        case "strict": break
+        case "content-qa":
+            expected.formUnion([
+                "com.apple.security.network.client", "com.apple.security.files.user-selected.read-only"
+            ])
+        default: return false
+        }
+        return Set(entitlements.keys) == expected && entitlements.values.allSatisfy {
+            CFGetTypeID($0 as CFTypeRef) == CFBooleanGetTypeID() && $0 as? Bool == true
+        }
     }
 }

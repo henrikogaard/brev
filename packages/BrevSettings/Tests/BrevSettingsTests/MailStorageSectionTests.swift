@@ -203,7 +203,8 @@ struct MailStorageSectionTests {
 
         let breakdown = MailStorageInfo.storageBreakdown(accountID: accountID)
 
-        #expect(breakdown.cacheObjectCount == 5)
+        // Legacy header files count once; indexed header records come from backend metrics.
+        #expect(breakdown.cacheObjectCount == 4)
         #expect(breakdown.cacheBytes > 0)
     }
 

@@ -231,7 +231,7 @@ The connect action uses the full row width and explicit wrapping text at
 accessibility sizes; its ordinary native label remains unchanged.
 Ordinary text sizes retain the compact layout and one-line collection names.
 Verify both layouts with the isolated seeded panes; this decision does not
-accept snapshot references or change the capture contract in ADR-0092.
+accept snapshot references or change the capture contract in ADR-0094.
 
 ### Theme distribution
 

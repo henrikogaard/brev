@@ -10,9 +10,10 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+@testable import BrevBackend
 import Foundation
 
-/// File-backed persistent cache for IMAP mailbox header snapshots.
+/// Historical writer retained only to characterize the retired JSON implementation in tests.
 ///
 /// Snapshots are stored as JSON files under
 /// `Application Support/Brev/Cache/<accountKey>/headers/<folderKey>.json`.

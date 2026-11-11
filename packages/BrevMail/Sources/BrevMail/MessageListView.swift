@@ -874,6 +874,10 @@ public struct MessageListView: View {
 
     @ViewBuilder
     private func listContent(presentation: MessageListPresentationSnapshot) -> some View {
+        let selectedRowID = presentation.selectedRowID(
+            selectedMessageID: navigation.selectedMessageID, selectedSourceID: navigation.selectedSourceID,
+            expandedThreadIDs: expandedThreadIDs
+        )
         if let errorMessage {
             let status = MessageListPresentation.errorStatus(errorMessage)
             MessageListEmptyStateView(status: status) {
@@ -904,7 +908,8 @@ public struct MessageListView: View {
                                         for: header,
                                         visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
                                         visibleCount: presentation.headers.count,
-                                        threadChildrenByID: presentation.headersByThreadID
+                                        threadChildrenByID: presentation.headersByThreadID,
+                                        selectedRowID: selectedRowID
                                     )
                                 }
                             }
@@ -914,7 +919,8 @@ public struct MessageListView: View {
                                     for: header,
                                     visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
                                     visibleCount: presentation.headers.count,
-                                    threadChildrenByID: presentation.headersByThreadID
+                                    threadChildrenByID: presentation.headersByThreadID,
+                                    selectedRowID: selectedRowID
                                 )
                             }
                         }
@@ -943,9 +949,9 @@ public struct MessageListView: View {
                         .refreshable { await pullToRefresh() }
                         .brevBottomBarScrollInset()
                     #if os(macOS)
-                        .onChange(of: navigation.selectedMessageID) { _, selection in
-                            guard let selection else { return }
-                            proxy.scrollTo(selection)
+                        .onChange(of: [navigation.selectedMessageID, selectedRowID]) { _, _ in
+                            guard let selectedRowID else { return }
+                            proxy.scrollTo(selectedRowID)
                         }
                         .onChange(of: rangeCursorID) { _, cursor in
                             // Shift-arrow can run past the visible rows.
@@ -1049,13 +1055,14 @@ public struct MessageListView: View {
     private func parentMessageRow(
         for header: MessageHeader,
         visibleIndex: Int,
-        visibleCount: Int
+        visibleCount: Int,
+        selectedRowID: MessageHeader.ID?
     ) -> some View {
         let followUpReminder = followUpReminderIndex.reminder(for: header.id, sourceID: sourceID)
         MessageListRow(
             header: header,
             threadCount: threadCount(for: header),
-            isSelected: navigation.selectedMessageID == header.id,
+            isSelected: selectedRowID == header.id,
             isFocusedPane: listSelectionIsFocused,
             isChecked: navigation.bulkSelection.contains(header.id),
             isInSelectionMode: navigation.isInSelectionMode,
@@ -1114,13 +1121,15 @@ public struct MessageListView: View {
         .listRowInsets(EdgeInsets())
         .listRowSeparator(rowSeparatorVisibility)
         .messageListThemedRowBackground()
-        // Double-click opens the message in its own window. A simultaneous
+        // Double-click opens non-drafts in their own window; drafts already
+        // activate the composer on the first click. A simultaneous
         // high-count tap gesture (rather than a second `onTapGesture(count:)`)
         // keeps single-click selection instant while still recognizing the
         // double-click — stacked tap gestures of differing counts do not
         // disambiguate reliably on macOS List rows.
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
+                guard folder?.role != .drafts else { return }
                 onOpenInNewWindow?(header)
             }
         )
@@ -1684,12 +1693,14 @@ public struct MessageListView: View {
         for header: MessageHeader,
         visibleIndex: Int,
         visibleCount: Int,
-        threadChildrenByID: [String: [MessageHeader]]
+        threadChildrenByID: [String: [MessageHeader]],
+        selectedRowID: MessageHeader.ID?
     ) -> some View {
         parentMessageRow(
             for: header,
             visibleIndex: visibleIndex,
-            visibleCount: visibleCount
+            visibleCount: visibleCount,
+            selectedRowID: selectedRowID
         )
         if backend.groupsMessagesIntoThreads,
            threadCount(for: header) > 1,
@@ -1702,7 +1713,7 @@ public struct MessageListView: View {
             ForEach(children) { child in
                 ThreadInlineChildRow(
                     header: child,
-                    isSelected: navigation.selectedMessageID == child.id,
+                    isSelected: selectedRowID == child.id,
                     isFocusedPane: listSelectionIsFocused,
                     onSelect: {
                         if !navigation.isInSelectionMode {
@@ -1944,13 +1955,15 @@ public struct MessageListView: View {
             calendarDay: calendar.startOfDay(for: now),
             calendarIdentifier: calendar.identifier,
             calendarTimeZoneIdentifier: calendar.timeZone.identifier,
-            localeIdentifier: locale.identifier
+            localeIdentifier: locale.identifier,
+            supportsThreadGrouping: backend.groupsMessagesIntoThreads
         )
         return presentationSnapshotCache.snapshot(for: key, headers: headers) {
             let interval = MailUIPerformanceDiagnostics.beginInterval("Message List Presentation Build")
             defer { MailUIPerformanceDiagnostics.endInterval(interval) }
+            let workflowHeaders = workflowVisibleHeaders(from: headers, now: now, calendar: calendar)
             let presentationHeaders = MessageListSortPolicy.sorted(
-                visibleHeaders(for: workflowVisibleHeaders(from: headers, now: now, calendar: calendar)),
+                visibleHeaders(for: workflowHeaders),
                 by: mailboxSortOrder,
                 pinnedIDs: pinnedMessageIDs
             )
@@ -1961,7 +1974,14 @@ public struct MessageListView: View {
                 collapsedDateSectionIDs: collapsedDateSectionIDs,
                 referenceDate: now,
                 calendar: calendar,
-                sourceHeaders: headers
+                sourceHeaders: headers,
+                navigationHeaders: MessageListNavigationHeaders.headers(
+                    from: workflowHeaders,
+                    threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
+                    pinnedIDs: pinnedMessageIDs
+                ),
+                sourceID: sourceID,
+                groupsThreads: groupByThread && backend.groupsMessagesIntoThreads
             )
         }
     }
@@ -3545,7 +3565,12 @@ public struct MessageListView: View {
     }
 
     private func navigationHeaders(for headers: [MessageHeader]) -> [MessageHeader] {
-        MessageListNavigationHeaders.headers(
+        if headers.sharesRetainedBuffer(with: self.headers) {
+            // Re-enter the getter at selection time: a retained source buffer
+            // does not imply unchanged snooze, calendar-day, or workflow inputs.
+            return presentationSnapshot.navigationHeaders
+        }
+        return MessageListNavigationHeaders.headers(
             from: workflowVisibleHeaders(from: headers),
             threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
             pinnedIDs: pinnedMessageIDs
@@ -3904,7 +3929,10 @@ struct MessageListThreadTogglePreference: PreferenceKey {
     static var defaultValue: CGRect = .zero
 
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
+        let next = nextValue()
+        if !next.isEmpty {
+            value = next
+        }
     }
 }
 

@@ -15,6 +15,12 @@ import BrevThemes
 import Foundation
 import SwiftUI
 
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
+
 /// Shared typography and color tokens for HTML and native message bodies.
 ///
 /// Reader WKWebView CSS, plain/attributed SwiftUI bodies, print wrappers,
@@ -40,6 +46,9 @@ struct MessageBodyStyle: Equatable, Sendable {
     let forcesOriginalLightCanvas: Bool
 
     static let defaultLineHeight = 1.5
+
+    /// Roughly 72 average-width characters, scaled with the reader's resolved font size.
+    var maximumReadingWidth: CGFloat { bodyPointSize * 36 }
 
     static func resolve(
         theme: BrevTheme,
@@ -141,6 +150,7 @@ struct MessageBodyStyle: Equatable, Sendable {
         font:\(Int(bodyPointSize))px \(fontFamily.cssFamily);\
         line-height:\(lineHeight);-webkit-text-size-adjust:100%;}\
         body{box-sizing:border-box;padding:\(inset)px;}\
+        .brev-plain-text{max-width:72ch;overflow-wrap:anywhere;}\
         img,video{max-width:100%;height:auto}\
         p{margin:0 0 .85em}p:last-child{margin-bottom:0}\
         blockquote{border-left:3px solid \(borderColorCSS);\
@@ -163,6 +173,27 @@ struct MessageBodyStyle: Equatable, Sendable {
 
     var swiftUIBodyFont: Font {
         fontFamily.font(size: bodyPointSize)
+    }
+
+    func nativeAttributedBody(_ imported: AttributedString) -> AttributedString {
+        var displayed = imported
+        for run in imported.runs {
+            var font = swiftUIBodyFont
+            #if canImport(AppKit)
+            let traits = run.appKit.font?.fontDescriptor.symbolicTraits ?? []
+            if traits.contains(.bold) { font = font.bold() }
+            if traits.contains(.italic) { font = font.italic() }
+            displayed[run.range].appKit.font = nil
+            #elseif canImport(UIKit)
+            let traits = run.uiKit.font?.fontDescriptor.symbolicTraits ?? []
+            if traits.contains(.traitBold) { font = font.bold() }
+            if traits.contains(.traitItalic) { font = font.italic() }
+            displayed[run.range].uiKit.font = nil
+            #endif
+            // Keep italic in the run font even when a native face lacks it.
+            displayed[run.range].font = font
+        }
+        return displayed
     }
 
     static func cssColor(_ hex: String) -> String {
@@ -192,5 +223,15 @@ struct MessageBodyStyle: Equatable, Sendable {
         }
         let luminance = (0.2126 * Double(red) + 0.7152 * Double(green) + 0.0722 * Double(blue)) / 255
         return luminance > 0.6
+    }
+}
+
+/// Keeps native plain-text readers on the same leading-aligned readable column.
+struct MessageReadingColumn: ViewModifier {
+    let style: MessageBodyStyle
+
+    func body(content: Content) -> some View {
+        content.frame(maxWidth: style.maximumReadingWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

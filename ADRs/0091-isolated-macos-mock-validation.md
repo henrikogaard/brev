@@ -71,6 +71,20 @@ outside the test process.
 
 ## References
 
+- [ADR-0092](0092-isolated-mock-content-qa.md) adds a separately opted-in
+  content-QA profile; this ADR's sandbox-only default remains unchanged.
+
+Port provenance: the reader/storage/navigation stack reuses the approved decision
+from `37919030f65808b7b27375d9757696e125215fb0`, implementation
+`e855797c17bb3b65e6a5e609efc2a50c6c5495b6`, and Xcode source wiring
+`9f3a90fce1d007b4854b16c362ee0a8acad375f1`. This is the same isolation
+profile, not a port of the separate Settings UI or snapshot harness.
+
+The in-memory mail session does not imply zero Keychain API calls throughout
+Settings. Settings can construct its existing AI secret store; its service is
+derived from the fresh UUID bundle identifier. Production credential migration
+is skipped, but this bounded profile is not a machine-wide Keychain prohibition.
+
 - ADR-0004 — local builds and project layout.
 - ADR-0006 — privacy and local data boundaries.
 - ADR-0028 — provider-neutral UI and explicit network intent.

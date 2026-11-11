@@ -1,4 +1,4 @@
-# ADR-0092: Scene-hosted iOS Settings snapshots
+# ADR-0094: Scene-hosted iOS Settings snapshots
 
 - **Status:** Accepted
 - **Date:** 2026-11-01

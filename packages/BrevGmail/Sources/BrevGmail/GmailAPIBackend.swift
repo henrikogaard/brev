@@ -1169,6 +1169,17 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         return attachment.id
     }
 
+    /// Reads a locally staged Draft by local or provider draft ID, without network.
+    public func draft(for messageID: String) async throws -> Draft? {
+        try await draftStaging.draft(accountID: account.id, draftID: messageID)
+    }
+
+    /// Rejects a foreign source before reading the account's staging store.
+    public func draft(for messageID: String, sourceID: MailSourceID) async throws -> Draft? {
+        try validateSource(sourceID)
+        return try await draft(for: messageID)
+    }
+
     public func discard(draftID: String) async throws {
         try requireConnected()
         let stored = try await draftStaging.draft(accountID: account.id, draftID: draftID)
@@ -1724,7 +1735,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         case ObjectIdentifier(RelatedConversationLoading.self):
             guard relatedConversationConsent != nil else { return nil }
             return self as? Service
-        case ObjectIdentifier(ProgressiveMailSearching.self):
+        case ObjectIdentifier(ProgressiveMailSearching.self),
+             ObjectIdentifier(LocalDraftAttachmentProviding.self),
+             ObjectIdentifier(DraftIdentityResolving.self):
             return self as? Service
         case ObjectIdentifier(ScheduledSendManaging.self), ObjectIdentifier(ScheduledSendEditing.self):
             guard scheduledStore != nil else { return nil }
@@ -2756,6 +2769,54 @@ private actor GmailMoveUndoProgress {
 }
 
 // MARK: - ADR-0088 scoped Gmail sign-in trust
+
+extension GmailAPIBackend: LocalDraftAttachmentProviding {
+    /// Reads complete payloads owned by the canonical staged Draft, without network.
+    public func localDraftAttachments(for draft: Draft) async throws -> [MIMEMessageAttachment] {
+        guard try await draftStaging.draft(accountID: account.id, draftID: draft.id) == draft else {
+            throw MailBackendError.notFound(id: draft.id)
+        }
+        var result: [MIMEMessageAttachment] = []
+        for id in draft.attachmentIDs {
+            guard let attachment = try await draftStaging.attachment(accountID: account.id, attachmentID: id),
+                  attachment.draftID == draft.id else {
+                throw MailBackendError.notFound(id: id)
+            }
+            result.append(MIMEMessageAttachment(
+                id: attachment.id,
+                filename: attachment.filename,
+                mimeType: attachment.mimeType,
+                data: attachment.data,
+                isInline: attachment.isInline,
+                contentID: attachment.contentID
+            ))
+        }
+        return result
+    }
+
+    /// Rejects a foreign source before reading the account's staging store.
+    public func localDraftAttachments(for draft: Draft, sourceID: MailSourceID) async throws -> [MIMEMessageAttachment] {
+        try validateSource(sourceID)
+        return try await localDraftAttachments(for: draft)
+    }
+}
+
+extension GmailAPIBackend: DraftIdentityResolving {
+    /// Gmail headers carry the message ID, while saves need the draft ID. Message
+    /// IDs change on every save, so this asks Gmail rather than caching them.
+    /// Searches at most 1,000 drafts; beyond that the Draft is treated as not found.
+    public func remoteDraftID(forMessageID messageID: String, sourceID: MailSourceID?) async throws -> String? {
+        try validateSource(sourceID)
+        var pageToken: String?
+        for _ in 0 ..< 10 {
+            let page = try await transport.listDrafts(maxResults: 100, pageToken: pageToken)
+            if let draft = page.drafts.first(where: { $0.message?.id == messageID }) { return draft.id }
+            guard let next = page.nextPageToken else { return nil }
+            pageToken = next
+        }
+        return nil
+    }
+}
 
 extension GmailAPIBackend: SignInTrustAssessing {
     /// Scoped Gmail trust assessment (ADR-0088 amendment 2026-10-16).

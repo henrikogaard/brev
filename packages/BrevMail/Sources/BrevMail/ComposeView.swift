@@ -45,17 +45,7 @@ private struct ComposeAttachmentRetryRequiredError: LocalizedError {
     }
 }
 
-#if os(macOS)
-/// Stub NSObject that provides the standard bold/italic/underline selector names
-/// for `NSApp.sendAction`. These are handled by NSTextView's built-in responder.
-private final class ComposeRichTextCommandSelectors: NSObject {
-    @objc func toggleBoldface(_: Any?) {}
-    @objc func toggleItalics(_: Any?) {}
-    @objc func underline(_: Any?) {}
-}
-#endif
-
-private enum ComposeRichTextCommand: CaseIterable {
+enum ComposeRichTextCommand: CaseIterable {
     case bold
     case italic
     case underline
@@ -105,32 +95,30 @@ private enum ComposeRichTextCommand: CaseIterable {
         }
     }
 
+    #if os(macOS)
+    /// The responder-chain action the macOS Format menu sends for this command.
+    var actionSelector: Selector {
+        switch self {
+        // AppKit's text view has no bold/italic action without a Font menu.
+        case .bold: #selector(ComposeBodyEditorRichActions.brevToggleBold(_:))
+        case .italic: #selector(ComposeBodyEditorRichActions.brevToggleItalic(_:))
+        case .underline: #selector(NSTextView.underline(_:))
+        // Handled by the Coordinator in ComposeBodyEditor via ComposeBodyEditorRichActions.
+        case .insertLink: #selector(ComposeBodyEditorRichActions.brevInsertLink(_:))
+        case .bulletedList: #selector(ComposeBodyEditorRichActions.brevToggleBulletedList(_:))
+        case .numberedList: #selector(ComposeBodyEditorRichActions.brevToggleNumberedList(_:))
+        case .insertImage: #selector(ComposeBodyEditorRichActions.brevInsertImage(_:))
+        case .clearFormatting: #selector(ComposeBodyEditorRichActions.brevClearFormatting(_:))
+        case .undo: Selector(("undo:"))
+        case .redo: Selector(("redo:"))
+        }
+    }
+    #endif
+
     @MainActor
     func perform(iosTarget: ComposeIOSRichTextTarget? = nil) {
         #if os(macOS)
-        switch self {
-        case .bold:
-            NSApp.sendAction(#selector(ComposeRichTextCommandSelectors.toggleBoldface(_:)), to: nil, from: nil)
-        case .italic:
-            NSApp.sendAction(#selector(ComposeRichTextCommandSelectors.toggleItalics(_:)), to: nil, from: nil)
-        case .underline:
-            NSApp.sendAction(#selector(ComposeRichTextCommandSelectors.underline(_:)), to: nil, from: nil)
-        case .insertLink:
-            // Handled by the Coordinator in ComposeBodyEditor via ComposeBodyEditorRichActions.
-            NSApp.sendAction(#selector(ComposeBodyEditorRichActions.brevInsertLink(_:)), to: nil, from: nil)
-        case .bulletedList:
-            NSApp.sendAction(#selector(ComposeBodyEditorRichActions.brevToggleBulletedList(_:)), to: nil, from: nil)
-        case .numberedList:
-            NSApp.sendAction(#selector(ComposeBodyEditorRichActions.brevToggleNumberedList(_:)), to: nil, from: nil)
-        case .insertImage:
-            NSApp.sendAction(#selector(ComposeBodyEditorRichActions.brevInsertImage(_:)), to: nil, from: nil)
-        case .clearFormatting:
-            NSApp.sendAction(Selector(("removeFormat:")), to: nil, from: nil)
-        case .undo:
-            NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
-        case .redo:
-            NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
-        }
+        NSApp.sendAction(actionSelector, to: nil, from: nil)
         #else
         switch self {
         case .bold:
@@ -179,10 +167,17 @@ public struct ComposeView: View {
     private let forwardingFrom: MessageHeader?
     private let prefill: ComposePrefill?
     private let recoveredDraft: ComposeDraftRecoverySnapshot?
+    private let recoveryDefaults: UserDefaults
+    private let existingDraftIsServerSourced: Bool
     /// The already-saved draft this compose session re-opened, when present.
-    /// Server-side fields compose state cannot express (attachment ids,
-    /// threading metadata, scheduled send) are carried forward on save.
-    private let restoredDraft: Draft?
+    /// Threading metadata and scheduled send are carried forward on save;
+    /// restored attachment rows own their staging IDs and explicit removals.
+    @State private var restoredDraft: Draft?
+    @State private var draftRestorationError: String?
+    @State private var isDraftRestorationPending: Bool
+    @State private var draftRestorationTask: Task<Void, Never>?
+    @State private var isDraftRestorationCancelled = false
+    @State private var restoredBody: ComposeRestoredBody?
     private let aiBackend: (any AIBackend)?
     private let backendSupportsAIWriter: Bool
     private let defaultSenderOptionID: String
@@ -196,6 +191,7 @@ public struct ComposeView: View {
     private let driveFeature: GoogleDriveFeature?
     private let onClose: (() -> Void)?
     private let onCompletion: (ComposeCompletion) async -> Void
+    var inspection: ((ComposeView) -> Void)?
 
     @State private var to: [String] = []
     @State private var cc: [String] = []
@@ -276,7 +272,10 @@ public struct ComposeView: View {
 
     // Draft autosave is driven by the inactivity task below. Keeping one
     // driver avoids a second 30-second timer racing the same save path.
-    @State private var showDraftRecoveryBanner: Bool
+    @State private var draftRecoveryNotice: ComposeDraftRecoveryNotice?
+    /// True while this window holds a recovered new message; false once a
+    /// refused recovery has been replaced by a blank message.
+    @State private var isRecoverySession: Bool
 
     // #150 Compose templates
     @State private var showTemplatePicker = false
@@ -296,6 +295,7 @@ public struct ComposeView: View {
     @State private var linkSheetInput: ComposeLinkSheetInput?
     /// Bridges the iOS formatting toolbar to the active UITextView coordinator.
     @State private var iosRichTextTargetBox = ComposeIOSRichTextTargetBox()
+    @State private var macRichTextTargetBox = ComposeMacRichTextTargetBox()
     #if os(iOS)
     @State private var isInlineImagePickerPresented = false
     @State private var selectedInlineImageItem: PhotosPickerItem?
@@ -329,6 +329,8 @@ public struct ComposeView: View {
         prefill: ComposePrefill? = nil,
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
         existingDraft: Draft? = nil,
+        existingDraftAttachments: [MIMEMessageAttachment] = [],
+        existingDraftIsServerSourced: Bool = false,
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -350,6 +352,8 @@ public struct ComposeView: View {
             prefill: prefill,
             recoveredDraft: recoveredDraft,
             existingDraft: existingDraft,
+            existingDraftAttachments: existingDraftAttachments,
+            existingDraftIsServerSourced: existingDraftIsServerSourced,
             aiBackend: aiBackend,
             backendSupportsAIWriter: backendSupportsAIWriter,
             signatureContext: signatureContext,
@@ -373,6 +377,8 @@ public struct ComposeView: View {
         prefill: ComposePrefill? = nil,
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
         existingDraft: Draft? = nil,
+        existingDraftAttachments: [MIMEMessageAttachment] = [],
+        existingDraftIsServerSourced: Bool = false,
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -397,6 +403,8 @@ public struct ComposeView: View {
             prefill: prefill,
             recoveredDraft: recoveredDraft,
             existingDraft: existingDraft,
+            existingDraftAttachments: existingDraftAttachments,
+            existingDraftIsServerSourced: existingDraftIsServerSourced,
             aiBackend: aiBackend,
             backendSupportsAIWriter: backendSupportsAIWriter,
             signatureContext: signatureContext,
@@ -423,10 +431,12 @@ public struct ComposeView: View {
         prefill: ComposePrefill? = nil,
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
         /// An already-saved draft being re-opened for editing (activating a
-        /// message inside the Drafts folder). Carried in `restoredDraft` so
-        /// saves keep the draft's server-side attachments, threading, and
-        /// scheduled-send state that compose state cannot express.
+        /// message inside the Drafts folder). Retains threading and scheduled
+        /// send state; attachment payloads must be resolved before presentation.
         existingDraft: Draft? = nil,
+        /// Complete, source-owned local payloads in the draft's staging-ID order.
+        existingDraftAttachments: [MIMEMessageAttachment] = [],
+        existingDraftIsServerSourced: Bool = false,
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -435,9 +445,12 @@ public struct ComposeView: View {
         hasTrustedEncryptionIdentity: Bool = false,
         isWorkBlocked: Bool = false,
         driveFeature: GoogleDriveFeature? = nil,
+        /// Where new-message recovery records live; tests pass an isolated suite.
+        recoveryDefaults: UserDefaults = .standard,
         onClose: (() -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
+        self.recoveryDefaults = recoveryDefaults
         let fallbackSenderOption = Self.fallbackSenderOption(
             backend: backend,
             sourceID: sourceID,
@@ -459,7 +472,16 @@ public struct ComposeView: View {
         self.forwardingFrom = forwardingFrom
         self.prefill = prefill
         self.recoveredDraft = recoveredDraft
-        restoredDraft = existingDraft
+        self.existingDraftIsServerSourced = existingDraftIsServerSourced
+        _restoredDraft = State(initialValue: existingDraft)
+        let draftRestorationError = existingDraft.flatMap {
+            ComposeDraftRestoration.validationError(draft: $0, attachments: existingDraftAttachments)
+        }
+        _draftRestorationError = State(initialValue: draftRestorationError)
+        _isDraftRestorationPending = State(initialValue: existingDraft != nil || recoveredDraft != nil)
+        _pendingAttachments = State(initialValue: draftRestorationError == nil && existingDraft != nil
+            ? ComposeDraftRestoration.pendingAttachments(from: existingDraftAttachments) : [])
+        _errorMessage = State(initialValue: draftRestorationError)
         self.aiBackend = aiBackend
         self.backendSupportsAIWriter = backendSupportsAIWriter ?? backend.capabilities.contains(.aiWriter)
         self.signatureContext = signatureContext
@@ -552,7 +574,8 @@ public struct ComposeView: View {
         )
         _signMessage = State(initialValue: composeSecurityDefaults.shouldSignByDefault)
         _encryptMessage = State(initialValue: composeSecurityDefaults.shouldEncryptByDefault)
-        _showDraftRecoveryBanner = State(initialValue: recoveredDraft != nil)
+        _draftRecoveryNotice = State(initialValue: nil)
+        _isRecoverySession = State(initialValue: recoveredDraft != nil)
         _currentSignatureContext = State(initialValue: signatureContext)
         _selectedSenderID = State(initialValue: selectedSenderOption.id)
     }
@@ -572,6 +595,7 @@ public struct ComposeView: View {
     }
 
     public var body: some View {
+        _ = inspection?(self)
         let content = composeContent
             .brevDesktopSizing()
             .overlay { dropHighlight }
@@ -609,7 +633,7 @@ public struct ComposeView: View {
                             }
                         ),
                         MacComposeToolbarItemIdentifier.more: AnyView(composeSecondaryActionsMenu)
-                    ])
+                    ], sendAction: isSendButtonDisabled ? nil : performSendButtonAction)
                 }
                 .frame(width: 0, height: 0)
             }
@@ -626,6 +650,8 @@ public struct ComposeView: View {
                 }
             }
             .task {
+                await restoreDraftIfNeeded()
+                guard !restorationBlocksWork else { return }
                 await loadAliases()
                 await reloadServerSignaturesIfPossible()
                 defer { isQuotedBodyUpgradePending = false }
@@ -658,6 +684,9 @@ public struct ComposeView: View {
             .onAppear { captureDismissalBaselineIfNeeded() }
             .task { await applyInitialFocusIfNeeded() }
             .onDisappear {
+                // Closing the window without Close also ends crash recovery.
+                forgetNewMessageRecovery(draftID: draftID, remoteID: savedDraftRemoteID)
+                cancelDraftRestoration()
                 cancelAutoSaveDraftTask()
                 invalidateComposeOperation()
                 pendingUndoSendTask?.cancel()
@@ -855,7 +884,8 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var errorBanner: some View {
-        if let errorMessage {
+        if let errorMessage,
+           ComposePresentation.showsErrorBanner(errorMessage: errorMessage, restorationError: draftRestorationError) {
             let status = ComposePresentation.errorStatus(errorMessage)
             BrevDivider()
             BrevInlineStatus(
@@ -869,12 +899,12 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var draftRecoveryBanner: some View {
-        if showDraftRecoveryBanner {
+        if let draftRecoveryNotice {
             BrevDivider()
             BrevInlineStatus(
-                message: String(localized: "Draft recovered from a previous session.", bundle: .module),
+                message: draftRecoveryNotice.message,
                 tone: .info,
-                onDismiss: { showDraftRecoveryBanner = false }
+                onDismiss: { self.draftRecoveryNotice = nil }
             )
         }
     }
@@ -1002,6 +1032,7 @@ public struct ComposeView: View {
     }
 
     private var isDirtyForDismissal: Bool {
+        guard !restorationBlocksWork else { return false }
         guard let dismissalBaseline else { return false }
         return ComposeDismissalPolicy.isDirty(current: currentDismissalContent, baseline: dismissalBaseline)
     }
@@ -1238,7 +1269,7 @@ public struct ComposeView: View {
 
             #if os(macOS)
             Button {
-                showsHTMLPreview.toggle()
+                toggleHTMLPreview()
             } label: {
                 Label(
                     showsHTMLPreview
@@ -1473,17 +1504,24 @@ public struct ComposeView: View {
         }
     }
 
-    private var sendButton: some View {
-        let isDisabled = isInteractionBlocked || (!canSend && pendingUndoSendTask == nil)
-        return Button {
-            if pendingUndoSendTask != nil {
-                cancelUndoSend()
-            } else {
-                beginUndoSend {
-                    await send()
-                }
+    private var isSendButtonDisabled: Bool {
+        isInteractionBlocked || (!canSend && pendingUndoSendTask == nil)
+    }
+
+    private func performSendButtonAction() {
+        guard !isSendButtonDisabled else { return }
+        if pendingUndoSendTask != nil {
+            cancelUndoSend()
+        } else {
+            beginUndoSend {
+                await send()
             }
-        } label: {
+        }
+    }
+
+    private var sendButton: some View {
+        let isDisabled = isSendButtonDisabled
+        return Button(action: performSendButtonAction) {
             #if os(macOS)
             Image(systemName: "paperplane.fill")
                 .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
@@ -1504,33 +1542,27 @@ public struct ComposeView: View {
         .buttonStyle(.plain)
         #endif
         .disabled(isDisabled)
-        // Cmd+Return sends, matching Apple Mail's compose accelerator.
-        .keyboardShortcut(.return, modifiers: .command)
-        .accessibilityLabel(
-            pendingUndoSendTask != nil
-                ? String(localized: "Cancel Send", bundle: .module)
-                : sendButtonLabel
-        )
-        .accessibilityRepresentation {
-            Button(
+        #if !os(macOS)
+            .keyboardShortcut(.return, modifiers: .command)
+        #endif
+            .accessibilityLabel(
                 pendingUndoSendTask != nil
                     ? String(localized: "Cancel Send", bundle: .module)
                     : sendButtonLabel
-            ) {
-                if pendingUndoSendTask != nil {
-                    cancelUndoSend()
-                } else {
-                    beginUndoSend {
-                        await send()
-                    }
-                }
+            )
+            .accessibilityRepresentation {
+                Button(
+                    pendingUndoSendTask != nil
+                        ? String(localized: "Cancel Send", bundle: .module)
+                        : sendButtonLabel,
+                    action: performSendButtonAction
+                )
             }
-        }
-        .help(
-            pendingUndoSendTask != nil
-                ? String(localized: "Cancel Send", bundle: .module)
-                : sendButtonLabel
-        )
+            .help(
+                pendingUndoSendTask != nil
+                    ? String(localized: "Cancel Send", bundle: .module)
+                    : sendButtonLabel
+            )
     }
 
     private var sendButtonLabel: String {
@@ -1554,8 +1586,14 @@ public struct ComposeView: View {
     }
 
     private var flatHairlineFieldPanel: some View {
+        #if os(macOS)
+        // A hidden From row would still add its divider, doubling the line
+        // under the collapsed From summary.
+        let rows = ComposePresentation.chrome.fieldRows.filter { $0 != .sender || isFromFieldVisible }
+        #else
         let rows = ComposePresentation.chrome.fieldRows
-        let horizontalInset: CGFloat = isAccessibilityFieldLayout ? BrevSpacing.sm : BrevSpacing.lg
+        #endif
+        let horizontalInset = fieldPanelHorizontalInset
         return VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element) { index, row in
                 composeFieldRow(row)
@@ -1574,6 +1612,15 @@ public struct ComposeView: View {
         composeLayoutPlatform == .compactIOSAccessibility
     }
 
+    private var fieldPanelHorizontalInset: CGFloat {
+        #if os(macOS)
+        // Header labels start on the body text's left edge.
+        ComposeLayout.bodyHorizontalInset
+        #else
+        isAccessibilityFieldLayout ? BrevSpacing.sm : BrevSpacing.lg
+        #endif
+    }
+
     private var fieldLabelWidth: CGFloat {
         #if os(macOS)
         ComposeLayout.fieldLabelWidth(
@@ -1583,7 +1630,6 @@ public struct ComposeView: View {
                 String(localized: "Bcc", bundle: .module),
                 String(localized: "From", bundle: .module),
                 String(localized: "Subject", bundle: .module),
-                String(localized: "Cc/Bcc, From:", bundle: .module),
             ],
             textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium
         )
@@ -1616,7 +1662,7 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var recipientFields: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+        VStack(alignment: .leading, spacing: recipientRowSpacing) {
             if isAccessibilityFieldLayout {
                 RecipientChipField(
                     label: String(localized: "To", bundle: .module),
@@ -1633,7 +1679,7 @@ public struct ComposeView: View {
                     EmptyView()
                 }
             } else {
-                RecipientChipField(
+                headerRowHeight(RecipientChipField(
                     label: String(localized: "To", bundle: .module),
                     labelWidth: fieldLabelWidth,
                     recipients: $to,
@@ -1646,10 +1692,9 @@ public struct ComposeView: View {
                     onSubmit: { advanceFocus(from: .to) }
                 ) {
                     EmptyView()
-                }
+                })
             }
-            BrevDivider()
-                .padding(.vertical, fieldVerticalPadding)
+            recipientRowDivider
             if isOptionalFieldsCollapsed {
                 Button {
                     showCc = true
@@ -1657,17 +1702,23 @@ public struct ComposeView: View {
                     showFrom = true
                 } label: {
                     #if os(macOS)
+                    // The From label shares the To/Subject column; the long
+                    // "Cc/Bcc, From:" label used to widen that whole column.
                     HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
-                        ComposeFieldLabel(String(localized: "Cc/Bcc, From:", bundle: .module))
-                            .frame(width: fieldLabelWidth, alignment: .trailing)
+                        ComposeFieldLabel(String(localized: "From", bundle: .module))
+                            .frame(width: fieldLabelWidth, alignment: .leading)
                         Text(currentFromEmail)
                             .brevFont(.subheadline)
                             .foregroundStyle(theme.textSecondary.color)
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
+                        Text(String(localized: "Cc/Bcc", bundle: .module))
+                            .brevFont(.subheadline)
+                            .foregroundStyle(theme.accent.color)
                     }
+                    .frame(minHeight: ComposeLayout.headerRowMinHeight, alignment: .leading)
+                    .contentShape(Rectangle())
                     #else
                     Text(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
                         .brevFont(.subheadline)
@@ -1681,7 +1732,7 @@ public struct ComposeView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
             } else if isCcFieldVisible {
-                RecipientChipField(
+                headerRowHeight(RecipientChipField(
                     label: String(localized: "Cc", bundle: .module),
                     labelWidth: fieldLabelWidth,
                     recipients: $cc,
@@ -1692,10 +1743,16 @@ public struct ComposeView: View {
                     focusedField: $focusedField,
                     field: .cc,
                     onSubmit: { advanceFocus(from: .cc) }
-                )
+                ))
             }
+            #if os(macOS)
+            if !isOptionalFieldsCollapsed && isCcFieldVisible && isBccFieldVisible {
+                // Cc and Bcc are full rows like To, each ending in a hairline.
+                recipientRowDivider
+            }
+            #endif
             if !isOptionalFieldsCollapsed && isBccFieldVisible {
-                RecipientChipField(
+                headerRowHeight(RecipientChipField(
                     label: String(localized: "Bcc", bundle: .module),
                     labelWidth: fieldLabelWidth,
                     recipients: $bcc,
@@ -1706,11 +1763,39 @@ public struct ComposeView: View {
                     focusedField: $focusedField,
                     field: .bcc,
                     onSubmit: { advanceFocus(from: .bcc) }
-                )
+                ))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, fieldVerticalPadding)
+    }
+
+    /// macOS rows get their spacing only from the divider padding, like the
+    /// From and Subject rows, so every header row has the same height.
+    private var recipientRowSpacing: CGFloat {
+        #if os(macOS)
+        0
+        #else
+        BrevSpacing.xs
+        #endif
+    }
+
+    /// Recipient fields keep the shared macOS header row height.
+    private func headerRowHeight(_ field: some View) -> some View {
+        #if os(macOS)
+        field.frame(minHeight: ComposeLayout.headerRowMinHeight, alignment: .leading)
+        #else
+        field
+        #endif
+    }
+
+    private var recipientRowDivider: some View {
+        BrevDivider()
+            .padding(.vertical, fieldVerticalPadding)
+        #if os(macOS)
+            // Match the panel's row dividers, which run to the window edge.
+            .padding(.trailing, -fieldPanelHorizontalInset)
+        #endif
     }
 
     private var isCcFieldVisible: Bool {
@@ -1956,6 +2041,11 @@ public struct ComposeView: View {
                         isSelected: selectedSenderOption.id == option.id
                     )
                 }
+                .disabled(!ComposeDraftRestoration.allowsSender(
+                    option,
+                    current: selectedSenderOption,
+                    isRestored: locksSenderToOriginalSource
+                ))
             }
         }
 
@@ -2044,13 +2134,12 @@ public struct ComposeView: View {
         } else {
             HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
                 fieldLabel(label)
-                #if os(iOS)
                     .frame(width: fieldLabelWidth, alignment: .leading)
-                #else
-                    .frame(width: fieldLabelWidth, alignment: .trailing)
-                #endif
                 content()
             }
+            #if os(macOS)
+            .frame(minHeight: ComposeLayout.headerRowMinHeight)
+            #endif
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -2113,18 +2202,55 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var bodyField: some View {
-        #if os(macOS)
-        if showsHTMLPreview {
-            composeHTMLPreview
-                .padding(BrevSpacing.lg)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .environment(\.colorScheme, bodyAppearance.colorScheme)
+        if restorationBlocksWork {
+            VStack(spacing: BrevSpacing.md) {
+                if isDraftRestorationPending, draftRestorationError == nil {
+                    ProgressView(String(localized: "Restoring draft…", bundle: .module))
+                } else {
+                    Text(draftRestorationError ?? ComposeDraftBodyRestoration.unsupportedMessage)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+                Button(String(localized: "Close", bundle: .module), action: close)
+            }
+            .padding(BrevSpacing.lg)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
+            #if os(macOS)
+            ZStack {
+                composeBodyEditor
+                    .opacity(showsHTMLPreview ? 0 : 1)
+                    .disabled(showsHTMLPreview)
+                    .allowsHitTesting(!showsHTMLPreview)
+                    .accessibilityHidden(showsHTMLPreview)
+                if showsHTMLPreview {
+                    composeHTMLPreview
+                        .padding(BrevSpacing.lg)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .environment(\.colorScheme, bodyAppearance.colorScheme)
+                }
+            }
+            .background(contrastingBodyBackground)
+            #else
             composeBodyEditor
+                .background(contrastingBodyBackground)
+            #endif
         }
-        #else
-        composeBodyEditor
-        #endif
+    }
+
+    #if os(macOS)
+    func toggleHTMLPreview() {
+        htmlPublicationFlushBox.performFlush()
+        showsHTMLPreview.toggle()
+    }
+    #endif
+
+    /// The body is transparent so it shares the window surface, except when an
+    /// explicit Light or Dark editor would put its text on a window of the other mode.
+    @ViewBuilder
+    private var contrastingBodyBackground: some View {
+        if bodyAppearanceSelection.paintsOwnBackground(themeMode: theme.mode) {
+            bodyAppearance.editorTheme.bgPrimary.color
+        }
     }
 
     private var composeBodyEditor: some View {
@@ -2151,9 +2277,11 @@ public struct ComposeView: View {
                 isDropTargeted = isTargeted
             },
             quoteProtection: quoteProtection,
-            focusRequest: bodyFocusRequest
+            focusRequest: bodyFocusRequest,
+            macRichTextTargetBox: macRichTextTargetBox,
+            restoredAttributedText: restoredBody?.attributedText
         )
-        .padding(.horizontal, BrevSpacing.xl)
+        .padding(.horizontal, ComposeLayout.bodyHorizontalInset)
         .padding(.vertical, BrevSpacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .environment(\.colorScheme, bodyAppearance.colorScheme)
@@ -2308,6 +2436,7 @@ public struct ComposeView: View {
     }
 
     private var composeBodyFormat: ComposeBodyFormat {
+        if let restoredBody { return restoredBody.editorFormat }
         switch composeMessageFormatRaw {
         case "plainText":
             return .plainText
@@ -2418,7 +2547,7 @@ public struct ComposeView: View {
         }
     }
 
-    private func applySignatureSelection(_ option: ComposeSignatureOption?) {
+    func applySignatureSelection(_ option: ComposeSignatureOption?) {
         bodyText = ComposeSignatureBodyPolicy.body(
             afterSelecting: option?.body,
             in: bodyText,
@@ -2995,11 +3124,9 @@ public struct ComposeView: View {
     /// correct NSTextView context.
     private func applyLink(url: URL, displayText: String) {
         #if os(macOS)
-        NSApp.sendAction(
-            #selector(ComposeBodyEditorRichActions.brevApplyLink(_:)),
-            to: nil,
-            from: ComposeBodyEditorLinkPayload(url: url, displayText: displayText)
-        )
+        // Directly, not through the responder chain: the sheet can leave another
+        // field (Subject) as the window's first responder, which drops the action.
+        macRichTextTargetBox.target?.brevApplyLink(ComposeBodyEditorLinkPayload(url: url, displayText: displayText))
         #else
         iosRichTextTargetBox.target?.applyLink(url: url, displayText: displayText)
         #endif
@@ -3008,11 +3135,7 @@ public struct ComposeView: View {
     /// Clears the `.link` attribute from the current selection.
     private func removeLink() {
         #if os(macOS)
-        NSApp.sendAction(
-            #selector(ComposeBodyEditorRichActions.brevRemoveLink(_:)),
-            to: nil,
-            from: nil
-        )
+        macRichTextTargetBox.target?.brevRemoveLink(nil)
         #else
         iosRichTextTargetBox.target?.removeLink()
         #endif
@@ -3154,7 +3277,11 @@ public struct ComposeView: View {
     }
 
     private var isInteractionBlocked: Bool {
-        isBusy || isWorkBlocked
+        isBusy || isWorkBlocked || restorationBlocksWork
+    }
+
+    private var restorationBlocksWork: Bool {
+        isDraftRestorationPending || isDraftRestorationCancelled || draftRestorationError != nil
     }
 
     private var bodyTextExcludingManagedSignature: String {
@@ -3164,7 +3291,7 @@ public struct ComposeView: View {
         )
     }
 
-    private func send(bypassingSendGuard: Bool = false) async {
+    func send(bypassingSendGuard: Bool = false) async {
         guard canSend else { return }
         guard !ComposeQuotedBodyUpgradePolicy.blocksSending(
             isUpgradePending: isQuotedBodyUpgradePending
@@ -3212,7 +3339,7 @@ public struct ComposeView: View {
         }
     }
 
-    private func saveDraft() async {
+    func saveDraft() async {
         guard !ComposeQuotedBodyUpgradePolicy.blocksSending(
             isUpgradePending: isQuotedBodyUpgradePending
         ) else { return }
@@ -3243,11 +3370,14 @@ public struct ComposeView: View {
         guard !isInteractionBlocked else { return }
         cancelAutoSaveDraftTask()
         let backend = selectedComposeBackend
+        let sourceID = selectedComposeSourceID
+        let draft = currentDraft()
+        let pendingOperation = activeComposeOperationRequest
         do {
-            if let sourceID = selectedComposeSourceID {
-                try await backend.discard(draftID: draftID, sourceID: sourceID)
+            if let sourceID {
+                try await backend.discard(draftID: draft.id, sourceID: sourceID)
             } else {
-                try await backend.discard(draftID: draftID)
+                try await backend.discard(draftID: draft.id)
             }
         } catch {
             errorMessage = String(
@@ -3256,6 +3386,10 @@ public struct ComposeView: View {
             )
             return
         }
+        if let pendingOperation, pendingOperation.kind == .autoSaveDraft {
+            finishComposeOperation(pendingOperation)
+        }
+        ComposeDraftRecoveryStore.clear(matching: draft, accountID: backend.account.id, sourceID: sourceID)
         savedDraftRemoteID = nil
         hasCompletedExplicitOperation = true
         close()
@@ -3265,19 +3399,162 @@ public struct ComposeView: View {
         ComposeOperationStartPolicy.canStartOperation(
             requestedKind: kind,
             isInteractionBusy: isBusy,
-            isBlocked: isWorkBlocked,
+            isBlocked: isWorkBlocked || restorationBlocksWork,
             activeRequest: activeComposeOperationRequest
         )
     }
 
-    private func close() {
+    func restoreDraftIfNeeded() async {
+        guard isDraftRestorationPending, !isDraftRestorationCancelled else { return }
+        if let draftRestorationTask {
+            await withTaskCancellationHandler {
+                await draftRestorationTask.value
+            } onCancel: {
+                draftRestorationTask.cancel()
+            }
+            return
+        }
+        let snapshot = currentComposeOperationSnapshot()
+        let source = selectedComposeSourceID
+        let task = Task { @MainActor in
+            do {
+                if let draftRestorationError {
+                    throw MailBackendError.backendSpecific(message: draftRestorationError)
+                }
+                let resolved: ComposeRestoredDraft
+                if let recoveredDraft {
+                    resolved = try await ComposeDraftRestoration.resolveRecovery(
+                        snapshot: recoveredDraft,
+                        backend: selectedComposeBackend,
+                        sourceID: selectedComposeSourceID
+                    )
+                } else if let restoredDraft {
+                    resolved = try await ComposeDraftRestoration.resolveExisting(
+                        draft: restoredDraft,
+                        isServerSourced: existingDraftIsServerSourced,
+                        backend: selectedComposeBackend,
+                        sourceID: selectedComposeSourceID
+                    )
+                } else {
+                    return
+                }
+                let body = try await ComposeDraftBodyRestoration.prepare(draft: resolved.draft, format: composeBodyFormat)
+                try Task.checkCancellation()
+                guard !isDraftRestorationCancelled else { return }
+                guard currentComposeOperationSnapshot() == snapshot, selectedComposeSourceID == source else {
+                    throw MailBackendError.backendSpecific(message: ComposeDraftRestoration.recoveryUnavailableMessage)
+                }
+                let draft = resolved.draft
+                restoredDraft = draft
+                draftID = draft.id
+                savedDraftRemoteID = draft.remoteID
+                to = draft.to.map(\.email)
+                cc = draft.cc.map(\.email)
+                bcc = draft.bcc.map(\.email)
+                subject = draft.subject
+                selectedAliasID = draft.identityID
+                scheduledSendDate = draft.scheduledFor
+                signMessage = draft.securityMode.requiresSigning
+                encryptMessage = draft.securityMode.requiresEncryption
+                requestReadReceipt = draft.readReceiptRequest != nil
+                pendingAttachments = ComposeDraftRestoration.pendingAttachments(from: resolved.attachments)
+                quoteProtection = draft.quoteBoundary.map(ComposeQuoteProtection.init(boundary:))
+                bodyText = body.attributedText.string
+                bodyHTML = body.initialEditorHTML
+                restoredBody = body
+                dismissalBaseline = currentDismissalContent
+                draftRecoveryNotice = recoveredDraft != nil ? .recovered : nil
+                isDraftRestorationPending = false
+            } catch is CancellationError {
+                isDraftRestorationCancelled = true
+                isDraftRestorationPending = false
+                draftRestorationError = ComposeDraftRestoration.recoveryUnavailableMessage
+            } catch {
+                if let recoveredDraft, restoredDraft == nil {
+                    // ADR-0093: the record only points at a saved Draft, which stays
+                    // untouched in Drafts. Forget it and start a blank message.
+                    forgetNewMessageRecovery(draftID: recoveredDraft.draftID, remoteID: recoveredDraft.remoteID)
+                    startBlankNewMessage()
+                    draftRecoveryNotice = .notReopened
+                    isDraftRestorationPending = false
+                    return
+                }
+                let message = (error as? LocalizedError)?.errorDescription
+                    ?? ComposeDraftRestoration.recoveryUnavailableMessage
+                draftRestorationError = message
+                errorMessage = message
+                isDraftRestorationPending = false
+            }
+        }
+        draftRestorationTask = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    /// Forgets the new-message recovery record when it points at this Draft.
+    /// Reply and forward windows never write one.
+    private func forgetNewMessageRecovery(draftID: String, remoteID: String?) {
+        guard replyingTo == nil, forwardingFrom == nil else { return }
+        let sources = Set([sourceID, selectedComposeSourceID])
+        for source in sources {
+            ComposeDraftRecoveryStore.clear(
+                draftID: draftID,
+                remoteID: remoteID,
+                accountID: backendForSenderSource(source).account.id,
+                sourceID: source,
+                defaults: recoveryDefaults
+            )
+        }
+    }
+
+    /// Replaces a refused recovery with the state of a fresh New Message.
+    private func startBlankNewMessage() {
+        isRecoverySession = false
+        draftID = UUID().uuidString
+        savedDraftRemoteID = nil
+        to = []
+        cc = []
+        bcc = []
+        subject = ""
+        pendingAttachments = []
+        quoteProtection = nil
+        restoredBody = nil
+        bodyHTML = nil
+        let signature = activeSignatureContext?.selectedSignature
+        bodyText = ComposeSignatureBodyPolicy.body(afterSelecting: signature?.body, in: "", replacing: nil)
+        selectedSignatureID = signature?.id
+        insertedSignatureBody = ComposeSignatureBodyPolicy.managedSignatureBody(from: signature?.body)
+        errorMessage = nil
+        draftRestorationError = nil
+        dismissalBaseline = currentDismissalContent
+    }
+
+    private func cancelDraftRestoration() {
+        guard isDraftRestorationPending else { return }
+        isDraftRestorationCancelled = true
+        draftRestorationTask?.cancel()
+    }
+
+    func close() {
+        cancelDraftRestoration()
         cancelAutoSaveDraftTask()
+        // A normal close ends this Draft's crash recovery (ADR-0093). A dismissal
+        // save records it again, so forget it only after that save completes.
+        let closingDraftID = draftID
         if ComposeAutoSavePolicy.shouldAutoSaveOnDismiss(
             canSave: canSave,
             isBusy: isBusy,
             hasCompletedExplicitOperation: hasCompletedExplicitOperation
         ) {
-            Task { await autoSaveDraftOnDismiss() }
+            Task {
+                await autoSaveDraftOnDismiss()
+                forgetNewMessageRecovery(draftID: closingDraftID, remoteID: nil)
+            }
+        } else {
+            forgetNewMessageRecovery(draftID: closingDraftID, remoteID: savedDraftRemoteID)
         }
         if let onClose {
             onClose()
@@ -3286,11 +3563,11 @@ public struct ComposeView: View {
         }
     }
 
-    private func autoSaveDraftOnDismiss() async {
+    func autoSaveDraftOnDismiss() async {
         await autoSaveDraft(requireApplicableResponse: false)
     }
 
-    private func autoSaveDraftAfterInactivity() async {
+    func autoSaveDraftAfterInactivity() async {
         await autoSaveDraft(requireApplicableResponse: true)
     }
 
@@ -3328,7 +3605,7 @@ public struct ComposeView: View {
         // available in `currentDraft()`.
         try await stageInlineImages()
         guard ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
-            hasPendingAttachments: !pendingAttachments.isEmpty
+            hasPendingAttachments: pendingAttachments.contains { restoredDraft == nil || $0.uploadedAttachmentID == nil }
         ) else {
             return currentDraft()
         }
@@ -3339,12 +3616,27 @@ public struct ComposeView: View {
     /// then stages any images whose Content-IDs are absent from
     /// `stagedInlineAttachments` with the backend.
     private func stageInlineImages() async throws {
+        if restorationBlocksWork {
+            throw MailBackendError
+                .backendSpecific(message: draftRestorationError ?? ComposeDraftRestoration.recoveryUnavailableMessage)
+        }
         let html = composeBodyFormat == .richTextHTML ? (bodyHTML ?? bodyText) : bodyText
         let images = ComposeDraftBuilder.inlineAttachments(
             fromRegistry: inlineImageRegistry,
             draftID: draftID,
             bodyHTML: html
         )
+        if restoredDraft != nil {
+            var remaining = ComposeAttachmentImport.maxAttachmentByteCount
+            let sizes = pendingAttachments.map { ($0.filename, $0.data.count) } + images.map { ($0.filename, $0.data.count) }
+            for (filename, count) in sizes {
+                guard count <= remaining else {
+                    throw MailBackendError
+                        .backendSpecific(message: ComposeAttachmentImport.attachmentBudgetExceededMessage(filename: filename))
+                }
+                remaining -= count
+            }
+        }
         let stagingSourceID = activeComposeSourceID
         let backend = selectedComposeBackend
         let sourceID = selectedComposeSourceID
@@ -3426,12 +3718,7 @@ public struct ComposeView: View {
             // Set (not append) the full uploaded set — currentDraft() already
             // carries forward previously-uploaded IDs, so appending would
             // duplicate them.
-            let reconciledAttachmentIDs = ComposeAttachmentUploadState.mergedAttachmentIDs(
-                inline: currentInlineAttachmentIDs,
-                regular: ComposeAttachmentUploadState.uploadedAttachmentIDs(
-                    from: pendingAttachments
-                )
-            )
+            let reconciledAttachmentIDs = currentAttachmentIDs
             if ComposeAttachmentUploadState.requiresDraftResave(
                 savedAttachmentIDs: saved.attachmentIDs,
                 reconciledAttachmentIDs: reconciledAttachmentIDs
@@ -3454,20 +3741,14 @@ public struct ComposeView: View {
         )
     }
 
-    private func currentDraft() -> Draft {
-        // Already-staged inline image IDs come first so `stagedAttachments(for:)`
-        // finds them alongside regular file attachments. Regular attachments are
-        // appended after so ordering is stable across retries.
-        var attachmentIDs = ComposeAttachmentUploadState.mergedAttachmentIDs(
+    private var currentAttachmentIDs: [String] {
+        ComposeAttachmentUploadState.mergedAttachmentIDs(
             inline: currentInlineAttachmentIDs,
             regular: ComposeAttachmentUploadState.uploadedAttachmentIDs(from: pendingAttachments)
         )
-        // A draft reopened from the Drafts folder references attachments that
-        // were already uploaded to the backend staging store; they are not in
-        // `pendingAttachments`, so carry their ids forward explicitly.
-        for id in restoredDraft?.attachmentIDs ?? [] where !attachmentIDs.contains(id) {
-            attachmentIDs.append(id)
-        }
+    }
+
+    private func currentDraft() -> Draft {
         var draft = ComposeDraftBuilder.draft(
             id: draftID,
             remoteID: savedDraftRemoteID,
@@ -3485,7 +3766,7 @@ public struct ComposeView: View {
             // Carry forward already-uploaded attachments so every save —
             // including autosave, which never re-uploads — preserves them
             // instead of persisting a draft with no attachments.
-            attachmentIDs: attachmentIDs,
+            attachmentIDs: currentAttachmentIDs,
             scheduledFor: scheduledSendDate,
             readReceiptNotificationTo: requestReadReceipt ? currentFromEmail : nil,
             securityMode: OutboundMessageSecurityMode(
@@ -3493,6 +3774,7 @@ public struct ComposeView: View {
                 encrypting: encryptMessage
             )
         )
+        draft.quoteBoundary = quoteProtection?.boundary
         if let restoredDraft {
             // Reopened drafts are neither reply nor forward sessions, but the
             // original draft may itself be a reply/forward — keep its
@@ -3504,7 +3786,18 @@ public struct ComposeView: View {
             if forwardingFrom == nil {
                 draft.forwardedMessageID = restoredDraft.forwardedMessageID
             }
-            draft.scheduledFor = draft.scheduledFor ?? restoredDraft.scheduledFor
+            if draft.to.map(\.email) == restoredDraft.to.map(\.email) { draft.to = restoredDraft.to }
+            if draft.cc.map(\.email) == restoredDraft.cc.map(\.email) { draft.cc = restoredDraft.cc }
+            if draft.bcc.map(\.email) == restoredDraft.bcc.map(\.email) { draft.bcc = restoredDraft.bcc }
+            if requestReadReceipt, let request = restoredDraft.readReceiptRequest {
+                draft.readReceiptRequest = request
+            }
+            draft.readReceiptResponse = restoredDraft.readReceiptResponse
+        }
+        if let restoredBody,
+           bodyText == restoredBody.attributedText.string,
+           composeBodyFormat == .plainText || bodyHTML == restoredBody.initialEditorHTML {
+            draft.htmlBody = restoredBody.originalHTML
         }
         return draft
     }
@@ -3529,7 +3822,7 @@ public struct ComposeView: View {
         guard ComposeAutoSavePolicy.shouldScheduleAutoSave(
             canSave: canSave,
             isBusy: isBusy,
-            isBlocked: isWorkBlocked
+            isBlocked: isWorkBlocked || restorationBlocksWork
         ) else {
             return
         }
@@ -3830,7 +4123,8 @@ public struct ComposeView: View {
                     filename = pick.name
                     mimeType = pick.mimeType
                 }
-                guard data.count <= ComposeAttachmentImport.maxAttachmentByteCount else {
+                guard data.count <= ComposeAttachmentImport.maxAttachmentByteCount
+                    - (restoredDraft == nil ? 0 : pendingAttachments.reduce(0) { $0 + $1.data.count }) else {
                     errorMessage = ComposeAttachmentImport.attachmentBudgetExceededMessage(
                         filename: filename
                     )
@@ -3937,7 +4231,21 @@ public struct ComposeView: View {
         try await backend.listAliases()
     }
 
+    /// A reopened or recovered Draft must stay in the account and mailbox it was saved in.
+    var locksSenderToOriginalSource: Bool {
+        restoredDraft != nil || isRecoverySession
+    }
+
     private func selectSender(_ option: ComposeSenderOption) {
+        guard !isInteractionBlocked else { return }
+        guard ComposeDraftRestoration.allowsSender(
+            option,
+            current: selectedSenderOption,
+            isRestored: locksSenderToOriginalSource
+        ) else {
+            errorMessage = String(localized: "A reopened draft must stay in its original account and mailbox.", bundle: .module)
+            return
+        }
         guard option.id != selectedSenderID else { return }
         selectedSenderID = option.id
         selectedAliasID = nil
@@ -3956,6 +4264,7 @@ public struct ComposeView: View {
     /// signature selection so a body that already had a different
     /// identity's signature doesn't bleed into the new identity.
     private func selectAlias(_ aliasID: String?) {
+        guard !isInteractionBlocked else { return }
         guard aliasID != selectedAliasID else { return }
         selectedAliasID = aliasID
         currentSignatureContext = nil
@@ -3983,7 +4292,7 @@ public struct ComposeView: View {
             localContext: signatureContext
         )
         currentSignatureContext = context
-        if recoveredDraft == nil, let selected = context?.selectedSignature {
+        if recoveredDraft == nil, restoredDraft == nil, let selected = context?.selectedSignature {
             applySignatureSelection(selected)
         }
     }
@@ -4042,28 +4351,39 @@ private struct ComposeWindowTitleBridge: NSViewRepresentable {
 
 private struct ComposeNativeToolbarContentBridge: NSViewRepresentable {
     let items: [NSToolbarItem.Identifier: AnyView]
+    let sendAction: (() -> Void)?
 
     func makeNSView(context _: Context) -> ComposeNativeToolbarContentView {
-        ComposeNativeToolbarContentView(items: items)
+        ComposeNativeToolbarContentView(items: items, sendAction: sendAction)
     }
 
     func updateNSView(_ view: ComposeNativeToolbarContentView, context: Context) {
         view.items = items
+        view.sendAction = sendAction
         view.updateToolbar()
     }
 }
 
 @MainActor
-private final class ComposeNativeToolbarContentView: NSView {
+final class ComposeNativeToolbarContentView: NSView {
     var items: [NSToolbarItem.Identifier: AnyView]
+    var sendAction: (() -> Void)?
 
-    init(items: [NSToolbarItem.Identifier: AnyView]) {
+    init(items: [NSToolbarItem.Identifier: AnyView], sendAction: (() -> Void)?) {
         self.items = items
+        self.sendAction = sendAction
         super.init(frame: .zero)
     }
 
     required init?(coder: NSCoder) {
         nil
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow !== window {
+            (window?.toolbar?.delegate as? MacComposeToolbarDelegate)?.sendAction = nil
+        }
+        super.viewWillMove(toWindow: newWindow)
     }
 
     override func viewDidMoveToWindow() {
@@ -4077,6 +4397,7 @@ private final class ComposeNativeToolbarContentView: NSView {
             return
         }
         delegate.updateContentViews(items, in: toolbar)
+        delegate.sendAction = sendAction
     }
 }
 
@@ -4101,7 +4422,13 @@ private final class ComposeWindowTitleView: NSView {
 
 private enum ComposeLayout {
     static let fieldLabelWidth: CGFloat = 64
+    /// Left and right inset of the body text; macOS header rows share it.
+    static let bodyHorizontalInset: CGFloat = BrevSpacing.xl
     #if os(macOS)
+    /// One recipient chip's height at the default text size (a 12 pt icon
+    /// plus 2 pt padding above and below). Every macOS header row is at
+    /// least this tall, so rows with and without chips match.
+    static let headerRowMinHeight: CGFloat = 20
     static func fieldLabelWidth(for labels: [String], textSize: MailboxTextSize) -> CGFloat {
         let adjustment: CGFloat = switch textSize {
         case .small: -1

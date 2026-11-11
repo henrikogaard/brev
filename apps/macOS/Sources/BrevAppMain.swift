@@ -50,6 +50,8 @@ enum BrevAppMain {
             let entitlements = dictionary[kSecCodeInfoEntitlementsDict as String] as? [String: Any] else {
             return false
         }
-        return IsolatedMockConfiguration.hasOnlySandboxEntitlement(entitlements)
+        return IsolatedMockConfiguration.hasExpectedEntitlements(
+            entitlements, info: Bundle.main.infoDictionary ?? [:]
+        )
     }
 }

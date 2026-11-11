@@ -121,4 +121,24 @@ struct MessageListVisibleHeadersTests {
             isRead: isRead
         )
     }
+
+    @Test("repeated selection keeps navigation context while changed buffers refresh the reader")
+    @MainActor
+    func selectionRetainsUnchangedContext() {
+        let original = [Self.makeHeader(id: "first", threadID: "thread"), Self.makeHeader(id: "reply", threadID: "thread")]
+        let snapshot = MessageListPresentationSnapshot(headers: [original[0]], pinnedMessageIDs: [], groupByDate: false,
+                                                       collapsedDateSectionIDs: [], sourceHeaders: original,
+                                                       navigationHeaders: original)
+        let navigation = MailNavigationState(selectedFolderID: "inbox")
+        navigation.selectMessage(original[0], from: snapshot.navigationHeaders)
+        #expect(navigation.selectedHeader?.id == "first")
+        navigation.selectMessage(original[1], from: snapshot.navigationHeaders)
+        #expect(navigation.selectedHeader?.id == "reply")
+        #expect(navigation.currentFolderHeaders.sharesRetainedBuffer(with: snapshot.navigationHeaders))
+        var changed = original
+        changed[1].isRead = true
+        navigation.selectMessage(changed[1], from: changed)
+        #expect(navigation.selectedHeader?.isRead == true)
+        #expect(!navigation.currentFolderHeaders.sharesRetainedBuffer(with: original))
+    }
 }
