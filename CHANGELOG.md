@@ -21,6 +21,9 @@ All notable changes to Brev are documented here.
   window edge. The collapsed row reads "From" with a Cc/Bcc control, and a
   refused Draft shows its explanation once. The link
   sheet's "Display text" label and the empty Templates text are now translated.
+- A saved Draft with a bulleted or numbered list made in Brev reopens with its
+  list intact instead of being refused. Nested lists stay refused.
+- Closing a detached message window no longer crashes Brev (#286).
 - New-message recovery now only reopens a message after a crash or forced quit.
   Closing a compose window normally forgets it, and a Draft that cannot be
   restored no longer blocks New Message: it opens blank with a note that any

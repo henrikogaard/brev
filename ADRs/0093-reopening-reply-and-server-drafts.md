@@ -155,6 +155,17 @@ This replaces the parts of ADR-0038 decision 6 and of ADR-0006's compose recover
 lifecycle that kept the record unchanged on Close and on refusal. Every guarantee
 for the Draft itself stays as it was.
 
+## Amendment: Brev's own lists reopen
+
+2026-11-11, #282. Brev's editor makes bulleted and numbered lists, but a saved
+Draft with a list was refused on reopen, so users could not edit their own
+lists. Restoration now accepts the flat form the serializer writes: `<ul>` or
+`<ol>` holding only `<li>` items with inline formatting. Each item becomes one
+line with the same list style the editor's list commands apply, and the usual
+round-trip check still has to pass. Nested lists, lists inside quotes, list
+tags with attributes and block markup inside items stay refused. A list needs
+the rich editor; the plain-text editor refuses it.
+
 ## References
 
 - ADR-0006: privacy and network calls (no new entry required)
