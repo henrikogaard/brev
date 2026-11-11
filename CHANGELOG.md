@@ -99,6 +99,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- A new message's folded "From … Cc/Bcc" row shows the signature picker again,
+  so a signature can be chosen without opening Cc and Bcc first (macOS and iOS).
+
 - Clicking a conversation's disclosure chevron now preserves its hit target
   through adaptive row layout instead of activating the parent message.
 

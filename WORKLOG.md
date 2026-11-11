@@ -1,5 +1,19 @@
 # Worklog
 
+## 2026-11-11 — Agent — #279 follow-ups, stack landing, signature picker
+
+- Landed #271–#277, #289 and #290 on main in one step (top-down merges; main
+  tree equals #290's tested head `e7ed95d`). #290 aligned the iOS compose
+  header like macOS (labels on the body edge, one hairline per row, equal row
+  heights); its WORKLOG entry is recorded here.
+- Signature picker: the folded "From … Cc/Bcc" row hid it on new messages. It
+  now sits in that row on macOS and iOS; `ComposeSignaturePickerTests` added.
+- Re-recorded only the iOS compose snapshots these changes affect, on iOS 27.1
+  (CI defers iOS pixel snapshots below iOS 27). Other iOS suites (folder
+  sidebar, theme picker, phone folder lists) also differ on this host; they
+  were left unchanged.
+- Not run: native app checks (planned test round).
+
 ## 2026-11-04 — Agent — iOS compose header, follow-up to #289 (#279 QA)
 
 - Goal: bring the iOS compose header in line with the macOS fix on #289.
