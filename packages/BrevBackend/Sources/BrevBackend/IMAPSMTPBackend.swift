@@ -22,7 +22,7 @@ enum IMAPBackgroundRefreshPolicy {
 public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, MutationApplying, CachedMessageHeaderProviding,
     SyncHealthReporting, SyncConflictReviewing, SyncHealthRepairing, MailboxBackgroundRefreshing,
     OutboxManaging, ScheduledSendEditing, ProgressiveMailSearching, CardDAVContactSyncSupporting, MessageLabelManaging,
-    CachedConversationProviding, RelatedConversationLoading, @unchecked Sendable {
+    CachedConversationProviding, RelatedConversationLoading, LocalDraftAttachmentProviding, @unchecked Sendable {
     private static let bodyFetchLogger = Logger(
         subsystem: "eu.brevmail.brev",
         category: "IMAPBodyFetch"
@@ -2212,6 +2212,35 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return try await draft(for: messageID)
     }
 
+    /// Reads only complete payloads belonging to the canonical locally staged draft.
+    public func localDraftAttachments(for draft: Draft) async throws -> [MIMEMessageAttachment] {
+        guard let canonical = await draftStagingStore?.draft(accountID: account.id, draftID: draft.id),
+              canonical == draft else { throw MailBackendError.notFound(id: draft.id) }
+        var result: [MIMEMessageAttachment] = []
+        for id in canonical.attachmentIDs {
+            guard let attachment = await draftStagingStore?.attachment(accountID: account.id, attachmentID: id) else {
+                throw MailBackendError.notFound(id: id)
+            }
+            // Upload may have used a previous remote UID. Resolve that alias
+            // through the account-owned store instead of accepting arbitrary IDs.
+            let owner = await draftStagingStore?.draft(accountID: account.id, draftID: attachment.draftID)
+            guard attachment.draftID == canonical.id || owner?.id == canonical.id else {
+                throw MailBackendError.notFound(id: id)
+            }
+            result.append(MIMEMessageAttachment(
+                id: attachment.id, filename: attachment.filename, mimeType: attachment.mimeType,
+                data: attachment.data, isInline: attachment.isInline, contentID: attachment.contentID
+            ))
+        }
+        return result
+    }
+
+    /// Rejects foreign sources before reading the account's local staging store.
+    public func localDraftAttachments(for draft: Draft, sourceID: MailSourceID) async throws -> [MIMEMessageAttachment] {
+        try validateSourceID(sourceID)
+        return try await localDraftAttachments(for: draft)
+    }
+
     public func discard(draftID: String) async throws {
         try await state.requireConnected()
         try await deleteRemoteDraft(draftID)
@@ -3507,6 +3536,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
 
     public func extensionService<Service>(_ type: Service.Type) -> Service? {
         switch ObjectIdentifier(type) {
+        case ObjectIdentifier(LocalDraftAttachmentProviding.self):
+            guard draftStagingStore != nil else { return nil }
+            return self as? Service
         case ObjectIdentifier(ProgressiveMailSearching.self):
             return self as? Service
         case ObjectIdentifier(CachedMessageHeaderProviding.self):

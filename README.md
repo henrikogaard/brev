@@ -502,6 +502,8 @@ The script also supports:
 
 ```sh
 ./script/build_and_run.sh --mock
+./script/build_and_run.sh --isolated-mock
+./script/build_and_run.sh --isolated-mock --build-only
 ./script/build_and_run.sh --live
 ./script/build_and_run.sh --preflight
 ./script/build_and_run.sh --verify
@@ -511,6 +513,32 @@ The script also supports:
 ./script/build_and_run.sh --setup-env
 ./script/build_and_run.sh --help
 ```
+
+For native UI validation without existing account data, use `--isolated-mock`
+(ADR-0091). Each invocation creates a UUID sandbox identity and a private build
+directory, keeping the dated `Brev Test (YYYY-MM-DD).app` name. It never installs
+into Applications, opens production App Groups, or constructs live account
+connectors. The sandbox has no network, Contacts, Calendar or iCloud permissions;
+embedded widgets and shared attachment handoff are disabled. Local environment
+files and OAuth build values are ignored. Ordinary `--mock` is **not** this
+isolation guarantee.
+
+Only with explicit approval for body/attachment QA, select
+`--isolated-mock-content-qa` instead (ADR-0092). It retains every UUID/mock/data
+guard, but adds network-client and user-selected-file read-only permissions.
+This profile no longer has an OS-level outbound-network block. Remote message
+content remains blocked by default; use generated picker fixtures only, never
+live accounts or personal files. The strict flag and release signing are unchanged.
+
+Use `--build-only` to verify the generated bundle and empty sandbox location
+before launching it explicitly. The command prints that build's exact identity
+and artifact path. Relaunch the same generated bundle to retain its isolated
+settings; a new script invocation creates a new profile. The bundle always starts mock-only,
+even if the surrounding environment requests live mode. Do not redirect HOME:
+startup checks its real sandbox home and signed entitlements before SwiftUI
+initializes. Retained build products and sandbox data must be cleaned up only
+by their generated identity, never by a production path. This profile cannot
+validate account setup, storage migration, widgets, sharing or provider sync.
 
 After every `tuist install` (or when package dependencies change), run
 `scripts/prepare-xcode-workspace.sh` before direct `xcodebuild` or

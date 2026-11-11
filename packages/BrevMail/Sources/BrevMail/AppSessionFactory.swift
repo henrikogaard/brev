@@ -158,6 +158,26 @@ public enum AppSessionFactory {
         }
     }
 
+    #if DEBUG
+    /// Creates synthetic mail without production credentials, stores or provider coordinators.
+    @MainActor
+    public static func makeIsolatedMock(themeDefaults: UserDefaults = .standard) -> AppSession {
+        let mock = MockBackend(capabilities: .full.union(.smtpOAuth))
+        let secrets = IsolatedMockSecretStore()
+        return AppSession(
+            backend: mock,
+            accountStore: InMemoryAccountStore(accounts: [mock.account], current: mock.account),
+            tokenStore: secrets,
+            themeDefaults: themeDefaults,
+            loginCoordinator: { AppSession.LoginResult(backend: mock, account: mock.account) },
+            googleOAuthIsConfigured: false,
+            demoLoginCoordinator: { AppSession.LoginResult(backend: mock, account: mock.account) },
+            aiProviderAssignmentCleanup: { _ in },
+            aiProviderBackendResolver: AIProviderBackendResolver(defaults: themeDefaults, secretStore: secrets)
+        )
+    }
+    #endif
+
     /// Creates a session with persistent account, credential, cache, and sync wiring.
     @MainActor
     public static func makeDefault(configuration: Configuration) -> AppSession {
@@ -516,3 +536,34 @@ public enum AppSessionFactory {
         try? AIProviderAccountAssignmentStore().removeAccount(accountID)
     }
 }
+
+#if DEBUG
+private actor IsolatedMockSecretStore: TokenStore, AIProviderSecretStore {
+    private var tokens: [String: Token] = [:]
+    private var apiKeys: [AIProviderID: String] = [:]
+
+    func token(for accountID: String) -> Token? {
+        tokens[accountID]
+    }
+
+    func setToken(_ token: Token, for accountID: String) {
+        tokens[accountID] = token
+    }
+
+    func clearToken(for accountID: String) {
+        tokens[accountID] = nil
+    }
+
+    func apiKey(for providerID: AIProviderID) -> String? {
+        apiKeys[providerID]
+    }
+
+    func setAPIKey(_ apiKey: String, for providerID: AIProviderID) {
+        apiKeys[providerID] = apiKey
+    }
+
+    func deleteAPIKey(for providerID: AIProviderID) {
+        apiKeys[providerID] = nil
+    }
+}
+#endif

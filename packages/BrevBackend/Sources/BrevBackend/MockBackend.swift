@@ -22,7 +22,7 @@ import Foundation
 /// stream returned by `subscribeToChanges()`.
 public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManaging, ContactLookupProviding, MailImporting,
     SyncHealthReporting, SyncHealthRepairing, SyncConflictManaging,
-    CachedConversationProviding, RelatedConversationLoading, @unchecked Sendable {
+    CachedConversationProviding, RelatedConversationLoading, LocalDraftAttachmentProviding, @unchecked Sendable {
     public let account: BrevAccount
     public let capabilities: BackendCapabilities
     public let extendedCapabilities: BackendExtendedCapabilities
@@ -335,6 +335,26 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         try await store.save(draft: draft, mailboxID: mailboxID(for: sourceID))
     }
 
+    /// Returns the canonical saved draft from the active mock mailbox.
+    public func draft(for messageID: String) async throws -> Draft? {
+        try await store.draft(for: messageID)
+    }
+
+    /// Returns a locally saved draft only from the requested source.
+    public func draft(for messageID: String, sourceID: MailSourceID) async throws -> Draft? {
+        try await store.draft(for: messageID, mailboxID: mailboxID(for: sourceID))
+    }
+
+    /// Reads complete locally staged bytes without a mock download operation.
+    public func localDraftAttachments(for draft: Draft) async throws -> [MIMEMessageAttachment] {
+        try await store.localDraftAttachments(for: draft)
+    }
+
+    /// Resolves staging IDs inside the owning mock account and mailbox.
+    public func localDraftAttachments(for draft: Draft, sourceID: MailSourceID) async throws -> [MIMEMessageAttachment] {
+        try await store.localDraftAttachments(for: draft, mailboxID: mailboxID(for: sourceID))
+    }
+
     public func discard(draftID: String) async throws {
         await store.discard(draftID: draftID)
     }
@@ -437,6 +457,8 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
 
     public func extensionService<Service>(_ type: Service.Type) -> Service? {
         switch ObjectIdentifier(type) {
+        case ObjectIdentifier(LocalDraftAttachmentProviding.self):
+            return self as? Service
         case ObjectIdentifier(AutoReplyManaging.self)
             where capabilities.contains(.autoReply) || capabilities.contains(.sieveVacation):
             return self as? Service
@@ -1498,6 +1520,8 @@ public extension MockBackend {
 // MARK: - Internal store
 
 private struct MockMailboxData {
+    var savedDrafts: [String: Draft] = [:]
+    var attachmentDraftIDs: [String: String] = [:]
     var folders: [Folder]
     var messagesByFolder: [String: [MessageHeader]]
     var messageBodies: [String: MessageBody]
@@ -2432,6 +2456,24 @@ private actor Store {
         try save(draft: draft, mailboxID: activeMailboxID)
     }
 
+    func draft(for id: String, mailboxID: Mailbox.ID? = nil) throws -> Draft? {
+        let drafts = try data(mailboxID: mailboxID ?? activeMailboxID).savedDrafts
+        return drafts[id] ?? drafts.values.first { $0.remoteID == id }
+    }
+
+    func localDraftAttachments(for draft: Draft, mailboxID: Mailbox.ID? = nil) throws -> [MIMEMessageAttachment] {
+        let data = try data(mailboxID: mailboxID ?? activeMailboxID)
+        guard data.savedDrafts[draft.id] == draft else { throw MailBackendError.notFound(id: draft.id) }
+        return try draft.attachmentIDs.map { id in
+            guard let ownerID = data.attachmentDraftIDs[id],
+                  ownerID == draft.id || ownerID == draft.remoteID,
+                  let metadata = data.attachmentsByID[id], let bytes = data.attachmentDataByID[id] else {
+                throw MailBackendError.notFound(id: id)
+            }
+            return MIMEMessageAttachment(id: id, filename: metadata.name, mimeType: metadata.mimeType, data: bytes)
+        }
+    }
+
     func save(draft: Draft, mailboxID: Mailbox.ID) throws -> Draft {
         let sender = try sender(mailboxID: mailboxID)
         var saved = draft
@@ -2442,6 +2484,7 @@ private actor Store {
                 $0.id == draftID
             }
             saved.remoteID = draftID
+            data.savedDrafts[saved.id] = saved
 
             data.messagesByFolder[draftsFolderID, default: []].removeAll { $0.id == draftID }
             data.messagesByFolder[draftsFolderID, default: []].append(
@@ -2520,6 +2563,7 @@ private actor Store {
                 resource: attachmentID
             )
             mailboxData.attachmentDataByID[attachmentID] = data
+            mailboxData.attachmentDraftIDs[attachmentID] = draftID
             return attachmentID
         }
     }
@@ -2618,6 +2662,7 @@ private actor Store {
         for id in removed {
             data.messageBodies[id] = nil
         }
+        data.savedDrafts = data.savedDrafts.filter { !removed.contains($0.value.remoteID ?? "") }
         return .messagesRemoved(folderID: draftsFolderID, messageIDs: removed)
     }
 

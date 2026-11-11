@@ -51,6 +51,43 @@ Brev accepts a staged rich HTML compose MVP.
    `multipart/alternative`; other backends may map the same draft value
    to their native send API.
 
+6. **Saved bodies and recovery must be proven safe before editing.**
+   The editor resolves the canonical local draft in the bound account/mailbox,
+   checks the supplied draft or recovery hint against it, and resolves complete
+   owned attachment payloads through `LocalDraftAttachmentProviding`. Recovery
+   never reconstructs a draft from provider body fetches or from the legacy
+   text-only hint. Missing, stale, foreign, inline/CID, oversized or server-only
+   payloads fail closed without changing the saved draft. (ADR-0093 amends how
+   the recovery record is kept.)
+
+   Restoration currently accepts bounded, resource-free text, line breaks,
+   bold, italic, underline and semantic links. Preflight must leave the HTML
+   unchanged under the compose sanitizer; native import and serialization must
+   round-trip text, emphasis, link and paragraph attributes. Images, block
+   containers, lists and blockquotes are refused, not flattened. Reply/forward
+   drafts are also refused because their persisted model cannot prove the
+   protected quote boundary. This restoration subset is deliberately narrower
+   than the authored/sanitized subset above.
+
+   Attributed storage is seeded before the first HTML publication. A no-edit
+   Save/autosave retains the original HTML byte-for-byte; actual changes use
+   the existing serializer. A formatted draft under an explicit plain-text
+   preference is refused. A successfully restored session keeps its validated
+   editor mode rather than flattening on a later preference change. HTML preview
+   keeps the native editor mounted but read-only so returning cannot reimport
+   stale content. Canonical threading, identity, scheduling, read-receipt,
+   security and attachment metadata survive unchanged unless explicitly edited.
+
+   Programmatic text changes such as selecting a signature replace only the
+   differing Unicode-scalar-bounded range in native attributed storage, keeping
+   the unchanged prefix/suffix attributes instead of resetting the entire body
+   to plain text. Protected quote and inline-attachment attributes in an active
+   authored composer remain intact; this does not enable their saved restoration.
+
+   Save, Send, autosave and dismissal persistence are blocked while restoration
+   is pending, failed or cancelled. Closing cancels pending work and leaves the
+   original untouched; reopening starts a fresh validation attempt.
+
 ## Rationale
 
 Rich compose is too visible a competitive gap to keep as a non-goal,
