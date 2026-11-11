@@ -427,7 +427,7 @@ struct ComposeDraftPreservationTests {
             htmlBody: "<strong>Original</strong>"
         )
         switch kind {
-        case "list": hint.htmlBody = "<ul><li>Item</li></ul>"
+        case "list": hint.htmlBody = "<ul><li>Item<ul><li>Nested</li></ul></li></ul>"
         case "unowned": hint.attachmentIDs = ["server-only-id"]
         default: break
         }
