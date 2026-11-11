@@ -225,6 +225,42 @@ GitHub Actions. Workflows:
   an accompanying ADR (ADR-0005).
 - **`provider-review.yml`** — Weekly scheduled run that produces an
   provider change report (ADR-0005).
+- **`selection-profile.yml`** — Synthetic navigation workload in an
+  optimized SwiftPM test bundle. Build tests with `swift build -c release
+  --build-tests -Xswiftc -enable-testing` to support `@testable` imports, then
+  execute with `swift test -c release --skip-build`.
+  The actual workload registers a unique per-run Darwin notification, drains
+  its initial changed state, then atomically publishes its PID in the private
+  output directory. The harness waits up to 30 seconds for this announcement;
+  it does not discover a target by executable name. Both sides bound tracer
+  startup at 120 seconds. The workload starts its measured loop only after
+  xctrace's supported `--notify-tracing-started` signal, acknowledging that
+  signal in a separate file. The 75-second recording budget covers the
+  25-second measured loop independently of startup time.
+  Harness failures preserve their exit status and print
+  build/test/tracer logs; credential-free shell self-tests cover this contract.
+  Those tests invoke the harness with the system `/bin/bash`, including
+  Bash 3.2's empty-array behavior under `nounset`, rather than a newer PATH shell.
+  Build, workload and tracing commands run with an allowlisted environment
+  (`HOME`, `PATH`, `TMPDIR`, optional `DEVELOPER_DIR`, the workload opt-in,
+  private handshake directory and unique notification name).
+  Announced workload processes are eligible only when a bounded parent-PID walk
+  reaches this invocation's SwiftPM test PID; ownership is rechecked directly
+  before tracer attachment. An early runner or unrelated matching process is
+  never selected. Background test/tracer jobs own separate process groups;
+  cleanup snapshots descendants only of roots whose captured start time,
+  process group and direct parent still match. Each PID's start time and group
+  are rechecked before individual TERM and KILL signals; group-wide signals
+  are not used. Waited roots are retired immediately, including failed jobs.
+  This retains bounded cleanup of tracked detached/stubborn descendants and
+  leader reaping on success, failure or interruption. Portable `ps` checks
+  are best-effort: start times have limited precision, snapshots can miss new
+  descendants, and identity checks cannot eliminate the check-to-signal race.
+  They are not atomic process handles or adversarial PID-reuse isolation.
+  Each run requires a new owner-only output directory so failure reporting
+  cannot reuse old logs. Trace exports may include process environments;
+  inspect only allowlisted aggregate fields, never print or upload raw exports.
+  Raw traces remain private and are not SwiftUI frame or app-memory evidence.
 
 No Xcode Cloud (provider uses both; we use only GitHub Actions to
 keep CI in one place and observable).

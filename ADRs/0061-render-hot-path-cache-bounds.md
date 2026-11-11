@@ -40,6 +40,14 @@ Use bounded, process-local caches for deterministic render/backend helpers:
    drag ends or the reader-width debounce settles. Coalescing is keyed by the
    enclosing `NSSplitView`, not by each pane probe, and delayed passes carry a
    generation token so superseded GCD work cannot apply.
+7. Retain one message-list presentation/navigation projection for an unchanged
+   source buffer and cache key. Selection must re-evaluate the presentation
+   getter: buffer identity alone cannot establish current snooze/week boundaries,
+   calendar day, or workflow state. Provider thread-grouping capability is an
+   explicit, required key input; filtered conversations retain their loaded
+   replies only when grouping is supported. Same-buffer navigation selection
+   preserves the existing ID index. This contract is not a measured speedup;
+   acceptance still requires matched optimized selection profiles.
 
 No new external calls, telemetry, or user-visible storage controls are added.
 `PreferenceSyncStore` continues to reconcile its allowlist on

@@ -45,6 +45,8 @@ enum DetachedMessageWindowChrome {
 @MainActor
 enum DetachedMessageWindow {
     private static var lastCascadePoint: NSPoint = .zero
+    /// Readers that are open now; each leaves this set when it closes.
+    private static var openWindows: Set<NSWindow> = []
 
     static func open(
         header: MessageHeader,
@@ -107,11 +109,22 @@ enum DetachedMessageWindow {
         window.title = subject.isEmpty ? "Message" : subject
         window.minSize = CGSize(width: 640, height: 480)
         window.contentMinSize = CGSize(width: 640, height: 480)
-        // Detached readers are not retained in a registry. Let AppKit release
-        // the window (and its hosting controller/WebKit view) after close;
-        // retaining every closed reader would leak one full view hierarchy per
-        // open/close cycle.
-        window.isReleasedWhenClosed = true
+        // Swift owns this window. AppKit's release-on-close on top of ARC
+        // freed it twice and crashed on close (#286), so hold it only while it
+        // is open and drop it, with its hosting view, when it closes.
+        window.isReleasedWhenClosed = false
+        openWindows.insert(window)
+        var closeObserver: NSObjectProtocol?
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak window] _ in
+            MainActor.assumeIsolated {
+                if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+                if let window { openWindows.remove(window) }
+            }
+        }
         window.isRestorable = false
         window.contentViewController = hostingController
         DetachedMessageWindowChrome.apply(to: window)

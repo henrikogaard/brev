@@ -18,6 +18,30 @@ import Testing
 
 @Suite("Indexed IMAP conversations")
 struct ConversationIndexTests {
+    @Test("page threading shares indexed traversal across roots and preserves cross-folder links", arguments: [false, true])
+    func pageThreading(sqlite: Bool) async throws {
+        let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent("brev-page-threading-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store: any SyncStoreProtocol = sqlite
+            ? try SQLiteSyncStore(databaseURL: rootURL.appendingPathComponent("index.sqlite")) : InMemorySyncStore()
+        let engine = BrevSyncEngine(store: store)
+        let account = BrevAccount(id: "a", displayName: "A", emailAddress: "a@example.test")
+        let other = BrevAccount(id: "b", displayName: "B", emailAddress: "b@example.test")
+        let root = Self.header("Inbox:1", folder: "Inbox", own: "<root>")
+        let middle = Self.header("Sent:2", folder: "Sent", own: "<middle>", parent: "<root>")
+        let leaf = Self.header("Inbox:3", folder: "Inbox", own: "<leaf>", parent: "<middle>")
+        let unrelated = Self.header("Inbox:4", folder: "Inbox", own: "<unrelated>")
+        let foreign = Self.header("Inbox:5", folder: "Inbox", own: "<foreign>", parent: "<root>")
+        await engine.storeHeaders([root, middle, leaf, unrelated], account: account)
+        await engine.storeHeaders([foreign], account: other)
+        let candidates = try await engine.imapThreadingHeaders(for: [leaf, root], folderID: "Inbox", account: account)
+        #expect(Set(candidates.map(\.id)) == [root.id, leaf.id])
+        let matches = try await store.conversationCandidates(identifiers: ["root", "middle"],
+                                                             source: MailSourceID(accountID: "a", mailboxID: "a"), limit: 100)
+        #expect(matches.count == 3)
+        #expect(try await engine.imapThreadingHeaders(for: [], folderID: "Inbox", account: account).isEmpty)
+    }
+
     @Test("cached reply chains cross folders, survive restart and follow deletion")
     func persistedReplyGraph() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-conversation-\(UUID()).sqlite")
@@ -41,7 +65,12 @@ struct ConversationIndexTests {
         // Simulate the existing v4 cache: headers/bodies remain, relationship index does not.
         var database: OpaquePointer?
         #expect(sqlite3_open(url.path, &database) == SQLITE_OK)
-        #expect(sqlite3_exec(database, "DROP TABLE conversation_links; PRAGMA user_version = 4;", nil, nil, nil) == SQLITE_OK)
+        #expect(sqlite3_exec(database, """
+        DROP TABLE conversation_links;
+        DROP TABLE imap_page_windows;
+        ALTER TABLE folder_sync_state DROP COLUMN next_page_token;
+        PRAGMA user_version = 4;
+        """, nil, nil, nil) == SQLITE_OK)
         sqlite3_close(database)
         let reopened = try BrevSyncEngine(databaseURL: url)
         #expect(await reopened.cachedOriginalRawMessage(for: root.id, account: account) == original)
@@ -87,7 +116,12 @@ struct ConversationIndexTests {
         // schema migration path, so the chain also survives a dropped index.
         var database: OpaquePointer?
         #expect(sqlite3_open(url.path, &database) == SQLITE_OK)
-        #expect(sqlite3_exec(database, "DROP TABLE conversation_links; PRAGMA user_version = 4;", nil, nil, nil) == SQLITE_OK)
+        #expect(sqlite3_exec(database, """
+        DROP TABLE conversation_links;
+        DROP TABLE imap_page_windows;
+        ALTER TABLE folder_sync_state DROP COLUMN next_page_token;
+        PRAGMA user_version = 4;
+        """, nil, nil, nil) == SQLITE_OK)
         sqlite3_close(database)
         let rebuilt = try BrevSyncEngine(databaseURL: url)
         let afterRebuild = try await rebuilt.cachedConversation(around: anchor, excludingFolderIDs: [])

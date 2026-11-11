@@ -444,6 +444,20 @@ public struct GmailAPIClient: GmailAPIClientProtocol, Sendable {
         )
     }
 
+    /// Lists drafts with their message identifiers.
+    public func listDrafts(maxResults: Int, pageToken: String?) async throws -> GmailDraftPage {
+        var queryItems = [URLQueryItem(name: "maxResults", value: String(max(1, min(maxResults, 500))))]
+        if let pageToken { queryItems.append(URLQueryItem(name: "pageToken", value: pageToken)) }
+        return try await transport.send(
+            GmailAPIRequest(
+                method: .get,
+                path: "/users/\(Self.pathComponent(userID))/drafts",
+                queryItems: queryItems
+            ),
+            decoding: GmailDraftPage.self
+        )
+    }
+
     /// Permanently deletes a draft.
     public func deleteDraft(id: String) async throws {
         try validateID(id)

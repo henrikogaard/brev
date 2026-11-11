@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import Foundation
 
 /// Marks the region of the compose body that carries the quoted original
@@ -28,6 +29,18 @@ struct ComposeQuoteProtection: Equatable {
     /// First line of the quote block, matched literally in the storage.
     var marker: String
     var edge: Edge
+
+    /// The persisted form of this protection (ADR-0093).
+    var boundary: DraftQuoteBoundary {
+        DraftQuoteBoundary(marker: marker, edge: edge == .top ? .top : .bottom)
+    }
+}
+
+extension ComposeQuoteProtection {
+    /// Restores protection from a saved boundary.
+    init(boundary: DraftQuoteBoundary) {
+        self.init(marker: boundary.marker, edge: boundary.edge == .top ? .top : .bottom)
+    }
 }
 
 /// Computes the read-only quote region of a compose body and decides whether

@@ -4,7 +4,145 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Add an explicitly approved isolated mock content-QA build option for native
+  body rendering and read-only attachment picking; strict and shipping permissions stay unchanged.
+
+### Changed
+
+- macOS compose: the Format menu's Bold, Italic and Clear Formatting now work,
+  Cmd-B, Cmd-I and Cmd-U format the message body instead of reaching the main
+  menu (where Cmd-U marked a message read), and Insert Link applies the link even
+  when the link sheet moved focus. Reopened Drafts use the editor font instead of
+  Times. A Light or Dark editor that differs from the window paints its own
+  background so the text stays readable.
+- macOS compose header: To, Cc, Bcc, From and Subject share one label column
+  whose labels start on the body text's left edge. Every header row, Cc and Bcc
+  included, has the same height and one hairline below it that runs to the
+  window edge. The collapsed row reads "From" with a Cc/Bcc control, and a
+  refused Draft shows its explanation once. The link
+  sheet's "Display text" label and the empty Templates text are now translated.
+- iOS compose header: the labels start on the body text's left edge. Every header
+  row, Cc and Bcc included, has the same height and one hairline below it that
+  runs to the screen edge. The label column grows with the text size, so
+  "Subject" stays on one line.
+- A saved Draft with a bulleted or numbered list made in Brev reopens with its
+  list intact instead of being refused. Nested lists stay refused.
+- Closing a detached message window no longer crashes Brev (#286).
+- New-message recovery now only reopens a message after a crash or forced quit.
+  Closing a compose window normally forgets it, and a Draft that cannot be
+  restored no longer blocks New Message: it opens blank with a note that any
+  saved copy is still in Drafts. Drafts themselves are never changed.
+
+- Reopening a supported locally saved formatted draft or new-message recovery
+  preserves its original HTML on an unchanged Save/autosave and its emphasis,
+  links, line breaks, owned attachments and metadata when edited. Pending,
+  cancelled or unproven restoration cannot overwrite or send the original.
+  Missing local proof, unsupported formatting, inline content and formatted
+  drafts opened in plain-text mode show an explanation and a non-destructive
+  Close action. Returning from HTML preview preserves the edited rich body.
+  The supported restoration subset is text, line breaks, bold, italic, underline
+  and links, plus `<p>` and `<div>` as line structure and Brev's own flat quotes.
+  Saved replies and forwards reopen, and lock their quote again when it was saved
+  with this version. A Draft with no local copy opens from the Drafts folder unless
+  it has attachments. Opening a Gmail Draft from the list now asks Gmail for its
+  draft ID, so it needs a connection and saves back to the same Draft. Lists,
+  nested or styled quotes and inline/CID images are
+  currently refused rather than flattened. Recovery still uses a
+  text-only hint: missing or stale canonical proof is refused, so arbitrary
+  unsaved/pre-autosave formatted content cannot be reconstructed.
+
+- macOS rich compose no longer resets bold, italic or typing emphasis during
+  editor updates, including pending emphasis before the first character.
+  Existing rich text and authored typing fonts keep their formatting when reader
+  typography changes; new, untouched empty and plain-text editors follow reader defaults.
+  Body and typing colors still follow Light/Dark appearance changes, with protected
+  quotes retaining their separate theme color.
+
+- Message bodies with rich rendering disabled now follow the selected reader
+  font and text size, retaining bold, italic and links. Font changes also apply
+  to already displayed native message bodies; original HTML rendering is unchanged.
+
+- Reopening locally saved mock and IMAP drafts restores attachment rows from
+  their owned staged bytes. Saving, autosaving and adding or removing files
+  preserve the intended attachment set without uploading retained files again.
+  Reopened drafts stay in their original account/mailbox. Unavailable,
+  oversized and inline-image drafts are left unchanged with an explanation
+  rather than opened for unsafe editing; server-only attachment downloads are
+  not added.
+
+- Ambiguous historical IMAP cache records are retained locally for recovery
+  but hidden until ordinary server fetches confirm them. Temporary offline
+  gaps replace potentially resurrected deleted mail. Clear Cache discards
+  recovery payloads while retaining minimal anti-replay identifiers; account
+  removal deletes those identifiers too.
+
+- Plain-text readers share a leading-aligned readable column on wide layouts,
+  scaled with the selected font size. Sender HTML, print and compose keep their existing layout.
+
+- Reuse the current list presentation's reader navigation context during
+  repeated selection, preserving reply visibility and refreshing changed headers.
+
+- IMAP cache maintenance uses selective header queries and row-level updates.
+  The historical JSON header writer is now test-only; production keeps a
+  read-only migration reader and a memory-only fallback when the index is unavailable.
+
+- Indexed IMAP accounts migrate legacy header caches on first folder access.
+  Cached page cursors and individual header lookups use bounded index reads;
+  legacy files are removed only after a successful import.
+
+- IMAP pages dual-write their headers and paging metadata transactionally to
+  the local index while retaining the legacy cache during the staged rollout.
+
+- Prepare transactional IMAP page-window metadata in cache schema v7. Existing
+  mail reads still use the current cache paths; the SQLite read cutover remains
+  gated on performance measurements.
+
 ### Fixed
+
+- Clicking a conversation's disclosure chevron now preserves its hit target
+  through adaptive row layout instead of activating the parent message.
+
+- Opening a new composer no longer recovers already-sent content when an
+  earlier autosave consumed the compose presentation request. Send and successful
+  discard clear only the matching draft's recovery entry, preserving other drafts.
+
+- Command-Return in a detached macOS composer now reaches Send while a message
+  field or body editor has focus, using the same validation and undo-send action
+  as the toolbar button, including when Caps Lock is on. Holding the keys does
+  not repeatedly trigger Send.
+
+- Double-clicking a Drafts row no longer opens an extra reader window alongside
+  the composer. Other folders retain double-click reader detachment.
+
+- Collapsed conversations keep their visible row highlighted when a hidden
+  reply is selected, and keyboard/menu navigation scrolls to that row. Expanded
+  conversations highlight only the selected reply; the reader target is unchanged.
+
+- macOS native UI validation can use `--isolated-mock` for a fresh, mock-only
+  sandbox with no production App Group or live-account access.
+
+- If an IMAP recovery index cannot open, stale external body/source caches
+  stay unavailable rather than bypassing recovery checks. Fresh server reads
+  remain available.
+
+- Destructive IMAP actions now complete legacy-cache migration before
+  changing server messages. Migration failure stops the action instead of
+  silently queueing it, and headers deleted by these actions cannot return
+  through a later first import. Pre-marker historical ambiguity is handled
+  by the recovery quarantine; already-completed imports are not reclassified.
+
+- Cached attachment enumeration retains messages whose attachments exist only
+  in raw-source or parsed-body caches, even when the header flag is false.
+  Cache schema v9 adds the selective attachment index to existing v7/v8 stores
+  transactionally instead of limiting it to fresh databases.
+
+- Retrying a legacy IMAP cache import after failed file cleanup no longer
+  restores messages already removed from the index. Cached-page threading
+  shares bounded reply-link lookups instead of traversing once per message.
+
+- Cache-only IMAP search includes legacy folders before their first open.
+  Date repair now targets only missing-date sentinels and starts only from
+  cached pages that need it; retention preserves exact fractional-date cutoffs.
 
 - Calendar, Contacts and Tasks now show a centered, per-surface empty state
   with a single action to open Calendar & Contacts settings and connect an

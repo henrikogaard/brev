@@ -263,6 +263,13 @@ enum ComposePresentation {
             : subject
     }
 
+    /// The bottom error bar stays hidden while the body already shows the same
+    /// restoration refusal next to its Close button.
+    static func showsErrorBanner(errorMessage: String?, restorationError: String?) -> Bool {
+        guard let errorMessage else { return false }
+        return errorMessage != restorationError
+    }
+
     static func errorStatus(_ message: String) -> ComposeErrorStatus {
         ComposeErrorStatus(
             message: message,
