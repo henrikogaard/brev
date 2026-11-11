@@ -156,6 +156,10 @@ public struct ComposeView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    // Both follow Dynamic Type: a long label like "Subject" keeps to one line,
+    // and rows with and without recipient chips stay equally tall.
+    @ScaledMetric(relativeTo: .subheadline) private var scaledFieldLabelWidth = ComposeLayout.fieldLabelWidth
+    @ScaledMetric(relativeTo: .body) private var scaledHeaderRowMinHeight = ComposeLayout.headerRowMinHeight
     #endif
 
     private let sourceID: MailSourceID?
@@ -1586,14 +1590,10 @@ public struct ComposeView: View {
     }
 
     private var flatHairlineFieldPanel: some View {
-        #if os(macOS)
         // A hidden From row would still add its divider, doubling the line
         // under the collapsed From summary.
         let rows = ComposePresentation.chrome.fieldRows.filter { $0 != .sender || isFromFieldVisible }
-        #else
-        let rows = ComposePresentation.chrome.fieldRows
-        #endif
-        let horizontalInset = fieldPanelHorizontalInset
+        let horizontalInset = contentHorizontalInset
         return VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element) { index, row in
                 composeFieldRow(row)
@@ -1612,13 +1612,11 @@ public struct ComposeView: View {
         composeLayoutPlatform == .compactIOSAccessibility
     }
 
-    private var fieldPanelHorizontalInset: CGFloat {
-        #if os(macOS)
-        // Header labels start on the body text's left edge.
-        ComposeLayout.bodyHorizontalInset
-        #else
-        isAccessibilityFieldLayout ? BrevSpacing.sm : BrevSpacing.lg
-        #endif
+    /// Header labels and body text start on this one left edge. The stacked
+    /// accessibility layout uses the toolbar's narrower margin, so very large
+    /// text keeps its width on a narrow phone.
+    private var contentHorizontalInset: CGFloat {
+        isAccessibilityFieldLayout ? BrevSpacing.sm : ComposeLayout.contentHorizontalInset
     }
 
     private var fieldLabelWidth: CGFloat {
@@ -1634,7 +1632,7 @@ public struct ComposeView: View {
             textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium
         )
         #else
-        ComposeLayout.fieldLabelWidth
+        scaledFieldLabelWidth
         #endif
     }
 
@@ -1662,7 +1660,9 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var recipientFields: some View {
-        VStack(alignment: .leading, spacing: recipientRowSpacing) {
+        // Rows get their spacing only from the divider padding, like the From
+        // and Subject rows, so every header row has the same height.
+        VStack(alignment: .leading, spacing: 0) {
             if isAccessibilityFieldLayout {
                 RecipientChipField(
                     label: String(localized: "To", bundle: .module),
@@ -1717,7 +1717,7 @@ public struct ComposeView: View {
                             .brevFont(.subheadline)
                             .foregroundStyle(theme.accent.color)
                     }
-                    .frame(minHeight: ComposeLayout.headerRowMinHeight, alignment: .leading)
+                    .frame(minHeight: headerRowMinHeight, alignment: .leading)
                     .contentShape(Rectangle())
                     #else
                     Text(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
@@ -1725,7 +1725,12 @@ public struct ComposeView: View {
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        // Rows stack at accessibility sizes, so only their content sets the height.
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: isAccessibilityFieldLayout ? nil : headerRowMinHeight,
+                            alignment: .leading
+                        )
                         .contentShape(Rectangle())
                     #endif
                 }
@@ -1745,12 +1750,10 @@ public struct ComposeView: View {
                     onSubmit: { advanceFocus(from: .cc) }
                 ))
             }
-            #if os(macOS)
             if !isOptionalFieldsCollapsed && isCcFieldVisible && isBccFieldVisible {
                 // Cc and Bcc are full rows like To, each ending in a hairline.
                 recipientRowDivider
             }
-            #endif
             if !isOptionalFieldsCollapsed && isBccFieldVisible {
                 headerRowHeight(RecipientChipField(
                     label: String(localized: "Bcc", bundle: .module),
@@ -1770,32 +1773,24 @@ public struct ComposeView: View {
         .padding(.vertical, fieldVerticalPadding)
     }
 
-    /// macOS rows get their spacing only from the divider padding, like the
-    /// From and Subject rows, so every header row has the same height.
-    private var recipientRowSpacing: CGFloat {
-        #if os(macOS)
-        0
+    private var headerRowMinHeight: CGFloat {
+        #if os(iOS)
+        scaledHeaderRowMinHeight
         #else
-        BrevSpacing.xs
+        ComposeLayout.headerRowMinHeight
         #endif
     }
 
-    /// Recipient fields keep the shared macOS header row height.
+    /// Recipient fields keep the shared header row height.
     private func headerRowHeight(_ field: some View) -> some View {
-        #if os(macOS)
-        field.frame(minHeight: ComposeLayout.headerRowMinHeight, alignment: .leading)
-        #else
-        field
-        #endif
+        field.frame(minHeight: headerRowMinHeight, alignment: .leading)
     }
 
     private var recipientRowDivider: some View {
         BrevDivider()
             .padding(.vertical, fieldVerticalPadding)
-        #if os(macOS)
             // Match the panel's row dividers, which run to the window edge.
-            .padding(.trailing, -fieldPanelHorizontalInset)
-        #endif
+            .padding(.trailing, -contentHorizontalInset)
     }
 
     private var isCcFieldVisible: Bool {
@@ -2137,9 +2132,7 @@ public struct ComposeView: View {
                     .frame(width: fieldLabelWidth, alignment: .leading)
                 content()
             }
-            #if os(macOS)
-            .frame(minHeight: ComposeLayout.headerRowMinHeight)
-            #endif
+            .frame(minHeight: headerRowMinHeight)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -2281,7 +2274,7 @@ public struct ComposeView: View {
             macRichTextTargetBox: macRichTextTargetBox,
             restoredAttributedText: restoredBody?.attributedText
         )
-        .padding(.horizontal, ComposeLayout.bodyHorizontalInset)
+        .padding(.horizontal, contentHorizontalInset)
         .padding(.vertical, BrevSpacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .environment(\.colorScheme, bodyAppearance.colorScheme)
@@ -4422,8 +4415,14 @@ private final class ComposeWindowTitleView: NSView {
 
 private enum ComposeLayout {
     static let fieldLabelWidth: CGFloat = 64
-    /// Left and right inset of the body text; macOS header rows share it.
-    static let bodyHorizontalInset: CGFloat = BrevSpacing.xl
+    /// Left and right inset of the header rows and the body text.
+    static let contentHorizontalInset: CGFloat = BrevSpacing.xl
+    #if os(iOS)
+    /// One line of body text at the default Dynamic Type size, the tallest
+    /// thing in a header row. Every row is at least this tall, so rows with
+    /// and without chips match.
+    static let headerRowMinHeight: CGFloat = 22
+    #endif
     #if os(macOS)
     /// One recipient chip's height at the default text size (a 12 pt icon
     /// plus 2 pt padding above and below). Every macOS header row is at

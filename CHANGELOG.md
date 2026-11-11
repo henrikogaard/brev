@@ -21,6 +21,10 @@ All notable changes to Brev are documented here.
   window edge. The collapsed row reads "From" with a Cc/Bcc control, and a
   refused Draft shows its explanation once. The link
   sheet's "Display text" label and the empty Templates text are now translated.
+- iOS compose header: the labels start on the body text's left edge. Every header
+  row, Cc and Bcc included, has the same height and one hairline below it that
+  runs to the screen edge. The label column grows with the text size, so
+  "Subject" stays on one line.
 - A saved Draft with a bulleted or numbered list made in Brev reopens with its
   list intact instead of being refused. Nested lists stay refused.
 - Closing a detached message window no longer crashes Brev (#286).
