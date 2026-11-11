@@ -33,6 +33,34 @@ struct GmailAPIClientTests {
         #expect(request.url?.path == "/gmail/v1/users/me/labels")
     }
 
+    @Test("lists drafts with their message identifiers")
+    func listsDrafts() async throws {
+        let executor = ClientRecordingExecutor(
+            body: #"{"drafts":[{"id":"r1","message":{"id":"m1","threadId":"t1"}}],"nextPageToken":"next"}"#
+        )
+        let client = GmailAPIClient(
+            transport: GmailAPITransport(accessTokenProvider: ClientTokenProvider(), httpExecutor: executor)
+        )
+
+        let page = try await client.listDrafts(maxResults: 100, pageToken: "page")
+
+        #expect(page.drafts.map(\.id) == ["r1"])
+        #expect(page.drafts.first?.message?.id == "m1")
+        #expect(page.nextPageToken == "next")
+        let request = try #require(await executor.request())
+        #expect(request.url?.path == "/gmail/v1/users/me/drafts")
+        #expect(request.url?.query?.contains("pageToken=page") == true)
+    }
+
+    @Test("an account with no drafts decodes to an empty page")
+    func listsNoDrafts() async throws {
+        let executor = ClientRecordingExecutor(body: #"{"resultSizeEstimate":0}"#)
+        let client = GmailAPIClient(
+            transport: GmailAPITransport(accessTokenProvider: ClientTokenProvider(), httpExecutor: executor)
+        )
+        #expect(try await client.listDrafts(maxResults: 100, pageToken: nil).drafts.isEmpty)
+    }
+
     @Test("lists messages and searches through Gmail q")
     func listsAndSearchesMessages() async throws {
         let executor = ClientRecordingExecutor(body: #"{"messages":[{"id":"m1","threadId":"t1"}],"nextPageToken":"next"}"#)

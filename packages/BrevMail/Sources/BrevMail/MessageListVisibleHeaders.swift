@@ -55,6 +55,7 @@ final class MessageListPresentationSnapshotCache {
         let calendarIdentifier: Calendar.Identifier
         let calendarTimeZoneIdentifier: String
         let localeIdentifier: String
+        let supportsThreadGrouping: Bool
     }
 
     private var key: Key?
@@ -83,6 +84,8 @@ final class MessageListPresentationSnapshotCache {
 /// Fully derived data needed to render one folder's list.
 struct MessageListPresentationSnapshot {
     let headers: [MessageHeader]
+    /// Ungrouped filtered reader/navigation context, derived once with the list projection.
+    let navigationHeaders: [MessageHeader]
     let dateSections: [MessageListVisibleDateSection]
     /// Unread/pinned tallies over the *source* header list, not the visible
     /// projection. The folder-stats footer reads them every body evaluation;
@@ -95,6 +98,8 @@ struct MessageListPresentationSnapshot {
     let headersByThreadID: [String: [MessageHeader]]
 
     private let visibleIndexesByHeaderID: [MessageHeader.ID: Int]
+    private let selectionProjection: MessageListSelectionProjection<MessageHeader.ID>
+    private let sourceID: MailSourceID?
 
     init(
         headers: [MessageHeader],
@@ -103,9 +108,14 @@ struct MessageListPresentationSnapshot {
         collapsedDateSectionIDs: Set<MessageListDateSection.ID>,
         referenceDate: Date = Date(),
         calendar: Calendar = .current,
-        sourceHeaders: [MessageHeader]? = nil
+        sourceHeaders: [MessageHeader]? = nil,
+        navigationHeaders: [MessageHeader]? = nil,
+        sourceID: MailSourceID? = nil,
+        groupsThreads: Bool = false
     ) {
         self.headers = headers
+        self.sourceID = sourceID
+        self.navigationHeaders = navigationHeaders ?? headers
         let sourceHeaders = sourceHeaders ?? headers
         unreadHeaderCount = sourceHeaders.reduce(into: 0) { count, header in
             count += header.isRead ? 0 : 1
@@ -130,6 +140,19 @@ struct MessageListPresentationSnapshot {
                 collapsedIDs: collapsedDateSectionIDs
             )
             : []
+        selectionProjection = MessageListSelectionProjection(
+            sourceRows: sourceHeaders,
+            visibleRows: groupByDate ? dateSections.flatMap(\.visibleHeaders) : headers,
+            id: { $0.id }, threadKey: { groupsThreads ? $0.threadID : nil }
+        )
+    }
+
+    func selectedRowID(
+        selectedMessageID: MessageHeader.ID?, selectedSourceID: MailSourceID?,
+        expandedThreadIDs: Set<String>
+    ) -> MessageHeader.ID? {
+        guard selectedSourceID == sourceID else { return nil }
+        return selectionProjection.visibleID(for: selectedMessageID, expandedThreadIDs: expandedThreadIDs)
     }
 
     func visibleIndex(for headerID: MessageHeader.ID) -> Int? {

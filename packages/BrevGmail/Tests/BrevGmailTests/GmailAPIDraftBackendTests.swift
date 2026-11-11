@@ -697,6 +697,111 @@ struct GmailAPIDraftBackendTests {
     }
 }
 
+/// ADR-0093: Gmail answers local Draft lookups from its staging store.
+@Suite("Gmail local Draft lookup")
+struct GmailLocalDraftLookupTests {
+    @Test("a Drafts-folder message maps to its provider draft across pages")
+    func mapsMessageToProviderDraft() async throws {
+        let transport = DraftBackendTransport()
+        await transport.setDraftPages([
+            GmailDraftPage(drafts: [GmailDraft(id: "r1", message: GmailMessage(id: "m1"))], nextPageToken: "1"),
+            GmailDraftPage(drafts: [GmailDraft(id: "r2", message: GmailMessage(id: "m2"))])
+        ])
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-draft-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let account = BrevAccount(id: UUID().uuidString, displayName: "Test", emailAddress: "primary@example.com")
+        let backend = try GmailAPIBackend(
+            account: account,
+            transport: transport,
+            store: SQLiteGmailAccountStore(databaseURL: url)
+        )
+        let resolver = try #require(backend.extensionService(DraftIdentityResolving.self))
+
+        #expect(try await resolver.remoteDraftID(forMessageID: "m2", sourceID: nil) == "r2")
+        #expect(try await resolver.remoteDraftID(forMessageID: "m9", sourceID: nil) == nil)
+        await #expect(throws: (any Error).self) {
+            _ = try await resolver.remoteDraftID(
+                forMessageID: "m2",
+                sourceID: MailSourceID(accountID: "foreign", mailboxID: "mailbox")
+            )
+        }
+    }
+
+    @Test("the draft search stops at its page limit")
+    func draftSearchIsBounded() async throws {
+        let transport = DraftBackendTransport()
+        await transport.setDraftPages(Array(repeating: GmailDraftPage(drafts: [], nextPageToken: "more"), count: 50))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-draft-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let account = BrevAccount(id: UUID().uuidString, displayName: "Test", emailAddress: "primary@example.com")
+        let backend = try GmailAPIBackend(
+            account: account,
+            transport: transport,
+            store: SQLiteGmailAccountStore(databaseURL: url)
+        )
+        let resolver = try #require(backend.extensionService(DraftIdentityResolving.self))
+
+        #expect(try await resolver.remoteDraftID(forMessageID: "m1", sourceID: nil) == nil)
+        #expect(await transport.draftPageRequests == 10)
+    }
+
+    private func makeBackend() throws -> (GmailAPIBackend, InMemoryGmailDraftStagingStore, BrevAccount, URL) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-draft-\(UUID().uuidString).sqlite")
+        let account = BrevAccount(id: UUID().uuidString, displayName: "Test", emailAddress: "primary@example.com")
+        let staging = InMemoryGmailDraftStagingStore()
+        let backend = try GmailAPIBackend(
+            account: account,
+            transport: DraftBackendTransport(),
+            store: SQLiteGmailAccountStore(databaseURL: url),
+            draftStaging: staging
+        )
+        return (backend, staging, account, url)
+    }
+
+    @Test("a staged Draft is found by local and provider ID, only in its own source")
+    func lookup() async throws {
+        let (backend, staging, account, url) = try makeBackend()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let draft = Draft(id: "local", remoteID: "r1", subject: "Saved")
+        await staging.setDraft(draft, accountID: account.id)
+
+        #expect(try await backend.draft(for: "local") == draft)
+        #expect(try await backend.draft(for: "r1") == draft)
+        #expect(try await backend.draft(for: "other") == nil)
+        let source = MailSourceID(accountID: account.id, mailboxID: "mailbox")
+        #expect(try await backend.draft(for: "r1", sourceID: source) == draft)
+        await #expect(throws: (any Error).self) {
+            _ = try await backend.draft(for: "r1", sourceID: MailSourceID(accountID: "foreign", mailboxID: "mailbox"))
+        }
+    }
+
+    @Test("owned attachment bytes load in order, and foreign or missing ones throw")
+    func attachments() async throws {
+        let (backend, staging, account, url) = try makeBackend()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let service = try #require(backend.extensionService(LocalDraftAttachmentProviding.self))
+        func staged(_ id: String, owner: String) -> GmailStagedAttachment {
+            GmailStagedAttachment(id: id, draftID: owner, filename: "\(id).txt", mimeType: "text/plain", data: Data(id.utf8))
+        }
+        try await staging.setAttachment(staged("a", owner: "local"), accountID: account.id)
+        try await staging.setAttachment(staged("b", owner: "local"), accountID: account.id)
+        try await staging.setAttachment(staged("foreign", owner: "other"), accountID: account.id)
+
+        let draft = Draft(id: "local", attachmentIDs: ["b", "a"])
+        await staging.setDraft(draft, accountID: account.id)
+        #expect(try await service.localDraftAttachments(for: draft).map(\.id) == ["b", "a"])
+
+        for ids in [["foreign"], ["missing"]] {
+            let unowned = Draft(id: "local", attachmentIDs: ids)
+            await staging.setDraft(unowned, accountID: account.id)
+            await #expect(throws: (any Error).self) { _ = try await service.localDraftAttachments(for: unowned) }
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await service.localDraftAttachments(for: Draft(id: "not-canonical", attachmentIDs: ["a"]))
+        }
+    }
+}
+
 private actor FailingDraftStaging: GmailDraftStagingStore {
     let failRemoteAcknowledgement: Bool
     init(failRemoteAcknowledgement: Bool) { self.failRemoteAcknowledgement = failRemoteAcknowledgement }
@@ -788,6 +893,18 @@ private actor DraftBackendTransport: GmailAPITransporting {
             await withCheckedContinuation { saveRelease = $0 }
         }
         return GmailDraft(id: "remote-draft-1")
+    }
+
+    private var draftPages: [GmailDraftPage] = []
+    private var draftPageIndex = 0
+    private(set) var draftPageRequests = 0
+
+    func setDraftPages(_ pages: [GmailDraftPage]) { draftPages = pages }
+
+    func listDrafts(maxResults _: Int, pageToken: String?) async throws -> GmailDraftPage {
+        draftPageIndex = pageToken == nil ? 0 : draftPageIndex + 1
+        draftPageRequests += 1
+        return draftPages[draftPageIndex]
     }
 
     func updateDraft(id: String, rawMIME: String, threadID: String?) async throws -> GmailDraft {
