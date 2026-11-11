@@ -24,6 +24,12 @@ enum ComposeBodyAppearance: String, CaseIterable, Hashable, Sendable {
         Self(rawValue: rawValue) ?? .system
     }
 
+    /// True when an explicit Light or Dark editor would sit on a window of the
+    /// other mode, so the body must paint its own background to stay readable.
+    func paintsOwnBackground(themeMode: BrevThemeMode) -> Bool {
+        self != .system && self != Self.system.resolved(for: themeMode)
+    }
+
     func resolved(for themeMode: BrevThemeMode) -> Self {
         switch self {
         case .system:

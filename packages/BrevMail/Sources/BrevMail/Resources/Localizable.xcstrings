@@ -1,6 +1,24 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Cc/Bcc": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Kopi/Blindkopi" } }
+      }
+    },
+    "Display text": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Visningstekst" } }
+      }
+    },
+    "Your last draft couldn't be reopened here. Any saved copy is still in Drafts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Det siste utkastet kunne ikke åpnes her. En lagret kopi ligger fortsatt i Utkast." } }
+      }
+    },
     "This draft cannot be restored safely from local storage. Close this window to leave the original unchanged.": {
       "extractionState": "manual",
       "localizations": {
@@ -11284,13 +11302,13 @@
         }
       }
     },
-    "Save the current message as a template\\nto reuse it in future conversations.": {
+    "Save the current message as a template\nto reuse it in future conversations.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lagre denne meldingen som en mal\\nsom kan brukes i fremtidige samtaler."
+            "value": "Lagre denne meldingen som en mal\nsom kan brukes i fremtidige samtaler."
           }
         }
       }

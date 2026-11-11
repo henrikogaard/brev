@@ -29,6 +29,16 @@ private func updateAttributedEditorText(_ text: String, storage: NSMutableAttrib
     storage.replaceCharacters(in: replacedRange, with: incoming.substring(with: incomingRange))
 }
 
+/// Holds the active macOS editor's rich actions so ComposeView can call them
+/// directly instead of through the key window's responder chain. Empty on iOS,
+/// which uses `ComposeIOSRichTextTargetBox`.
+@MainActor
+final class ComposeMacRichTextTargetBox {
+    #if os(macOS)
+    weak var target: ComposeBodyEditorRichActions?
+    #endif
+}
+
 struct ComposeBodyEditor: View {
     @Binding var text: String
     @Binding var richHTML: String?
@@ -60,6 +70,9 @@ struct ComposeBodyEditor: View {
     /// Asks the iOS text view to take keyboard focus (and place the caret);
     /// ignored on macOS, where the window's first responder logic applies.
     var focusRequest: ComposeBodyFocusRequest?
+    /// Owned by ComposeView so the link sheet reaches the macOS editor even when
+    /// the sheet left keyboard focus on another field. Unused on iOS.
+    var macRichTextTargetBox: ComposeMacRichTextTargetBox?
     var restoredAttributedText: NSAttributedString?
 
     var body: some View {
@@ -81,6 +94,7 @@ struct ComposeBodyEditor: View {
             onFileDragTargetChanged: onFileDragTargetChanged,
             quoteProtection: quoteProtection,
             focusRequest: focusRequest,
+            macRichTextTargetBox: macRichTextTargetBox,
             restoredAttributedText: restoredAttributedText
         )
     }
@@ -97,6 +111,12 @@ import AppKit
 /// These are declared here so both `ComposeView.swift` and `ComposeBodyEditor.swift`
 /// can form `#selector(...)` expressions without cross-file private-type access.
 @objc protocol ComposeBodyEditorRichActions {
+    /// Toggles bold on the selection, or for the next typed text.
+    func brevToggleBold(_ sender: Any?)
+    /// Toggles italic on the selection, or for the next typed text.
+    func brevToggleItalic(_ sender: Any?)
+    /// Resets the selection, or the whole body, to plain body text.
+    func brevClearFormatting(_ sender: Any?)
     /// Sent by the toolbar's Insert Link button; handled by `requestLinkSheet()`.
     func brevInsertLink(_ sender: Any?)
     /// Toggles a bulleted (disc) list on the selection.
@@ -175,6 +195,36 @@ final class ComposeRichTextView: NSTextView, ComposeBodyEditorRichActions {
         let bar = NSRect(x: barRect.minX, y: barRect.minY, width: 3, height: barRect.height)
         (quoteBarColor ?? NSColor.controlAccentColor).setFill()
         NSBezierPath(roundedRect: bar, xRadius: 1.5, yRadius: 1.5).fill()
+    }
+
+    func brevToggleBold(_ sender: Any?) {
+        richActionsTarget?.brevToggleBold(sender)
+    }
+
+    func brevToggleItalic(_ sender: Any?) {
+        richActionsTarget?.brevToggleItalic(sender)
+    }
+
+    func brevClearFormatting(_ sender: Any?) {
+        richActionsTarget?.brevClearFormatting(sender)
+    }
+
+    /// Cmd-B, Cmd-I and Cmd-U format the focused body. Without this they fall
+    /// through to the main menu, where Cmd-U toggles a message's read state.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard isRichText,
+              window?.firstResponder === self,
+              event.type == .keyDown,
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else {
+            return super.performKeyEquivalent(with: event)
+        }
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "b": brevToggleBold(nil)
+        case "i": brevToggleItalic(nil)
+        case "u": underline(nil)
+        default: return super.performKeyEquivalent(with: event)
+        }
+        return true
     }
 
     func brevInsertLink(_ sender: Any?) {
@@ -323,6 +373,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
     var quoteProtection: ComposeQuoteProtection?
     /// Unused on macOS.
     var focusRequest: ComposeBodyFocusRequest?
+    var macRichTextTargetBox: ComposeMacRichTextTargetBox?
     var restoredAttributedText: NSAttributedString?
 
     func makeCoordinator() -> Coordinator {
@@ -344,6 +395,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
 
         let textView = ComposeRichTextView()
         textView.richActionsTarget = context.coordinator
+        macRichTextTargetBox?.target = context.coordinator
         textView.onDropFileURLs = onDropFileURLs
         textView.onFileDragTargetChanged = onFileDragTargetChanged
         textView.delegate = context.coordinator
@@ -353,6 +405,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         textView.isEditable = isEnabled
         textView.isSelectable = true
         textView.textContainerInset = NSSize(width: 0, height: 0)
+        // No hidden 5 pt padding, so body text lines up with the header labels.
+        textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(
             width: scrollView.contentSize.width,
@@ -361,8 +415,13 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         applyAppearance(to: scrollView, textView: textView)
         textView.string = text
-        if let restoredAttributedText, bodyFormat == .richTextHTML {
-            textView.textStorage?.setAttributedString(restoredAttributedText)
+        if let restoredAttributedText, bodyFormat == .richTextHTML, let storage = textView.textStorage {
+            storage.setAttributedString(restoredAttributedText)
+            // The HTML importer sets its own default font (Times); keep only the emphasis.
+            ComposeEditorTypography.applyBaseFont(
+                ComposeEditorTypography.nsFont(family: fontFamily, textSize: textSize),
+                to: storage
+            )
             applyAppearance(to: scrollView, textView: textView)
         }
         textView.setAccessibilityLabel(String(localized: "Message body", bundle: .module))
@@ -406,6 +465,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         // Keep callbacks in sync across SwiftUI re-renders.
         context.coordinator.inlineImageRegistry = inlineImageRegistry
         context.coordinator.onRequestLinkSheet = onRequestLinkSheet
+        macRichTextTargetBox?.target = context.coordinator
         context.coordinator.quoteProtection = quoteProtection
         context.coordinator.attachHTMLPublicationFlushBox(htmlPublicationFlushBox)
         textView.onDropFileURLs = onDropFileURLs
@@ -606,8 +666,97 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         // selectors here via `richActionsTarget`. The coordinator is NOT itself in
         // the NSResponder chain — it is only a delegate.
 
+        func brevToggleBold(_ sender: Any?) {
+            toggleFontTrait(.bold)
+        }
+
+        func brevToggleItalic(_ sender: Any?) {
+            toggleFontTrait(.italic)
+        }
+
+        func brevClearFormatting(_ sender: Any?) {
+            clearRichFormatting()
+        }
+
         func brevInsertLink(_ sender: Any?) {
             requestLinkSheet()
+        }
+
+        // MARK: - Emphasis
+
+        /// Toggles `trait` over the selection, or for the next typed text when
+        /// nothing is selected. AppKit's text view has no bold/italic action of
+        /// its own without a Font menu, so the Format menu needs this.
+        private func toggleFontTrait(_ trait: NSFontDescriptor.SymbolicTraits) {
+            guard let textView, textView.isRichText, let storage = textView.textStorage else { return }
+            let fallback = textView.lastAppearanceFont ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            func toggled(_ font: NSFont, add: Bool) -> NSFont {
+                let current = font.fontDescriptor.symbolicTraits
+                let emphasis = add ? current.union(trait) : current.subtracting(trait)
+                return ComposeEditorTypography.font(font, emphasis: emphasis) ?? font
+            }
+            let range = textView.selectedRange()
+            guard range.length > 0 else {
+                let font = textView.typingAttributes[.font] as? NSFont ?? fallback
+                textView.typingAttributes[.font] = toggled(font, add: !font.fontDescriptor.symbolicTraits.contains(trait))
+                return
+            }
+            var allHaveTrait = true
+            storage.enumerateAttribute(.font, in: range) { value, _, stop in
+                let font = value as? NSFont ?? fallback
+                if !font.fontDescriptor.symbolicTraits.contains(trait) {
+                    allHaveTrait = false
+                    stop.pointee = true
+                }
+            }
+            // Routing through shouldChange/didChange keeps quote protection, undo
+            // and the HTML publication in step with a typed edit.
+            guard textView.shouldChangeText(in: range, replacementString: nil) else { return }
+            storage.beginEditing()
+            storage.enumerateAttribute(.font, in: range) { value, run, _ in
+                storage.addAttribute(.font, value: toggled(value as? NSFont ?? fallback, add: !allHaveTrait), range: run)
+            }
+            storage.endEditing()
+            textView.didChangeText()
+        }
+
+        /// The whole body outside a protected reply quote, which stays as quoted.
+        private func editableRange(in storage: NSTextStorage) -> NSRange {
+            let all = NSRange(location: 0, length: storage.length)
+            guard let quoteProtection,
+                  let quote = ComposeQuoteEditGuard.protectedRange(in: storage.mutableString, protection: quoteProtection),
+                  quote.length > 0 else { return all }
+            switch quoteProtection.edge {
+            case .bottom: return NSRange(location: 0, length: quote.location)
+            case .top: return NSRange(location: NSMaxRange(quote), length: storage.length - NSMaxRange(quote))
+            }
+        }
+
+        /// Resets the selection (or the editable body when nothing is selected)
+        /// to plain body text: editor font, no underline, no link, no list.
+        private func clearRichFormatting() {
+            guard let textView, textView.isRichText, let storage = textView.textStorage else { return }
+            let base = textView.lastAppearanceFont ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            let selected = textView.selectedRange()
+            let range = selected.length > 0 ? selected : editableRange(in: storage)
+            textView.typingAttributes[.font] = base
+            textView.typingAttributes[.underlineStyle] = nil
+            textView.typingAttributes[.link] = nil
+            guard range.length > 0, textView.shouldChangeText(in: range, replacementString: nil) else { return }
+            storage.beginEditing()
+            storage.addAttribute(.font, value: base, range: range)
+            storage.removeAttribute(.underlineStyle, range: range)
+            storage.removeAttribute(.link, range: range)
+            storage.enumerateAttribute(.paragraphStyle, in: range) { value, run, _ in
+                guard let style = value as? NSParagraphStyle, !style.textLists.isEmpty,
+                      let plain = style.mutableCopy() as? NSMutableParagraphStyle else { return }
+                plain.textLists = []
+                plain.headIndent = 0
+                plain.firstLineHeadIndent = 0
+                storage.addAttribute(.paragraphStyle, value: plain, range: run)
+            }
+            storage.endEditing()
+            textView.didChangeText()
         }
 
         func brevToggleBulletedList(_ sender: Any?) {
@@ -775,9 +924,10 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
 
             textStorage.endEditing()
 
-            // Move the caret past the inserted link.
+            // Move the caret past the inserted link and return focus from the sheet.
             let newLocation = selectedRange.location + (labelText as NSString).length
             textView.setSelectedRange(NSRange(location: newLocation, length: 0))
+            textView.window?.makeFirstResponder(textView)
 
             publishRichHTML(from: textView)
             text = textView.string
@@ -920,6 +1070,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     var onFileDragTargetChanged: ((Bool) -> Void)?
     var quoteProtection: ComposeQuoteProtection?
     var focusRequest: ComposeBodyFocusRequest?
+    /// Unused on iOS; kept for call-site parity with the macOS representable.
+    var macRichTextTargetBox: ComposeMacRichTextTargetBox?
     var restoredAttributedText: NSAttributedString?
 
     private var isRichText: Bool { bodyFormat == .richTextHTML }

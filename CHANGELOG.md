@@ -9,6 +9,30 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- macOS compose: the Format menu's Bold, Italic and Clear Formatting now work,
+  Cmd-B, Cmd-I and Cmd-U format the message body instead of reaching the main
+  menu (where Cmd-U marked a message read), and Insert Link applies the link even
+  when the link sheet moved focus. Reopened Drafts use the editor font instead of
+  Times. A Light or Dark editor that differs from the window paints its own
+  background so the text stays readable.
+- macOS compose header: To, Cc, Bcc, From and Subject share one label column
+  whose labels start on the body text's left edge. Every header row, Cc and Bcc
+  included, has the same height and one hairline below it that runs to the
+  window edge. The collapsed row reads "From" with a Cc/Bcc control, and a
+  refused Draft shows its explanation once. The link
+  sheet's "Display text" label and the empty Templates text are now translated.
+- iOS compose header: the labels start on the body text's left edge. Every header
+  row, Cc and Bcc included, has the same height and one hairline below it that
+  runs to the screen edge. The label column grows with the text size, so
+  "Subject" stays on one line.
+- A saved Draft with a bulleted or numbered list made in Brev reopens with its
+  list intact instead of being refused. Nested lists stay refused.
+- Closing a detached message window no longer crashes Brev (#286).
+- New-message recovery now only reopens a message after a crash or forced quit.
+  Closing a compose window normally forgets it, and a Draft that cannot be
+  restored no longer blocks New Message: it opens blank with a note that any
+  saved copy is still in Drafts. Drafts themselves are never changed.
+
 - Reopening a supported locally saved formatted draft or new-message recovery
   preserves its original HTML on an unchanged Save/autosave and its emphasis,
   links, line breaks, owned attachments and metadata when edited. Pending,
@@ -17,8 +41,13 @@ All notable changes to Brev are documented here.
   drafts opened in plain-text mode show an explanation and a non-destructive
   Close action. Returning from HTML preview preserves the edited rich body.
   The supported restoration subset is text, line breaks, bold, italic, underline
-  and links. Lists, block containers, quotes, reply/forward drafts and inline/CID
-  images are currently refused rather than flattened. Recovery still uses a
+  and links, plus `<p>` and `<div>` as line structure and Brev's own flat quotes.
+  Saved replies and forwards reopen, and lock their quote again when it was saved
+  with this version. A Draft with no local copy opens from the Drafts folder unless
+  it has attachments. Opening a Gmail Draft from the list now asks Gmail for its
+  draft ID, so it needs a connection and saves back to the same Draft. Lists,
+  nested or styled quotes and inline/CID images are
+  currently refused rather than flattened. Recovery still uses a
   text-only hint: missing or stale canonical proof is refused, so arbitrary
   unsaved/pre-autosave formatted content cannot be reconstructed.
 

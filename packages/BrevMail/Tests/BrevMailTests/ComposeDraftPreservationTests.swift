@@ -134,6 +134,53 @@ struct ComposeDraftPreservationTests {
         #expect(try await backend.draft(for: original.remoteID ?? original.id)?.htmlBody == html)
     }
 
+    @Test("a reopened reply relocks its quote only with a saved boundary", arguments: [true, false])
+    func replyQuoteBoundary(hasBoundary: Bool) async throws {
+        let backend = MockBackend()
+        let marker = "On Jan 1, Ada wrote:"
+        let original = try await backend.save(draft: Draft(
+            id: UUID().uuidString,
+            threadID: "thread",
+            inReplyToMessageID: "<reply@example.invalid>",
+            subject: "Re: Hello",
+            htmlBody: "Thanks<br>\(marker)<blockquote>first</blockquote>",
+            quoteBoundary: hasBoundary ? DraftQuoteBoundary(marker: marker, edge: .bottom) : nil
+        ))
+        let harness = try Harness(backend: backend, original: original)
+        defer { harness.dispose() }
+        try await harness.prepare()
+        let native = try #require(harness.editor)
+        let text = native.string
+        #expect(text == "Thanks\n\(marker)\n> first")
+        await harness.mounted?.saveDraft()
+        #expect(try await backend.draft(for: original.remoteID ?? original.id) == original)
+        // Save briefly disables the editor; typing before SwiftUI re-enables it is dropped.
+        await harness.render { native.isEditable }
+
+        let quoteLocation = (text as NSString).range(of: "first").location
+        native.insertText("X", replacementRange: NSRange(location: quoteLocation, length: 0))
+        #expect(native.string.contains("Xfirst") == !hasBoundary)
+        native.insertText(" edited", replacementRange: NSRange(location: 6, length: 0))
+        await harness.mounted?.saveDraft()
+        let edited = try #require(await backend.draft(for: original.remoteID ?? original.id))
+        #expect(edited.htmlBody.contains("Thanks edited"))
+        #expect(edited.inReplyToMessageID == original.inReplyToMessageID)
+        #expect(edited.threadID == original.threadID)
+        #expect(edited.quoteBoundary == original.quoteBoundary)
+    }
+
+    @Test("a server-sourced Draft opens only through the explicit path", arguments: [true, false])
+    func serverSourcedOpen(isServerSourced: Bool) async throws {
+        let backend = MockBackend()
+        let original = Draft(id: UUID().uuidString, remoteID: "server-message", subject: "Elsewhere",
+                             htmlBody: "<div dir=\"ltr\">Written elsewhere</div>")
+        let harness = try Harness(backend: backend, original: original, isServerSourced: isServerSourced)
+        defer { harness.dispose() }
+        try await harness.prepare()
+        #expect((harness.editor?.string == "Written elsewhere") == isServerSourced)
+        #expect((harness.editor == nil) == !isServerSourced)
+    }
+
     @Test("restored edits survive preview and editor return without reimport")
     func previewRetainsEdits() async throws {
         let backend = MockBackend()
@@ -288,6 +335,8 @@ struct ComposeDraftPreservationTests {
         await mounted.send(bypassingSendGuard: true)
         #expect(await backend.writeCount == 0)
         #expect(await backend.bodyReadCount == 0)
+        await harness.render { !viaClose || harness.storedRecovery == nil }
+        #expect((harness.storedRecovery == nil) == viaClose)
     }
 
     @Test("missing and foreign-owned attachment IDs fail closed", arguments: [false, true])
@@ -307,7 +356,7 @@ struct ComposeDraftPreservationTests {
             htmlBody: "<strong>Body</strong>",
             attachmentIDs: [id]
         ))
-        let harness = try Harness(backend: backend, original: original, recovery: true)
+        let harness = try Harness(backend: backend, original: original)
         defer { harness.dispose() }
         try await harness.prepare()
         #expect(harness.editor == nil)
@@ -322,7 +371,7 @@ struct ComposeDraftPreservationTests {
         ("<img src=\"cid:local\">", "richText"),
         ("<style>body { background: url(https://example.invalid/bg) }</style>Text", "richText"),
         ("<table><tr><td>Table</td></tr></table>", "richText"),
-        ("<blockquote>Original quote</blockquote>", "richText"),
+        ("<blockquote><blockquote>Nested quote</blockquote></blockquote>", "richText"),
         ("<strong>Formatted</strong>", "plainText")
     ])
     func unsafeRefused(fixture: (String, String)) async throws {
@@ -346,7 +395,7 @@ struct ComposeDraftPreservationTests {
         #expect(harness.closeCount == 1)
     }
 
-    @Test("legacy bodyText snapshot without canonical local proof is not saved or sent")
+    @Test("legacy bodyText snapshot without canonical local proof opens a blank message and is not saved")
     func legacyWithoutProof() async throws {
         let backend = MockBackend()
         let absent = Draft(
@@ -358,35 +407,88 @@ struct ComposeDraftPreservationTests {
         let harness = try Harness(backend: backend, original: absent, recovery: true)
         defer { harness.dispose() }
         try await harness.prepare()
-        #expect(harness.editor == nil)
-        await harness.mounted?.saveDraft()
+        await harness.render { harness.editor != nil }
+        #expect(harness.editor?.string == "")
+        #expect(harness.storedRecovery == nil)
         await harness.mounted?.autoSaveDraftAfterInactivity()
         await harness.mounted?.autoSaveDraftOnDismiss()
         #expect(try await backend.draft(for: absent.id) == nil)
         #expect(harness.completions.isEmpty)
     }
 
-    @Test("Close leaves stale or missing canonical recovery unchanged", arguments: [false, true])
-    func blockedRecoveryClose(missing: Bool) async throws {
+    @Test("a refused recovery opens a blank message and forgets only the pointer",
+          arguments: ["stale", "missing", "list", "unowned"])
+    func refusedRecoveryFallsBack(kind: String) async throws {
         let backend = MockBackend()
-        var hint = Draft(id: UUID().uuidString, subject: "Recovery hint", htmlBody: "<strong>Original</strong>")
-        if !missing { hint = try await backend.save(draft: hint) }
+        var hint = Draft(
+            id: UUID().uuidString,
+            to: [Correspondent(email: "recipient@example.invalid")],
+            subject: "Recovery hint",
+            htmlBody: "<strong>Original</strong>"
+        )
+        switch kind {
+        case "list": hint.htmlBody = "<ul><li>Item<ul><li>Nested</li></ul></li></ul>"
+        case "unowned": hint.attachmentIDs = ["server-only-id"]
+        default: break
+        }
+        if kind != "missing" { hint = try await backend.save(draft: hint) }
         let original = try await backend.draft(for: hint.remoteID ?? hint.id)
-        if !missing { hint.subject = "Unsaved newer subject" }
-        let harness = try Harness(backend: backend, original: hint, recovery: true)
+        var snapshotSource = hint
+        if kind == "stale" { snapshotSource.subject = "Unsaved newer subject" }
+        let harness = try Harness(backend: backend, original: snapshotSource, recovery: true)
         defer { harness.dispose() }
-        let recoveryBefore = try #require(harness.storedRecovery)
+        #expect(harness.storedRecovery != nil)
         try await harness.prepare()
-        #expect(harness.editor == nil)
-        await harness.mounted?.saveDraft()
-        await harness.mounted?.send(bypassingSendGuard: true)
-        await harness.mounted?.autoSaveDraftAfterInactivity()
-        harness.mounted?.close()
-        await harness.mounted?.autoSaveDraftOnDismiss()
-        #expect(harness.closeCount == 1)
+        await harness.render { harness.editor != nil }
+        let mounted = try #require(harness.mounted)
+        #expect(harness.editor?.string == "")
+        #expect(harness.storedRecovery == nil)
+        // The blank message has no recipients, subject or body, so autosave writes nothing.
+        await mounted.autoSaveDraftAfterInactivity()
         #expect(harness.completions.isEmpty)
-        #expect(harness.storedRecovery == recoveryBefore)
         #expect(try await backend.draft(for: hint.remoteID ?? hint.id) == original)
+        // Typing starts a new Draft; the refused one stays as it was.
+        #expect(!mounted.locksSenderToOriginalSource, "a blank message may use any sender")
+        let editor = try #require(harness.editor)
+        editor.insertText("Fresh start", replacementRange: NSRange(location: 0, length: 0))
+        harness.host?.layoutSubtreeIfNeeded()
+        await mounted.saveDraft()
+        guard case .savedDraft(let fresh)? = harness.completions.first else {
+            Issue.record("A typed blank message should save as a new Draft")
+            return
+        }
+        #expect(fresh.id != hint.id)
+        #expect(fresh.remoteID != hint.remoteID)
+        #expect(try await backend.draft(for: hint.remoteID ?? hint.id) == original)
+    }
+
+    @Test("closing a recovered new message forgets its pointer", arguments: ["close", "save", "teardown"])
+    func closeForgetsRecovery(path: String) async throws {
+        let backend = MockBackend()
+        let original = try await backend.save(draft: Draft(
+            id: UUID().uuidString,
+            to: [Correspondent(email: "recipient@example.invalid")],
+            subject: "Recovered",
+            htmlBody: "Recovered body"
+        ))
+        let harness = try Harness(backend: backend, original: original, recovery: true)
+        defer { harness.dispose() }
+        try await harness.prepare()
+        #expect(harness.editor?.string == "Recovered body")
+        let mounted = try #require(harness.mounted)
+        #expect(mounted.locksSenderToOriginalSource, "a recovered Draft stays in its own mailbox")
+        await mounted.autoSaveDraftAfterInactivity()
+        #expect(harness.storedRecovery != nil, "an autosave while open keeps crash recovery")
+        switch path {
+        case "save": await mounted.saveDraft()
+        case "close": mounted.close()
+        default:
+            harness.host?.rootView = AnyView(EmptyView())
+            harness.host?.layoutSubtreeIfNeeded()
+        }
+        await harness.render { harness.storedRecovery == nil }
+        #expect(harness.storedRecovery == nil)
+        #expect(try await backend.draft(for: original.remoteID ?? original.id) == original)
     }
 
     @MainActor
@@ -410,7 +512,8 @@ struct ComposeDraftPreservationTests {
             recovery: Bool = false,
             format: String = "richText",
             sourceID: MailSourceID? = nil,
-            attachments: [MIMEMessageAttachment] = []
+            attachments: [MIMEMessageAttachment] = [],
+            isServerSourced: Bool = false
         ) throws {
             defaults = try #require(UserDefaults(suiteName: defaultsName))
             accountID = backend.account.id
@@ -427,6 +530,8 @@ struct ComposeDraftPreservationTests {
                 recoveredDraft: recovery ? storedRecovery : nil,
                 existingDraft: recovery ? nil : original,
                 existingDraftAttachments: attachments,
+                existingDraftIsServerSourced: isServerSourced,
+                recoveryDefaults: defaults,
                 onClose: { [weak self] in self?.closeCount += 1 },
                 onCompletion: { [weak self] completion in
                     guard let self else { return }

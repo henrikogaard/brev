@@ -567,6 +567,26 @@ public struct ReadReceiptNotification: Sendable, Hashable, Codable {
     }
 }
 
+/// Where a reply or forward quote sits in a Draft's body (ADR-0093). Local
+/// metadata only: it is never sent, uploaded or fingerprinted.
+public struct DraftQuoteBoundary: Sendable, Hashable, Codable {
+    /// Which side of the typing zone the quote occupies.
+    public enum Edge: String, Sendable, Hashable, Codable {
+        case top
+        case bottom
+    }
+
+    /// First line of the quote block, matched literally in the body text.
+    public var marker: String
+    public var edge: Edge
+
+    /// Creates a boundary from the composer's quote marker and edge.
+    public init(marker: String, edge: Edge) {
+        self.marker = marker
+        self.edge = edge
+    }
+}
+
 public struct Draft: Sendable, Hashable, Identifiable, Codable {
     public let id: String // local UUID, stable across remote saves
     public var remoteID: String?
@@ -589,6 +609,8 @@ public struct Draft: Sendable, Hashable, Identifiable, Codable {
     /// compose to the backend so the send path can sign/encrypt before
     /// submission. `.none` for the vast majority of mail.
     public var securityMode: OutboundMessageSecurityMode
+    /// Saved quote position, absent for new messages and older saved replies.
+    public var quoteBoundary: DraftQuoteBoundary?
 
     public init(
         id: String,
@@ -606,7 +628,8 @@ public struct Draft: Sendable, Hashable, Identifiable, Codable {
         scheduledFor: Date? = nil,
         readReceiptRequest: ReadReceiptRequest? = nil,
         readReceiptResponse: ReadReceiptResponse? = nil,
-        securityMode: OutboundMessageSecurityMode = .none
+        securityMode: OutboundMessageSecurityMode = .none,
+        quoteBoundary: DraftQuoteBoundary? = nil
     ) {
         self.id = id
         self.remoteID = remoteID
@@ -624,6 +647,7 @@ public struct Draft: Sendable, Hashable, Identifiable, Codable {
         self.readReceiptRequest = readReceiptRequest
         self.readReceiptResponse = readReceiptResponse
         self.securityMode = securityMode
+        self.quoteBoundary = quoteBoundary
     }
 
     // Custom decoder so drafts persisted before `securityMode` existed still
@@ -652,6 +676,7 @@ public struct Draft: Sendable, Hashable, Identifiable, Codable {
         securityMode = try container.decodeIfPresent(
             OutboundMessageSecurityMode.self, forKey: .securityMode
         ) ?? .none
+        quoteBoundary = try container.decodeIfPresent(DraftQuoteBoundary.self, forKey: .quoteBoundary)
     }
 }
 

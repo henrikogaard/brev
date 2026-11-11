@@ -34,6 +34,17 @@ struct ComposeDraftRestorationTests {
         let restored = try await ComposeDraftRestoration.resolve(header: header, backend: backend, sourceID: nil)
         #expect(restored.draft == saved)
         #expect(restored.attachments.isEmpty)
+        #expect(!restored.isServerSourced)
+    }
+
+    @Test("a Draft read from the server body is marked server-sourced")
+    func serverBodyIsMarked() async throws {
+        let backend = MockBackend()
+        let inbox = try #require(await backend.folders().first { $0.role == .inbox })
+        let header = try #require(await backend.messages(in: inbox, pageToken: nil).0.first { !$0.hasAttachments })
+        let restored = try await ComposeDraftRestoration.resolve(header: header, backend: backend, sourceID: nil)
+        #expect(restored.isServerSourced)
+        #expect(restored.draft.remoteID == header.id)
     }
 
     @Test("real quoted and unquoted CID images remain blocked without payload metadata", arguments: [

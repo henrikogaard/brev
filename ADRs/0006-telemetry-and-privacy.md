@@ -83,7 +83,7 @@ sign-in, platform distribution infrastructure, or off by default
 | IMAP/SMTP account autodiscovery | Email domain for DNS SRV probes; full email address only for provider-local HTTPS autoconfig requests | During user-initiated account setup | Off until the user starts account setup | Account setup/manual entry |
 | IMAP mail access | Account credentials, mailbox commands, folder/message identifiers, search queries, message/attachment fetch requests, raw RFC 822 source fetches (cache-first; on miss only, for View Source / Show Headers / Save As), and server-side message copies (`UID COPY`, originals left in place) | During signed-in mail use after the user adds an account | On after account add | Account add/remove |
 | SMTP submission | Account credentials plus the draft headers, body, and attachments being sent | When the user sends mail | On after account add | Account add/remove |
-| Gmail API mail access | Google OAuth access token; account-wide Gmail message, thread, label, draft, attachment, and history identifiers; Gmail search queries; requested message metadata, bodies, raw source, attachments, label mutations, drafts, and outgoing MIME payloads | Through `gmail.googleapis.com` after the user explicitly adds a Google account using the native Gmail provider; full and delta sync continue while that account remains configured | Off until Google account add | Account add/remove; explicit IMAP/SMTP fallback |
+| Gmail API mail access | Google OAuth access token; account-wide Gmail message, thread, label, draft, attachment, and history identifiers; Gmail search queries; requested message metadata, bodies, raw source, attachments, label mutations, drafts, and outgoing MIME payloads | Through `gmail.googleapis.com` after the user explicitly adds a Google account using the native Gmail provider; full and delta sync continue while that account remains configured. Opening a Draft from the Drafts folder also reads `drafts.list` to find its draft ID (ADR-0093) | Off until Google account add | Account add/remove; explicit IMAP/SMTP fallback |
 | Keep Offline body prefetch | Existing IMAP account credentials or Gmail OAuth token plus mailbox/message identifiers and a message-body fetch request to the configured provider, when needed by the backend | Only when the user turns Keep Offline on in a message list, Unified Inbox, reader or conversation menu; cache-first and best-effort | **Off** | Explicit per-message Keep Offline toggle; removing the local pin does not fetch or immediately delete cached content |
 | ManageSieve server-side filter sync | Account credentials plus a generated Brev-owned Sieve script derived from local rules | Only after the user enters a ManageSieve endpoint during account setup and later chooses to sync local rules from Settings | **Off** | Account setup / Settings → Rules |
 | Sparkle update check | Appcast request metadata such as app version, release ring, IP address, and user agent; the appcast and release notes are fetched from `henrikogaard.github.io` and the DMG from `github.com` / `objects.githubusercontent.com` | Once per launch in configured direct-download macOS releases of either ring (Stable or Nightly) | On for direct-download macOS only | Settings → Updates |
@@ -212,8 +212,9 @@ deliberate user submission. Never via direct phone-home.
 
 The existing account/mailbox-scoped recovery snapshot in local preferences
 contains new-message draft identifiers, recipients, subject and editor text.
-Successful send completion and successful discard remove recovery only when
-the local draft ID or non-nil remote draft ID matches. Presentation teardown
+Successful send, successful discard and any normal close of the compose window
+remove recovery only when the local draft ID or non-nil remote draft ID matches;
+only a crash or forced quit leaves it (ADR-0093). Presentation teardown
 must not prevent that cleanup; stale saved-draft callbacks must not overwrite
 current recovery. This correction introduces no new key, migration, payload,
 external call or consent boundary. Failed/cancelled sends preserve recovery.
@@ -222,8 +223,9 @@ The text-only snapshot is a recovery hint, not proof of plain or attachment-free
 content. Restoring it requires a matching canonical local draft and complete,
 owned local attachment bytes. HTML is preflighted as a resource-free subset
 before native import. There is no provider-body reconstruction fallback.
-Pending, failed or cancelled restoration blocks persistence and Send; Close
-leaves both the canonical draft and recovery hint untouched. No snapshot schema,
+Pending, failed or cancelled restoration blocks persistence and Send and never
+changes the canonical draft. A refused recovery opens a blank message and removes
+the hint. No snapshot schema,
 storage location, retention rule or external-call entry changes (ADR-0038).
 
 ## Rationale

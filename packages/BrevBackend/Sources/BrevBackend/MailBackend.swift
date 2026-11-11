@@ -484,6 +484,14 @@ public protocol LocalDraftAttachmentProviding: Sendable {
     func localDraftAttachments(for draft: Draft, sourceID: MailSourceID) async throws -> [MIMEMessageAttachment]
 }
 
+/// Maps a Drafts-folder message to the provider's draft identity, for providers
+/// where the two differ (ADR-0093). May contact the provider; call it only when
+/// the user explicitly opens a Draft.
+public protocol DraftIdentityResolving: Sendable {
+    /// Returns the provider draft ID, or nil when the message is no longer a draft.
+    func remoteDraftID(forMessageID messageID: String, sourceID: MailSourceID?) async throws -> String?
+}
+
 /// Default implementations so existing backends compile without
 /// implementing new optional surface immediately. Concrete backends
 /// that can satisfy the call should override.
