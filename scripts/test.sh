@@ -57,6 +57,9 @@ cd "$ROOT"
 echo "── build/run env ──"
 scripts/test-build-run-env.sh
 
+echo "── isolated macOS mock profile ──"
+/bin/bash scripts/test-isolated-mock.sh
+
 echo "── local build versioning ──"
 scripts/test-local-build-version.sh
 
@@ -71,6 +74,9 @@ scripts/test-ios-extension-plists.sh
 
 echo "── live smoke provider flag ──"
 scripts/test-live-smoke-provider-flag.sh
+
+echo "── synthetic selection profiling harness ──"
+/bin/bash scripts/test-profile-navigation-selection.sh
 
 echo "── public source markers ──"
 scripts/test-public-source-markers.sh

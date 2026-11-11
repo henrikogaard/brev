@@ -96,6 +96,8 @@ public protocol GmailAPITransporting: Sendable {
     func createDraft(rawMIME: String, threadID: String?) async throws -> GmailDraft
     /// Replaces a Gmail draft's raw MIME source.
     func updateDraft(id: String, rawMIME: String, threadID: String?) async throws -> GmailDraft
+    /// Lists Gmail drafts with their message identifiers.
+    func listDrafts(maxResults: Int, pageToken: String?) async throws -> GmailDraftPage
     /// Deletes a Gmail draft.
     func deleteDraft(id: String) async throws
     /// Sends an existing Gmail draft.
@@ -136,6 +138,10 @@ public extension GmailAPITransporting {
     }
 
     func updateDraft(id: String, rawMIME: String, threadID: String? = nil) async throws -> GmailDraft {
+        throw GmailAPIError.invalidRequest
+    }
+
+    func listDrafts(maxResults: Int, pageToken: String?) async throws -> GmailDraftPage {
         throw GmailAPIError.invalidRequest
     }
 

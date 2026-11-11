@@ -18,6 +18,30 @@ import Testing
 
 @Suite("Indexed IMAP conversations")
 struct ConversationIndexTests {
+    @Test("page threading shares indexed traversal across roots and preserves cross-folder links", arguments: [false, true])
+    func pageThreading(sqlite: Bool) async throws {
+        let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent("brev-page-threading-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store: any SyncStoreProtocol = sqlite
+            ? try SQLiteSyncStore(databaseURL: rootURL.appendingPathComponent("index.sqlite")) : InMemorySyncStore()
+        let engine = BrevSyncEngine(store: store)
+        let account = BrevAccount(id: "a", displayName: "A", emailAddress: "a@example.test")
+        let other = BrevAccount(id: "b", displayName: "B", emailAddress: "b@example.test")
+        let root = Self.header("Inbox:1", folder: "Inbox", own: "<root>")
+        let middle = Self.header("Sent:2", folder: "Sent", own: "<middle>", parent: "<root>")
+        let leaf = Self.header("Inbox:3", folder: "Inbox", own: "<leaf>", parent: "<middle>")
+        let unrelated = Self.header("Inbox:4", folder: "Inbox", own: "<unrelated>")
+        let foreign = Self.header("Inbox:5", folder: "Inbox", own: "<foreign>", parent: "<root>")
+        await engine.storeHeaders([root, middle, leaf, unrelated], account: account)
+        await engine.storeHeaders([foreign], account: other)
+        let candidates = try await engine.imapThreadingHeaders(for: [leaf, root], folderID: "Inbox", account: account)
+        #expect(Set(candidates.map(\.id)) == [root.id, leaf.id])
+        let matches = try await store.conversationCandidates(identifiers: ["root", "middle"],
+                                                             source: MailSourceID(accountID: "a", mailboxID: "a"), limit: 100)
+        #expect(matches.count == 3)
+        #expect(try await engine.imapThreadingHeaders(for: [], folderID: "Inbox", account: account).isEmpty)
+    }
+
     @Test("cached reply chains cross folders, survive restart and follow deletion")
     func persistedReplyGraph() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-conversation-\(UUID()).sqlite")

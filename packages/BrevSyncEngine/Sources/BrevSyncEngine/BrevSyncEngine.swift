@@ -282,6 +282,93 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         try await store.storeIMAPPage(page, accountID: account.id)
     }
 
+    /// Returns paging metadata without decoding the folder's headers.
+    public func imapHeaderMetadata(folderID: Folder.ID, account: BrevAccount) async throws -> IMAPHeaderMetadata? {
+        guard let state = try await store.imapPageState(accountID: account.id, folderID: folderID) else { return nil }
+        return IMAPHeaderMetadata(uidValidity: state.uidValidity, highestModSeq: state.highestModSeq,
+                                  nextPageToken: state.nextPageToken)
+    }
+
+    /// Looks up explicitly requested IDs within their account and folder.
+    public func imapHeaders(ids: [MessageHeader.ID], folderID: Folder.ID, account: BrevAccount) async throws -> [MessageHeader] {
+        try await store.headersByID(ids, accountID: account.id, folderID: folderID)
+    }
+
+    /// Shares indexed reply-link traversal across every member of a cached page.
+    public func imapThreadingHeaders(for headers: [MessageHeader], folderID: Folder.ID,
+                                     account: BrevAccount) async throws -> [MessageHeader] {
+        let source = MailSourceID(accountID: account.id, mailboxID: account.id)
+        let maximumCandidates = 10000
+        var pending = Set(headers.flatMap { ConversationMembershipResolver.cachedLinkIdentifiers(for: $0) ?? [] })
+        var visited = Set<String>()
+        var candidates: [ConversationLocation: ConversationMember] = [:]
+        while !pending.isEmpty, candidates.count < maximumCandidates, visited.count < maximumCandidates {
+            try Task.checkCancellation()
+            let batch = Array(pending.sorted().prefix(min(400, maximumCandidates - visited.count)))
+            pending.subtract(batch)
+            visited.formUnion(batch)
+            let matches = try await store.conversationCandidates(identifiers: batch, source: source, limit: maximumCandidates)
+            for member in matches where candidates[member.location] == nil {
+                guard candidates.count < maximumCandidates else { break }
+                candidates[member.location] = member
+                for identifier in ConversationMembershipResolver.cachedLinkIdentifiers(for: member.header) ?? []
+                    where !visited.contains(identifier) && pending.count + visited.count < maximumCandidates {
+                    pending.insert(identifier)
+                }
+            }
+        }
+        var checkedFolders = Set<Folder.ID>()
+        for member in candidates.values where checkedFolders.insert(member.header.folderID).inserted {
+            try await validateConversationGeneration(member)
+        }
+        return candidates.values.filter { $0.header.folderID == folderID }.map(\.header).sorted { $0.id < $1.id }
+    }
+
+    /// Compatibility snapshot for off-critical-path consumers during the staged migration.
+    public func imapHeaderSnapshot(folderID: Folder.ID, account: BrevAccount) async throws -> IMAPMailboxHeaderCacheSnapshot? {
+        try await store.imapSnapshot(accountID: account.id, folderID: folderID)
+    }
+
+    /// Atomically imports or updates rows, metadata and windows.
+    public func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, folderID: Folder.ID,
+                                  account: BrevAccount, importingLegacy: Bool) async throws {
+        try await store.ensureAccount(id: account.id)
+        try await store.storeIMAPSnapshot(snapshot, accountID: account.id, folderID: folderID, importingLegacy: importingLegacy)
+    }
+
+    /// Reads a selective cache-maintenance projection without decoding unrelated headers.
+    public func selectIMAPHeaders(_ selection: IMAPHeaderSelection, folderID: Folder.ID,
+                                  account: BrevAccount) async throws -> [MessageHeader] {
+        try await store.selectIMAPHeaders(selection, accountID: account.id, folderID: folderID)
+    }
+
+    /// Checks whether retained legacy headers still need an ordinary server page fetch.
+    public func hasPendingIMAPRecovery(folderID: Folder.ID, account: BrevAccount) async throws -> Bool {
+        try await store.hasPendingIMAPRecovery(accountID: account.id, folderID: folderID)
+    }
+
+    /// Selects recovery-aware content reads without requiring a normal header row.
+    public func hasIMAPRecoveryRecord(messageID: MessageHeader.ID, account: BrevAccount) async throws -> Bool {
+        try await store.hasIMAPRecoveryRecord(accountID: account.id, messageID: messageID)
+    }
+
+    /// Commits freshly fetched source bytes together with their confirmation.
+    public func storeConfirmedIMAPSource(
+        _ source: IMAPMessageSource,
+        messageID: MessageHeader.ID,
+        account: BrevAccount
+    ) async throws {
+        try await store.ensureAccount(id: account.id)
+        try await store.storeConfirmedIMAPSource(source.rawMessageData ?? Data(source.rawMessage.utf8),
+                                                 isOriginal: source.rawMessageData != nil, accountID: account.id,
+                                                 messageID: messageID)
+    }
+
+    /// Advances only the persisted folder watermark.
+    public func updateIMAPModSeq(_ modSeq: UInt64, folderID: Folder.ID, account: BrevAccount) async throws {
+        try await store.updateIMAPModSeq(modSeq, accountID: account.id, folderID: folderID)
+    }
+
     private func markFoldersCached(_ folderIDs: Set<Folder.ID>, account: BrevAccount) async {
         for folderID in folderIDs {
             guard await store.syncState(accountID: account.id, folderID: folderID) == nil else {
@@ -346,6 +433,11 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
 
     public func clearAccount(_ account: BrevAccount) async {
         try? await store.clearAccount(id: account.id)
+    }
+
+    /// Clears cached payloads without reopening historical import or external-source recovery.
+    public func clearIMAPCache(account: BrevAccount) async {
+        try? await store.clearIMAPCache(accountID: account.id)
     }
 
     public func metrics(for account: BrevAccount) async -> LocalSearchIndexMetrics? {

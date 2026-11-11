@@ -31,7 +31,7 @@ account:
 | Email domain, and sometimes full email address during account setup | Your mail provider's DNS and provider-local autoconfig hosts | To discover IMAP/SMTP (and, where advertised, ManageSieve) server settings after you choose to add an account |
 | IMAP account credentials and mail requests | Your selected mail provider's IMAP server | To authenticate, list folders, sync, search, read, view or export original message source, copy, and manage mail after you add an account |
 | SMTP submission credentials and message payloads | Your selected mail provider's SMTP submission server | To send mail after you add an account |
-| Google OAuth token and Gmail mail requests | `gmail.googleapis.com` | For a Gmail API account: to load Gmail labels, messages, threads, bodies, raw source and attachments; run Gmail search; synchronize mailbox history; save drafts; apply label/read/star/archive/trash actions; and send mail after you add the account |
+| Google OAuth token and Gmail mail requests | `gmail.googleapis.com` | For a Gmail API account: to load Gmail labels, messages, threads, bodies, raw source and attachments; run Gmail search; synchronize mailbox history; find and save drafts; apply label/read/star/archive/trash actions; and send mail after you add the account |
 | Update check | `henrikogaard.github.io` (appcast and release notes), `github.com` / `objects.githubusercontent.com` (DMG download) | Direct-download macOS builds of either release ring only; checks the signed Sparkle appcast using Settings -> About & Updates -> Updates cadence |
 
 For standards-first IMAP/SMTP setup, Brev first checks built-in
@@ -108,6 +108,26 @@ local presentation settings.
 Defaults to off.
 
 ### Home Screen widgets
+
+The optional macOS `--isolated-mock` development profile uses a fresh sandbox
+identity with in-memory synthetic accounts and no production credential-store
+or connector wiring. It disables App Group lookup and embedded extensions, so
+it cannot read or overwrite the daily driver's widget snapshot or share handoff.
+Its sandbox has no network, system Contacts/Calendar, or iCloud permissions;
+local test preferences remain in that generated sandbox until explicitly
+removed. Normal release and ordinary test builds keep their existing behavior.
+Settings may still use its bundle-derived UUID Keychain service for AI provider
+secrets; this is not a claim that every Keychain API is disabled. Production
+credential migration is skipped.
+
+For explicitly authorized body/attachment QA only, the separate
+`--isolated-mock-content-qa` flag adds network-client and user-selected-file
+read-only permissions to the sandbox (ADR-0092). The signed bundle marker and
+exact permission set must match at build verification and startup. This removes
+the OS-level outbound-network prohibition, not the mock-only data boundary or
+default remote-content blocking. Generated picker fixtures are the only files
+authorized for these tests. No App Group, broad filesystem, file-write, system
+Contacts/Calendar or iCloud access is granted. Strict and shipping defaults remain unchanged.
 
 The mail widget extension renders a `WidgetSnapshot.json` file the app
 writes into the shared App Group container after each sync — unread
@@ -345,6 +365,18 @@ Gmail cache under Application Support so downloaded mail can open offline and
 so one Gmail message is not duplicated for every label. The cache can contain
 headers, bodies, raw source, attachment metadata, labels, and sync cursors, but
 never OAuth access or refresh tokens.
+
+Brev also keeps a new-message recovery snapshot in local app preferences,
+scoped by account and mailbox source: draft identifiers, recipients, subject
+and editor text. A successful send completion or discard removes only a
+matching snapshot, not another draft's recovery. Failed or cancelled sends do
+not clear it. This uses the existing local store and adds no network request.
+
+Recovery treats that text-only snapshot as a hint: Brev requires a matching
+locally stored draft and its complete owned attachment bytes before editing.
+It does not fetch a provider message body to reconstruct missing recovery data.
+Unsafe or unproven content cannot be saved, autosaved or sent; closing a blocked
+recovery leaves both the original draft and the snapshot unchanged.
 
 Gmail compose drafts and staged attachment bytes are also stored locally in
 that database until send/discard cleanup or account removal. They are separate
@@ -702,6 +734,41 @@ Import adds messages to the chosen mailbox. A provider-backed import can upload
 the imported messages to that provider. Current import availability depends on
 the account's importer support.
 
+## Local IMAP header cache
+
+IMAP header rows and paging metadata are stored in the account's local
+SQLite index. Before a folder's legacy import marker exists, missing records
+from its historical JSON header file are retained in a separate local recovery
+archive. They are not shown in mail lists, search, conversations, attachments,
+or cached body/source reads until confirmed by existing authorized server
+fetches. Offline gaps are deliberate: an interrupted old cache write cannot
+prove whether a missing message was deleted. Existing indexed headers and
+server paging metadata remain authoritative; old cursors are not proof.
+
+The original JSON is removed only after the archive and import marker commit
+together. A failed transaction leaves it intact for retry. Header confirmation
+does not release old raw-source or parsed-body files: a fresh server source
+must be persisted successfully before recovery-aware cached source reads work.
+Recovery uses normal refresh, older pagination and explicit index rebuild,
+without a new endpoint, background sweep or consent path. While unconfirmed
+records remain, unchanged CONDSTORE may still lead to the existing first-page
+request on each ordinary refresh, including for messages no longer on server.
+
+Recovery payloads have no automatic expiry and are not backups. Clear Cache,
+targeted deletion and generation invalidation discard the affected recovery
+payloads; minimal account/folder/message suppression IDs and folder import
+markers remain so stale files cannot revive them. Clear Cache also requests
+deletion of unvisited legacy files and normal external content caches.
+Account removal deletes the account's indexed rows, including recovery and
+import markers, and requests external-cache cleanup. SQLite deletion is
+logical: physical destruction of database, WAL, SHM or disk bytes is not
+guaranteed. Other accounts are unaffected. Already-completed historical
+imports cannot be retroactively classified by this policy. If the index
+cannot open, new header caching remains memory-only and the connector does
+not read or write persisted source/body caches whose recovery state cannot
+be checked. Fresh server reads remain available; offline reads cannot fall
+back to those unverified files.
+
 ## Local mail folders
 
 Brev can keep mail in local folders ("On My Mac" / "On My iPhone"), stored as
@@ -816,6 +883,9 @@ provider's own synchronization settings apply.
   evictable cache content; submitted Send Later messages can also keep
   frozen MIME content and delivery state until resolved or removed.
   Local Maildir folders are persistent user data, not a disposable cache.
+  Reopening a locally saved draft can read its account-owned staged attachment
+  bytes into the composer; it does not download or re-stage missing provider
+  attachments. Unsupported or unavailable attachment drafts remain unchanged.
 - **Calendar, contacts, and tasks:** when you connect and sync a source,
   its collection metadata, event/contact/task fields, provider payloads,
   and sync cursors are saved in the app's Application Support directory
