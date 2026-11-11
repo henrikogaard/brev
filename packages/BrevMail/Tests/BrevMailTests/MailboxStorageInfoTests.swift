@@ -129,7 +129,8 @@ struct MailboxStorageInfoTests {
 
         let breakdown = MailboxStorageInfo.storageBreakdown(accountID: accountID)
 
-        #expect(breakdown.cacheObjectCount == 5)
+        // Two folders, one un-migrated header file, one source file. Indexed rows are reported separately.
+        #expect(breakdown.cacheObjectCount == 4)
     }
 
     @Test("cache object count follows the real file-backed source cache layout")

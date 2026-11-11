@@ -40,11 +40,11 @@ struct IMAPPageState: Equatable {
 
 /// Persistent SQLite-backed implementation of `SyncStoreProtocol` (ADR-0030).
 ///
-/// Schema version 6. All writes use WAL journal mode for concurrent-read safety.
+/// Schema version 9. All writes use WAL journal mode for concurrent-read safety.
 /// The NSLock serialises access from the BrevSyncEngine actor, which is the sole
 /// owner of this store in production.
 final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
-    let currentSchemaVersion = 7
+    let currentSchemaVersion = 10
 
     private let lock = NSLock()
     private let db: OpaquePointer?
@@ -206,6 +206,20 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
 
     // MARK: SyncStoreProtocol — folder sync state
 
+    func clearIMAPCache(accountID: String) throws {
+        try lock.withLock {
+            try inTransaction {
+                for table in ["message_search", "attachment_search", "message_bodies", "message_headers", "folder_sync_state"] {
+                    try execStmt("DELETE FROM \(table) WHERE account_id = ?;", bindings: [.text(accountID)])
+                }
+                try execStmt("""
+                    UPDATE imap_legacy_recovery SET header_json = NULL, uid_validity = NULL, header_confirmed = 0, source_confirmed = 0
+                    WHERE account_id = ?;
+                """, bindings: [.text(accountID)])
+            }
+        }
+    }
+
     func syncState(accountID: String, folderID: String) -> FolderSyncState? {
         lock.withLock {
             var stmt: OpaquePointer?
@@ -297,14 +311,20 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     }
 
     func conversationCandidates(identifier: String, source: MailSourceID, limit: Int) throws -> [ConversationMember] {
-        guard limit > 0 else { return [] }
+        try conversationCandidates(identifiers: [identifier], source: source, limit: limit)
+    }
+
+    func conversationCandidates(identifiers: [String], source: MailSourceID, limit: Int) throws -> [ConversationMember] {
+        guard limit > 0, !identifiers.isEmpty else { return [] }
         return try lock.withLock {
             var statement: OpaquePointer?
+            let placeholders = Array(repeating: "?", count: identifiers.count).joined(separator: ",")
             let sql = """
             SELECT h.header_json, s.uid_validity FROM conversation_links c
             JOIN message_headers h USING (account_id, folder_id, uid)
             LEFT JOIN folder_sync_state s ON s.account_id = h.account_id AND s.folder_id = h.folder_id
-            WHERE c.account_id = ? AND c.identifier = ?
+            WHERE c.account_id = ? AND c.identifier IN (\(placeholders))
+            GROUP BY c.folder_id, c.uid
             ORDER BY c.folder_id, c.uid LIMIT ?;
             """
             guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
@@ -312,8 +332,10 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             }
             defer { sqlite3_finalize(statement) }
             sqlite3_bind_text(statement, 1, source.accountID, -1, Self.transient)
-            sqlite3_bind_text(statement, 2, identifier, -1, Self.transient)
-            sqlite3_bind_int64(statement, 3, Int64(limit))
+            for (offset, identifier) in identifiers.enumerated() {
+                sqlite3_bind_text(statement, Int32(offset + 2), identifier, -1, Self.transient)
+            }
+            sqlite3_bind_int64(statement, Int32(identifiers.count + 2), Int64(limit))
             var result: [ConversationMember] = []
             var step = sqlite3_step(statement)
             while step == SQLITE_ROW {
@@ -428,6 +450,13 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     }
 
     /// Writes one page and its membership atomically without changing other visited windows.
+    func storeIMAPPage(_ page: IMAPHeaderPageWrite, accountID: String) throws {
+        try storeIMAPPage(page.headers, accountID: accountID, folderID: page.folderID,
+                          pageKey: page.pageToken ?? "first", uidValidity: page.uidValidity,
+                          highestModSeq: page.highestModSeq, nextPageToken: page.nextPageToken)
+    }
+
+    /// Writes one page and its membership atomically without changing other visited windows.
     func storeIMAPPage(
         _ headers: [MessageHeader], accountID: String, folderID: String, pageKey: String,
         uidValidity: Int?, highestModSeq: UInt64?, nextPageToken: String?
@@ -448,8 +477,14 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         let state: IMAPPageState
     }
 
-    private func upsertHeaders(_ headers: [MessageHeader], accountID: String, imapPage: IMAPPageWrite?) throws {
-        guard !headers.isEmpty || imapPage != nil else { return }
+    private struct IMAPSnapshotWrite {
+        let snapshot: IMAPMailboxHeaderCacheSnapshot
+        let folderID: String
+    }
+
+    private func upsertHeaders(_ headers: [MessageHeader], accountID: String, imapPage: IMAPPageWrite?,
+                               imapSnapshot: IMAPSnapshotWrite? = nil) throws {
+        guard !headers.isEmpty || imapPage != nil || imapSnapshot != nil else { return }
         try lock.withLock {
             let links = try prepareConversationStatements()
             defer { sqlite3_finalize(links.delete); sqlite3_finalize(links.insert) }
@@ -478,7 +513,22 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 if let imapPage {
                     try writeIMAPPageState(imapPage, accountID: accountID)
                 }
+                if let imapSnapshot {
+                    let snapshot = imapSnapshot.snapshot
+                    let previous = try readIMAPPageState(accountID: accountID, folderID: imapSnapshot.folderID)
+                    if let old = previous?.uidValidity, let new = snapshot.uidValidity, old != new {
+                        throw SyncStoreError.imapGenerationMismatch
+                    }
+                    try writeIMAPPageState(IMAPPageWrite(folderID: imapSnapshot.folderID, pageKey: "first",
+                                                         state: IMAPPageState(uidValidity: snapshot.uidValidity,
+                                                                              highestModSeq: snapshot.highestModSeq,
+                                                                              nextPageToken: snapshot.nextPageToken)),
+                                           accountID: accountID)
+                }
                 for header in headers {
+                    if imapPage == nil, try recoveryState(accountID: accountID, messageID: header.id)?.headerConfirmed == false {
+                        continue
+                    }
                     let uid = Self.uid(from: header.id)
                     let previous = storedHeaderRow(
                         accountID: accountID,
@@ -516,6 +566,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     sqlite3_reset(stmt)
                     sqlite3_clear_bindings(stmt)
                     if headerWasStored {
+                        if imapPage != nil {
+                            try execStmt(
+                                "UPDATE imap_legacy_recovery SET header_confirmed = 1 WHERE account_id = ? AND message_id = ?;",
+                                bindings: [.text(accountID), .text(header.id)]
+                            )
+                        }
                         // A flag-only refresh (CONDSTORE \Seen/\Flagged flips)
                         // leaves every field feeding message_search and
                         // conversation_links unchanged; rewriting them is pure
@@ -546,7 +602,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                         // while the store lock is held. Falls back to bodyTextForSearch
                         // only when no search row exists yet (e.g. body arrived before
                         // this header via storeBody, which didn't create the row).
-                        let bodyText = existingSearchBodyText(
+                        let suppressBody = try recoveryState(accountID: accountID, messageID: header.id)?.sourceConfirmed == false
+                        let bodyText = suppressBody ? nil : existingSearchBodyText(
                             accountID: accountID,
                             messageID: header.id
                         ) ?? bodyTextForSearch(accountID: accountID, messageID: header.id)
@@ -561,6 +618,9 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 if let imapPage {
                     try replaceIMAPWindow(imapPage, headers: headers, accountID: accountID)
                 }
+                if let imapSnapshot {
+                    try writeSnapshotWindows(imapSnapshot, accountID: accountID)
+                }
                 try execSQL("COMMIT;")
             } catch {
                 try? execSQL("ROLLBACK;")
@@ -572,6 +632,221 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     /// Reads folder paging metadata without materializing any headers.
     func imapPageState(accountID: String, folderID: String) throws -> IMAPPageState? {
         try lock.withLock { try readIMAPPageState(accountID: accountID, folderID: folderID) }
+    }
+
+    func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, accountID: String,
+                           folderID: String, importingLegacy: Bool) throws {
+        guard snapshot.headers.allSatisfy({ $0.folderID == folderID && Self.uid(from: $0.id) > 0 }) else {
+            throw SyncStoreError.invalidIMAPPage
+        }
+        if importingLegacy {
+            try quarantineIMAPSnapshot(snapshot, accountID: accountID, folderID: folderID)
+            return
+        }
+        try upsertHeaders(snapshot.headers, accountID: accountID, imapPage: nil,
+                          imapSnapshot: IMAPSnapshotWrite(snapshot: snapshot, folderID: folderID))
+    }
+
+    private func quarantineIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, accountID: String, folderID: String) throws {
+        try lock.withLock {
+            try inTransaction {
+                if try recoveryQuery("SELECT 1 FROM imap_legacy_imports WHERE account_id = ? AND folder_id = ?;",
+                                     accountID: accountID, value: folderID) { return }
+                for header in snapshot.headers {
+                    guard storedHeaderRow(accountID: accountID, folderID: folderID, uid: Self.uid(from: header.id)) == nil
+                    else { continue }
+                    let json = try String(decoding: Self.encoder.encode(header), as: UTF8.self)
+                    try execStmt("""
+                        INSERT INTO imap_legacy_recovery (account_id, folder_id, message_id, header_json, uid_validity)
+                        VALUES (?, ?, ?, ?, ?);
+                    """, bindings: [.text(accountID), .text(folderID), .text(header.id), .text(json),
+                                    snapshot.uidValidity.map { .int64(Int64($0)) } ?? .null])
+                    try deleteSearchRows(messageIDs: [header.id], accountID: accountID)
+                    try execStmt("DELETE FROM attachment_search WHERE account_id = ? AND message_id = ?;",
+                                 bindings: [.text(accountID), .text(header.id)])
+                }
+                try execStmt("INSERT INTO imap_legacy_imports (account_id, folder_id) VALUES (?, ?);",
+                             bindings: [.text(accountID), .text(folderID)])
+            }
+        }
+    }
+
+    func hasPendingIMAPRecovery(accountID: String, folderID: String) throws -> Bool {
+        try lock.withLock {
+            try recoveryQuery("""
+                SELECT 1 FROM imap_legacy_recovery WHERE account_id = ? AND folder_id = ?
+                AND header_json IS NOT NULL AND header_confirmed = 0 LIMIT 1;
+            """, accountID: accountID, value: folderID)
+        }
+    }
+
+    func hasIMAPRecoveryRecord(accountID: String, messageID: String) throws -> Bool {
+        try lock.withLock { try recoveryState(accountID: accountID, messageID: messageID) != nil }
+    }
+
+    private func recoveryQuery(_ sql: String, accountID: String, value: String) throws -> Bool {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw SyncStoreError.prepareFailed(errMsg()) }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+        sqlite3_bind_text(stmt, 2, value, -1, Self.transient)
+        let result = sqlite3_step(stmt)
+        guard result == SQLITE_ROW || result == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
+        return result == SQLITE_ROW
+    }
+
+    private func recoveryState(accountID: String, messageID: String) throws -> (headerConfirmed: Bool, sourceConfirmed: Bool)? {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            db,
+            "SELECT header_confirmed, source_confirmed FROM imap_legacy_recovery WHERE account_id = ? AND message_id = ?;",
+            -1,
+            &stmt,
+            nil
+        ) == SQLITE_OK else { throw SyncStoreError.prepareFailed(errMsg()) }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+        sqlite3_bind_text(stmt, 2, messageID, -1, Self.transient)
+        let result = sqlite3_step(stmt)
+        if result == SQLITE_DONE { return nil }
+        guard result == SQLITE_ROW else { throw SyncStoreError.executeFailed(errMsg()) }
+        return (sqlite3_column_int(stmt, 0) != 0, sqlite3_column_int(stmt, 1) != 0)
+    }
+
+    private func discardRecovery(accountID: String, folderID: String) throws {
+        try execStmt("""
+            UPDATE imap_legacy_recovery SET header_json = NULL, uid_validity = NULL, header_confirmed = 0, source_confirmed = 0
+            WHERE account_id = ? AND folder_id = ?;
+        """, bindings: [.text(accountID), .text(folderID)])
+    }
+
+    func headersByID(_ ids: [String], accountID: String, folderID: String) throws -> [MessageHeader] {
+        try lock.withLock {
+            try ids.compactMap { id in
+                guard let row = storedHeaderRow(accountID: accountID, folderID: folderID, uid: Self.uid(from: id)),
+                      row.messageID == id, let data = row.headerJSON else { return nil }
+                return try Self.decoder.decode(MessageHeader.self, from: data)
+            }
+        }
+    }
+
+    func selectIMAPHeaders(_ selection: IMAPHeaderSelection, accountID: String, folderID: String) throws -> [MessageHeader] {
+        try lock.withLock {
+            let predicate: String
+            var extra: Binding?
+            switch selection {
+            case .window(let token):
+                predicate = "EXISTS (SELECT 1 FROM imap_page_windows w WHERE w.account_id = h.account_id AND w.folder_id = h.folder_id AND w.uid = h.uid AND w.page_key = ?)"
+                extra = .text(token)
+            case .olderThan(let date): predicate = "h.date_ts <= ?"; extra = .int64(Int64(date.timeIntervalSince1970))
+            case .invalidDates: predicate = "h.date_ts = ?"; extra = .int64(Int64(Date.distantPast.timeIntervalSince1970))
+            case .attachmentsOrCachedBodies:
+                predicate = ""
+            case .excludingIDs(let ids):
+                predicate = "h.message_id NOT IN (SELECT value FROM json_each(?))"
+                extra = try .text(String(decoding: JSONEncoder().encode(ids), as: UTF8.self))
+            }
+            let sql: String
+            if case .attachmentsOrCachedBodies = selection {
+                sql = Self.attachmentOrCachedBodyHeadersSQL
+            } else {
+                sql = "SELECT h.header_json FROM message_headers h WHERE h.account_id = ? AND h.folder_id = ? AND \(predicate) ORDER BY h.date_ts DESC, h.uid DESC;"
+            }
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw SyncStoreError.prepareFailed(errMsg()) }
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+            sqlite3_bind_text(stmt, 2, folderID, -1, Self.transient)
+            switch extra {
+            case .text(let token): sqlite3_bind_text(stmt, 3, token, -1, Self.transient)
+            case .int64(let value): sqlite3_bind_int64(stmt, 3, value)
+            default: break
+            }
+            var result: [MessageHeader] = []
+            var step = sqlite3_step(stmt)
+            while step == SQLITE_ROW {
+                guard let bytes = sqlite3_column_blob(stmt, 0) else { throw SyncStoreError.executeFailed("Missing header bytes") }
+                let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 0)))
+                let header = try Self.decoder.decode(MessageHeader.self, from: data)
+                // date_ts truncates toward zero; filter boundary candidates with the original date.
+                switch selection {
+                case .olderThan(let cutoff):
+                    if header.date < cutoff { result.append(header) }
+                case .invalidDates:
+                    if header.date == .distantPast { result.append(header) }
+                default: result.append(header)
+                }
+                step = sqlite3_step(stmt)
+            }
+            guard step == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
+            return result
+        }
+    }
+
+    // CROSS JOIN keeps the selective candidates outermost instead of scanning the folder for ORDER BY.
+    static let attachmentOrCachedBodyHeadersSQL = """
+    SELECT h.header_json FROM (
+        SELECT uid FROM message_headers
+        WHERE account_id = ?1 AND folder_id = ?2
+          AND json_extract(CAST(header_json AS TEXT), '$.hasAttachments') = 1
+        UNION
+        SELECT h.uid FROM message_bodies b
+        CROSS JOIN message_headers h INDEXED BY idx_msg_message_id
+        WHERE b.account_id = ?1 AND h.account_id = b.account_id
+          AND h.message_id = b.message_id AND h.folder_id = ?2
+    ) candidates
+    CROSS JOIN message_headers h
+    WHERE h.account_id = ?1 AND h.folder_id = ?2 AND h.uid = candidates.uid
+    ORDER BY h.date_ts DESC, h.uid DESC;
+    """
+
+    func updateIMAPModSeq(_ modSeq: UInt64, accountID: String, folderID: String) throws {
+        try lock.withLock {
+            try execStmt("UPDATE folder_sync_state SET highest_mod_seq = ? WHERE account_id = ? AND folder_id = ?;",
+                         bindings: [.int64(Int64(bitPattern: modSeq)), .text(accountID), .text(folderID)])
+        }
+    }
+
+    func imapSnapshot(accountID: String, folderID: String) throws -> IMAPMailboxHeaderCacheSnapshot? {
+        try lock.withLock {
+            guard let state = try readIMAPPageState(accountID: accountID, folderID: folderID) else { return nil }
+            var stmt: OpaquePointer?
+            let sql = "SELECT page_key, uid FROM imap_page_windows WHERE account_id = ? AND folder_id = ?;"
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                throw SyncStoreError.prepareFailed(errMsg())
+            }
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+            sqlite3_bind_text(stmt, 2, folderID, -1, Self.transient)
+            var windows: [String: Set<String>] = [:]
+            var step = sqlite3_step(stmt)
+            while step == SQLITE_ROW {
+                let key = String(cString: sqlite3_column_text(stmt, 0))
+                windows[key, default: []].insert("\(folderID):\(sqlite3_column_int64(stmt, 1))")
+                step = sqlite3_step(stmt)
+            }
+            guard step == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
+            return IMAPMailboxHeaderCacheSnapshot(
+                headers: headersUnlocked(accountID: accountID, folderID: folderID, limit: Int.max, offset: 0),
+                uidValidity: state.uidValidity, highestModSeq: state.highestModSeq, nextPageToken: state.nextPageToken,
+                firstPageHeaderIDs: windows["first"], pageHeaderIDsByToken: windows.filter { $0.key != "first" }
+            )
+        }
+    }
+
+    private func writeSnapshotWindows(_ write: IMAPSnapshotWrite, accountID: String) throws {
+        try execStmt("DELETE FROM imap_page_windows WHERE account_id = ? AND folder_id = ?;",
+                     bindings: [.text(accountID), .text(write.folderID)])
+        var windows = write.snapshot.pageHeaderIDsByToken
+        if let first = write.snapshot.firstPageHeaderIDs { windows["first"] = first }
+        for (key, ids) in windows {
+            for id in ids {
+                let uid = Self.uid(from: id)
+                guard uid > 0, storedHeaderRow(accountID: accountID, folderID: write.folderID, uid: uid) != nil else { continue }
+                try execStmt("INSERT OR IGNORE INTO imap_page_windows VALUES (?, ?, ?, ?);",
+                             bindings: [.text(accountID), .text(write.folderID), .text(key), .int64(Int64(uid))])
+            }
+        }
     }
 
     private func readIMAPPageState(accountID: String, folderID: String) throws -> IMAPPageState? {
@@ -674,6 +949,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             try execSQL("BEGIN IMMEDIATE;")
             do {
                 try forEachMessageIDChunk(messageIDs) { chunk in
+                    for id in chunk {
+                        try execStmt("""
+                            UPDATE imap_legacy_recovery SET header_json = NULL, uid_validity = NULL, header_confirmed = 0, source_confirmed = 0
+                            WHERE account_id = ? AND message_id = ?;
+                        """, bindings: [.text(accountID), .text(id)])
+                    }
                     try deleteSearchRows(messageIDs: chunk, accountID: accountID)
                     try deleteBodies(messageIDs: chunk, accountID: accountID)
                     let placeholders = chunk.map { _ in "?" }.joined(separator: ", ")
@@ -707,6 +988,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         try lock.withLock {
             try execSQL("BEGIN IMMEDIATE;")
             do {
+                try discardRecovery(accountID: accountID, folderID: folderID)
                 try deleteBodiesForFolder(accountID: accountID, folderID: folderID)
                 try deleteBodiesByMessageIDPrefix(accountID: accountID, folderID: folderID)
                 try execStmt(
@@ -731,6 +1013,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             // leave a ghost folder (headers without sync state, or vice versa).
             try execSQL("BEGIN IMMEDIATE;")
             do {
+                try discardRecovery(accountID: accountID, folderID: folderID)
                 try deleteBodiesForFolder(accountID: accountID, folderID: folderID)
                 try deleteBodiesByMessageIDPrefix(accountID: accountID, folderID: folderID)
                 try execStmt(
@@ -844,6 +1127,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             let sql = """
                 SELECT raw_source FROM message_bodies
                 WHERE account_id = ? AND message_id = ? AND (? = 0 OR original_bytes = 1)
+                AND NOT EXISTS (SELECT 1 FROM imap_legacy_recovery r
+                    WHERE r.account_id = message_bodies.account_id AND r.message_id = message_bodies.message_id AND r.source_confirmed = 0)
                 LIMIT 1;
             """
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
@@ -866,8 +1151,19 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         try storeBody(data, accountID: accountID, messageID: messageID, isOriginal: true)
     }
 
-    private func storeBody(_ data: Data, accountID: String, messageID: MessageHeader.ID, isOriginal: Bool) throws {
+    func storeConfirmedIMAPSource(_ data: Data, isOriginal: Bool, accountID: String, messageID: String) throws {
+        try storeBody(data, accountID: accountID, messageID: messageID, isOriginal: isOriginal, confirmedSource: true)
+    }
+
+    private func storeBody(
+        _ data: Data,
+        accountID: String,
+        messageID: MessageHeader.ID,
+        isOriginal: Bool,
+        confirmedSource: Bool = false
+    ) throws {
         try lock.withLock {
+            if !confirmedSource, try recoveryState(accountID: accountID, messageID: messageID) != nil { return }
             var stmt: OpaquePointer?
             let sql = """
                 INSERT INTO message_bodies (account_id, message_id, raw_source, fetched_at, size_bytes, original_bytes)
@@ -895,6 +1191,10 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 sqlite3_bind_int(stmt, 6, isOriginal ? 1 : 0)
                 guard sqlite3_step(stmt) == SQLITE_DONE else {
                     throw SyncStoreError.executeFailed(errMsg())
+                }
+                if confirmedSource {
+                    try execStmt("UPDATE imap_legacy_recovery SET source_confirmed = 1 WHERE account_id = ? AND message_id = ?;",
+                                 bindings: [.text(accountID), .text(messageID)])
                 }
                 if let header = header(accountID: accountID, messageID: messageID) {
                     try upsertSearchRow(
@@ -1187,6 +1487,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         text: String
     ) throws {
         try lock.withLock {
+            if try recoveryState(accountID: accountID, messageID: messageID)?.sourceConfirmed == false { return }
             try inTransaction {
                 try execStmt(
                     """
@@ -1398,6 +1699,24 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     try execSQL("PRAGMA user_version = 7;")
                 }
             }
+            if version < 8 {
+                try inTransaction {
+                    try createIMAPLegacyImportSchema()
+                    try execSQL("PRAGMA user_version = 8;")
+                }
+            }
+            if version < 9 {
+                try inTransaction {
+                    try createIMAPAttachmentHeaderIndex()
+                    try execSQL("PRAGMA user_version = 9;")
+                }
+            }
+            if version < 10 {
+                try inTransaction {
+                    try createIMAPRecoverySchema()
+                    try execSQL("PRAGMA user_version = 10;")
+                }
+            }
         default:
             // version > currentSchemaVersion: written by a newer build.
             throw SyncStoreError.unknownSchemaVersion(
@@ -1425,7 +1744,26 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             try createConversationSchema()
             try createAttachmentSearchSchema()
             try createIMAPPageSchema()
+            try createIMAPLegacyImportSchema()
+            try createIMAPAttachmentHeaderIndex()
+            try createIMAPRecoverySchema()
         }
+    }
+
+    private func createIMAPRecoverySchema() throws {
+        try execSQL("""
+            CREATE TABLE IF NOT EXISTS imap_legacy_recovery (
+                account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                folder_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                header_json TEXT,
+                uid_validity INTEGER,
+                header_confirmed INTEGER NOT NULL DEFAULT 0,
+                source_confirmed INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (account_id, message_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_imap_recovery_folder ON imap_legacy_recovery(account_id, folder_id, header_confirmed);
+        """)
     }
 
     /// Runs `body` inside a single `BEGIN IMMEDIATE` … `COMMIT`, rolling back on
@@ -1503,6 +1841,23 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         );
         CREATE INDEX IF NOT EXISTS idx_imap_window_header
             ON imap_page_windows(account_id, folder_id, uid);
+        """)
+    }
+
+    private func createIMAPAttachmentHeaderIndex() throws {
+        try execSQL("""
+        CREATE INDEX IF NOT EXISTS idx_imap_attachment_headers
+            ON message_headers(account_id, folder_id, json_extract(CAST(header_json AS TEXT), '$.hasAttachments'));
+        """)
+    }
+
+    private func createIMAPLegacyImportSchema() throws {
+        try execSQL("""
+        CREATE TABLE IF NOT EXISTS imap_legacy_imports (
+            account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            folder_id TEXT NOT NULL,
+            PRIMARY KEY (account_id, folder_id)
+        );
         """)
     }
 

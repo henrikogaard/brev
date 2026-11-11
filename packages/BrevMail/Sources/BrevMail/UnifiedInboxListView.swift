@@ -229,6 +229,10 @@ struct UnifiedInboxListView: View {
     @ViewBuilder
     private var workflowObservedContent: some View {
         let presentation = presentationSnapshot
+        let selectedRowID = presentation.selectedRowID(
+            selectedMessageID: navigation.selectedMessageID, selectedSourceID: navigation.selectedSourceID,
+            expandedThreadIDs: expandedThreadKeys
+        )
         VStack(spacing: 0) {
             LegacyPinNotice()
             #if os(macOS)
@@ -328,7 +332,8 @@ struct UnifiedInboxListView: View {
                                                 visibleCount: presentation.visibleItems.count,
                                                 pinnedMessageIDs: presentation.pinnedMessageIDs,
                                                 threadCounts: presentation.threadCounts,
-                                                itemsByThreadKey: presentation.itemsByThreadKey
+                                                itemsByThreadKey: presentation.itemsByThreadKey,
+                                                selectedRowID: selectedRowID
                                             )
                                         }
                                     }
@@ -340,7 +345,8 @@ struct UnifiedInboxListView: View {
                                             visibleCount: presentation.visibleItems.count,
                                             pinnedMessageIDs: presentation.pinnedMessageIDs,
                                             threadCounts: presentation.threadCounts,
-                                            itemsByThreadKey: presentation.itemsByThreadKey
+                                            itemsByThreadKey: presentation.itemsByThreadKey,
+                                            selectedRowID: selectedRowID
                                         )
                                     }
                                 }
@@ -365,9 +371,9 @@ struct UnifiedInboxListView: View {
                             #endif
                                 .refreshable { await pullToRefresh() }
                             #if os(macOS)
-                                .onChange(of: selectedUnifiedItemID) { _, selection in
-                                    guard let selection else { return }
-                                    proxy.scrollTo(selection)
+                                .onChange(of: [navigation.selectedMessageID, selectedRowID]) { _, _ in
+                                    guard let selectedRowID else { return }
+                                    proxy.scrollTo(selectedRowID)
                                 }
                             #endif
                         }
@@ -1192,7 +1198,8 @@ struct UnifiedInboxListView: View {
         visibleCount: Int,
         pinnedMessageIDs: Set<MessageHeader.ID>,
         threadCounts: [String: Int],
-        itemsByThreadKey: [String: [UnifiedInboxItem]]
+        itemsByThreadKey: [String: [UnifiedInboxItem]],
+        selectedRowID: UnifiedInboxItem.ID?
     ) -> some View {
         let threadKey = UnifiedInboxThreadGrouping.key(for: item)
         let threadCount = threadCounts[threadKey] ?? 1
@@ -1202,7 +1209,8 @@ struct UnifiedInboxListView: View {
             visibleCount: visibleCount,
             pinnedMessageIDs: pinnedMessageIDs,
             threadKey: threadKey,
-            threadCount: threadCount
+            threadCount: threadCount,
+            selectedRowID: selectedRowID
         )
         if threadCount > 1, expandedThreadKeys.contains(threadKey) {
             // Buckets are pre-grouped and sorted oldest → newest in the
@@ -1213,8 +1221,7 @@ struct UnifiedInboxListView: View {
             ForEach(children) { child in
                 ThreadInlineChildRow(
                     header: child.header,
-                    isSelected: navigation.selectedSourceID == child.sourceID
-                        && navigation.selectedMessageID == child.header.id,
+                    isSelected: selectedRowID == child.id,
                     onSelect: {
                         if !isInSelectionMode {
                             selectMessage(child)
@@ -1241,14 +1248,14 @@ struct UnifiedInboxListView: View {
         visibleCount: Int,
         pinnedMessageIDs: Set<MessageHeader.ID>,
         threadKey: String,
-        threadCount: Int
+        threadCount: Int,
+        selectedRowID: UnifiedInboxItem.ID?
     ) -> some View {
         let followUpReminder = followUpReminderIndex.reminder(for: item.header.id, sourceID: item.sourceID)
         MessageListRow(
             header: item.header,
             threadCount: threadCount,
-            isSelected: navigation.selectedSourceID == item.sourceID
-                && navigation.selectedMessageID == item.header.id,
+            isSelected: selectedRowID == item.id,
             isChecked: selectedItemIDs.contains(item.id),
             isInSelectionMode: isInSelectionMode,
             isPinned: pinnedMessageIDs.contains(item.pinID),
@@ -2348,16 +2355,6 @@ struct UnifiedInboxListView: View {
             }
         }
         return flattened
-    }
-
-    /// The row id of the reader's selected item — composite
-    /// (`account:mailbox:message`), which is what `ScrollViewReader`
-    /// matches, not the bare header id.
-    private var selectedUnifiedItemID: UnifiedInboxItem.ID? {
-        keyboardNavigableItems.first {
-            $0.header.id == navigation.selectedMessageID
-                && $0.sourceID == navigation.selectedSourceID
-        }?.id
     }
 
     /// Moves selection to the next/previous row in displayed order —

@@ -34,6 +34,7 @@ protocol SyncStoreProtocol: Sendable {
 
     /// Clears every local sync/index row for an account.
     func clearAccount(id: String) async throws
+    func clearIMAPCache(accountID: String) async throws
 
     // MARK: Folder sync state
 
@@ -61,6 +62,20 @@ protocol SyncStoreProtocol: Sendable {
     /// overwritten — callers must filter them out before calling this method.
     func upsertHeaders(_ headers: [MessageHeader], accountID: String) async throws
 
+    /// Commits header rows and one server window together.
+    func storeIMAPPage(_ page: IMAPHeaderPageWrite, accountID: String) async throws
+    func imapPageState(accountID: String, folderID: String) async throws -> IMAPPageState?
+    func imapPageUIDs(accountID: String, folderID: String, pageKey: String) async throws -> [Int]
+    func imapSnapshot(accountID: String, folderID: String) async throws -> IMAPMailboxHeaderCacheSnapshot?
+    func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, accountID: String,
+                           folderID: String, importingLegacy: Bool) async throws
+    func headersByID(_ ids: [String], accountID: String, folderID: String) async throws -> [MessageHeader]
+    func selectIMAPHeaders(_ selection: IMAPHeaderSelection, accountID: String, folderID: String) async throws -> [MessageHeader]
+    func updateIMAPModSeq(_ modSeq: UInt64, accountID: String, folderID: String) async throws
+    func hasPendingIMAPRecovery(accountID: String, folderID: String) async throws -> Bool
+    func hasIMAPRecoveryRecord(accountID: String, messageID: String) async throws -> Bool
+    func storeConfirmedIMAPSource(_ data: Data, isOriginal: Bool, accountID: String, messageID: String) async throws
+
     /// Deletes headers whose `MessageHeader.ID` is in `messageIDs`.
     func deleteHeaders(messageIDs: [MessageHeader.ID], accountID: String) async throws
 
@@ -82,6 +97,7 @@ protocol SyncStoreProtocol: Sendable {
 
     /// Reads bounded reply-identifier matches from the account's existing metadata index.
     func conversationCandidates(identifier: String, source: MailSourceID, limit: Int) async throws -> [ConversationMember]
+    func conversationCandidates(identifiers: [String], source: MailSourceID, limit: Int) async throws -> [ConversationMember]
 
     // MARK: Message bodies
 
@@ -171,9 +187,21 @@ extension SyncStoreProtocol {
 /// Used in unit tests so that `BrevSyncEngine` can be exercised without a
 /// real SQLite database file.
 actor InMemorySyncStore: SyncStoreProtocol {
-    let currentSchemaVersion = 7
+    let currentSchemaVersion = 10
 
     private var syncStates: [String: FolderSyncState] = [:]
+    private struct RecoveryRecord {
+        let folderID: String
+        var header: MessageHeader?
+        var uidValidity: Int?
+        var headerConfirmed = false
+        var sourceConfirmed = false
+    }
+
+    private var recovery: [String: RecoveryRecord] = [:]
+    private var imapPageStates: [String: IMAPPageState] = [:]
+    private var imapWindows: [String: [String: Set<Int>]] = [:]
+    private var importedLegacyFolders: Set<String> = []
     // ["\(accountID)|\(folderID)": [messageID: MessageHeader]]
     private var headersByFolder: [String: [String: MessageHeader]] = [:]
     private struct StoredBody {
@@ -195,11 +223,17 @@ actor InMemorySyncStore: SyncStoreProtocol {
     private var attachmentTexts: [String: [StoredAttachmentText]] = [:]
 
     func conversationCandidates(identifier: String, source: MailSourceID, limit: Int) throws -> [ConversationMember] {
+        try conversationCandidates(identifiers: [identifier], source: source, limit: limit)
+    }
+
+    func conversationCandidates(identifiers: [String], source: MailSourceID, limit: Int) throws -> [ConversationMember] {
+        guard limit > 0, !identifiers.isEmpty else { return [] }
+        let requested = Set(identifiers)
         var result: [ConversationMember] = []
         for (key, headers) in headersByFolder where key.hasPrefix("\(source.accountID)|") {
             for header in headers.values.sorted(by: { $0.id < $1.id }) {
                 guard let links = ConversationMembershipResolver.cachedLinkIdentifiers(for: header),
-                      links.contains(identifier) else { continue }
+                      !requested.isDisjoint(with: links) else { continue }
                 let generation = syncStates[folderKey(source.accountID, header.folderID)]?.uidValidity
                 result.append(ConversationMember(sourceID: source, header: header,
                                                  folderGeneration: generation.flatMap { UInt64(exactly: $0) },
@@ -215,6 +249,10 @@ actor InMemorySyncStore: SyncStoreProtocol {
     func clearAccount(id: String) throws {
         let prefix = "\(id)|"
         syncStates = syncStates.filter { !$0.key.hasPrefix(prefix) }
+        imapPageStates = imapPageStates.filter { !$0.key.hasPrefix(prefix) }
+        imapWindows = imapWindows.filter { !$0.key.hasPrefix(prefix) }
+        importedLegacyFolders = importedLegacyFolders.filter { !$0.hasPrefix(prefix) }
+        recovery = recovery.filter { !$0.key.hasPrefix(prefix) }
         headersByFolder = headersByFolder.filter { !$0.key.hasPrefix(prefix) }
         bodies = bodies.filter { !$0.key.hasPrefix(prefix) }
         dirty = dirty.filter { !$0.hasPrefix(prefix) }
@@ -225,15 +263,30 @@ actor InMemorySyncStore: SyncStoreProtocol {
         syncStates[folderKey(accountID, folderID)]
     }
 
+    func clearIMAPCache(accountID: String) throws {
+        let prefix = "\(accountID)|"
+        let retainedRecovery = recovery.filter { $0.key.hasPrefix(prefix) }
+        let retainedImports = importedLegacyFolders.filter { $0.hasPrefix(prefix) }
+        try clearAccount(id: accountID)
+        recovery.merge(retainedRecovery) { _, retained in retained }
+        importedLegacyFolders.formUnion(retainedImports)
+        for record in retainedRecovery.values {
+            discardRecovery(accountID: accountID, folderID: record.folderID)
+        }
+    }
+
     func setSyncState(_ state: FolderSyncState) throws {
         syncStates[folderKey(state.accountID, state.folderID)] = state
     }
 
     func deleteSyncState(accountID: String, folderID: String) throws {
         syncStates.removeValue(forKey: folderKey(accountID, folderID))
+        imapPageStates.removeValue(forKey: folderKey(accountID, folderID))
+        imapWindows.removeValue(forKey: folderKey(accountID, folderID))
     }
 
     func clearFolder(accountID: String, folderID: String) throws {
+        discardRecovery(accountID: accountID, folderID: folderID)
         let headers = headersByFolder[folderKey(accountID, folderID)] ?? [:]
         clearLocalMessageState(
             messageIDs: Array(headers.keys),
@@ -242,6 +295,8 @@ actor InMemorySyncStore: SyncStoreProtocol {
         try deleteBodies(accountID: accountID, folderID: folderID)
         headersByFolder.removeValue(forKey: folderKey(accountID, folderID))
         syncStates.removeValue(forKey: folderKey(accountID, folderID))
+        imapPageStates.removeValue(forKey: folderKey(accountID, folderID))
+        imapWindows.removeValue(forKey: folderKey(accountID, folderID))
     }
 
     func headers(
@@ -260,6 +315,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
 
     func upsertHeaders(_ headers: [MessageHeader], accountID: String) throws {
         for header in headers {
+            if recovery["\(accountID)|\(header.id)"]?.headerConfirmed == false { continue }
             let key = folderKey(accountID, header.folderID)
             if headersByFolder[key] == nil {
                 headersByFolder[key] = [:]
@@ -286,8 +342,14 @@ actor InMemorySyncStore: SyncStoreProtocol {
     }
 
     func deleteHeaders(messageIDs: [MessageHeader.ID], accountID: String) throws {
+        for id in messageIDs {
+            discardRecovery(accountID: accountID, messageID: id)
+        }
         let targets = Set(messageIDs)
         for key in headersByFolder.keys where key.hasPrefix("\(accountID)|") {
+            let removed = (headersByFolder[key] ?? [:]).values.filter { targets.contains($0.id) }
+            let removedUIDs = Set(removed.map { Self.uid(from: $0.id) })
+            imapWindows[key] = imapWindows[key]?.mapValues { $0.subtracting(removedUIDs) }
             headersByFolder[key] = headersByFolder[key]?.filter { !targets.contains($0.key) }
         }
         clearLocalMessageState(
@@ -296,7 +358,120 @@ actor InMemorySyncStore: SyncStoreProtocol {
         )
     }
 
+    func storeIMAPPage(_ page: IMAPHeaderPageWrite, accountID: String) throws {
+        guard page.pageToken?.isEmpty != true,
+              page.headers.allSatisfy({ $0.folderID == page.folderID && Self.uid(from: $0.id) > 0 }) else {
+            throw SyncStoreError.invalidIMAPPage
+        }
+        let key = folderKey(accountID, page.folderID)
+        let previous = syncStates[key]
+        if let old = previous?.uidValidity, let new = page.uidValidity, old != new {
+            throw SyncStoreError.imapGenerationMismatch
+        }
+        for header in page.headers {
+            recovery["\(accountID)|\(header.id)"]?.headerConfirmed = true
+        }
+        try upsertHeaders(page.headers, accountID: accountID)
+        var state = previous ?? FolderSyncState(folderID: page.folderID, accountID: accountID)
+        state.uidValidity = page.uidValidity ?? state.uidValidity
+        state.highestModSeq = page.highestModSeq ?? state.highestModSeq
+        syncStates[key] = state
+        imapPageStates[key] = IMAPPageState(uidValidity: state.uidValidity, highestModSeq: state.highestModSeq,
+                                            nextPageToken: page.nextPageToken)
+        imapWindows[key, default: [:]][page.pageToken ?? "first"] = Set(page.headers.map { Self.uid(from: $0.id) })
+    }
+
+    func imapPageState(accountID: String, folderID: String) -> IMAPPageState? {
+        guard let state = syncStates[folderKey(accountID, folderID)] else { return nil }
+        return IMAPPageState(uidValidity: state.uidValidity, highestModSeq: state.highestModSeq,
+                             nextPageToken: imapPageStates[folderKey(accountID, folderID)]?.nextPageToken)
+    }
+
+    func imapPageUIDs(accountID: String, folderID: String, pageKey: String) -> [Int] {
+        (imapWindows[folderKey(accountID, folderID)]?[pageKey] ?? []).sorted()
+    }
+
+    func headersByID(_ ids: [String], accountID: String, folderID: String) -> [MessageHeader] {
+        let stored = headersByFolder[folderKey(accountID, folderID)] ?? [:]
+        return ids.compactMap { stored[$0] }
+    }
+
+    func selectIMAPHeaders(_ selection: IMAPHeaderSelection, accountID: String, folderID: String) -> [MessageHeader] {
+        let key = folderKey(accountID, folderID)
+        return headers(accountID: accountID, folderID: folderID, limit: Int.max, offset: 0).filter { header in
+            switch selection {
+            case .window(let token): return imapWindows[key]?[token]?.contains(Self.uid(from: header.id)) == true
+            case .olderThan(let date): return header.date < date
+            case .invalidDates: return header.date == .distantPast
+            case .attachmentsOrCachedBodies: return header.hasAttachments || bodies["\(accountID)|\(header.id)"] != nil
+            case .excludingIDs(let ids): return !ids.contains(header.id)
+            }
+        }
+    }
+
+    func updateIMAPModSeq(_ modSeq: UInt64, accountID: String, folderID: String) {
+        let key = folderKey(accountID, folderID)
+        guard var state = syncStates[key] else { return }
+        state.highestModSeq = modSeq
+        syncStates[key] = state
+    }
+
+    func imapSnapshot(accountID: String, folderID: String) -> IMAPMailboxHeaderCacheSnapshot? {
+        let key = folderKey(accountID, folderID)
+        guard let metadata = imapPageState(accountID: accountID, folderID: folderID) else { return nil }
+        let windows = (imapWindows[key] ?? [:]).mapValues { Set($0.map { "\(folderID):\($0)" }) }
+        return IMAPMailboxHeaderCacheSnapshot(headers: headers(accountID: accountID, folderID: folderID,
+                                                               limit: Int.max, offset: 0),
+                                              uidValidity: metadata.uidValidity, highestModSeq: metadata.highestModSeq,
+                                              nextPageToken: metadata.nextPageToken, firstPageHeaderIDs: windows["first"],
+                                              pageHeaderIDsByToken: windows.filter { $0.key != "first" })
+    }
+
+    func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, accountID: String,
+                           folderID: String, importingLegacy: Bool) throws {
+        let key = folderKey(accountID, folderID)
+        if importingLegacy, importedLegacyFolders.contains(key) { return }
+        if importingLegacy {
+            guard snapshot.headers.allSatisfy({ $0.folderID == folderID && Self.uid(from: $0.id) > 0 }) else {
+                throw SyncStoreError.invalidIMAPPage
+            }
+            for header in snapshot.headers where headersByFolder[key]?[header.id] == nil {
+                recovery["\(accountID)|\(header.id)"] = RecoveryRecord(
+                    folderID: folderID,
+                    header: header,
+                    uidValidity: snapshot.uidValidity
+                )
+                attachmentTexts.removeValue(forKey: "\(accountID)|\(header.id)")
+            }
+            importedLegacyFolders.insert(key)
+            return
+        }
+        if let old = syncStates[key]?.uidValidity, let new = snapshot.uidValidity, old != new {
+            throw SyncStoreError.imapGenerationMismatch
+        }
+        guard snapshot.headers.allSatisfy({ $0.folderID == folderID && Self.uid(from: $0.id) > 0 }) else {
+            throw SyncStoreError.invalidIMAPPage
+        }
+        try upsertHeaders(snapshot.headers, accountID: accountID)
+        var state = syncStates[key] ?? FolderSyncState(folderID: folderID, accountID: accountID)
+        state.uidValidity = snapshot.uidValidity ?? state.uidValidity
+        state.highestModSeq = snapshot.highestModSeq ?? state.highestModSeq
+        syncStates[key] = state
+        imapPageStates[key] = IMAPPageState(uidValidity: state.uidValidity, highestModSeq: state.highestModSeq,
+                                            nextPageToken: snapshot.nextPageToken)
+        imapWindows[key] = [:]
+        var windows = snapshot.pageHeaderIDsByToken
+        if let first = snapshot.firstPageHeaderIDs { windows["first"] = first }
+        for (token, ids) in windows {
+            imapWindows[key, default: [:]][token] = Set(ids.compactMap { id in
+                headersByFolder[key]?[id].map { Self.uid(from: $0.id) }
+            })
+        }
+    }
+
     func clearHeaders(accountID: String, folderID: String) throws {
+        discardRecovery(accountID: accountID, folderID: folderID)
+        imapWindows.removeValue(forKey: folderKey(accountID, folderID))
         let headers = headersByFolder[folderKey(accountID, folderID)] ?? [:]
         clearLocalMessageState(
             messageIDs: Array(headers.keys),
@@ -326,20 +501,55 @@ actor InMemorySyncStore: SyncStoreProtocol {
     }
 
     func body(accountID: String, messageID: MessageHeader.ID) -> Data? {
-        bodies["\(accountID)|\(messageID)"]?.data
+        guard recovery["\(accountID)|\(messageID)"]?.sourceConfirmed != false else { return nil }
+        return bodies["\(accountID)|\(messageID)"]?.data
     }
 
     func originalBody(accountID: String, messageID: MessageHeader.ID) -> Data? {
+        guard recovery["\(accountID)|\(messageID)"]?.sourceConfirmed != false else { return nil }
         guard let body = bodies["\(accountID)|\(messageID)"], body.isOriginal else { return nil }
         return body.data
     }
 
     func storeOriginalBody(_ data: Data, accountID: String, messageID: MessageHeader.ID) throws {
+        guard recovery["\(accountID)|\(messageID)"] == nil else { return }
         bodies["\(accountID)|\(messageID)"] = StoredBody(data: data, isOriginal: true)
     }
 
     func storeBody(_ data: Data, accountID: String, messageID: MessageHeader.ID) throws {
+        guard recovery["\(accountID)|\(messageID)"] == nil else { return }
         bodies["\(accountID)|\(messageID)"] = StoredBody(data: data, isOriginal: false)
+    }
+
+    func hasPendingIMAPRecovery(accountID: String, folderID: String) -> Bool {
+        recovery
+            .contains {
+                $0.key.hasPrefix("\(accountID)|") && $0.value.folderID == folderID && $0.value.header != nil && !$0.value
+                    .headerConfirmed
+            }
+    }
+
+    func hasIMAPRecoveryRecord(accountID: String, messageID: String) -> Bool {
+        recovery["\(accountID)|\(messageID)"] != nil
+    }
+
+    func storeConfirmedIMAPSource(_ data: Data, isOriginal: Bool, accountID: String, messageID: String) throws {
+        bodies["\(accountID)|\(messageID)"] = StoredBody(data: data, isOriginal: isOriginal)
+        recovery["\(accountID)|\(messageID)"]?.sourceConfirmed = true
+    }
+
+    private func discardRecovery(accountID: String, folderID: String) {
+        for (key, record) in recovery where key.hasPrefix("\(accountID)|") && record.folderID == folderID {
+            discardRecovery(accountID: accountID, messageID: String(key.dropFirst(accountID.count + 1)))
+        }
+    }
+
+    private func discardRecovery(accountID: String, messageID: String) {
+        let key = "\(accountID)|\(messageID)"
+        recovery[key]?.header = nil
+        recovery[key]?.uidValidity = nil
+        recovery[key]?.headerConfirmed = false
+        recovery[key]?.sourceConfirmed = false
     }
 
     func deleteBodies(messageIDs: [MessageHeader.ID], accountID: String) throws {
@@ -409,7 +619,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
         let prefix = "\(accountID)|"
         var bodyTextByID: [MessageHeader.ID: String] = [:]
         for (key, data) in bodies {
-            guard key.hasPrefix(prefix) else { continue }
+            guard key.hasPrefix(prefix), recovery[key]?.sourceConfirmed != false else { continue }
             let messageID = String(key.dropFirst(prefix.count))
             bodyTextByID[messageID] = Self.searchableBodyText(from: data.data, messageID: messageID)
         }
@@ -444,6 +654,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
     ) throws {
         let key = "\(accountID)|\(messageID)"
         var rows = attachmentTexts[key] ?? []
+        guard recovery[key]?.sourceConfirmed != false else { return }
         rows.removeAll { $0.attachmentID == attachmentID }
         rows.append(StoredAttachmentText(
             folderID: folderID, attachmentID: attachmentID, name: name, text: text
@@ -489,6 +700,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
         let normalizedTokens = tokens.map(Self.normalizedSearchText)
         var bodyTextByID: [MessageHeader.ID: String] = [:]
         for (key, data) in bodies where key.hasPrefix("\(accountID)|") {
+            guard recovery[key]?.sourceConfirmed != false else { continue }
             let messageID = String(key.dropFirst(accountID.count + 1))
             bodyTextByID[messageID] = Self.searchableBodyText(from: data.data, messageID: messageID)
         }

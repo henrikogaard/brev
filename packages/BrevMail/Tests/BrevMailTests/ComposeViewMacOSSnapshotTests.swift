@@ -71,5 +71,32 @@ struct ComposeViewMacOSSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    /// The collapsed Cc/Bcc row keeps From in the To/Subject label column and
+    /// its divider runs to the edge like the other rows (#279 native QA).
+    @Test("collapsed compose header keeps one label column", arguments: ["light", "dark"])
+    func collapsedHeader(mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let view = ComposeView(
+            backend: MockBackend(),
+            from: Correspondent(name: "Henrik Øgård", email: "henrik@ogard.example"),
+            prefill: ComposePrefill(to: ["qa-recipient@example.org"], subject: "Header alignment")
+        )
+        .frame(width: 700, height: 560)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 700, height: 560)
+        host.view.needsLayout = true
+        host.view.layoutSubtreeIfNeeded()
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 700, height: 560)),
+            named: "compose-collapsed-header-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
 }
 #endif
