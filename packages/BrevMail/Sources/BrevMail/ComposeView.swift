@@ -1696,46 +1696,7 @@ public struct ComposeView: View {
             }
             recipientRowDivider
             if isOptionalFieldsCollapsed {
-                Button {
-                    showCc = true
-                    showBcc = true
-                    showFrom = true
-                } label: {
-                    #if os(macOS)
-                    // The From label shares the To/Subject column; the long
-                    // "Cc/Bcc, From:" label used to widen that whole column.
-                    HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
-                        ComposeFieldLabel(String(localized: "From", bundle: .module))
-                            .frame(width: fieldLabelWidth, alignment: .leading)
-                        Text(currentFromEmail)
-                            .brevFont(.subheadline)
-                            .foregroundStyle(theme.textSecondary.color)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(String(localized: "Cc/Bcc", bundle: .module))
-                            .brevFont(.subheadline)
-                            .foregroundStyle(theme.accent.color)
-                    }
-                    .frame(minHeight: headerRowMinHeight, alignment: .leading)
-                    .contentShape(Rectangle())
-                    #else
-                    Text(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
-                        .brevFont(.subheadline)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        // Rows stack at accessibility sizes, so only their content sets the height.
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: isAccessibilityFieldLayout ? nil : headerRowMinHeight,
-                            alignment: .leading
-                        )
-                        .contentShape(Rectangle())
-                    #endif
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
+                foldedSenderRow
             } else if isCcFieldVisible {
                 headerRowHeight(RecipientChipField(
                     label: String(localized: "Cc", bundle: .module),
@@ -1808,7 +1769,77 @@ public struct ComposeView: View {
             || isBccFieldVisible
     }
 
-    private var isOptionalFieldsCollapsed: Bool {
+    /// The folded "From … Cc/Bcc" row of a new message. The signature picker
+    /// sits in it too, so choosing a signature does not need Cc/Bcc opened
+    /// first. Each control is its own button so neither swallows the other.
+    @ViewBuilder
+    private var foldedSenderRow: some View {
+        #if os(macOS)
+        // The From label shares the To/Subject column; the long
+        // "Cc/Bcc, From:" label used to widen that whole column.
+        HStack(alignment: .center, spacing: BrevSpacing.sm) {
+            Button(action: expandOptionalFields) {
+                HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
+                    ComposeFieldLabel(String(localized: "From", bundle: .module))
+                        .frame(width: fieldLabelWidth, alignment: .leading)
+                    Text(currentFromEmail)
+                        .brevFont(.subheadline)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
+            if showsSignaturePickerInFoldedRow {
+                fromRowSignaturePicker
+                    .fixedSize()
+            }
+            Button(action: expandOptionalFields) {
+                Text(String(localized: "Cc/Bcc", bundle: .module))
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.accent.color)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(minHeight: headerRowMinHeight, alignment: .leading)
+        #else
+        HStack(alignment: .center, spacing: BrevSpacing.sm) {
+            Button(action: expandOptionalFields) {
+                Text(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
+            if showsSignaturePickerInFoldedRow {
+                fromRowSignaturePicker
+                    .fixedSize()
+            }
+        }
+        // Rows stack at accessibility sizes, so only their content sets the height.
+        .frame(minHeight: isAccessibilityFieldLayout ? nil : headerRowMinHeight, alignment: .leading)
+        #endif
+    }
+
+    private func expandOptionalFields() {
+        showCc = true
+        showBcc = true
+        showFrom = true
+    }
+
+    /// True when the folded sender row also shows the signature picker.
+    var showsSignaturePickerInFoldedRow: Bool {
+        isOptionalFieldsCollapsed && activeSignatureContext?.options.isEmpty == false
+    }
+
+    var isOptionalFieldsCollapsed: Bool {
         !isCcFieldVisible && !isBccFieldVisible && !isFromFieldVisible
     }
 
