@@ -1,6 +1,60 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Cc/Bcc": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Kopi/Blindkopi" } }
+      }
+    },
+    "Display text": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Visningstekst" } }
+      }
+    },
+    "Your last draft couldn't be reopened here. Any saved copy is still in Drafts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Det siste utkastet kunne ikke åpnes her. En lagret kopi ligger fortsatt i Utkast." } }
+      }
+    },
+    "This draft cannot be restored safely from local storage. Close this window to leave the original unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Dette utkastet kan ikke gjenopprettes trygt fra lokal lagring. Lukk vinduet for å beholde originalen uendret." } }
+      }
+    },
+    "This draft's formatting cannot be restored safely in the current editor mode. Close this window to leave the original unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Formateringen i dette utkastet kan ikke gjenopprettes trygt i den valgte redigeringsmodusen. Lukk vinduet for å beholde originalen uendret." } }
+      }
+    },
+    "Restoring draft…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Gjenoppretter utkast…" } }
+      }
+    },
+    "Attachments for this draft are not available locally. The draft was left unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Vedleggene i dette utkastet er ikke tilgjengelige lokalt. Utkastet er ikke endret." } }
+      }
+    },
+    "This draft contains inline images that cannot be restored safely yet. The draft was left unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Dette utkastet inneholder innebygde bilder som ennå ikke kan gjenopprettes trygt. Utkastet er ikke endret." } }
+      }
+    },
+    "A reopened draft must stay in its original account and mailbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Et gjenåpnet utkast må beholdes i den opprinnelige kontoen og postkassen." } }
+      }
+    },
     "Work": {
       "extractionState": "manual",
       "localizations": {
@@ -11248,13 +11302,13 @@
         }
       }
     },
-    "Save the current message as a template\\nto reuse it in future conversations.": {
+    "Save the current message as a template\nto reuse it in future conversations.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lagre denne meldingen som en mal\\nsom kan brukes i fremtidige samtaler."
+            "value": "Lagre denne meldingen som en mal\nsom kan brukes i fremtidige samtaler."
           }
         }
       }

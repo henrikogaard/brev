@@ -462,11 +462,11 @@ struct ThreadMessageCard: View {
                 .font(messageBodyFont)
                 .foregroundStyle(theme.textPrimary.color)
                 .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .modifier(MessageReadingColumn(style: messageBodyStyle))
 
         case .attributedHTML(let html):
             if let renderedHTML {
-                Text(renderedHTML)
+                Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
                     .font(messageBodyFont)
                     .foregroundStyle(theme.textPrimary.color)
                     .textSelection(.enabled)
@@ -569,7 +569,7 @@ struct ThreadMessageCard: View {
         MailboxTextSize(rawValue: textSizeRaw) ?? .medium
     }
 
-    private var messageBodyFont: Font {
+    private var messageBodyStyle: MessageBodyStyle {
         MessageBodyStyle.resolve(
             theme: theme,
             fontFamily: mailboxFontFamily,
@@ -577,8 +577,10 @@ struct ThreadMessageCard: View {
             renderingMode: .original,
             bodyInsetPoints: 0,
             bodyScale: messageBodyScale
-        ).swiftUIBodyFont
+        )
     }
+
+    private var messageBodyFont: Font { messageBodyStyle.swiftUIBodyFont }
 
     private var messageBodyScale: CGFloat {
         #if os(iOS)
