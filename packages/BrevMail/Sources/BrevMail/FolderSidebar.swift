@@ -91,6 +91,8 @@ public struct FolderSidebar: View {
     /// Focus on the sidebar — while held, arrow keys drive the selection
     /// through the visible destinations (Mail.app behavior).
     @FocusState private var sidebarKeyboardFocus: Bool
+    /// Footer avatar diameter; grows with the text size like the label beside it.
+    @ScaledMetric(relativeTo: .caption) private var footerAvatarSize: CGFloat = 26
     #endif
     @Bindable private var navigation: MailNavigationState
     private let folders: [Folder]
@@ -137,6 +139,14 @@ public struct FolderSidebar: View {
     /// "New Local Folder…" (ADR-0077) — always offered while a local backend
     /// exists, even when the local account is hidden for having no folders.
     private let onNewLocalFolder: (() -> Void)?
+    /// Opens the mail assistant from its row under the account switcher
+    /// (#306). Nil hides the row, e.g. when no AI backend is enabled.
+    private var onOpenAssistant: (() -> Void)?
+    /// Starts adding an account from the "+" beside the Accounts header.
+    /// Nil hides the button.
+    private var onAddAccount: (() -> Void)?
+    /// The macOS footer with identity, sync state and Settings. Nil hides it.
+    private var footer: FolderSidebarFooter?
 
     public init(
         navigation: MailNavigationState,
@@ -214,6 +224,21 @@ public struct FolderSidebar: View {
         self.onOpenTasks = onOpenTasks
         self.onOpenMessages = onOpenMessages
         self.onNewLocalFolder = onNewLocalFolder
+    }
+
+    /// Adds the window chrome from #306: the Assistant row, the add-account
+    /// button and the footer. Kept off the public initializer so the
+    /// footer types stay internal to BrevMail.
+    func sidebarChrome(
+        onOpenAssistant: (() -> Void)?,
+        onAddAccount: (() -> Void)?,
+        footer: FolderSidebarFooter?
+    ) -> FolderSidebar {
+        var copy = self
+        copy.onOpenAssistant = onOpenAssistant
+        copy.onAddAccount = onAddAccount
+        copy.footer = footer
+        return copy
     }
 
     public var body: some View {
@@ -327,7 +352,12 @@ public struct FolderSidebar: View {
                 profileSwitcher
                     .padding(.horizontal, sidebarMetrics.sidebarPadding)
                     .padding(.top, BrevSpacing.xs)
-                    .padding(.bottom, sidebarMetrics.sectionSpacing)
+                    .padding(.bottom, BrevSpacing.xs)
+            }
+            if let onOpenAssistant {
+                assistantRow(onOpenAssistant)
+                    .padding(.horizontal, sidebarMetrics.sidebarPadding)
+                    .padding(.bottom, BrevSpacing.xs)
             }
             ScrollViewReader { proxy in
                 ScrollView {
@@ -395,9 +425,93 @@ public struct FolderSidebar: View {
                     proxy.scrollTo(item)
                 }
             }
+            if let footer {
+                sidebarFooter(footer)
+            }
         }
         #endif
     }
+
+    #if os(macOS)
+    /// The Assistant row: always one glance from the top, like Inbox (#306).
+    private func assistantRow(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            sidebarActionRow(
+                title: String(localized: "Assistant", bundle: .module),
+                isSelected: false,
+                leading: {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(theme.accent.color)
+                        .brevFont(.body)
+                        .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                },
+                trailing: { EmptyView() }
+            )
+        }
+        .buttonStyle(.plain)
+        .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
+        .help(String(localized: "Ask about your mail", bundle: .module))
+    }
+
+    /// Pinned footer: who is signed in, whether mail is current, and
+    /// Settings. Sync state always has the same home (#306).
+    private func sidebarFooter(_ footer: FolderSidebarFooter) -> some View {
+        HStack(spacing: BrevSpacing.sm) {
+            if let identity = footer.identity {
+                Text(verbatim: identity.initials)
+                    .brevFont(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(width: footerAvatarSize, height: footerAvatarSize)
+                    .background(Circle().fill(theme.bgTertiary.color))
+                    .accessibilityHidden(true)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                if let identity = footer.identity {
+                    Text(verbatim: identity.name)
+                        .brevFont(.callout)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                HStack(spacing: BrevSpacing.xxs) {
+                    Image(systemName: footer.status.symbolName)
+                        .brevFont(.caption)
+                        .imageScale(footer.status == .upToDate ? .small : .medium)
+                        .scaleEffect(footer.status == .upToDate ? 0.6 : 1)
+                        .foregroundStyle(footer.status.tint.color(in: theme))
+                        .accessibilityHidden(true)
+                    Text(verbatim: footer.status.title)
+                        .brevFont(.caption)
+                        .foregroundStyle(theme.textTertiary.color)
+                        .lineLimit(1)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: BrevSpacing.xs)
+            if let onOpenSettings = footer.onOpenSettings {
+                Button(action: onOpenSettings) {
+                    Image(systemName: "gearshape")
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .frame(minWidth: sidebarMetrics.disclosureHitSize, minHeight: sidebarMetrics.disclosureHitSize)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Settings", bundle: .module))
+                .help(String(localized: "Settings", bundle: .module))
+            }
+        }
+        .padding(.horizontal, sidebarMetrics.sidebarPadding + BrevSpacing.xs)
+        .padding(.vertical, BrevSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(theme.separator.color)
+                .frame(height: 0.5)
+        }
+    }
+    #endif
 
     /// Drives the saved-search editor sheet; identity-stable so the sheet
     /// presentation survives re-renders.
@@ -892,11 +1006,27 @@ public struct FolderSidebar: View {
         }
 
         if !sourceSections.isEmpty {
-            Text("Accounts", bundle: .module)
-                .brevFont(.caption).fontWeight(.semibold)
-                .foregroundStyle(theme.textSecondary.color)
-                .padding(.top, BrevSpacing.sm)
-                .padding(.bottom, BrevSpacing.xs)
+            HStack {
+                Text("Accounts", bundle: .module)
+                    .brevFont(.caption).fontWeight(.semibold)
+                    .foregroundStyle(theme.textSecondary.color)
+                Spacer()
+                if let onAddAccount {
+                    Button(action: onAddAccount) {
+                        Image(systemName: "plus")
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textSecondary.color)
+                            .frame(minWidth: sidebarMetrics.disclosureHitSize, minHeight: sidebarMetrics.disclosureHitSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "Add account", bundle: .module))
+                    .help(String(localized: "Add account", bundle: .module))
+                }
+            }
+            .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+            .padding(.top, BrevSpacing.sm)
+            .padding(.bottom, BrevSpacing.xs)
         }
         ForEach(sourceSections) { section in
             VStack(alignment: .leading, spacing: 0) {
@@ -956,14 +1086,22 @@ public struct FolderSidebar: View {
                 .contentShape(Rectangle())
                 .accessibilityLabel(String(localized: "Settings", bundle: .module))
             #else
-            HStack(spacing: BrevSpacing.xxs) {
+            // A real title for the window, not a section caption: the
+            // switcher names what the whole sidebar shows (#306).
+            HStack(spacing: BrevSpacing.sm) {
+                Image(systemName: "tray.2.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(theme.onAccent.color)
+                    .frame(width: 22, height: 22)
+                    .background(RoundedRectangle(cornerRadius: BrevRadius.sm).fill(theme.accent.color))
+                    .accessibilityHidden(true)
                 Text(verbatim: profileHeaderTitle)
-                    .brevFont(.caption)
+                    .brevFont(.body)
                     .fontWeight(.semibold)
-                    .foregroundStyle(theme.textSecondary.color)
+                    .foregroundStyle(theme.textPrimary.color)
                     .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(theme.textTertiary.color)
                     .accessibilityHidden(true)
             }
@@ -1025,6 +1163,14 @@ public struct FolderSidebar: View {
         }
     }
 
+    /// All Inboxes reads as an inbox; folder favorites take their role's tint.
+    private func favoriteIconTint(_ id: MailboxFavoriteID) -> FolderSidebarIconTint {
+        switch id {
+        case .allInboxes: .accent
+        case .folder: favoriteFolder(id).map { FolderSidebarIconTint.tint(for: $0.folder.role) } ?? .neutral
+        }
+    }
+
     private func favoriteFolder(_ id: MailboxFavoriteID) -> (folder: Folder, sourceID: MailSourceID)? {
         guard case .folder(let destination) = id,
               let folder = sourceSections.first(where: { $0.id == destination.sourceID })?
@@ -1052,7 +1198,7 @@ public struct FolderSidebar: View {
                         if showSidebarIcons {
                             Image(systemName: favorite.symbol)
                                 .brevFont(.body)
-                                .foregroundStyle(theme.textSecondary.color)
+                                .foregroundStyle(favoriteIconTint(favorite.id).color(in: theme))
                                 .frame(width: sidebarMetrics.iconWidth)
                         }
                     } trailing: {
@@ -2136,7 +2282,7 @@ public struct FolderSidebar: View {
     @ViewBuilder
     private func roleIcon(for role: FolderRole) -> some View {
         Image(systemName: systemImage(for: role))
-            .foregroundStyle(theme.textSecondary.color)
+            .foregroundStyle(FolderSidebarIconTint.tint(for: role).color(in: theme))
             .brevFont(.body)
             .frame(width: sidebarMetrics.iconWidth, alignment: .center)
     }

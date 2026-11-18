@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-11-18 — Agent — #306 sidebar refresh, slice 1
+
+- Goal: first slice of the calmer main window (#306), modelled on the Glassmail
+  review: sidebar title switcher, Assistant entry, tinted mailbox icons, add-account
+  button, identity and sync footer. macOS only; iOS Mailboxes list unchanged.
+- Changes: `FolderSidebarChromePresentation.swift` (tint, sync status, footer
+  identity), `FolderSidebar` chrome via internal `sidebarChrome(...)`,
+  `BrevMailRootView` wiring (Assistant opens the Mail Context column; footer reads
+  network, refresh and sync progress), `onAddAccount` from the macOS app to the
+  existing Add Account sheet, nb strings.
+- Verification: FolderSidebarChromePresentationTests (4) pass; FolderSidebarSnapshotTests
+  re-recorded on macOS 27.0.1 for the intended changes plus new window-chrome
+  light/dark; Favorites editor baselines left untouched (they already drift on this
+  host). CI defers macOS pixel snapshots on its macos-15 runner. Footer shows
+  "Needs attention" for sign-in/provider/degraded sync health (review finding).
+  `xcodebuild -scheme BrevMacOS CODE_SIGNING_ALLOWED=NO build` succeeded; signed
+  `tuist build` needs a development certificate. App not launched.
+- Next: #292 Today page; later #306 slices (list rows, toolbar, reader); #294 full
+  Assistant pane.
+
 ## 2026-11-11 — Agent — #279 follow-ups, stack landing, signature picker
 
 - Landed #271–#277, #289 and #290 on main in one step (top-down merges; main

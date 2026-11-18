@@ -1,6 +1,42 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Needs attention": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Trenger tilsyn" } }
+      }
+    },
+    "Assistant": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Assistent" } }
+      }
+    },
+    "Ask about your mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Spør om e-posten din" } }
+      }
+    },
+    "Syncing %lld of %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Synkroniserer %lld av %lld" } }
+      }
+    },
+    "Checking for mail…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Ser etter e-post …" } }
+      }
+    },
+    "Up to date": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Oppdatert" } }
+      }
+    },
     "Cc/Bcc": {
       "extractionState": "manual",
       "localizations": {

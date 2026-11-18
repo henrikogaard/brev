@@ -299,5 +299,53 @@ struct FolderSidebarSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    @Test("Window chrome: switcher, Assistant, tinted mailboxes, add account and footer (#306)",
+          arguments: ["light", "dark"])
+    func windowChrome(_ mode: String) throws {
+        let suiteName = "SidebarChrome-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let account = BrevAccount(id: "account", displayName: "Alex Chen", emailAddress: "alex@example.org")
+        let folders = [Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 67),
+                       Folder(id: "starred", name: "Starred", role: .starred),
+                       Folder(id: "drafts", name: "Drafts", role: .drafts, totalCount: 27),
+                       Folder(id: "sent", name: "Sent", role: .sent),
+                       Folder(id: "archive", name: "Archive", role: .archive),
+                       Folder(id: "spam", name: "Spam", role: .spam),
+                       Folder(id: "trash", name: "Trash", role: .trash),
+                       Folder(id: "receipts", name: "Receipts", role: .custom)]
+        let sections = ["Personal", "Work"].map { name in
+            MailSourceSection(id: MailSourceID(accountID: account.id, mailboxID: name), account: account,
+                              mailbox: Mailbox(id: name, email: "alex@example.org", displayName: name),
+                              folders: folders)
+        }
+        try defaults.set(JSONEncoder().encode(Set([sections[0].id])), forKey: "mailbox.disclosureState")
+        let navigation = MailNavigationState()
+        navigation.selectFolder("inbox", in: sections[0].id)
+        let view = FolderSidebar(navigation: navigation, folders: [], sourceSections: sections,
+                                 profiles: [MailProfile.allMailboxes(sourceIDs: sections.map(\.id))],
+                                 onSelectProfile: { _ in }, onManageProfiles: {})
+            .sidebarChrome(
+                onOpenAssistant: {},
+                onAddAccount: {},
+                footer: FolderSidebarFooter(
+                    identity: FolderSidebarFooterIdentity(accounts: [account]),
+                    status: .upToDate,
+                    onOpenSettings: {}
+                )
+            )
+            .frame(width: 240, height: 620)
+            .background(theme.bgSecondary.color)
+            .brevTheme(theme)
+            .environment(\.colorScheme, theme.mode.colorScheme)
+            .defaultAppStorage(defaults)
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 240, height: 620)),
+                       named: "window-chrome-" + mode,
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
 }
 #endif
