@@ -475,7 +475,9 @@ public struct MessageListView: View {
                                     MailListTitle(
                                         title: paneTitle,
                                         context: paneContext,
-                                        unreadCount: folder.map { max($0.unreadCount, presentation.unreadHeaderCount) }
+                                        // The folder's own count: loaded headers can include other
+                                        // folders during an "All mailboxes" search.
+                                        unreadCount: folder?.unreadCount
                                     )
                                 }
                                 #endif
