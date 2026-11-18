@@ -68,7 +68,9 @@ enum FolderSidebarSyncStatus: Equatable, Sendable {
         progress: (completed: Int, total: Int)?,
         health: SyncHealthState? = nil
     ) {
-        if !isOnline {
+        // The account's own health counts too: a server that can't be
+        // reached reports `.offline` while the network path is fine.
+        if !isOnline || health == .offline {
             self = .offline
         } else if let health, [.authenticationRequired, .providerError, .degraded].contains(health) {
             self = .needsAttention

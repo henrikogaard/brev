@@ -58,7 +58,10 @@ struct FolderSidebarChromePresentationTests {
         // Offline still comes first, and healthy or busy states change nothing.
         #expect(FolderSidebarSyncStatus(isOnline: false, isRefreshing: false, progress: nil,
                                         health: .authenticationRequired) == .offline)
-        for state in [SyncHealthState.healthy, .syncing, .indexing, .offline] {
+        // A server that can't be reached is offline even when the network is up.
+        #expect(FolderSidebarSyncStatus(isOnline: true, isRefreshing: false, progress: nil, health: .offline)
+            == .offline)
+        for state in [SyncHealthState.healthy, .syncing, .indexing] {
             #expect(FolderSidebarSyncStatus(isOnline: true, isRefreshing: false, progress: nil, health: state)
                 == .upToDate)
         }
