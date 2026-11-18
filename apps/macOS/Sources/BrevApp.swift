@@ -121,6 +121,10 @@ struct BrevApp: App {
                             isShowingAddAccountSheet = true
                         },
                         onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
+                        onAddAccount: {
+                            addAccountPrefillEmail = ""
+                            isShowingAddAccountSheet = true
+                        },
                         signatureContextProvider: { account in
                             AppSessionFactory.composeSignatureContext(for: account)
                         },
