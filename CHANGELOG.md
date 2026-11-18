@@ -193,6 +193,11 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- macOS Today page (#292): with no message open, the reader greets you and
+  lists conversations from people that wait on you and sent mail still waiting
+  on a reply, plus a count of unread updates. It reads only mail already on
+  this Mac, with fixed rules and no AI. "Ask about my mail" opens the
+  assistant when AI is on.
 - Notifications settings explains sign-in code and link availability per account.
   The feature remains unavailable until provider trust evidence and panel wiring are complete.
 - Calendar event attachments backed by Google Drive can be saved as a

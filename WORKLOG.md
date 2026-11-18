@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-11-18 — Agent — #292 Today page
+
+- Goal: replace the empty reader's "No message selected" on macOS with a Today
+  page (greeting, summary, Waiting on you, You're waiting on, Ask about my mail).
+- Changes: `TodayDigest.swift` (local rules: newest message per conversation,
+  14-day window, people = ADR-0035 `.primary`, answered or later sent clears,
+  sent waits after a 24h grace until a reply by thread or In-Reply-To/References),
+  `TodayPageView.swift`, root wiring via `cachedMessageHeaders` (no network), nb
+  strings with plurals, `TodayPageSnapshotTests` added to the build.yml lists.
+- Left out on purpose: Start triage (#293), sign-in code (#239), J/K and ⌘K hints
+  (#300) until those exist; iOS keeps its current empty state.
+- Review fixes: replies matched by In-Reply-To/References (IMAP threads per
+  folder), Inbox copies of sent mail ignored, failed or cancelled cache reads keep
+  the previous digest, rules run off the main actor, Today yields to the
+  disconnected-mailbox message, unread rows announce "Unread". Not done: server
+  aliases (only known over the network), so mail to my own alias can still show
+  as waiting.
+- Verification: TodayDigestTests (9) and both snapshot tests pass; verifier pass
+  on the first cut (unsigned BrevMacOS build, lint, catalog, build.yml); today
+  light/dark snapshots recorded on macOS 27.0.1.
 ## 2026-11-18 — Agent — #306 sidebar refresh, slice 1
 
 - Goal: first slice of the calmer main window (#306), modelled on the Glassmail

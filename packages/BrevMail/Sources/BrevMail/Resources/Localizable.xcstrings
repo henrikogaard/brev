@@ -1,6 +1,86 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Waiting on you": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Venter på deg" } }
+      }
+    },
+    "You're waiting on": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Du venter på" } }
+      }
+    },
+    "Ask about my mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Spør om e-posten min" } }
+      }
+    },
+    "Opens the conversation": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Åpner samtalen" } }
+      }
+    },
+    "Nothing from people needs you.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Ingenting fra folk trenger deg." } }
+      }
+    },
+    "Good morning, %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "God morgen, %@" } }
+      }
+    },
+    "Good afternoon, %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "God ettermiddag, %@" } }
+      }
+    },
+    "Good evening, %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "God kveld, %@" } }
+      }
+    },
+    "Good morning": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "God morgen" } }
+      }
+    },
+    "Good afternoon": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "God ettermiddag" } }
+      }
+    },
+    "Good evening": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "God kveld" } }
+      }
+    },
+    "%lld conversations from people need you.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld conversation from people needs you." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld conversations from people need you." } } } } },
+        "nb": { "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld samtale fra folk trenger deg." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld samtaler fra folk trenger deg." } } } } }
+      }
+    },
+    "%lld updates are unread.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld update is unread." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld updates are unread." } } } } },
+        "nb": { "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld oppdatering er ulest." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld oppdateringer er uleste." } } } } }
+      }
+    },
     "Needs attention": {
       "extractionState": "manual",
       "localizations": {
