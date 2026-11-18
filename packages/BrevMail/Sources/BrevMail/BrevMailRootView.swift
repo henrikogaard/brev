@@ -419,6 +419,9 @@ public struct BrevMailRootView: View {
     private let onSignOut: (() async -> Void)?
     private let onChangeTheme: (BrevTheme) -> Void
     private let onOpenSettings: (() -> Void)?
+    /// Asks the host app to start adding a mail account, from the sidebar's
+    /// Accounts "+" (#306). Nil hides the button.
+    private let onAddAccount: (() -> Void)?
     /// Asks the host app to run the reconnect flow for an account whose
     /// credential was rejected — presented from the sync-health banner's
     /// "Sign in again" action.
@@ -569,6 +572,7 @@ public struct BrevMailRootView: View {
         onOpenContacts: (() -> Void)? = nil,
         onOpenTasks: (() -> Void)? = nil,
         onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
+        onAddAccount: (() -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
         composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)? = nil,
         trustedSigningIdentityCountProvider: ((BrevAccount) -> Int)? = nil,
@@ -607,6 +611,7 @@ public struct BrevMailRootView: View {
         self.onOpenContacts = onOpenContacts
         self.onOpenTasks = onOpenTasks
         self.onSettingsMailboxContextChange = onSettingsMailboxContextChange
+        self.onAddAccount = onAddAccount
         self.signatureContextProvider = signatureContextProvider
         self.composeSecurityDefaultsProvider = composeSecurityDefaultsProvider
         self.trustedSigningIdentityCountProvider = trustedSigningIdentityCountProvider
@@ -1508,6 +1513,26 @@ public struct BrevMailRootView: View {
                 folderNameDraft = ""
             }
         )
+        #if os(macOS)
+        .sidebarChrome(
+            onOpenAssistant: selectedAIBackend == nil ? nil : {
+                // The assistant lives in the Mail Context column today; the
+                // sidebar row is its fixed entry point (#306, #294).
+                isMailContextColumnPresented = true
+            },
+            onAddAccount: onAddAccount,
+            footer: FolderSidebarFooter(
+                identity: FolderSidebarFooterIdentity(accounts: backends.map(\.account)),
+                status: FolderSidebarSyncStatus(
+                    isOnline: monitor.isOnline,
+                    isRefreshing: activeRefreshRequest != nil,
+                    progress: syncProgress.map { ($0.completed, $0.total) },
+                    health: importSyncHealth?.state
+                ),
+                onOpenSettings: onOpenSettings
+            )
+        )
+        #endif
         // Before the toolbar modifiers, so window chrome stays System (ADR-0086).
         .brevFontSection(.sidebar)
         .brevMailPaneSurface(.sidebar)
