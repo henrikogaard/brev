@@ -27,8 +27,8 @@ struct TodayPageView: View {
     let displayName: String?
     /// Changes whenever the cached mail behind the digest may have changed.
     let refreshKey: Int
-    /// Reads the digest from the local cache.
-    let load: () async -> TodayDigest
+    /// Reads the digest from the local cache; nil keeps the current one.
+    let load: () async -> TodayDigest?
     /// Opens one conversation in the reader.
     let onOpen: (TodayDigest.Row) -> Void
     /// Opens the assistant; nil hides the button (no AI configured).
@@ -43,7 +43,7 @@ struct TodayPageView: View {
     init(
         displayName: String?,
         refreshKey: Int,
-        load: @escaping () async -> TodayDigest,
+        load: @escaping () async -> TodayDigest?,
         onOpen: @escaping (TodayDigest.Row) -> Void,
         onAsk: (() -> Void)?,
         now: Date = .now,
@@ -86,7 +86,8 @@ struct TodayPageView: View {
         }
         .scrollContentBackground(.hidden)
         .task(id: refreshKey) {
-            digest = await load()
+            guard let loaded = await load(), !Task.isCancelled else { return }
+            digest = loaded
         }
     }
 
@@ -192,6 +193,7 @@ struct TodayPageView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(TodayRowButtonStyle())
+        .accessibilityValue(row.header.isRead ? "" : String(localized: "Unread", bundle: .module))
         .accessibilityHint(String(localized: "Opens the conversation", bundle: .module))
     }
 

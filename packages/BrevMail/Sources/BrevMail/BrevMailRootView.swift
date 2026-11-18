@@ -1739,7 +1739,7 @@ public struct BrevMailRootView: View {
                 actions: navigation.bulkSelectionActions,
                 isDisabled: isCommandMutationBlocked
             )
-        } else if navigation.selectedMessageID == nil, !sidebarSourceSections.isEmpty {
+        } else if navigation.selectedMessageID == nil, hasValidSelectedSourceBackend, !sidebarSourceSections.isEmpty {
             todayPage
         } else {
             readingPaneContent()
@@ -1782,8 +1782,9 @@ public struct BrevMailRootView: View {
     }
 
     /// Reads cached Inbox and Sent headers for every visible source; no
-    /// network (ADR-0006). A source that fails to read is skipped.
-    private func loadTodayDigest(_ sections: [MailSourceSection]) async -> TodayDigest {
+    /// network (ADR-0006). Returns nil when cancelled or when any read fails,
+    /// so the page keeps what it showed rather than claiming "nothing".
+    private func loadTodayDigest(_ sections: [MailSourceSection]) async -> TodayDigest? {
         var inbox: [(MailSourceID, [MessageHeader])] = []
         var sent: [(MailSourceID, [MessageHeader])] = []
         var addresses = Set(backends.map(\.account.emailAddress))
@@ -1791,22 +1792,31 @@ public struct BrevMailRootView: View {
             addresses.insert(section.mailbox.email)
             let owner = backend(for: section.id)
             for folder in section.folders where folder.role == .inbox || folder.role == .sent {
-                guard let headers = try? await owner.cachedMessageHeaders(in: folder, sourceID: section.id) else {
-                    continue
-                }
+                guard !Task.isCancelled,
+                      let headers = try? await owner.cachedMessageHeaders(in: folder, sourceID: section.id)
+                else { return nil }
                 if folder.role == .inbox { inbox.append((section.id, headers)) } else { sent.append((section.id, headers)) }
             }
         }
-        let overrides = InboxCategoryOverrideStore()
-        return TodayDigestBuilder.build(
-            inbox: inbox,
-            sent: sent,
-            myAddresses: addresses,
-            now: .now,
-            classify: { header, sourceID in
-                InboxClassificationPolicy.classification(for: header, sourceID: sourceID, overrideStore: overrides).category
-            }
-        )
+        let myAddresses = addresses
+        let readInbox = inbox
+        let readSent = sent
+        // The rules and the keyword classifier walk every cached header, so
+        // keep them off the main actor.
+        let digest = await Task.detached(priority: .userInitiated) {
+            let overrides = InboxCategoryOverrideStore()
+            return TodayDigestBuilder.build(
+                inbox: readInbox,
+                sent: readSent,
+                myAddresses: myAddresses,
+                now: .now,
+                classify: { header, sourceID in
+                    InboxClassificationPolicy.classification(for: header, sourceID: sourceID, overrideStore: overrides)
+                        .category
+                }
+            )
+        }.value
+        return Task.isCancelled ? nil : digest
     }
     #endif
 

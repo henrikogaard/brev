@@ -32,7 +32,8 @@ struct TodayDigestTests {
         isRead: Bool = false,
         isAnswered: Bool = false,
         messageID: String? = nil,
-        inReplyTo: String? = nil
+        inReplyTo: String? = nil,
+        references: [String]? = nil
     ) -> MessageHeader {
         MessageHeader(
             id: id,
@@ -46,7 +47,8 @@ struct TodayDigestTests {
             isRead: isRead,
             isAnswered: isAnswered,
             messageID: messageID,
-            inReplyTo: inReplyTo
+            inReplyTo: inReplyTo,
+            references: references
         )
     }
 
@@ -103,6 +105,38 @@ struct TodayDigestTests {
             sent: [Self.header("s1", thread: "u", folder: "sent", from: Self.me, to: [Self.daniel], hoursAgo: 2)]
         )
         #expect(digest.waitingOnYou.map(\.header.id) == ["m2"])
+    }
+
+    @Test("on IMAP my reply clears the conversation by In-Reply-To or References, not thread ID")
+    func imapReplyByReference() {
+        // IMAP threads per folder, so Inbox and Sent never share a thread ID.
+        let digest = Self.build(
+            inbox: [
+                Self.header("a1", thread: "<a1@x>", from: Self.maya, hoursAgo: 6, messageID: "<a1@x>"),
+                Self.header("a2", thread: "<a1@x>", from: Self.maya, hoursAgo: 5, messageID: "<a2@x>"),
+                Self.header("b1", thread: "<b1@x>", from: Self.daniel, hoursAgo: 4, messageID: "<b1@x>"),
+                Self.header("c1", thread: "<c1@x>", from: Self.daniel, hoursAgo: 1, messageID: "<c1@x>"),
+            ],
+            sent: [
+                // Answers an older message of thread a, after its newest one.
+                Self.header("r1", thread: "<r1@x>", folder: "sent", from: Self.me, to: [Self.maya],
+                            hoursAgo: 2, messageID: "<r1@x>", inReplyTo: "<a1@x>"),
+                // A reply sent before c1 arrived does not answer c1.
+                Self.header("r2", thread: "<r2@x>", folder: "sent", from: Self.me, to: [Self.daniel],
+                            hoursAgo: 3, messageID: "<r2@x>", references: ["<b1@x>", "<c1@x>"]),
+            ]
+        )
+        #expect(digest.waitingOnYou.map(\.header.id) == ["c1"])
+    }
+
+    @Test("an Inbox copy of a message I sent is mine, not waiting on me")
+    func inboxCopyOfSentMail() {
+        let alias = Correspondent(name: "Alex", email: "alex.alias@example.org")
+        let digest = Self.build(
+            inbox: [Self.header("copy", from: alias, to: [Self.maya], hoursAgo: 2, messageID: "<s@x>")],
+            sent: [Self.header("s", folder: "sent", from: alias, to: [Self.maya], hoursAgo: 2, messageID: "<s@x>")]
+        )
+        #expect(digest.waitingOnYou.isEmpty)
     }
 
     @Test("my sent mail waits on others until a reply arrives, after a grace day")

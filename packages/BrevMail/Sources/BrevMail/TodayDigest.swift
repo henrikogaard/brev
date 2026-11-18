@@ -73,11 +73,18 @@ enum TodayDigestBuilder {
         var sentByThread: [ThreadKey: Date] = [:]
         var sentMessageIDs: Set<String> = []
         var sentLatest: [ThreadKey: (MailSourceID, MessageHeader)] = [:]
+        // Message ID -> when I last replied to it. IMAP threads each folder
+        // on its own, so Inbox and Sent rarely share a thread ID; the reply
+        // headers are what tie my answer to the conversation.
+        var myReplyDates: [String: Date] = [:]
         for (sourceID, headers) in sent {
             for header in headers where header.date >= since {
                 let key = ThreadKey(sourceID: sourceID, threadID: header.threadID)
                 sentByThread[key] = max(sentByThread[key] ?? .distantPast, header.date)
                 if let id = header.messageID { sentMessageIDs.insert(id) }
+                for id in Self.referencedIDs(header) {
+                    myReplyDates[id] = max(myReplyDates[id] ?? .distantPast, header.date)
+                }
                 if header.date > (sentLatest[key]?.1.date ?? .distantPast) { sentLatest[key] = (sourceID, header) }
             }
         }
@@ -85,13 +92,16 @@ enum TodayDigestBuilder {
         var inboxLatest: [ThreadKey: (MailSourceID, MessageHeader)] = [:]
         var repliedSentIDs: Set<String> = []
         var inboxByThread: [ThreadKey: Date] = [:]
+        var inboxThreadMessageIDs: [ThreadKey: Set<String>] = [:]
         for (sourceID, headers) in inbox {
             for header in headers where header.date >= since && !isMine(header.from) {
+                // An Inbox copy of a message in Sent (an alias, a Bcc to self)
+                // is my own mail, whatever address it came from.
+                if let id = header.messageID, sentMessageIDs.contains(id) { continue }
                 let key = ThreadKey(sourceID: sourceID, threadID: header.threadID)
                 inboxByThread[key] = max(inboxByThread[key] ?? .distantPast, header.date)
-                repliedSentIDs.formUnion(([header.inReplyTo] + (header.references ?? []).map(Optional.some))
-                    .compactMap { $0 }
-                    .filter { sentMessageIDs.contains($0) })
+                if let id = header.messageID { inboxThreadMessageIDs[key, default: []].insert(id) }
+                repliedSentIDs.formUnion(Self.referencedIDs(header).filter { sentMessageIDs.contains($0) })
                 if header.date > (inboxLatest[key]?.1.date ?? .distantPast) { inboxLatest[key] = (sourceID, header) }
             }
         }
@@ -104,6 +114,7 @@ enum TodayDigestBuilder {
                 continue
             }
             let answeredLater = (sentByThread[key] ?? .distantPast) > header.date
+                || (inboxThreadMessageIDs[key] ?? []).contains { (myReplyDates[$0] ?? .distantPast) > header.date }
             if !header.isAnswered, !answeredLater {
                 waiting.append(TodayDigest.Row(sourceID: sourceID, header: header, person: header.from))
             }
@@ -126,6 +137,11 @@ enum TodayDigestBuilder {
         digest.youreWaitingOnCount = waitingOn.count
         digest.youreWaitingOn = Array(waitingOn.sorted(by: newestFirst).prefix(rowLimit))
         return digest
+    }
+
+    /// The message IDs a header answers: In-Reply-To plus References.
+    private static func referencedIDs(_ header: MessageHeader) -> [String] {
+        ([header.inReplyTo] + (header.references ?? []).map(Optional.some)).compactMap { $0 }
     }
 
     private struct ThreadKey: Hashable {

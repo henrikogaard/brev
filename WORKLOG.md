@@ -11,8 +11,15 @@
   strings with plurals, `TodayPageSnapshotTests` added to the build.yml lists.
 - Left out on purpose: Start triage (#293), sign-in code (#239), J/K and ⌘K hints
   (#300) until those exist; iOS keeps its current empty state.
-- Verification: TodayDigestTests (7) and summary test pass; today light/dark
-  snapshots recorded on macOS 27.0.1.
+- Review fixes: replies matched by In-Reply-To/References (IMAP threads per
+  folder), Inbox copies of sent mail ignored, failed or cancelled cache reads keep
+  the previous digest, rules run off the main actor, Today yields to the
+  disconnected-mailbox message, unread rows announce "Unread". Not done: server
+  aliases (only known over the network), so mail to my own alias can still show
+  as waiting.
+- Verification: TodayDigestTests (9) and both snapshot tests pass; verifier pass
+  on the first cut (unsigned BrevMacOS build, lint, catalog, build.yml); today
+  light/dark snapshots recorded on macOS 27.0.1.
 
 ## 2026-11-04 — Agent — iOS compose header, follow-up to #289 (#279 QA)
 
