@@ -472,7 +472,11 @@ public struct MessageListView: View {
                             VStack(spacing: 0) {
                                 #if os(macOS)
                                 if BrevMailToolbarRuntime.usesNativeToolbar, let paneTitle {
-                                    MailListTitle(title: paneTitle, context: paneContext)
+                                    MailListTitle(
+                                        title: paneTitle,
+                                        context: paneContext,
+                                        unreadCount: folder.map { max($0.unreadCount, presentation.unreadHeaderCount) }
+                                    )
                                 }
                                 #endif
                                 if showsInboxCategoryBar {
@@ -3767,29 +3771,12 @@ struct InboxCategoryBar: View {
                 Image(systemName: category.symbolName)
                     .font(.caption2)
                 Text(category.title)
-                #if os(macOS)
-                    .brevFont(.caption).fontWeight(isSelected ? .semibold : .regular)
-                #else
                     .brevFont(.caption).fontWeight(.medium)
-                #endif
                     .lineLimit(1)
             }
-            #if os(macOS)
-            .foregroundStyle(isSelected ? theme.textPrimary.color : theme.textSecondary.color)
-            .padding(.horizontal, BrevSpacing.xs)
-            .frame(height: InboxCategoryBarPresentation.height(platform: .macOS))
-            .contentShape(Rectangle())
-            .overlay(alignment: .bottom) {
-                if isSelected {
-                    Rectangle()
-                        .fill(theme.textPrimary.color.opacity(0.65))
-                        .frame(height: 2)
-                        .padding(.horizontal, BrevSpacing.xs)
-                }
-            }
-            #else
+            // A soft pill marks the active tab on both platforms (#306), in
+            // place of the macOS underline.
             .brevChip(selected: isSelected)
-            #endif
             .fixedSize(horizontal: true, vertical: false)
             .inboxCategoryTouchTarget()
         }
@@ -4582,20 +4569,48 @@ struct MessageListRow: View {
         }
     }
 
+    /// The sender, then the thread's message count (#306).
     private func senderIdentityRow(senderMinimumWidth: CGFloat) -> some View {
-        senderName(minimumWidth: senderMinimumWidth)
+        HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
+            senderName()
+            if threadCount > 1 {
+                Text(verbatim: "\(threadCount)")
+                    .font(fontFamily.font(size: metadataPointSize))
+                    .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityLabel(String(localized: "\(threadCount) messages", bundle: .module))
+            }
+        }
+        .frame(
+            minWidth: usesAccessibilityLayout ? nil : senderMinimumWidth,
+            maxWidth: .infinity,
+            alignment: .leading
+        )
+        .layoutPriority(1)
     }
 
+    /// The attachment clip, the time and (macOS) the thread toggle share the
+    /// row's trailing edge, so the time stays the last thing on the line.
     private func metadataTail(dateLabel: String) -> some View {
         HStack(spacing: BrevSpacing.xs) {
+            if header.hasAttachments, !isCompactWidth {
+                Image(systemName: "paperclip")
+                    .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
+                    .font(fontFamily.font(size: metadataPointSize))
+                    .accessibilityLabel(String(localized: "Has attachments", bundle: .module))
+                    .mailDenseListChromeDynamicType()
+            }
             metadataDateLabel(dateLabel)
+            #if os(macOS)
             if threadCount > 1 {
                 threadControls
             }
+            #endif
         }
     }
 
-    private func senderName(minimumWidth: CGFloat) -> some View {
+    private func senderName() -> some View {
         Text(header.from.displayName)
             .font(fontFamily.font(
                 size: senderPointSize,
@@ -4607,31 +4622,21 @@ struct MessageListRow: View {
             .foregroundStyle(theme.textPrimary.color)
             .lineLimit(usesAccessibilityLayout ? nil : 1)
             .truncationMode(.tail)
-            .frame(
-                minWidth: usesAccessibilityLayout ? nil : minimumWidth,
-                maxWidth: .infinity,
-                alignment: .leading
-            )
+            // The name gives way before the thread count beside it.
             .layoutPriority(1)
     }
 
+    #if os(macOS)
     @ViewBuilder
     private var threadControls: some View {
-        HStack(spacing: BrevSpacing.xs) {
-            Text(verbatim: "\(threadCount)")
-                .font(fontFamily.font(size: metadataPointSize))
-                .foregroundStyle(theme.textSecondary.color)
-                .fixedSize(horizontal: true, vertical: false)
-            #if os(macOS)
-            if isHovered || isSelected {
-                threadToggle
-            } else {
-                Color.clear
-                    .frame(width: usesAccessibilityLayout ? 44 : 18, height: usesAccessibilityLayout ? 44 : 18)
-            }
-            #endif
+        if isHovered || isSelected {
+            threadToggle
+        } else {
+            Color.clear
+                .frame(width: usesAccessibilityLayout ? 44 : 18, height: usesAccessibilityLayout ? 44 : 18)
         }
     }
+    #endif
 
     #if os(macOS)
     private var threadToggle: some View {
@@ -4706,12 +4711,6 @@ struct MessageListRow: View {
                     .foregroundStyle(theme.danger.color)
                     .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                     .accessibilityLabel(String(localized: "Blocked sender", bundle: .module))
-            }
-            if header.hasAttachments {
-                Image(systemName: "paperclip")
-                    .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
-                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
-                    .accessibilityLabel(String(localized: "Has attachments", bundle: .module))
             }
         }
         .mailDenseListChromeDynamicType()

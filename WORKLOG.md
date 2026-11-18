@@ -1,5 +1,17 @@
 # Worklog
 
+## 2026-11-18 — Agent — #306 list refresh, slice 2
+
+- Goal: calmer message list per #306 slice 2.
+- Changes: `MailListTitle` takes the folder's unread count; `InboxCategoryBar`
+  uses the shared `brevChip` pill on macOS (was an underline); `MessageListRow`
+  shows the thread count after the sender and the paperclip beside the time.
+  New `MessageListRefreshSnapshotTests` (3 themes × light/dark) added to the
+  build.yml lists.
+- Left out: the account-colour dot on avatars (Brev has no per-account colour
+  yet) and two-line previews (already a setting).
+- Verification: see the PR.
+
 ## 2026-11-18 — Agent — #292 Today page
 
 - Goal: replace the empty reader's "No message selected" on macOS with a Today
