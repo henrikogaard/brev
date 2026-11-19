@@ -25,6 +25,10 @@ All notable changes to Brev are documented here.
 - macOS reader (#306): the message column is centred in a wide reader. A
   thread's header names who is in it, shows the message count as a chip,
   and has a Summarize link next to it instead of only in the ••• menu.
+- macOS reader attachments (#306): attachments are cards in a grid, each
+  with a file-type icon, the name, the kind and size ("PDF · 240 KB"), the
+  main action and a ••• menu. Hover, double-click to open and drag-out still
+  work.
 - macOS compose: the Format menu's Bold, Italic and Clear Formatting now work,
   Cmd-B, Cmd-I and Cmd-U format the message body instead of reaching the main
   menu (where Cmd-U marked a message read), and Insert Link applies the link even

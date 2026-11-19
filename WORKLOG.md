@@ -1,5 +1,22 @@
 # Worklog
 
+## 2026-11-19 — Agent — #306 reader refresh, slice 4 (part 2)
+
+- Goal: attachment cards in the macOS single-message reader (part 2 of the
+  reader slice; part 1 was #312).
+- Changes: new `MessageAttachmentCard` view and
+  `MessageAttachmentCardPresentation.subtitle` ("PDF · 240 KB"); the macOS
+  `attachmentsSection` uses an adaptive `LazyVGrid` of cards; actions come
+  from a shared `attachmentActions(for:)`; the hover highlight moved into the
+  card. iOS keeps its list.
+- Tests: `MessageAttachmentCardPresentationTests`;
+  `MessageAttachmentCardSnapshotTests` (3 themes, light and dark, hovered and
+  downloading cards; recorded on macOS 27), added to the build.yml macOS<26
+  skip list and `snapshot-macos`. No existing baselines show reader
+  attachments.
+- Not covered: thread cards (`ThreadMessageCard`) still show no attachment
+  list at all; that is a separate gap, not part of this restyle.
+
 ## 2026-11-19 — Agent — #306 reader refresh, slice 4 (part 1)
 
 - Goal: #306 reader slice. Henrik chose two PRs: this one centres the reader

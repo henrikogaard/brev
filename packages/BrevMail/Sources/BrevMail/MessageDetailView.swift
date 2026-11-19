@@ -1911,15 +1911,40 @@ public struct MessageDetailView: View {
                 }
                 #endif
             }
+            #if os(macOS)
+            // #306 slice 4: attachments as cards in an adaptive grid.
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 220, maximum: 320), spacing: BrevSpacing.sm)],
+                alignment: .leading,
+                spacing: BrevSpacing.sm
+            ) {
+                ForEach(attachments) { attachment in
+                    let actions = attachmentActions(for: attachment)
+                    let displayName = MessageDetailPresentation.attachmentDisplayName(attachment.name)
+                    attachmentRowInteractions(
+                        MessageAttachmentCard(
+                            name: displayName,
+                            systemImage: Self.fileTypeSymbol(for: attachment.name),
+                            subtitle: MessageAttachmentCardPresentation.subtitle(
+                                filename: displayName,
+                                sizeText: Self.formatSize(attachment.sizeBytes)
+                            ),
+                            isHovered: hoveredAttachmentID == attachment.id,
+                            isDownloading: downloadingAttachmentID == attachment.id,
+                            primaryAction: MessageAttachmentActionPresentation.primaryAction(in: actions),
+                            overflowActions: MessageAttachmentActionPresentation.overflowActions(in: actions),
+                            onAction: { kind in
+                                Task { await runAttachmentAction(kind, attachment: attachment) }
+                            }
+                        ),
+                        attachment: attachment,
+                        actions: actions
+                    )
+                }
+            }
+            #else
             ForEach(attachments) { attachment in
-                let actions = MessageAttachmentActionPresentation.actions(
-                    resourceAvailable: attachment.resource != nil,
-                    isDownloading: downloadingAttachmentID != nil,
-                    isWorkBlocked: isWorkBlocked,
-                    driveAvailable: driveFeature?.isEligible(
-                        account: backend.account
-                    ) == true
-                )
+                let actions = attachmentActions(for: attachment)
                 let attachmentRow = HStack(spacing: BrevSpacing.sm) {
                     Image(systemName: Self.fileTypeSymbol(for: attachment.name))
                         .foregroundStyle(theme.textSecondary.color)
@@ -1969,6 +1994,7 @@ public struct MessageDetailView: View {
                     BrevDivider()
                 }
             }
+            #endif
             if let attachmentError {
                 BrevInlineStatus(
                     message: attachmentError.message,
@@ -1991,9 +2017,22 @@ public struct MessageDetailView: View {
         }
     }
 
-    /// Wraps an attachment row with the macOS pointer interactions: hover
-    /// highlight, filename + size tooltip, double-click to open, and drag-out
-    /// to Finder or another app. iOS renders the row unchanged.
+    /// The capability-gated actions for one attachment.
+    private func attachmentActions(for attachment: Attachment) -> [MessageAttachmentActionPresentation] {
+        MessageAttachmentActionPresentation.actions(
+            resourceAvailable: attachment.resource != nil,
+            isDownloading: downloadingAttachmentID != nil,
+            isWorkBlocked: isWorkBlocked,
+            driveAvailable: driveFeature?.isEligible(
+                account: backend.account
+            ) == true
+        )
+    }
+
+    /// Wraps an attachment card with the macOS pointer interactions: hover
+    /// tracking (the card draws the highlight), filename + size tooltip,
+    /// double-click to open, and drag-out to Finder or another app. iOS
+    /// renders the row unchanged.
     @ViewBuilder
     private func attachmentRowInteractions(
         _ row: some View,
@@ -2001,17 +2040,9 @@ public struct MessageDetailView: View {
         actions: [MessageAttachmentActionPresentation]
     ) -> some View {
         #if os(macOS)
-        let isHovered = hoveredAttachmentID == attachment.id
         let openAction = actions.first { $0.kind == .open }
         let interactive = row
-            // Negative padding keeps the highlight wider than the row without moving its content.
-            .background {
-                RoundedRectangle(cornerRadius: BrevRadius.sm)
-                    .fill(theme.bgSecondary.color)
-                    .padding(.horizontal, -BrevSpacing.xs)
-                    .opacity(isHovered ? 1 : 0)
-            }
-            .contentShape(Rectangle())
+            .contentShape(RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous))
             .onHover { hovering in
                 if hovering {
                     hoveredAttachmentID = attachment.id
