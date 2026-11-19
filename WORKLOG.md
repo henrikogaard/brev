@@ -15,9 +15,11 @@
 - Tests: new `ThreadConversationHeaderPresentationTests` and
   `ThreadHeaderSnapshotTests` (3 themes, light and dark, recorded on macOS 27);
   added to the build.yml macOS<26 skip list and `snapshot-macos`.
-- Not done: `ConversationWorkspaceSnapshotTests` baselines were already stale
-  on main (older header design) and now differ more; not rebaselined without
-  Henrik's OK. macOS pixel suites do not run on the macos-15 CI runner.
+- Rebaselined (Henrik's OK): the four `ConversationWorkspaceSnapshotTests`
+  conversation pictures, which were already stale on main. Their host view
+  now takes the theme's appearance so the ••• menu draws in light themes.
+  Compose and profile pictures in that suite were left as they were. macOS
+  pixel suites do not run on the macos-15 CI runner.
 
 ## 2026-11-19 — Agent — #306 toolbar refresh, slice 3
 

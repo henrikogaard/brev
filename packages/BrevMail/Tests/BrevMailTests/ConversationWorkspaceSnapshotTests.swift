@@ -136,6 +136,9 @@ struct ConversationWorkspaceSnapshotTests {
         .htmlBodyRenderTarget(.staticSnapshot)
         .defaultAppStorage(defaults)
         let host = NSHostingController(rootView: view)
+        // Match the system appearance to the theme so AppKit-drawn controls
+        // (the ••• menu) don't follow the host Mac's light/dark setting.
+        host.view.appearance = NSAppearance(named: theme.mode.colorScheme == .dark ? .darkAqua : .aqua)
         host.view.frame = CGRect(x: 0, y: 0, width: width, height: 600)
         assertSnapshot(
             of: host,
