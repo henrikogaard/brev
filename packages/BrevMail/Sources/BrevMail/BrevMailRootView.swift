@@ -230,6 +230,8 @@ public struct BrevMailRootView: View {
     @State private var relatedConversation = RelatedConversationController()
     @State private var readerThreadMemo = ReaderThreadHeadersMemo()
     @State private var quickReplyDraftWasSaved = false
+    /// The reading-pane layout held while a reply is docked (#302).
+    @State private var dockedReadingPanePresentation: MailRootReadingPanePresentation?
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .automatic
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
     /// Whether the macOS AI Sidebar column is open. Persisted so relaunching
@@ -853,6 +855,9 @@ public struct BrevMailRootView: View {
             .onChange(of: navigation.presentedSheet) { oldSheet, newSheet in
                 handlePresentedSheetChange(oldSheet: oldSheet, newSheet: newSheet)
             }
+            .onChange(of: navigation.inlineReply != nil) { _, isDocked in
+                handleInlineReplyChange(isDocked: isDocked)
+            }
             .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
                 Task {
                     await notificationCenter.cancelInactiveFollowUpReminders(
@@ -1314,8 +1319,30 @@ public struct BrevMailRootView: View {
     }
 
     private func handleComposePresentationChange() {
-        guard navigation.presentedSheet == .compose else { return }
+        // A docked reply sends and saves through the same completion request
+        // as the sheet, so its feedback and folder reloads match (#302).
+        let isDockedReply = navigation.inlineReply?.presentationID == navigation.composePresentationID
+        guard navigation.presentedSheet == .compose || isDockedReply else { return }
         startComposeCompletionRequest(composePresentationID: navigation.composePresentationID)
+    }
+
+    /// The docked reply opened or closed (#302). While it is open the reading
+    /// pane keeps its layout, because switching layouts would rebuild the
+    /// composer and lose unsaved text. Closing it ends its completion request
+    /// and refreshes like closing the compose sheet.
+    private func handleInlineReplyChange(isDocked: Bool) {
+        if isDocked {
+            dockedReadingPanePresentation = MailRootReadingPanePresentationPolicy.presentation(
+                for: readingPanePlacementRaw
+            )
+            return
+        }
+        dockedReadingPanePresentation = nil
+        if navigation.presentedSheet != .compose {
+            activeComposeCompletionRequest = nil
+        }
+        Task { await refreshAfterSheetDismissalIfNeeded() }
+        Task { await refreshOutboxCount() }
     }
 
     private func handleFolderVisibilityChange() {
@@ -1326,7 +1353,8 @@ public struct BrevMailRootView: View {
         oldSheet: MailNavigationState.Sheet?,
         newSheet: MailNavigationState.Sheet?
     ) {
-        if newSheet != .compose {
+        // A docked reply keeps its request while other sheets come and go.
+        if newSheet != .compose, navigation.inlineReply == nil {
             activeComposeCompletionRequest = nil
         }
         if newSheet == nil {
@@ -1397,6 +1425,7 @@ public struct BrevMailRootView: View {
         // the split view's detail column, pushed over the list.
         if horizontalSizeClass == .compact { return .splitDetailColumn }
         #endif
+        if let dockedReadingPanePresentation { return dockedReadingPanePresentation }
         return MailRootReadingPanePresentationPolicy.presentation(for: readingPanePlacementRaw)
     }
 
@@ -1622,7 +1651,9 @@ public struct BrevMailRootView: View {
             let readerFooter: AnyView? = {
                 guard let quickReplyTarget,
                       let quickReplyBackend,
-                      quickReplyBackend.capabilities.contains(.smtpOAuth)
+                      quickReplyBackend.capabilities.contains(.smtpOAuth),
+                      // One reply surface at a time: the docked reply replaces the bar.
+                      navigation.inlineReply == nil
                 else { return nil }
                 #if os(iOS)
                 guard horizontalSizeClass != .compact else { return nil }
@@ -1644,11 +1675,25 @@ public struct BrevMailRootView: View {
                             return result.sent
                         },
                         onExpand: { [quickReplySourceID, quickReplyTarget] text in
+                            #if os(macOS)
+                            // macOS grows the bar into the full composer in
+                            // place (#302); iOS keeps the compose sheet.
+                            guard canPresentCompose() else { return }
+                            // Pin the account now: a nil source would follow
+                            // whatever is selected later (#302).
+                            navigation.presentInlineReply(
+                                to: quickReplyTarget,
+                                sourceID: quickReplySourceID
+                                    ?? preferredDefaultSection(in: visibleSourceSections)?.id,
+                                prefillBodyText: text
+                            )
+                            #else
                             presentReply(
                                 to: quickReplyTarget,
                                 sourceID: quickReplySourceID,
                                 prefillBodyText: text
                             )
+                            #endif
                         },
                         isDisabled: isCommandMutationBlocked || isComposePresentationBlocked,
                         draftWasSaved: $quickReplyDraftWasSaved
@@ -1715,7 +1760,16 @@ public struct BrevMailRootView: View {
     }
 
     private var readingPaneDetailPane: some View {
-        backgroundReadingPaneContent
+        VStack(spacing: 0) {
+            backgroundReadingPaneContent
+            #if os(macOS)
+            // Docked here, outside the reader, so it stays open while other
+            // messages, the Today page or a bulk selection take the pane.
+            if let inlineReply = navigation.inlineReply {
+                inlineReplyDock(inlineReply)
+            }
+            #endif
+        }
         #if !os(macOS)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         #else
@@ -1773,6 +1827,32 @@ public struct BrevMailRootView: View {
     }
 
     #if os(macOS)
+    /// The reply docked under the reader (#302): the full composer, built like
+    /// the compose sheet, for the account it was opened from. It closes only
+    /// through the composer's own Close or Send, which save or discard the
+    /// Draft exactly as the sheet does.
+    private func inlineReplyDock(_ context: InlineReplyContext) -> some View {
+        composeEditor(
+            anchorSourceID: context.sourceID,
+            activeBackend: backend(for: context.sourceID),
+            replyingTo: context.replyTo,
+            replyMode: .sender,
+            forwardingFrom: nil,
+            prefill: context.prefill,
+            existingDraft: nil,
+            existingDraftAttachments: [],
+            existingDraftIsServerSourced: false,
+            hostStyle: .inline,
+            onClose: { navigation.dismissInlineReply() }
+        )
+        .id(context.presentationID)
+        .frame(maxWidth: .infinity)
+        .frame(height: MailRootInlineReplyLayout.height)
+        .overlay(alignment: .top) {
+            Rectangle().fill(theme.border.color).frame(height: 0.5)
+        }
+    }
+
     /// The empty reader shows what needs you instead of a placeholder (#292).
     private var todayPage: some View {
         let sections = sidebarSourceSections
@@ -3749,7 +3829,8 @@ public struct BrevMailRootView: View {
     private func canPresentCompose() -> Bool {
         guard hasMailContext else { return false }
         return MailRootComposePresentationPolicy.canPresentCompose(
-            hasPresentedSheet: navigation.presentedSheet != nil,
+            // A docked reply holds the composer like a sheet does (#302).
+            hasPresentedSheet: navigation.presentedSheet != nil || navigation.inlineReply != nil,
             activeFolderLoadRequest: activeFolderLoadRequest,
             activeMailboxLoadRequest: activeMailboxLoadRequest,
             activeRefreshRequest: activeRefreshRequest,
@@ -4393,6 +4474,87 @@ public struct BrevMailRootView: View {
         }
     }
 
+    /// The composer for the compose sheet and the reply docked under the
+    /// reader (#302). Both get the same sender resolution, Draft recovery and
+    /// completion handling; only the host differs.
+    @ViewBuilder
+    private func composeEditor(
+        anchorSourceID: MailSourceID?,
+        activeBackend: any MailBackend,
+        replyingTo: MessageHeader?,
+        replyMode: ComposeReplyMode,
+        forwardingFrom: MessageHeader?,
+        prefill: ComposePrefill?,
+        existingDraft: Draft?,
+        existingDraftAttachments: [MIMEMessageAttachment],
+        existingDraftIsServerSourced: Bool,
+        hostStyle: ComposeHostStyle,
+        onClose: (() -> Void)?
+    ) -> some View {
+        let completionRequest = activeComposeCompletionRequest
+        let composePresentationID = navigation.composePresentationID
+        let selectedSourceID = anchorSourceID
+        let senderSections = visibleSourceSections.filter { $0.account.id == activeBackend.account.id }
+        let senderResolution = ComposeSenderIdentity.resolution(
+            from: senderSections,
+            fallbackAccount: activeBackend.account,
+            selectedSourceID: selectedSourceID,
+            defaultSourceID: preferredDefaultSection(in: senderSections)?.id
+        )
+        let sourceID = senderResolution.sourceID
+        let composeBackend = backend(for: sourceID)
+        // A reopened existing draft must not also seed crash-recovery —
+        // the two restore paths seed the same fields.
+        let recoveredDraft = existingDraft == nil
+            ? newMessageRecoverySnapshot(
+                accountID: composeBackend.account.id,
+                sourceID: sourceID,
+                replyingTo: replyingTo,
+                forwardingFrom: forwardingFrom
+            )
+            : nil
+        ComposeView(
+            backend: composeBackend,
+            sourceID: sourceID,
+            from: senderResolution.initialSender?.correspondent ?? ComposeSenderIdentity.sender(
+                account: composeBackend.account,
+                mailboxes: mailboxes,
+                activeMailboxID: activeMailboxID
+            ),
+            senderOptions: senderResolution.options,
+            initialSenderOption: senderResolution.initialSender,
+            backendForSenderSource: { sourceID in
+                backend(for: sourceID)
+            },
+            replyingTo: replyingTo,
+            replyMode: replyMode,
+            forwardingFrom: forwardingFrom,
+            prefill: prefill,
+            recoveredDraft: recoveredDraft,
+            existingDraft: existingDraft,
+            existingDraftAttachments: existingDraftAttachments,
+            existingDraftIsServerSourced: existingDraftIsServerSourced,
+            aiBackend: aiBackend(for: composeBackend.account),
+            signatureContext: signatureContextProvider?(composeBackend.account),
+            composeSecurityDefaults: composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled,
+            hasTrustedSigningIdentity: (trustedSigningIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
+            hasTrustedEncryptionIdentity: (trustedEncryptionIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
+            isWorkBlocked: isComposeWorkBlocked,
+            driveFeature: driveFeature,
+            hostStyle: hostStyle,
+            onClose: onClose,
+            onCompletion: { completion in
+                await handleComposeCompletion(
+                    completion,
+                    request: completionRequest,
+                    composePresentationID: composePresentationID,
+                    accountID: composeBackend.account.id,
+                    sourceID: sourceID
+                )
+            }
+        )
+    }
+
     @ViewBuilder
     private func sheetContent(
         for sheet: MailNavigationState.Sheet,
@@ -4405,65 +4567,18 @@ public struct BrevMailRootView: View {
             }
             .brevSheetAppearance(theme)
         case .compose:
-            let completionRequest = activeComposeCompletionRequest
-            let composePresentationID = navigation.composePresentationID
-            let activeBackend = selectedBackend
-            let selectedSourceID = navigation.selectedSourceID
-            let senderSections = visibleSourceSections.filter { $0.account.id == activeBackend.account.id }
-            let senderResolution = ComposeSenderIdentity.resolution(
-                from: senderSections,
-                fallbackAccount: activeBackend.account,
-                selectedSourceID: selectedSourceID,
-                defaultSourceID: preferredDefaultSection(in: senderSections)?.id
-            )
-            let sourceID = senderResolution.sourceID
-            let composeBackend = backend(for: sourceID)
-            // A reopened existing draft must not also seed crash-recovery —
-            // the two restore paths seed the same fields.
-            let recoveredDraft = navigation.composeDraft == nil
-                ? newMessageRecoverySnapshot(
-                    accountID: composeBackend.account.id,
-                    sourceID: sourceID
-                )
-                : nil
-            ComposeView(
-                backend: composeBackend,
-                sourceID: sourceID,
-                from: senderResolution.initialSender?.correspondent ?? ComposeSenderIdentity.sender(
-                    account: composeBackend.account,
-                    mailboxes: mailboxes,
-                    activeMailboxID: activeMailboxID
-                ),
-                senderOptions: senderResolution.options,
-                initialSenderOption: senderResolution.initialSender,
-                backendForSenderSource: { sourceID in
-                    backend(for: sourceID)
-                },
+            composeEditor(
+                anchorSourceID: navigation.selectedSourceID,
+                activeBackend: selectedBackend,
                 replyingTo: navigation.composeReplyTo,
                 replyMode: navigation.composeReplyMode,
                 forwardingFrom: navigation.composeForwardOf,
                 prefill: navigation.composePrefill,
-                recoveredDraft: recoveredDraft,
                 existingDraft: navigation.composeDraft,
                 existingDraftAttachments: navigation.composeDraftAttachments,
                 existingDraftIsServerSourced: navigation.composeDraftIsServerSourced,
-                aiBackend: aiBackend(for: composeBackend.account),
-                signatureContext: signatureContextProvider?(composeBackend.account),
-                composeSecurityDefaults: composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled,
-                hasTrustedSigningIdentity: (trustedSigningIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
-                hasTrustedEncryptionIdentity: (trustedEncryptionIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
-                isWorkBlocked: isComposeWorkBlocked,
-                driveFeature: driveFeature,
-                onClose: onClose,
-                onCompletion: { completion in
-                    await handleComposeCompletion(
-                        completion,
-                        request: completionRequest,
-                        composePresentationID: composePresentationID,
-                        accountID: composeBackend.account.id,
-                        sourceID: sourceID
-                    )
-                }
+                hostStyle: .window,
+                onClose: onClose
             )
             .brevSheetAppearance(theme)
         case .profiles:
@@ -6970,10 +7085,12 @@ public struct BrevMailRootView: View {
 
     private func newMessageRecoverySnapshot(
         accountID: BrevAccount.ID,
-        sourceID: MailSourceID?
+        sourceID: MailSourceID?,
+        replyingTo: MessageHeader?,
+        forwardingFrom: MessageHeader?
     ) -> ComposeDraftRecoverySnapshot? {
-        guard navigation.composeReplyTo == nil,
-              navigation.composeForwardOf == nil else {
+        guard replyingTo == nil,
+              forwardingFrom == nil else {
             return nil
         }
         return ComposeDraftRecoveryStore.load(accountID: accountID, sourceID: sourceID)
@@ -7959,4 +8076,11 @@ struct MailRootEphemeralToast: Equatable, Sendable, Identifiable {
         self.message = message
         self.tone = tone
     }
+}
+
+/// Size of the reply docked under the reader (#302).
+enum MailRootInlineReplyLayout {
+    /// Tall enough for the action row, From/To/Subject and a few body lines;
+    /// the reader keeps the rest of the pane.
+    static let height: CGFloat = 360
 }

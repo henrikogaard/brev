@@ -21,6 +21,10 @@ All notable changes to Brev are documented here.
 - Message list (#306): when the list holds mail from more than one account,
   each avatar has a small dot in that account's colour. Colours come from the
   theme's avatar palette, taken in sidebar order.
+- Reader on macOS (#302): the "Reply to…" bar's expand button now opens the
+  full composer docked under the reader instead of a sheet. It stays open while
+  you read other mail and closes on Send or Close, which save the Draft as
+  before.
 - macOS reader toolbar (#306): actions sit in capsules. Reply, Reply All and
   Forward share one; Archive, Delete, Move and Snooze share the next, then
   More. The AI Sidebar button has its own, and search sits at the far right.

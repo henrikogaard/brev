@@ -175,6 +175,11 @@ public final class MailNavigationState {
     /// Currently presented sheet, if any.
     public var presentedSheet: Sheet?
 
+    /// A reply docked under the reader instead of a sheet (#302). It keeps its
+    /// own context, so selecting another message or closing an unrelated sheet
+    /// leaves it as it is. It closes only through `dismissInlineReply()`.
+    public private(set) var inlineReply: InlineReplyContext?
+
     /// Incremented each time a compose sheet is intentionally opened.
     /// Root view code uses this to tie async compose completions back
     /// to the mailbox context that launched them.
@@ -789,13 +794,33 @@ public final class MailNavigationState {
         presentCompose()
     }
 
+    /// Docks a reply to `header` under the reader. Does nothing while a sheet
+    /// or another docked reply is open, like the compose sheet.
+    public func presentInlineReply(to header: MessageHeader, sourceID: MailSourceID?, prefillBodyText: String?) {
+        guard canPresentCompose else { return }
+        composePresentationID += 1
+        inlineReply = InlineReplyContext(
+            replyTo: header,
+            sourceID: sourceID,
+            prefill: prefillBodyText.flatMap { $0.isEmpty ? nil : ComposePrefill(bodyText: $0) },
+            presentationID: composePresentationID
+        )
+    }
+
+    /// Closes the docked reply. The composer has already saved or discarded
+    /// its Draft through its own close path.
+    public func dismissInlineReply() {
+        inlineReply = nil
+    }
+
     private func presentCompose() {
         composePresentationID += 1
         presentedSheet = .compose
     }
 
+    /// One composer at a time: a sheet or a docked reply.
     private var canPresentCompose: Bool {
-        presentedSheet == nil
+        presentedSheet == nil && inlineReply == nil
     }
 }
 
@@ -803,4 +828,16 @@ private extension Array {
     subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
     }
+}
+
+/// What a docked reply was opened for (#302). Fixed for the reply's lifetime.
+public struct InlineReplyContext: Equatable, Sendable {
+    /// The message being answered.
+    public let replyTo: MessageHeader
+    /// The source the reply was opened from; it decides the sending account.
+    public let sourceID: MailSourceID?
+    /// Text carried over from the quick reply field.
+    public let prefill: ComposePrefill?
+    /// The `composePresentationID` this reply was opened with.
+    public let presentationID: Int
 }
