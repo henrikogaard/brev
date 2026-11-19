@@ -611,11 +611,7 @@ public struct ComposeView: View {
                 handleDrop(providers)
             }
             .background(BrevWindowSurfaceBackground(role: .utility).ignoresSafeArea())
-            // Docked under the reader, the dock decides the size.
-            .frame(
-                minWidth: hostStyle == .inline ? nil : frameMetrics.minWidth,
-                minHeight: hostStyle == .inline ? nil : frameMetrics.minHeight
-            )
+            .frame(minWidth: frameMetrics.minWidth, minHeight: frameMetrics.minHeight)
             // On compact iOS, sheet presentations size to the content's
             // *ideal* width. TextField/UITextView adaptors report their
             // intrinsic text width as ideal, which at accessibility text
@@ -778,7 +774,9 @@ public struct ComposeView: View {
     }
 
     private var frameMetrics: ComposeFrameMetrics {
-        ComposeLayoutPolicy.frameMetrics(for: composeLayoutPlatform)
+        // Docked under the reader (#302), the dock decides the size.
+        if hostStyle == .inline { return ComposeFrameMetrics(minWidth: nil, minHeight: nil) }
+        return ComposeLayoutPolicy.frameMetrics(for: composeLayoutPlatform)
     }
 
     private var toolbarMetrics: ComposeToolbarMetrics {
