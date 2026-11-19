@@ -15,6 +15,7 @@ import BrevBackend
 import BrevCalendar
 import BrevDesign
 import BrevThemes
+import QuickLook
 import SwiftUI
 
 /// One expandable card in a `ThreadConversationView` conversation stack.
@@ -64,6 +65,9 @@ struct ThreadMessageCard: View {
     @State private var inlineCIDResolvedMessageID: MessageHeader.ID?
     @State private var pendingSuspiciousLink: MessageSecurityLinkWarning?
     @StateObject private var htmlWebViewStore: HTMLBodyWebViewStore
+    /// The listed attachments' actions and state, shared with the
+    /// single-message reader.
+    @StateObject private var attachmentController = MessageAttachmentController()
     @ScaledMetric(relativeTo: .body) private var scaledBodyMetric: CGFloat = 100
     /// Shared per-conversation pool: bounds how many WebKit renderers a fully
     /// expanded thread keeps warm and how many body/CID fetches run at once.
@@ -411,7 +415,42 @@ struct ThreadMessageCard: View {
             securitySummary
             inviteContent
             bodyContent
+            attachmentsContent
         }
+    }
+
+    @ViewBuilder
+    private var attachmentsContent: some View {
+        let attachments = ThreadMessageAttachmentListPolicy.listed(renderedBody?.attachments ?? [])
+        if !attachments.isEmpty {
+            MessageAttachmentsSection(
+                attachments: attachments,
+                controller: attachmentController,
+                context: attachmentContext,
+                driveAvailable: false
+            )
+            .quickLookPreview($attachmentController.quickLookURL)
+        }
+    }
+
+    /// What the shared attachment actions need from this card. A card shows
+    /// one message, so a reply always applies to it.
+    private var attachmentContext: MessageAttachmentController.Context {
+        let backend = backend
+        let sourceID = sourceID
+        let messageID = header.id
+        return MessageAttachmentController.Context(
+            messageID: messageID,
+            sourceID: sourceID,
+            isWorkBlocked: isWorkBlocked,
+            download: { attachment in
+                if let sourceID {
+                    return try await backend.downloadAttachment(attachment, sourceID: sourceID)
+                }
+                return try await backend.downloadAttachment(attachment)
+            },
+            currentSelection: { (sourceID, messageID) }
+        )
     }
 
     @ViewBuilder

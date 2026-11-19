@@ -1,5 +1,24 @@
 # Worklog
 
+## 2026-11-19 — Agent — #306 reader refresh, thread attachments
+
+- Goal: expanded thread message cards showed no attachment list (only the
+  invite card and inline CID images). Confirmed in code: `ThreadMessageCard`
+  never read `renderedBody.attachments` for a list.
+- Changes: the reader's attachment block moved into a shared
+  `MessageAttachmentsSection` view, and its download/save/open/Save All/drag/
+  Drive-staging logic into a `MessageAttachmentController`
+  (`MessageAttachmentsSection.swift`). `MessageDetailView` and
+  `ThreadMessageCard` both use them. `ThreadMessageAttachmentListPolicy`
+  drops inline CID images and the invite the card already shows.
+  Save to Drive is not offered in threads: the thread view has no
+  `GoogleDriveFeature`.
+- Tests: `ThreadMessageAttachmentListPolicyTests`;
+  `ThreadMessageAttachmentSnapshotTests` (macOS, 3 themes light and dark,
+  recorded on macOS 27), added to the build.yml macOS<26 skip list and
+  `snapshot-macos`.
+- Stacked on #313 (`feature/reader-attachment-cards`).
+
 ## 2026-11-19 — Agent — #306 reader refresh, slice 4 (part 2)
 
 - Goal: attachment cards in the macOS single-message reader (part 2 of the
