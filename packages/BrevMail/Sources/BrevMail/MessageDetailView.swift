@@ -840,7 +840,8 @@ public struct MessageDetailView: View {
             canFollowUp: canPresentSheets,
             hasFollowUp: FollowUpReminderIndex(settings: FollowUpSettings.load())
                 .reminder(for: header.id, sourceID: sourceID) != nil,
-            canReply: canPresentSheets && !areActionsBlocked,
+            // A docked reply holds the one composer (#302).
+            canReply: canPresentSheets && !areActionsBlocked && navigation?.inlineReply == nil,
             canPrint: !isLoading && errorMessage == nil,
             canExportPDF: !isLoading && errorMessage == nil,
             canShowProperties: true,

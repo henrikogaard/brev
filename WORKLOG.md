@@ -22,6 +22,9 @@
   send/save results instead. The reader ignores the dock when deciding
   whether to load. Sender sections for the dock come from all sources, so a
   profile switch cannot move the reply to another account.
+  Follow-up review: reader Reply/Forward are disabled while a reply is docked,
+  and dock results only apply in the mailbox it was opened in
+  (`MailRootDockedReplyCompletionPolicy`, with tests).
 - Tests: `MailNavigationStateInlineReplyTests` (6); `InlineReplySnapshotTests`
   (3 themes light and dark, recorded on macOS 27, added to the build.yml
   lists). The quote attribution follows the host locale.

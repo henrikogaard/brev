@@ -4495,6 +4495,9 @@ public struct BrevMailRootView: View {
     ) -> some View {
         let completionRequest = activeComposeCompletionRequest
         let composePresentationID = navigation.composePresentationID
+        // Like the sheet's request, a docked reply's results only apply to
+        // the mailbox it was opened in.
+        let dockMailboxID = activeMailboxID
         let selectedSourceID = anchorSourceID
         // A docked reply keeps its account even if a profile switch hides it.
         let senderSections = (hostStyle == .inline ? sourceSections : visibleSourceSections)
@@ -4552,6 +4555,7 @@ public struct BrevMailRootView: View {
                     handleDockedReplyCompletion(
                         completion,
                         composePresentationID: composePresentationID,
+                        mailboxID: dockMailboxID,
                         accountID: composeBackend.account.id,
                         sourceID: sourceID
                     )
@@ -7095,10 +7099,16 @@ public struct BrevMailRootView: View {
     private func handleDockedReplyCompletion(
         _ completion: ComposeCompletion,
         composePresentationID: Int,
+        mailboxID: Mailbox.ID?,
         accountID: BrevAccount.ID,
         sourceID: MailSourceID?
     ) {
-        let isCurrentDock = navigation.inlineReply?.presentationID == composePresentationID
+        let isCurrentDock = MailRootDockedReplyCompletionPolicy.isCurrent(
+            completionPresentationID: composePresentationID,
+            completionMailboxID: mailboxID,
+            dockPresentationID: navigation.inlineReply?.presentationID,
+            activeMailboxID: activeMailboxID
+        )
         BrevMail.updateComposeDraftRecovery(
             for: completion,
             accountID: accountID,

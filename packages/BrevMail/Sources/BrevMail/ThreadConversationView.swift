@@ -437,7 +437,8 @@ public struct ThreadConversationView: View {
             canFollowUp: canPresentSheets,
             hasFollowUp: FollowUpReminderIndex(settings: FollowUpSettings.load())
                 .reminder(for: header.id, sourceID: sourceID) != nil,
-            canReply: canPresentSheets && !isWorkBlocked,
+            // A docked reply holds the one composer (#302).
+            canReply: canPresentSheets && !isWorkBlocked && navigation.inlineReply == nil,
             canPrint: true,
             canExportPDF: true,
             canShowProperties: true,

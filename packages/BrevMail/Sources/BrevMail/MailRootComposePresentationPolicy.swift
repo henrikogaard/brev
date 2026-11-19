@@ -347,3 +347,20 @@ enum MailRootDetailToolbarPolicy {
         false
     }
 }
+
+/// Whether a send or save result from the reply docked under the reader
+/// (#302) still belongs to the open dock and mailbox.
+enum MailRootDockedReplyCompletionPolicy {
+    /// True when the result comes from the dock that is still open and the
+    /// active mailbox is the one it was opened in, as the sheet's completion
+    /// request requires.
+    static func isCurrent(
+        completionPresentationID: Int,
+        completionMailboxID: Mailbox.ID?,
+        dockPresentationID: Int?,
+        activeMailboxID: Mailbox.ID?
+    ) -> Bool {
+        dockPresentationID == completionPresentationID
+            && (completionMailboxID == nil || completionMailboxID == activeMailboxID)
+    }
+}
