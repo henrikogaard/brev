@@ -1319,17 +1319,14 @@ public struct BrevMailRootView: View {
     }
 
     private func handleComposePresentationChange() {
-        // A docked reply sends and saves through the same completion request
-        // as the sheet, so its feedback and folder reloads match (#302).
-        let isDockedReply = navigation.inlineReply?.presentationID == navigation.composePresentationID
-        guard navigation.presentedSheet == .compose || isDockedReply else { return }
+        guard navigation.presentedSheet == .compose else { return }
         startComposeCompletionRequest(composePresentationID: navigation.composePresentationID)
     }
 
     /// The docked reply opened or closed (#302). While it is open the reading
     /// pane keeps its layout, because switching layouts would rebuild the
-    /// composer and lose unsaved text. Closing it ends its completion request
-    /// and refreshes like closing the compose sheet.
+    /// composer and lose unsaved text. Closing it refreshes like closing the
+    /// compose sheet.
     private func handleInlineReplyChange(isDocked: Bool) {
         if isDocked {
             dockedReadingPanePresentation = MailRootReadingPanePresentationPolicy.presentation(
@@ -1338,9 +1335,6 @@ public struct BrevMailRootView: View {
             return
         }
         dockedReadingPanePresentation = nil
-        if navigation.presentedSheet != .compose {
-            activeComposeCompletionRequest = nil
-        }
         Task { await refreshAfterSheetDismissalIfNeeded() }
         Task { await refreshOutboxCount() }
     }
@@ -1353,8 +1347,7 @@ public struct BrevMailRootView: View {
         oldSheet: MailNavigationState.Sheet?,
         newSheet: MailNavigationState.Sheet?
     ) {
-        // A docked reply keeps its request while other sheets come and go.
-        if newSheet != .compose, navigation.inlineReply == nil {
+        if newSheet != .compose {
             activeComposeCompletionRequest = nil
         }
         if newSheet == nil {
@@ -1717,7 +1710,7 @@ public struct BrevMailRootView: View {
                         sourceID: navigation.selectedSourceID,
                         mailboxLabel: selectedSourceSection?.mailbox.email,
                         navigation: navigation,
-                        isWorkBlocked: isCommandMutationBlocked || isComposePresentationBlocked,
+                        isWorkBlocked: isCommandMutationBlocked || isReaderComposeBlocked,
                         allFolders: folders,
                         canFileLocally: localBackend != nil,
                         inviteReconciler: inviteReconciler,
@@ -1730,7 +1723,7 @@ public struct BrevMailRootView: View {
                         header: navigation.selectedHeader ?? fallbackHeader,
                         navigation: navigation,
                         allFolders: folders,
-                        isWorkBlocked: isMessageWorkBlocked || isComposePresentationBlocked,
+                        isWorkBlocked: isMessageWorkBlocked || isReaderComposeBlocked,
                         isMutationWorkBlocked: isCommandMutationBlocked,
                         canFileLocally: localBackend != nil,
                         inviteReconciler: inviteReconciler,
@@ -3764,6 +3757,12 @@ public struct BrevMailRootView: View {
         !canPresentCompose()
     }
 
+    /// The reader's share of the compose block: a docked reply does not stop
+    /// other messages from loading (#302).
+    private var isReaderComposeBlocked: Bool {
+        !canPresentCompose(ignoringDockedReply: true)
+    }
+
     private var isMailBackgroundAccessibilityHidden: Bool {
         return MailRootSheetPresentationPolicy.hidesBackgroundAccessibility(
             hasPresentedSheet: navigation.presentedSheet != nil,
@@ -3826,11 +3825,14 @@ public struct BrevMailRootView: View {
         )
     }
 
-    private func canPresentCompose() -> Bool {
+    /// - Parameter ignoringDockedReply: true for the reader, which keeps
+    ///   loading other mail while a reply is docked (#302).
+    private func canPresentCompose(ignoringDockedReply: Bool = false) -> Bool {
         guard hasMailContext else { return false }
+        let hasDockedReply = !ignoringDockedReply && navigation.inlineReply != nil
         return MailRootComposePresentationPolicy.canPresentCompose(
             // A docked reply holds the composer like a sheet does (#302).
-            hasPresentedSheet: navigation.presentedSheet != nil || navigation.inlineReply != nil,
+            hasPresentedSheet: navigation.presentedSheet != nil || hasDockedReply,
             activeFolderLoadRequest: activeFolderLoadRequest,
             activeMailboxLoadRequest: activeMailboxLoadRequest,
             activeRefreshRequest: activeRefreshRequest,
@@ -4494,7 +4496,9 @@ public struct BrevMailRootView: View {
         let completionRequest = activeComposeCompletionRequest
         let composePresentationID = navigation.composePresentationID
         let selectedSourceID = anchorSourceID
-        let senderSections = visibleSourceSections.filter { $0.account.id == activeBackend.account.id }
+        // A docked reply keeps its account even if a profile switch hides it.
+        let senderSections = (hostStyle == .inline ? sourceSections : visibleSourceSections)
+            .filter { $0.account.id == activeBackend.account.id }
         let senderResolution = ComposeSenderIdentity.resolution(
             from: senderSections,
             fallbackAccount: activeBackend.account,
@@ -4502,7 +4506,7 @@ public struct BrevMailRootView: View {
             defaultSourceID: preferredDefaultSection(in: senderSections)?.id
         )
         let sourceID = senderResolution.sourceID
-        let composeBackend = backend(for: sourceID)
+        let composeBackend = sourceID.map { backend(for: $0) } ?? activeBackend
         // A reopened existing draft must not also seed crash-recovery —
         // the two restore paths seed the same fields.
         let recoveredDraft = existingDraft == nil
@@ -4544,13 +4548,22 @@ public struct BrevMailRootView: View {
             hostStyle: hostStyle,
             onClose: onClose,
             onCompletion: { completion in
-                await handleComposeCompletion(
-                    completion,
-                    request: completionRequest,
-                    composePresentationID: composePresentationID,
-                    accountID: composeBackend.account.id,
-                    sourceID: sourceID
-                )
+                if hostStyle == .inline {
+                    handleDockedReplyCompletion(
+                        completion,
+                        composePresentationID: composePresentationID,
+                        accountID: composeBackend.account.id,
+                        sourceID: sourceID
+                    )
+                } else {
+                    await handleComposeCompletion(
+                        completion,
+                        request: completionRequest,
+                        composePresentationID: composePresentationID,
+                        accountID: composeBackend.account.id,
+                        sourceID: sourceID
+                    )
+                }
             }
         )
     }
@@ -7071,6 +7084,35 @@ public struct BrevMailRootView: View {
         // returned after a successful LIST/STATUS-like round trip, which looked
         // exactly like a stuck send window. The send already succeeded; the refresh must
         // not gate closing the composer.
+        Task { await loadFolders() }
+    }
+
+    /// Send and save results from the reply docked under the reader (#302).
+    /// The dock does not hold the sheet's completion request: that request
+    /// blocks refreshes and mail actions, which suits a modal sheet but not a
+    /// reply left open while reading. The results apply while this dock is
+    /// still the open one; later ones keep only the Draft-saved notice.
+    private func handleDockedReplyCompletion(
+        _ completion: ComposeCompletion,
+        composePresentationID: Int,
+        accountID: BrevAccount.ID,
+        sourceID: MailSourceID?
+    ) {
+        let isCurrentDock = navigation.inlineReply?.presentationID == composePresentationID
+        BrevMail.updateComposeDraftRecovery(
+            for: completion,
+            accountID: accountID,
+            sourceID: sourceID,
+            isCurrentPresentation: isCurrentDock
+        )
+        guard isCurrentDock else {
+            applyOrphanedDraftSaveFeedbackIfNeeded(completion)
+            return
+        }
+        for event in ComposeCompletionRefreshPolicy.events(for: completion, folders: folders) {
+            navigation.requestReloadIfVisibleFolderChanged(event)
+        }
+        applyComposeCompletionFeedback(ComposeCompletionPresentation.feedback(for: completion))
         Task { await loadFolders() }
     }
 

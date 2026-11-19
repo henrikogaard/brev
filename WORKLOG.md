@@ -16,6 +16,12 @@
   title and subject, Attach, Format, More, Send with ⌘Return). macOS only; iOS
   keeps the sheet. The quick bar hides while the dock is open.
 - Left out: the R key (single-key shortcuts arrive with #300).
+- PR review (Codex, Devin): the dock no longer holds the sheet's compose
+  completion request, which blocked refreshes, mail actions and body loads
+  and tripped stale-work recovery. `handleDockedReplyCompletion` applies its
+  send/save results instead. The reader ignores the dock when deciding
+  whether to load. Sender sections for the dock come from all sources, so a
+  profile switch cannot move the reply to another account.
 - Tests: `MailNavigationStateInlineReplyTests` (6); `InlineReplySnapshotTests`
   (3 themes light and dark, recorded on macOS 27, added to the build.yml
   lists). The quote attribution follows the host locale.
