@@ -29,6 +29,11 @@ All notable changes to Brev are documented here.
   with a file-type icon, the name, the kind and size ("PDF · 240 KB"), the
   main action and a ••• menu. Hover, double-click to open and drag-out still
   work.
+- Reader threads (#306): an expanded message in a thread now lists its
+  attachments, with the same cards (macOS) or rows (iOS) and actions as the
+  single-message reader: preview, save, open, Save All, double-click and
+  drag-out. Inline images and the calendar invite stay where they were.
+  Save to Google Drive is still only in the single-message reader.
 - macOS compose: the Format menu's Bold, Italic and Clear Formatting now work,
   Cmd-B, Cmd-I and Cmd-U format the message body instead of reaching the main
   menu (where Cmd-U marked a message read), and Insert Link applies the link even
