@@ -208,6 +208,17 @@ struct UnifiedInboxListView: View {
         }
     }
 
+    /// The account dot's colour for a row (#306 slice 5): a palette slot by
+    /// the account's place among the sources, or nil for a single account.
+    private func accountDotColor(for accountID: BrevAccount.ID) -> Color? {
+        let palette = theme.avatarPalette
+        let accounts = MessageListAccountDot.orderedAccountIDs(sourceSections.map(\.account.id))
+        guard let index = MessageListAccountDot.paletteIndex(
+            accountID: accountID, orderedAccountIDs: accounts, paletteCount: palette.count
+        ) else { return nil }
+        return palette[index].color
+    }
+
     var body: some View {
         workflowObservedContent
             .onChange(of: localMessageWorkflowState) {
@@ -1268,6 +1279,7 @@ struct UnifiedInboxListView: View {
             density: mailboxListDensity,
             showsAbsoluteArrivalTime: showAbsoluteArrivalTime,
             sourceContext: item.sourceContext,
+            accountDotColor: accountDotColor(for: item.sourceID.accountID),
             matchedAttachmentName: searchProgress.matchedAttachmentName(
                 for: item.header.id,
                 source: item.sourceID

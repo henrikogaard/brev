@@ -18,6 +18,9 @@ All notable changes to Brev are documented here.
   67 unread"), the category tabs are soft pills on macOS too, a thread's
   message count sits right after the sender, and the attachment clip sits
   beside the time.
+- Message list (#306): when the list holds mail from more than one account,
+  each avatar has a small dot in that account's colour. Colours come from the
+  theme's avatar palette, taken in sidebar order.
 - macOS reader toolbar (#306): actions sit in capsules. Reply, Reply All and
   Forward share one; Archive, Delete, Move and Snooze share the next, then
   More. The AI Sidebar button has its own, and search sits at the far right.

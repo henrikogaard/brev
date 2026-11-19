@@ -1,5 +1,21 @@
 # Worklog
 
+## 2026-11-19 — Agent — #306 account-colour dot, slice 5
+
+- Goal: the account-colour dot on list avatars, the one #306 list item left
+  out of slice 2 because Brev had no per-account colour.
+- Changes: `MessageListAccountDot` gives each account a slot in the theme's
+  `avatarPalette` by its place in the list's sources (no stored setting, so
+  two accounts only share a colour past the palette size). `MessageListRow`
+  takes an optional `accountDotColor` and draws the dot on the avatar's
+  corner with a ring in the row background. `UnifiedInboxListView` passes it;
+  a single-account list or a single-folder list draws none.
+- Tests: `MessageListAccountDotTests`; a new `accountDots` case in
+  `MessageListRefreshSnapshotTests` (3 themes light and dark, recorded on
+  macOS 27). The suite is already in the build.yml lists.
+- Known limit: Brev Mono's palette is greys, so dots barely differ there; the
+  account name in the row still says which account.
+
 ## 2026-11-19 — Agent — #306 reader refresh, thread attachments
 
 - Goal: expanded thread message cards showed no attachment list (only the
