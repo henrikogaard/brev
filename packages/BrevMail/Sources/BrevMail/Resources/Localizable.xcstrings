@@ -312,6 +312,17 @@
         }
       }
     },
+    "%@, %@, and %lld others": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, %@ og %lld andre"
+          }
+        }
+      }
+    },
     "%@, %@, and %@": {
       "extractionState": "manual",
       "localizations": {

@@ -266,7 +266,8 @@ public struct ThreadConversationView: View {
                 }
                 .padding(.bottom, BrevSpacing.lg)
                 .frame(maxWidth: 840)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // #306 slice 4: the capped column sits centred in a wide reader.
+                .frame(maxWidth: .infinity, alignment: .top)
             }
             .scrollContentBackground(.hidden)
             #if os(macOS)
@@ -777,7 +778,20 @@ public struct ThreadConversationView: View {
     private var conversationMetadataRow: some View {
         HStack(spacing: BrevSpacing.xs) {
             #if os(macOS)
-            participantSummary
+            // #306 slice 4: who is talking, a message-count chip, and the
+            // thread summary one click away instead of inside the ••• menu.
+            if let participants = ThreadConversationHeaderPresentation.participantLine(uniqueParticipants) {
+                Text(verbatim: participants)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .layoutPriority(-1)
+            }
+            messageCountChip
+            if shouldShowAISummaryMenu {
+                inlineSummarizeButton
+            }
             Spacer(minLength: BrevSpacing.sm)
             threadActionsMenu
             #else
@@ -976,6 +990,44 @@ public struct ThreadConversationView: View {
                 bundle: .module
             ))
     }
+
+    #if os(macOS)
+    /// The message count as a small chip; VoiceOver reads the participant total too.
+    private var messageCountChip: some View {
+        participantSummary
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, BrevSpacing.xs)
+            .padding(.vertical, BrevSpacing.xxs)
+            .background(Capsule().fill(theme.bgSecondary.color))
+            .overlay(Capsule().stroke(theme.border.color, lineWidth: 0.5))
+    }
+
+    /// Runs the same summary as the menu's "Summarize Thread"; before AI is
+    /// enabled it opens the consent sheet instead.
+    private var inlineSummarizeButton: some View {
+        let reason = ThreadAISummaryAvailability.disabledReason(in: aiSummaryAvailabilityState)
+        let needsConsent = reason == .notEnabled || reason == .consentRequired
+        return Button {
+            if needsConsent {
+                showAISummaryConsent = true
+            } else if let aiBackend {
+                Task { await summarizeThread(with: aiBackend) }
+            }
+        } label: {
+            Label(String(localized: "Summarize", bundle: .module), systemImage: "wand.and.stars")
+                .labelStyle(.titleAndIcon)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.accent.color)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .buttonStyle(.borderless)
+        .disabled(!needsConsent && (reason != nil || aiSummaryMenuDisabled))
+        .help(aiBackend?.transparencyLabel ?? AIWriterDisclosure.defaultProvider.transparencyLabel)
+        .accessibilityLabel(String(localized: "Summarize Thread", bundle: .module))
+    }
+    #endif
 
     // MARK: - Hidden read messages footer
 

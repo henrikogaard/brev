@@ -22,6 +22,9 @@ All notable changes to Brev are documented here.
   Forward share one; Archive, Delete, Move and Snooze share the next, then
   More. The AI Sidebar button has its own, and search sits at the far right.
   On a narrow reader, Reply All, Forward, Move and Snooze fold into More.
+- macOS reader (#306): the message column is centred in a wide reader. A
+  thread's header names who is in it, shows the message count as a chip,
+  and has a Summarize link next to it instead of only in the ••• menu.
 - macOS compose: the Format menu's Bold, Italic and Clear Formatting now work,
   Cmd-B, Cmd-I and Cmd-U format the message body instead of reaching the main
   menu (where Cmd-U marked a message read), and Insert Link applies the link even

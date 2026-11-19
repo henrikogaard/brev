@@ -1,5 +1,26 @@
 # Worklog
 
+## 2026-11-19 — Agent — #306 reader refresh, slice 4 (part 1)
+
+- Goal: #306 reader slice. Henrik chose two PRs: this one centres the reader
+  column and refreshes the thread header; attachment cards follow next. The
+  pinned reply bar belongs to the inline-reply work, not this slice.
+- Changes: `ThreadConversationHeaderPresentation.participantLine` (names up
+  to three participants, then "and N others"); macOS thread header row shows
+  the names, an "N messages" chip and an inline Summarize button (consent
+  sheet first when AI is off); thread and single-message columns centre.
+- Also: `ReaderToolbarSnapshotTests` now allows small colour shifts
+  (`perceptualPrecision: 0.95`): the real window's titlebar tint changed by
+  about 10/255 between runs on the same host.
+- Tests: new `ThreadConversationHeaderPresentationTests` and
+  `ThreadHeaderSnapshotTests` (3 themes, light and dark, recorded on macOS 27);
+  added to the build.yml macOS<26 skip list and `snapshot-macos`.
+- Rebaselined (Henrik's OK): the four `ConversationWorkspaceSnapshotTests`
+  conversation pictures, which were already stale on main. Their host view
+  now takes the theme's appearance so the ••• menu draws in light themes.
+  Compose and profile pictures in that suite were left as they were. macOS
+  pixel suites do not run on the macos-15 CI runner.
+
 ## 2026-11-19 — Agent — #306 toolbar refresh, slice 3
 
 - Goal: macOS reader toolbar in capsules per #306 slice 3.
