@@ -305,10 +305,33 @@ struct MailRootSettingsToolbarPolicyTests {
         #expect(MailRootDetailToolbarPolicy.usesCondensedLayout(platform: .macOS))
     }
 
-    @Test("secondary response actions stay in More on every platform")
-    func secondaryResponseActionsStayInMore() {
-        #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(platform: .macOS))
-        #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(platform: .iOS))
+    @Test("a wide macOS reader shows the reply and filing capsules in full")
+    func wideMacReaderShowsFullCapsules() {
+        let wide = MailRootDetailToolbarPolicy.extendedActionsMinimumReaderWidth
+        #expect(MailRootDetailToolbarPolicy.showsExtendedResponseActions(platform: .macOS, readerWidth: wide))
+        #expect(MailRootDetailToolbarPolicy.showsFilingActions(platform: .macOS, readerWidth: wide))
+    }
+
+    @Test("a narrow or unmeasured reader keeps secondary actions in More")
+    func narrowReaderKeepsSecondaryActionsInMore() {
+        let narrow = MailRootDetailToolbarPolicy.extendedActionsMinimumReaderWidth - 1
+        for width in [narrow, nil] as [CGFloat?] {
+            #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(platform: .macOS, readerWidth: width))
+            #expect(!MailRootDetailToolbarPolicy.showsFilingActions(platform: .macOS, readerWidth: width))
+        }
+    }
+
+    @Test("iOS keeps secondary actions in More at every width")
+    func iOSKeepsSecondaryActionsInMore() {
+        #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(platform: .iOS, readerWidth: 2000))
+        #expect(!MailRootDetailToolbarPolicy.showsFilingActions(platform: .iOS, readerWidth: 2000))
+    }
+
+    @Test("the full cluster plus a minimum search field fits the wide threshold")
+    func wideThresholdFitsFullClusterAndSearch() {
+        #expect(MailRootDetailToolbarPolicy.extendedActionsMinimumReaderWidth
+            >= MessageListSearchExpansionPolicy.reservedClusterWidth(isCondensed: false)
+            + MessageListSearchExpansionPolicy.minimumFieldWidth)
     }
 
     @Test("the iOS sidebar owns Settings without a duplicate toolbar button")
@@ -369,13 +392,10 @@ struct MailboxFilterControlPolicyTests {
         #expect(!MailRootDetailToolbarPolicy.showsFlagButton(platform: .iOS))
     }
 
-    @Test("organizer actions stay in More on every platform")
+    @Test("task and follow-up actions stay in More on every platform")
     func organizerActionsStayInMore() {
-        #expect(!MailRootDetailToolbarPolicy.showsMessageOrganizerActions(platform: .macOS))
+        #expect(!MailRootDetailToolbarPolicy.showsMessageOrganizerActions(platform: .macOS, readerWidth: 2000))
         #expect(!MailRootDetailToolbarPolicy.showsMessageOrganizerActions(platform: .iOS))
-        #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(
-            platform: .macOS, readerWidth: nil
-        ))
     }
 
     @Test("the reader width settles past the longest gap in a column animation")

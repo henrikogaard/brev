@@ -104,10 +104,10 @@ enum MessageListSearchExpansionPolicy {
 
     /// What the rest of the section measures with the field collapsed. A
     /// condensed cluster (`MailRootDetailToolbarPolicy` folded Reply All,
-    /// Forward, and Flag into the overflow menu) is three buttons lighter,
-    /// and the expanded field may take that width back.
+    /// Forward, Move, and Snooze into the overflow menu) is four buttons
+    /// lighter, and the expanded field may take that width back.
     static func reservedClusterWidth(isCondensed: Bool) -> CGFloat {
-        isCondensed ? 290 : 380
+        isCondensed ? 290 : 430
     }
 
     static let minimumFieldWidth: CGFloat = 140

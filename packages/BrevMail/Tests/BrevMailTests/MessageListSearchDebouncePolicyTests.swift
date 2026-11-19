@@ -140,14 +140,14 @@ struct MessageListSearchDebouncePolicyTests {
         #expect(onNarrowReader == MessageListSearchExpansionPolicy.minimumFieldWidth)
     }
 
-    /// When the cluster condenses, three buttons leave the section, so the
+    /// When the cluster condenses, four buttons leave the section, so the
     /// expanded field may take that width back instead of overflowing.
     @Test("condensed clusters reserve less width beside the expanded field")
     func condensedClustersReserveLessWidth() {
         let full = MessageListSearchExpansionPolicy.reservedClusterWidth(isCondensed: false)
         let condensed = MessageListSearchExpansionPolicy.reservedClusterWidth(isCondensed: true)
 
-        #expect(full == 380)
+        #expect(full == 430)
         #expect(condensed < full)
 
         let fieldOnCondensedNarrowReader = MessageListSearchExpansionPolicy.expandedFieldWidth(

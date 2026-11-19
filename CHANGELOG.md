@@ -18,6 +18,10 @@ All notable changes to Brev are documented here.
   67 unread"), the category tabs are soft pills on macOS too, a thread's
   message count sits right after the sender, and the attachment clip sits
   beside the time.
+- macOS reader toolbar (#306): actions sit in capsules. Reply, Reply All and
+  Forward share one; Archive, Delete, Move and Snooze share the next, then
+  More. The AI Sidebar button has its own, and search sits at the far right.
+  On a narrow reader, Reply All, Forward, Move and Snooze fold into More.
 - macOS compose: the Format menu's Bold, Italic and Clear Formatting now work,
   Cmd-B, Cmd-I and Cmd-U format the message body instead of reaching the main
   menu (where Cmd-U marked a message read), and Insert Link applies the link even

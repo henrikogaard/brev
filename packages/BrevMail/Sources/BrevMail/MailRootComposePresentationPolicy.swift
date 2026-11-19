@@ -297,11 +297,36 @@ enum MailRootDetailToolbarPolicy {
     /// without making a released divider drag feel laggy.
     static let readerWidthSettleDuration: Duration = .milliseconds(180)
 
+    /// Narrowest measured macOS reader that shows the reply and filing
+    /// capsules in full (#306): the full cluster plus a minimum-width search
+    /// field. Below it, the extra actions fold into More so the cluster never
+    /// spills left across the divider into the message list.
+    static let extendedActionsMinimumReaderWidth: CGFloat = 580
+
+    /// Whether Reply All and Forward join Reply in the macOS reply capsule.
+    /// iOS and narrow readers keep them in More.
     static func showsExtendedResponseActions(
-        platform _: MailRootToolbarPlatform,
-        readerWidth _: CGFloat? = nil
+        platform: MailRootToolbarPlatform,
+        readerWidth: CGFloat? = nil
     ) -> Bool {
-        false
+        showsFullMacReaderCluster(platform: platform, readerWidth: readerWidth)
+    }
+
+    /// Whether Move and Snooze join Archive and Delete in the macOS filing
+    /// capsule. iOS and narrow readers keep them in More.
+    static func showsFilingActions(
+        platform: MailRootToolbarPlatform,
+        readerWidth: CGFloat? = nil
+    ) -> Bool {
+        showsFullMacReaderCluster(platform: platform, readerWidth: readerWidth)
+    }
+
+    private static func showsFullMacReaderCluster(
+        platform: MailRootToolbarPlatform,
+        readerWidth: CGFloat?
+    ) -> Bool {
+        guard platform == .macOS, let readerWidth else { return false }
+        return readerWidth >= extendedActionsMinimumReaderWidth
     }
 
     /// Flag stays secondary on both platforms so the primary cluster keeps
@@ -313,7 +338,7 @@ enum MailRootDetailToolbarPolicy {
         false
     }
 
-    /// Workflow actions stay secondary on both platforms. They remain
+    /// Create Task and Follow Up stay secondary on both platforms. They remain
     /// reachable through More and their existing commands/context menus.
     static func showsMessageOrganizerActions(
         platform _: MailRootToolbarPlatform,
