@@ -14,6 +14,10 @@ All notable changes to Brev are documented here.
   and the other mailboxes get theme-coloured icons, Accounts has a "+" to add an
   account, and a footer shows who is signed in, whether mail is up to date or
   offline, and a Settings button.
+- Message list (#306): the list header shows the unread count ("Personal ·
+  67 unread"), the category tabs are soft pills on macOS too, a thread's
+  message count sits right after the sender, and the attachment clip sits
+  beside the time.
 - macOS compose: the Format menu's Bold, Italic and Clear Formatting now work,
   Cmd-B, Cmd-I and Cmd-U format the message body instead of reaching the main
   menu (where Cmd-U marked a message read), and Insert Link applies the link even

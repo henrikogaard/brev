@@ -24,7 +24,7 @@ import Testing
 @Suite("Message list row snapshots")
 @MainActor
 struct MessageListRowSnapshotTests {
-    @Test("category tabs use plain labels and an underlined selection", arguments: [false, true])
+    @Test("category tabs use plain labels and a pill selection", arguments: [false, true])
     func categoryTabs(dark: Bool) {
         let theme = dark ? BrevTheme.brevMonoDark : BrevTheme.brevMonoLight
         let view = InboxCategoryBar(activeCategory: .constant(.primary))

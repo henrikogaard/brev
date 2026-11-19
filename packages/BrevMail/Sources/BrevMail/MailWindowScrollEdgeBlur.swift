@@ -128,6 +128,18 @@ struct MailListTitle: View {
     @Environment(\.brevTheme) private var theme
     let title: String
     let context: String?
+    /// The folder's unread count; nil or zero shows none (#306).
+    var unreadCount: Int?
+
+    /// The second line, e.g. "Personal · 67 unread".
+    static func subtitle(context: String?, unreadCount: Int?) -> String? {
+        var parts: [String] = []
+        if let context, !context.isEmpty { parts.append(context) }
+        if let unreadCount, unreadCount > 0 {
+            parts.append(String(localized: "\(unreadCount) unread", bundle: .module))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -135,7 +147,7 @@ struct MailListTitle: View {
                 .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
                 .lineLimit(1)
-            if let context {
+            if let context = Self.subtitle(context: context, unreadCount: unreadCount) {
                 Text(verbatim: context)
                     .brevFont(.caption)
                     .foregroundStyle(theme.textSecondary.color)
