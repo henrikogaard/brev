@@ -31,7 +31,10 @@ struct ReaderToolbarSnapshotTests {
     ])
     func toolbar(_ name: String, width: CGFloat) async throws {
         let image = try await Self.renderToolbar(windowWidth: width)
-        assertSnapshot(of: image, as: .image(precision: 0.98), named: name,
+        // A real window's titlebar picks up a faint tint from the desktop
+        // behind it, so allow small colour shifts; moved or missing buttons
+        // still fail.
+        assertSnapshot(of: image, as: .image(precision: 0.98, perceptualPrecision: 0.95), named: name,
                        record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 
