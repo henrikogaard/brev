@@ -1,5 +1,22 @@
 # Worklog
 
+## 2026-11-19 — Agent — #306 toolbar refresh, slice 3
+
+- Goal: macOS reader toolbar in capsules per #306 slice 3.
+- Changes: the SwiftUI reader toolbar splits into a reply capsule (Reply,
+  Reply All, Forward) and a filing capsule (Archive, Delete, Move, Snooze,
+  More), then the AI Sidebar toggle, then search at the far right. Henrik chose
+  this over the earlier "keep secondary actions in More" policy (#93, #199).
+  `MailRootDetailToolbarPolicy` shows the full set only when the reader is at
+  least 580pt wide; narrower readers fold the extra actions into More so the
+  cluster never spills over the message list. iOS is unchanged.
+- Left out: the opt-in native AppKit toolbar (`BREV_ENABLE_NATIVE_TOOLBAR=1`)
+  keeps its old layout. Toolbar chrome is system glass, not theme-coloured,
+  so there are no per-theme snapshots. `ReaderToolbarSnapshotTests` instead
+  renders the real root view (mock backend, message open) in a window and
+  snapshots its titlebar at wide and narrow widths.
+- Verification: see the PR.
+
 ## 2026-11-18 — Agent — #306 list refresh, slice 2
 
 - Goal: calmer message list per #306 slice 2.

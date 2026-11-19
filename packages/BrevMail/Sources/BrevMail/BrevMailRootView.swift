@@ -2561,7 +2561,7 @@ public struct BrevMailRootView: View {
     }
 
     /// Whether the reader is too narrow for the full action cluster, in which
-    /// case Reply All, Forward, and Flag fold into the overflow menu instead
+    /// case Reply All, Forward, Move, and Snooze fold into the overflow menu instead
     /// of spilling left across the divider into the message list.
     private var usesCondensedDetailActions: Bool {
         !MailRootDetailToolbarPolicy.showsExtendedResponseActions(
@@ -2760,7 +2760,15 @@ public struct BrevMailRootView: View {
                         .accessibilityLabel(String(localized: "Forward", bundle: .module))
                         .help(String(localized: "Forward", bundle: .module))
                     }
-
+                }
+                // Reply and filing actions read as two capsules (#306); macOS 26
+                // otherwise draws adjacent groups in one shared container.
+                #if os(macOS) && compiler(>=6.2)
+                if #available(macOS 26.0, *) {
+                    ToolbarSpacer(.fixed, placement: .primaryAction)
+                }
+                #endif
+                ToolbarItemGroup(placement: .primaryAction) {
                     Button {
                         Task { await archive(header: header) }
                     } label: {
@@ -2778,6 +2786,33 @@ public struct BrevMailRootView: View {
                     .disabled(!canStartCommandMutation())
                     .accessibilityLabel(String(localized: "Delete", bundle: .module))
                     .help(String(localized: "Delete", bundle: .module))
+
+                    #if os(macOS)
+                    if MailRootDetailToolbarPolicy.showsFilingActions(
+                        platform: toolbarPlatform,
+                        readerWidth: readerPaneWidth
+                    ) {
+                        if !folders.isEmpty {
+                            Button {
+                                presentMoveToFolder(for: header)
+                            } label: {
+                                Image(systemName: "folder")
+                            }
+                            .disabled(isMessageWorkBlocked)
+                            .accessibilityLabel(String(localized: "Move", bundle: .module))
+                            .help(String(localized: "Move to folder", bundle: .module))
+                        }
+
+                        Button {
+                            readerToggleSnooze(header: header, sourceID: navigation.selectedSourceID)
+                        } label: {
+                            Image(systemName: snoozeMenuSymbolName(for: header))
+                        }
+                        .disabled(isMessageWorkBlocked || navigation.presentedSheet != nil)
+                        .accessibilityLabel(snoozeMenuTitle(for: header))
+                        .help(snoozeMenuTitle(for: header))
+                    }
+                    #endif
 
                     if MailRootDetailToolbarPolicy.showsFlagButton(
                         platform: toolbarPlatform,
@@ -2931,20 +2966,25 @@ public struct BrevMailRootView: View {
                                 }
                                 .disabled(navigation.presentedSheet != nil)
 
-                                Button {
-                                    readerToggleSnooze(header: header, sourceID: navigation.selectedSourceID)
-                                } label: {
-                                    Label(snoozeMenuTitle(for: header), systemImage: snoozeMenuSymbolName(for: header))
-                                }
-                                .disabled(isMessageWorkBlocked || navigation.presentedSheet != nil)
-
-                                if !folders.isEmpty {
+                                if !MailRootDetailToolbarPolicy.showsFilingActions(
+                                    platform: toolbarPlatform,
+                                    readerWidth: readerPaneWidth
+                                ) {
                                     Button {
-                                        presentMoveToFolder(for: header)
+                                        readerToggleSnooze(header: header, sourceID: navigation.selectedSourceID)
                                     } label: {
-                                        Label(String(localized: "Move", bundle: .module), systemImage: "folder")
+                                        Label(snoozeMenuTitle(for: header), systemImage: snoozeMenuSymbolName(for: header))
                                     }
-                                    .disabled(isMessageWorkBlocked)
+                                    .disabled(isMessageWorkBlocked || navigation.presentedSheet != nil)
+
+                                    if !folders.isEmpty {
+                                        Button {
+                                            presentMoveToFolder(for: header)
+                                        } label: {
+                                            Label(String(localized: "Move", bundle: .module), systemImage: "folder")
+                                        }
+                                        .disabled(isMessageWorkBlocked)
+                                    }
                                 }
                             }
 
@@ -3098,18 +3138,20 @@ public struct BrevMailRootView: View {
         }
 
         #if os(macOS)
-        // Search stays in the reader action cluster, immediately before the
-        // inspector toggle.
+        // The AI Sidebar toggle gets its own capsule, and search takes the
+        // far right (#306). The column still takes reader width instead of
+        // growing the window.
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }
+        #endif
+        ToolbarItem(placement: .primaryAction) {
+            mailContextToolbarToggle
+        }
         #if compiler(>=6.2)
         if #available(macOS 26.0, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }
         #endif
         ToolbarItem(placement: .primaryAction) {
             searchToolbarControl
-        }
-        // Trailing-edge toggle for the right column, like Apple's inspector
-        // buttons; the column takes reader width instead of growing the window.
-        ToolbarItem(placement: .primaryAction) {
-            mailContextToolbarToggle
         }
         #endif
     }
