@@ -1,5 +1,34 @@
 # Worklog
 
+## 2026-11-19 — Agent — #302 inline reply, slice 1
+
+- Goal: the reply grows into the full composer in place, under the reader.
+  Henrik chose 3 slices (inline composer, starters, bottom bar) and "reply
+  stays docked" when another message is selected.
+- Changes: `MailNavigationState.inlineReply` (`InlineReplyContext`) holds its
+  own reply context, separate from the sheet's fields, so selection changes
+  and closing other sheets leave it alone; it blocks other composers like the
+  sheet. `BrevMailRootView.composeEditor(...)` is now shared by the compose
+  sheet and the dock (same sender resolution, recovery and completion); the
+  recovery lookup takes the reply context instead of reading the sheet's
+  fields. `ComposeView` gains `ComposeHostStyle.inline`: no window title,
+  toolbar bridge, translucency or modal trait, and its own action row (Close,
+  title and subject, Attach, Format, More, Send with ⌘Return). macOS only; iOS
+  keeps the sheet. The quick bar hides while the dock is open.
+- Left out: the R key (single-key shortcuts arrive with #300).
+- PR review (Codex, Devin): the dock no longer holds the sheet's compose
+  completion request, which blocked refreshes, mail actions and body loads
+  and tripped stale-work recovery. `handleDockedReplyCompletion` applies its
+  send/save results instead. The reader ignores the dock when deciding
+  whether to load. Sender sections for the dock come from all sources, so a
+  profile switch cannot move the reply to another account.
+  Follow-up review: reader Reply/Forward are disabled while a reply is docked,
+  and dock results only apply in the mailbox it was opened in
+  (`MailRootDockedReplyCompletionPolicy`, with tests).
+- Tests: `MailNavigationStateInlineReplyTests` (6); `InlineReplySnapshotTests`
+  (3 themes light and dark, recorded on macOS 27, added to the build.yml
+  lists). The quote attribution follows the host locale.
+
 ## 2026-11-19 — Agent — #306 account-colour dot, slice 5
 
 - Goal: the account-colour dot on list avatars, the one #306 list item left

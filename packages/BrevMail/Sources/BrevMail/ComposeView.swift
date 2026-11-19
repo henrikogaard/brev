@@ -194,6 +194,8 @@ public struct ComposeView: View {
     /// Drive menu entry (#14).
     private let driveFeature: GoogleDriveFeature?
     private let onClose: (() -> Void)?
+    /// A window or sheet of its own, or docked under the reader (#302).
+    private let hostStyle: ComposeHostStyle
     private let onCompletion: (ComposeCompletion) async -> Void
     var inspection: ((ComposeView) -> Void)?
 
@@ -451,10 +453,12 @@ public struct ComposeView: View {
         driveFeature: GoogleDriveFeature? = nil,
         /// Where new-message recovery records live; tests pass an isolated suite.
         recoveryDefaults: UserDefaults = .standard,
+        hostStyle: ComposeHostStyle = .window,
         onClose: (() -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
         self.recoveryDefaults = recoveryDefaults
+        self.hostStyle = hostStyle
         let fallbackSenderOption = Self.fallbackSenderOption(
             backend: backend,
             sourceID: sourceID,
@@ -618,28 +622,32 @@ public struct ComposeView: View {
             .frame(idealWidth: composeLayoutPlatform == .compactIOS
                 || composeLayoutPlatform == .compactIOSAccessibility
                 ? ComposeLayout.compactSheetIdealWidth : nil)
-            .accessibilityAddTraits(.isModal)
-            .brevWindowTranslucency(windowRole: .utility)
+            .accessibilityAddTraits(hostStyle == .inline ? [] : .isModal)
+            // The docked reply lives in the main window: it must not restyle
+            // that window, retitle it or take over its toolbar.
+            .modifier(ComposeWindowTranslucency(isEnabled: hostStyle == .window))
         #if os(macOS)
             .background {
-                ZStack {
-                    ComposeWindowTitleBridge(title: windowTitle)
-                    ComposeNativeToolbarContentBridge(items: [
-                        MacComposeToolbarItemIdentifier.send: AnyView(sendButton),
-                        MacComposeToolbarItemIdentifier.format: AnyView(formatMenu),
-                        MacComposeToolbarItemIdentifier.attachment: AnyView(
-                            toolbarButton(
-                                label: ComposeToolbarAction.attach.accessibilityLabel,
-                                systemImage: "paperclip",
-                                isDisabled: isBusy
-                            ) {
-                                isPickingFile = true
-                            }
-                        ),
-                        MacComposeToolbarItemIdentifier.more: AnyView(composeSecondaryActionsMenu)
-                    ], sendAction: isSendButtonDisabled ? nil : performSendButtonAction)
+                if hostStyle == .window {
+                    ZStack {
+                        ComposeWindowTitleBridge(title: windowTitle)
+                        ComposeNativeToolbarContentBridge(items: [
+                            MacComposeToolbarItemIdentifier.send: AnyView(sendButton),
+                            MacComposeToolbarItemIdentifier.format: AnyView(formatMenu),
+                            MacComposeToolbarItemIdentifier.attachment: AnyView(
+                                toolbarButton(
+                                    label: ComposeToolbarAction.attach.accessibilityLabel,
+                                    systemImage: "paperclip",
+                                    isDisabled: isBusy
+                                ) {
+                                    isPickingFile = true
+                                }
+                            ),
+                            MacComposeToolbarItemIdentifier.more: AnyView(composeSecondaryActionsMenu)
+                        ], sendAction: isSendButtonDisabled ? nil : performSendButtonAction)
+                    }
+                    .frame(width: 0, height: 0)
                 }
-                .frame(width: 0, height: 0)
             }
         #endif
             .sheet(isPresented: $isPresentingDriveAttach) {
@@ -766,7 +774,9 @@ public struct ComposeView: View {
     }
 
     private var frameMetrics: ComposeFrameMetrics {
-        ComposeLayoutPolicy.frameMetrics(for: composeLayoutPlatform)
+        // Docked under the reader (#302), the dock decides the size.
+        if hostStyle == .inline { return ComposeFrameMetrics(minWidth: nil, minHeight: nil) }
+        return ComposeLayoutPolicy.frameMetrics(for: composeLayoutPlatform)
     }
 
     private var toolbarMetrics: ComposeToolbarMetrics {
@@ -821,6 +831,9 @@ public struct ComposeView: View {
                 }
             } else {
                 #if os(macOS)
+                if hostStyle == .inline {
+                    inlineActionBar
+                }
                 fieldPanel
                 #else
                 header
@@ -939,6 +952,48 @@ public struct ComposeView: View {
         .disabled(isBusy)
     }
 
+    #if os(macOS)
+    /// The docked reply's own action row, standing in for the window toolbar
+    /// the sheet uses: Close, the title and the subject it answers, then
+    /// Attach, Format, More and Send.
+    private var inlineActionBar: some View {
+        HStack(spacing: BrevSpacing.sm) {
+            cancelButton
+            Text(composeTitle)
+                .brevFont(.headline)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+            // The reply stays docked while other mail is read, so it names
+            // the conversation it answers.
+            if let subject = replyingTo?.subject, !subject.isEmpty {
+                Text(verbatim: subject)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: BrevSpacing.sm)
+            toolbarButton(
+                label: ComposeToolbarAction.attach.accessibilityLabel,
+                systemImage: "paperclip",
+                isDisabled: isBusy
+            ) {
+                isPickingFile = true
+            }
+            formatMenu
+            composeSecondaryActionsMenu
+            sendButton
+                .keyboardShortcut(.return, modifiers: .command)
+        }
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.xs)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.border.color).frame(height: 0.5)
+        }
+    }
+    #endif
+
     @ViewBuilder
     private var toolbar: some View {
         switch composeLayoutPlatform {
@@ -1021,7 +1076,9 @@ public struct ComposeView: View {
             isDisabled: isBusy,
             action: close
         )
-        .keyboardShortcut(.cancelAction)
+        // Docked in the main window, Esc belongs to the list and search; the
+        // reply closes only from its own button (#302).
+        .keyboardShortcut(hostStyle == .inline ? nil : KeyboardShortcut.cancelAction)
         #endif
     }
 
@@ -4572,5 +4629,27 @@ struct PendingAttachment: Identifiable, Sendable {
 
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+    }
+}
+
+/// Where a composer is shown (#302).
+enum ComposeHostStyle: Equatable, Sendable {
+    /// Its own sheet or window, with the actions in the window toolbar.
+    case window
+    /// Docked under the reader in the main window, with its own action row.
+    case inline
+}
+
+/// Applies the utility-window translucency only when the composer owns its
+/// window, so a docked reply leaves the main window's surface alone.
+private struct ComposeWindowTranslucency: ViewModifier {
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.brevWindowTranslucency(windowRole: .utility)
+        } else {
+            content
+        }
     }
 }
