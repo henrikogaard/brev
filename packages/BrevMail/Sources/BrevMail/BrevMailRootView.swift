@@ -2561,7 +2561,7 @@ public struct BrevMailRootView: View {
     }
 
     /// Whether the reader is too narrow for the full action cluster, in which
-    /// case Reply All, Forward, and Flag fold into the overflow menu instead
+    /// case Reply All, Forward, Move, and Snooze fold into the overflow menu instead
     /// of spilling left across the divider into the message list.
     private var usesCondensedDetailActions: Bool {
         !MailRootDetailToolbarPolicy.showsExtendedResponseActions(

@@ -277,8 +277,8 @@ enum MailRootMailboxActionToolbarPolicy {
 
 enum MailRootDetailToolbarPolicy {
     static func usesCondensedLayout(platform _: MailRootToolbarPlatform) -> Bool {
-        // The native macOS toolbar already favors a compact Reply / Archive /
-        // Delete grouping; keep the SwiftUI fallback equally calm.
+        // Secondary actions live in More; on macOS a wide reader brings some
+        // back as capsules (see `showsExtendedResponseActions`).
         true
     }
 
