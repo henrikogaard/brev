@@ -792,7 +792,8 @@ public struct MessageDetailView: View {
                 .frame(maxWidth: layout.maximumContentWidth, alignment: .leading)
                 .padding(.horizontal, layout.outerHorizontalPadding)
                 .padding(.vertical, layout.outerVerticalPadding)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                // #306 slice 4: centre the capped column, like the card surface.
+                .frame(maxWidth: .infinity, alignment: .top)
         }
     }
 
