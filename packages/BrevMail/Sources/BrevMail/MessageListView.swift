@@ -4065,6 +4065,8 @@ struct MessageListRow: View {
     let density: MailboxListDensity
     let showsAbsoluteArrivalTime: Bool
     let sourceContext: String?
+    /// Colour of the account dot on the avatar (#306 slice 5); nil draws none.
+    let accountDotColor: Color?
     /// Attachment name when this row's search hit came from attachment
     /// content only (ADR-0078 §5); nil renders no badge.
     let matchedAttachmentName: String?
@@ -4191,6 +4193,7 @@ struct MessageListRow: View {
         density: MailboxListDensity,
         showsAbsoluteArrivalTime: Bool,
         sourceContext: String?,
+        accountDotColor: Color? = nil,
         matchedAttachmentName: String? = nil,
         isBlockedSender: Bool,
         hasFollowUp: Bool,
@@ -4215,6 +4218,7 @@ struct MessageListRow: View {
         self.density = density
         self.showsAbsoluteArrivalTime = showsAbsoluteArrivalTime
         self.sourceContext = sourceContext
+        self.accountDotColor = accountDotColor
         self.matchedAttachmentName = matchedAttachmentName
         self.isBlockedSender = isBlockedSender
         self.hasFollowUp = hasFollowUp
@@ -4266,7 +4270,9 @@ struct MessageListRow: View {
                     displayName: header.from.name,
                     size: density.avatarSize
                 )
+                .overlay(alignment: .bottomTrailing) { accountDot }
                 // The initials would be read before the sender's name (audit L10).
+                // The account name is already in the row's text.
                 .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
@@ -4392,6 +4398,11 @@ struct MessageListRow: View {
 
     private var compactAccessibilityStatusValue: String {
         var values: [String] = []
+        // Compact rows hide the account name, so a row with an account dot
+        // says which account it is here instead.
+        if accountDotColor != nil, let sourceContext, !sourceContext.isEmpty {
+            values.append(sourceContext)
+        }
         if !header.isRead {
             values.append(String(localized: "Unread", bundle: .module))
         }
@@ -4416,6 +4427,25 @@ struct MessageListRow: View {
             values.append(String(localized: "Has attachments", bundle: .module))
         }
         return values.joined(separator: ", ")
+    }
+
+    /// Which account the message came from, as a dot on the avatar's corner.
+    /// A ring in the row's own background keeps it apart from the avatar.
+    @ViewBuilder
+    private var accountDot: some View {
+        if let accountDotColor {
+            let size = max(7, density.avatarSize * 0.3)
+            Circle()
+                .fill(accountDotColor)
+                .frame(width: size, height: size)
+                .overlay(Circle().stroke(accountDotRingColor, lineWidth: 2))
+                .offset(x: 1, y: 1)
+        }
+    }
+
+    private var accountDotRingColor: Color {
+        if isSelected { return selectionFill }
+        return isHovered ? theme.bgSecondary.color : theme.bgPrimary.color
     }
 
     @ViewBuilder

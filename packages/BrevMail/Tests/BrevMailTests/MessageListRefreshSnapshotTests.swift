@@ -65,6 +65,41 @@ struct MessageListRefreshSnapshotTests {
                        record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 
+    @Test("rows from several accounts carry an account dot on the avatar", arguments: [
+        "brevMonoLight", "brevMonoDark", "solarizedLight", "solarizedDark", "gruvboxLight", "gruvboxDark",
+    ])
+    func accountDots(_ themeName: String) throws {
+        let theme = try #require(Self.theme(named: themeName))
+        let accounts = ["work", "personal"]
+        func dot(_ account: String) -> Color? {
+            MessageListAccountDot.paletteIndex(
+                accountID: account, orderedAccountIDs: accounts, paletteCount: theme.avatarPalette.count
+            ).map { theme.avatarPalette[$0].color }
+        }
+        let rows = [
+            Self.row(Self.header("1", "Maya Okafor", "Q4 roadmap: final review", isRead: false, attachments: true),
+                     threadCount: 3, isSelected: false, sourceContext: "Work", accountDotColor: dot("work")),
+            Self.row(Self.header("2", "Daniel Reyes", "Onboarding copy", isRead: false, attachments: false),
+                     threadCount: 1, isSelected: true, sourceContext: "Personal", accountDotColor: dot("personal")),
+            Self.row(Self.header("3", "Priya Natarajan", "Dinner on Saturday?", isRead: true, attachments: true),
+                     threadCount: 2, isSelected: false, sourceContext: "Work", accountDotColor: dot("work")),
+        ]
+        let view = VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in row }
+            Spacer(minLength: 0)
+        }
+        .frame(width: 420, height: 240)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .environment(\.locale, Locale(identifier: "en_US"))
+        .environment(\.timeZone, TimeZone(identifier: "UTC")!)
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: theme.mode.colorScheme == .dark ? .darkAqua : .aqua)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 420, height: 240)), named: "dots-\(themeName)",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
     private static func theme(named name: String) -> BrevTheme? {
         switch name {
         case "brevMonoLight": .brevMonoLight
@@ -88,12 +123,14 @@ struct MessageListRefreshSnapshotTests {
         )
     }
 
-    private static func row(_ header: MessageHeader, threadCount: Int, isSelected: Bool) -> MessageListRow {
+    private static func row(_ header: MessageHeader, threadCount: Int, isSelected: Bool,
+                            sourceContext: String? = nil, accountDotColor: Color? = nil) -> MessageListRow {
         MessageListRow(
             header: header, threadCount: threadCount, isSelected: isSelected, isChecked: false,
             isInSelectionMode: false, isPinned: false, isThreadExpanded: false, showAvatar: true,
             previewLineCount: 1, fontFamily: .system, textSize: .medium, density: .comfortable,
-            showsAbsoluteArrivalTime: false, sourceContext: nil, isBlockedSender: false, hasFollowUp: false,
+            showsAbsoluteArrivalTime: false, sourceContext: sourceContext,
+            accountDotColor: accountDotColor, isBlockedSender: false, hasFollowUp: false,
             onActivate: {}, onToggleCheck: {}, onToggleThread: {}
         )
     }
