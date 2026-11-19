@@ -12,7 +12,9 @@
   cluster never spills over the message list. iOS is unchanged.
 - Left out: the opt-in native AppKit toolbar (`BREV_ENABLE_NATIVE_TOOLBAR=1`)
   keeps its old layout. Toolbar chrome is system glass, not theme-coloured,
-  so policy tests replace theme snapshots for this slice.
+  so there are no per-theme snapshots. `ReaderToolbarSnapshotTests` instead
+  renders the real root view (mock backend, message open) in a window and
+  snapshots its titlebar at wide and narrow widths.
 - Verification: see the PR.
 
 ## 2026-11-18 — Agent — #306 list refresh, slice 2
