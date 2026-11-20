@@ -30,6 +30,10 @@ All notable changes to Brev are documented here.
   "Describe your reply" field sit under the fields. They run only when clicked
   and show the usual AI preview before anything lands in the Draft. They are
   hidden when AI Writer is off.
+- Docked reply on macOS (#302): Send, Later (schedule send) and Write (AI
+  Writer) now sit in a bar at the bottom of the reply, with attach and
+  formatting on the right. Later and Write appear only when the account
+  supports them. Send keeps ⌘↩ and Undo Send.
 - macOS reader toolbar (#306): actions sit in capsules. Reply, Reply All and
   Forward share one; Archive, Delete, Move and Snooze share the next, then
   More. The AI Sidebar button has its own, and search sits at the far right.
