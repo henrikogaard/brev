@@ -844,6 +844,11 @@ public struct ComposeView: View {
                 header
                 #endif
                 composeEditorContent
+                #if os(macOS)
+                if hostStyle == .inline {
+                    inlineBottomBar
+                }
+                #endif
             }
             #if os(iOS)
             mobileUtilityToolbar
@@ -958,9 +963,9 @@ public struct ComposeView: View {
     }
 
     #if os(macOS)
-    /// The docked reply's own action row, standing in for the window toolbar
+    /// The docked reply's own header row, standing in for the window toolbar
     /// the sheet uses: Close, the title and the subject it answers, then
-    /// Attach, Format, More and Send.
+    /// More. Send and the other actions sit in `inlineBottomBar`.
     private var inlineActionBar: some View {
         HStack(spacing: BrevSpacing.sm) {
             cancelButton
@@ -979,23 +984,95 @@ public struct ComposeView: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: BrevSpacing.sm)
-            toolbarButton(
-                label: ComposeToolbarAction.attach.accessibilityLabel,
-                systemImage: "paperclip",
-                isDisabled: isBusy
-            ) {
-                isPickingFile = true
-            }
-            formatMenu
             composeSecondaryActionsMenu
-            sendButton
-                .keyboardShortcut(.return, modifiers: .command)
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.xs)
         .overlay(alignment: .bottom) {
             Rectangle().fill(theme.border.color).frame(height: 0.5)
         }
+    }
+
+    /// Send, Later and Write, then attach and format (#302).
+    private var inlineBottomBar: some View {
+        let items = InlineReplyBottomBar.items(
+            canScheduleSend: selectedComposeBackend.extensionService(ScheduledSendManaging.self) != nil,
+            offersAIWriter: aiAvailability.providerUnavailableReason == nil
+        )
+        return HStack(spacing: BrevSpacing.sm) {
+            ForEach(items, id: \.self) { item in
+                switch item {
+                case .send:
+                    inlineSendButton
+                case .later:
+                    Button {
+                        isScheduleSheetPresented = true
+                    } label: {
+                        Label(String(localized: "Later", bundle: .module), systemImage: "clock")
+                            .brevFont(.footnote)
+                            .brevChip(selected: scheduledSendDate != nil)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isInteractionBlocked)
+                    .help(
+                        scheduledSendDate == nil
+                            ? ComposeToolbarAction.scheduleSend.accessibilityLabel
+                            : String(localized: "Edit scheduled send", bundle: .module)
+                    )
+                case .write:
+                    Menu {
+                        aiWriterMenuContent
+                    } label: {
+                        Label(String(localized: "Write", bundle: .module), systemImage: "sparkles")
+                            .brevFont(.footnote)
+                            .brevChip(selected: false)
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .disabled(aiWriterMenuDisabled)
+                    .help(ComposeToolbarAction.aiWriter.accessibilityLabel)
+                case .attach:
+                    Spacer(minLength: BrevSpacing.sm)
+                    toolbarButton(
+                        label: ComposeToolbarAction.attach.accessibilityLabel,
+                        systemImage: "paperclip",
+                        isDisabled: isBusy
+                    ) {
+                        isPickingFile = true
+                    }
+                case .format:
+                    formatMenu
+                }
+            }
+        }
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.xs)
+        .overlay(alignment: .top) {
+            Rectangle().fill(theme.border.color).frame(height: 0.5)
+        }
+    }
+
+    /// A labelled Send for the docked reply; the same action, shortcut and
+    /// Undo Send as the window's round Send button.
+    private var inlineSendButton: some View {
+        let isDisabled = isSendButtonDisabled
+        let title = pendingUndoSendTask != nil
+            ? String(localized: "Cancel Send", bundle: .module)
+            : sendButtonLabel
+        return Button(action: performSendButtonAction) {
+            Label(title, systemImage: "paperplane.fill")
+                .brevFont(.footnote)
+                .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
+                .padding(.horizontal, BrevSpacing.md)
+                .padding(.vertical, BrevSpacing.xs)
+                .background(Capsule().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .keyboardShortcut(.return, modifiers: .command)
+        .help(title)
     }
 
     private var showsInlineReplyStarters: Bool {

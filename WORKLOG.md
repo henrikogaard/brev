@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-20 — Agent — #302 inline reply, slice 3 (bottom bar)
+
+- Goal: the docked reply's bottom bar: Send, Later, Write, attach and formatting.
+- Changes: new `InlineReplyBottomBar.items(canScheduleSend:offersAIWriter:)`. `ComposeView`'s inline header keeps Close, the title, the subject and More; a new `inlineBottomBar` holds a labelled Send (same action, ⌘↩, disabled state and Undo Send), Later (opens the schedule sheet, shown only with `ScheduledSendManaging`), Write (the AI Writer menu, shown only when the account has AI Writer), attach and Format. Catalog entries with nb translations.
+- Red/green: `InlineReplyBottomBarTests` failed to compile before; 3 tests pass after. The 12 `InlineReplySnapshotTests` images were re-recorded on purpose (the dock layout changed); window composer snapshots are unchanged.
+- Verification: 467 compose, AI and inline-reply tests; `scripts/lint.sh`; `scripts/format.sh` (no changes).
+- Skipped: devbox app builds (SSH was locked earlier); CI builds macOS and iOS. No in-app run yet.
+- Handoff: #302's done-when still needs the in-app check in the mock profile: send, Draft save, crash recovery and a starter with a mock AI backend.
+
 ## 2026-11-20 — Agent — #302 inline reply, slice 2 (quick reply starters)
 
 - Goal: quick reply starters and a "Describe your reply" field in the docked reply, AI Writer only, hidden when AI is off.
