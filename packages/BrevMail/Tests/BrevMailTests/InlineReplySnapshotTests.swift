@@ -42,7 +42,42 @@ struct InlineReplySnapshotTests {
         try assertDockedReply(themeName, testName: "dockedReplyWithStarters(_:)", aiWriterOn: true)
     }
 
-    private func assertDockedReply(_ themeName: String, testName: String, aiWriterOn: Bool) throws {
+    /// An open AI preview in the fixed-height dock: the fields and starters
+    /// step aside so the draft text stays readable (#302).
+    @Test("docked reply with an AI preview", arguments: [
+        "brevMonoLight", "brevMonoDark", "solarizedLight", "solarizedDark", "gruvboxLight", "gruvboxDark",
+    ])
+    func dockedReplyWithAIPreview(_ themeName: String) throws {
+        let request = ComposeAIShortcutRequest(
+            action: .improveWriting,
+            bodyText: "Sounds good, see you Tuesday.",
+            target: .wholeDraft
+        )
+        let preview = ComposeAIPreviewState(
+            id: 1,
+            action: .replyStarter(.declinePolitely),
+            request: request,
+            providerLabel: "Sent to: Snapshot AI",
+            phase: .loading
+        ).succeeded(with: """
+        Hi Maya,
+
+        Thanks for including me. I can't make the final review this time, \
+        but I'm happy to read the notes afterwards.
+
+        Best regards
+        """)
+        try assertDockedReply(
+            themeName, testName: "dockedReplyWithAIPreview(_:)", aiWriterOn: true, aiPreview: preview
+        )
+    }
+
+    private func assertDockedReply(
+        _ themeName: String,
+        testName: String,
+        aiWriterOn: Bool,
+        aiPreview: ComposeAIPreviewState? = nil
+    ) throws {
         let theme = try #require(Self.theme(named: themeName))
         let backend = MockBackend()
         let original = MessageHeader(
@@ -65,7 +100,8 @@ struct InlineReplySnapshotTests {
             aiBackend: aiWriterOn ? StarterSnapshotAIBackend() : nil,
             backendSupportsAIWriter: aiWriterOn,
             recoveryDefaults: defaults,
-            hostStyle: .inline
+            hostStyle: .inline,
+            initialAIPreview: aiPreview
         )
         .frame(width: 760, height: MailRootInlineReplyLayout.height)
         .background(theme.bgPrimary.color)

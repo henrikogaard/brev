@@ -456,11 +456,14 @@ public struct ComposeView: View {
         /// Where new-message recovery records live; tests pass an isolated suite.
         recoveryDefaults: UserDefaults = .standard,
         hostStyle: ComposeHostStyle = .window,
+        /// An AI Writer preview to show at once; snapshot tests use it.
+        initialAIPreview: ComposeAIPreviewState? = nil,
         onClose: (() -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
         self.recoveryDefaults = recoveryDefaults
         self.hostStyle = hostStyle
+        _aiPreview = State(initialValue: initialAIPreview)
         let fallbackSenderOption = Self.fallbackSenderOption(
             backend: backend,
             sourceID: sourceID,
