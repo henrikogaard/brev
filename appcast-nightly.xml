@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.8-nightly.20261118</title><pubDate>Thu, 19 Nov 2026 00:06:46 GMT</pubDate><sparkle:version>2026111823</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261118</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at c4fd210a03adb292792ceeccc1d866385e003780.
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.8-nightly.20261119</title><pubDate>Fri, 20 Nov 2026 00:02:56 GMT</pubDate><sparkle:version>2026111923</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261119</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at 17349f3567bdd28a5925e96b605164611d64c54c.
+
+- feat(reader): dock the full reply composer under the reader on macOS (#302) (#316) (17349f3)
+- feat(list): account-colour dot on avatars in multi-account lists (#306) (#315) (5a884d2)
+- feat(reader): list attachments in expanded thread messages (#306) (#314) (e328a5b)
+- feat(macos): reader attachments as cards with kind and size (#306) (#313) (29356e4)
+- feat(macos): centred reader column and thread header with names, count chip and Summarize (#306) (#312) (d37b2c8)
+- feat(macos): reader toolbar in reply and filing capsules, search last (#306) (#311) (2e170d3)
+- feat(macos): list header unread count, pill tabs, thread count after sender (#306) (#310) (8d48a21)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261119.dmg" length="27348102" type="application/octet-stream" sparkle:edSignature="TGgLDJUU5VOvA69RU9VKl7sIEZinqr8wpC2biEoOsMAyScqqzjbBVkSaEuulUu2ZXC6mxrhPfRNUGZ892zDvDA==" /></item><item><title>0.2.8-nightly.20261118</title><pubDate>Thu, 19 Nov 2026 00:06:46 GMT</pubDate><sparkle:version>2026111823</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261118</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at c4fd210a03adb292792ceeccc1d866385e003780.
 
 - fix(compose): show the signature picker in the folded From row (#291) (c4fd210)
 - feat(macos): Today page in the empty reader (#292) (#309) (8e43c20)
@@ -86,7 +94,7 @@
 - test(sync): separate throwing read from required state assertion (905c346)
 - feat(imap): dual-write server page windows to the index (2dcbfbd)
 - feat(imap): migrate header snapshots and serve indexed reads (4594558)
-- feat(sync): persist IMAP page windows transactionally (7fd1174)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261118.dmg" length="27806628" type="application/octet-stream" sparkle:edSignature="dxNeRbQyaLSLBKIipD9iJTQBYndMYWNt8PmR6Joo+0DA0R35hzEBHA67Fyy25dxS1GfGNx+mGl5MUlrrEpLmAg==" /></item><item><title>0.2.8-nightly.20261029</title><pubDate>Fri, 30 Oct 2026 00:16:00 GMT</pubDate><sparkle:version>2026102923</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261029</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at e476096e27cb603479e63e92e218d8d48d53543e.
+- feat(sync): persist IMAP page windows transactionally (7fd1174)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261118.dmg" length="27806628" type="application/octet-stream" sparkle:edSignature="dxNeRbQyaLSLBKIipD9iJTQBYndMYWNt8PmR6Joo+0DA0R35hzEBHA67Fyy25dxS1GfGNx+mGl5MUlrrEpLmAg==" /></item><item><title>0.2.8-nightly.20261029</title><pubDate>Fri, 30 Oct 2026 00:16:00 GMT</pubDate><sparkle:version>2026102923</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261029</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at e476096e27cb603479e63e92e218d8d48d53543e.
 
 - test(sync): merge reviewed cache-read baselines (#270) (e476096)
 - docs: merge approved mail storage and visual plan (#268) (3bb0ee8)
@@ -325,25 +333,4 @@
 - fix(compose): drop duplicate quoteMarker declaration from stacked squash merge (2435e40)
 - chore(worklog): drop stray merge-base marker (92ce046)
 - fix(compose): Apple Mail-style composer chrome — circular send, pill cluster, muted quote, subject prefix collapse (#94) (f49fc8d)
-- fix(ui): round-2 UI/UX + accessibility pass — keyboard nav, dark panes, sidebar polish (#93) (bc556b0)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261008.dmg" length="31994063" type="application/octet-stream" sparkle:edSignature="SvADCiRJ3mhdn8eyUXUOMHhx5Em8YmVyrgNJC5olCowxg8Y4roVmoMJZSICXJiLkf/+dLRVGWo/sbSAfM7M4CA==" /></item><item><title>0.1.0-nightly.20260923</title><pubDate>Wed, 23 Sep 2026 23:43:42 GMT</pubDate><sparkle:version>2026092323</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260923</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 3db8a9bf5c62f0675eca9609b874844845a9ad43.
-
-- docs(qa): round-2 UI/UX + accessibility audit and improvement roadmap (#92) (3db8a9b)
-- fix(calendar): write DAV items at their stored href, supersede stale hrefs (#91) (4617777)
-- docs(qa): fill stub-DAV columns of the #11 parity matrix (#90) (5bb20c5)
-- fix(backend): keep sent copies readable — split mock bodies, unescape plain alternative (#89) (9ea61d8)
-- fix(calendar): render grid titles in the caller's time zone + release-validation doc (#88) (9ad89e9)
-- fix(ui): re-land #85 changes reverted by stale-base squash (#86) (14923a8)
-- feat(contacts): photos, dates/URLs, and review-first duplicate suggestions (#9) (#87) (55d45ee)
-- docs(qa): add fillable PIM parity matrix for #11 (#86) (295d439)
-- fix(ui): UI/UX audit pass — filter leak, iOS covers, draft reopen, menu/footer polish (#85) (38e9c35)
-- fix(mail): isolate EML exports and bound Unicode filenames (#84) (bbec381)
-- fix(mail): reconcile saved profiles against updated cache (#83) (aae0195)
-- perf(mail): cache per-render decodes and per-record date formatters (#81) (#82) (ace8c8e)
-- fix(ios): eml export via share sheet and iPad keyboard shortcuts help (#79) (#80) (6cef52c)
-- feat(calendar): event Drive link attachments and upload progress (#14) (#78) (e874e6b)
-- feat(mail): Google Drive attach/save behind drive.file opt-in (#14) (#77) (ea85a99)
-- feat(mail): tasks browsing UI and Create Task provider targets (#12) (#76) (3f59794)
-- feat(calendar): task write pipeline and editing opt-in (#12) (#75) (c768b8d)
-- fix(mail): release cancelled body-load permit waiters in thread reader (#51) (#74) (3e541e0)
-- fix(compose): keep sheet inside the phone viewport at accessibility sizes (#49) (#73) (88a4efd)
-- feat(calendar): task read sync for Google Tasks and CalDAV VTODO (#12) (#72) (01dcff8)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20260923.dmg" length="30529219" type="application/octet-stream" sparkle:edSignature="o1VrqLKANj7vs/kJKx5gdogOtUqx9EMMslkKoB+hzGMAAeMO/qX2hRk34ErWkt0XRpyj5JbEPhLLKCbcR8J1AA==" /></item></channel></rss>
+- fix(ui): round-2 UI/UX + accessibility pass — keyboard nav, dark panes, sidebar polish (#93) (bc556b0)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261008.dmg" length="31994063" type="application/octet-stream" sparkle:edSignature="SvADCiRJ3mhdn8eyUXUOMHhx5Em8YmVyrgNJC5olCowxg8Y4roVmoMJZSICXJiLkf/+dLRVGWo/sbSAfM7M4CA==" /></item></channel></rss>
