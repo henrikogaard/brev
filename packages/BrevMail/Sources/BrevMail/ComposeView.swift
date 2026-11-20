@@ -456,11 +456,14 @@ public struct ComposeView: View {
         /// Where new-message recovery records live; tests pass an isolated suite.
         recoveryDefaults: UserDefaults = .standard,
         hostStyle: ComposeHostStyle = .window,
+        /// An AI Writer preview to show at once; snapshot tests use it.
+        initialAIPreview: ComposeAIPreviewState? = nil,
         onClose: (() -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
         self.recoveryDefaults = recoveryDefaults
         self.hostStyle = hostStyle
+        _aiPreview = State(initialValue: initialAIPreview)
         let fallbackSenderOption = Self.fallbackSenderOption(
             backend: backend,
             sourceID: sourceID,
@@ -836,9 +839,11 @@ public struct ComposeView: View {
                 if hostStyle == .inline {
                     inlineActionBar
                 }
-                fieldPanel
-                if showsInlineReplyStarters {
-                    inlineReplyStarters
+                if showsInlineFieldsAndStarters {
+                    fieldPanel
+                    if showsInlineReplyStarters {
+                        inlineReplyStarters
+                    }
                 }
                 #else
                 header
@@ -870,6 +875,9 @@ public struct ComposeView: View {
                 }
                 .disabled(isBusy)
                 aiPreviewPanel
+                    // In the fixed-height dock the preview wins the space
+                    // over the body editor (#302).
+                    .layoutPriority(hostStyle == .inline ? 1 : 0)
             }
             scheduledSendBanner
             errorBanner
@@ -1073,6 +1081,13 @@ public struct ComposeView: View {
         .disabled(isDisabled)
         .keyboardShortcut(.return, modifiers: .command)
         .help(title)
+    }
+
+    private var showsInlineFieldsAndStarters: Bool {
+        InlineReplyPreviewLayout.showsFieldsAndStarters(
+            isInline: hostStyle == .inline,
+            isPreviewing: aiPreview != nil
+        )
     }
 
     private var showsInlineReplyStarters: Bool {
@@ -2595,7 +2610,10 @@ public struct ComposeView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
-                .frame(maxHeight: ComposeLayout.aiPreviewMaxHeight)
+                .frame(
+                    minHeight: InlineReplyPreviewLayout.previewTextMinHeight(isInline: hostStyle == .inline),
+                    maxHeight: ComposeLayout.aiPreviewMaxHeight
+                )
             }
         case .failure(let message):
             BrevInlineStatus(

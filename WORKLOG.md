@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-20 — Agent — #302 docked reply AI preview fix
+
+- Goal: in-app QA on macmini-devbox found the AI Writer preview in the docked reply had no room for the draft text (fixed 360 pt dock).
+- Changes: new `InlineReplyPreviewLayout`. While a preview is open in the dock, `ComposeView` hides the field panel and starters, gives the preview `layoutPriority(1)` and its text an 80 pt minimum height. The reply window is unchanged.
+- Red/green: `InlineReplyPreviewLayoutTests` failed to compile before; 3 tests pass after. On the devbox all 26 inline-reply tests pass, including the 12 unchanged dock snapshots (locally they fail on unchanged main too, an Xcode version difference).
+- QA this session (devbox, mock builds from main 67c6c812): dock, Send and Draft save pass; a starter reaches a fake local AI and Replace Draft works (content-QA build, which has network access); an open docked reply autosaves to Drafts. #302's crash line now matches the reply window (ADR-0093: crash recovery is for new messages only).
+- Handoff: the Describe field was not tested by tooling (typing did not reach it). "Replace Draft" and Write menu items are English in the nb UI.
+
 ## 2026-11-20 — Agent — #302 inline reply, slice 3 (bottom bar)
 
 - Goal: the docked reply's bottom bar: Send, Later, Write, attach and formatting.
