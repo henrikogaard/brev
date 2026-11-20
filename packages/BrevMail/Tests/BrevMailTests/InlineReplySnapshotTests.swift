@@ -12,6 +12,7 @@
 
 #if os(macOS)
 import AppKit
+import BrevAI
 import BrevBackend
 @testable import BrevMail
 import BrevThemes
@@ -29,6 +30,19 @@ struct InlineReplySnapshotTests {
         "brevMonoLight", "brevMonoDark", "solarizedLight", "solarizedDark", "gruvboxLight", "gruvboxDark",
     ])
     func dockedReply(_ themeName: String) throws {
+        try assertDockedReply(themeName, testName: "dockedReply(_:)", aiWriterOn: false)
+    }
+
+    /// With AI Writer on, the quick reply starters and the "Describe your
+    /// reply" field sit under the fields (#302 slice 2).
+    @Test("docked reply with quick reply starters", arguments: [
+        "brevMonoLight", "brevMonoDark", "solarizedLight", "solarizedDark", "gruvboxLight", "gruvboxDark",
+    ])
+    func dockedReplyWithStarters(_ themeName: String) throws {
+        try assertDockedReply(themeName, testName: "dockedReplyWithStarters(_:)", aiWriterOn: true)
+    }
+
+    private func assertDockedReply(_ themeName: String, testName: String, aiWriterOn: Bool) throws {
         let theme = try #require(Self.theme(named: themeName))
         let backend = MockBackend()
         let original = MessageHeader(
@@ -36,21 +50,27 @@ struct InlineReplySnapshotTests {
             from: Correspondent(name: "Maya Okafor", email: "maya@example.com"),
             subject: "Q4 roadmap: final review", snippet: "", date: Date(timeIntervalSince1970: 1_700_000_000)
         )
-        let defaults = try #require(UserDefaults(suiteName: "InlineReplySnapshotTests-\(themeName)"))
-        defaults.removePersistentDomain(forName: "InlineReplySnapshotTests-\(themeName)")
-        defer { defaults.removePersistentDomain(forName: "InlineReplySnapshotTests-\(themeName)") }
+        let suiteName = "InlineReplySnapshotTests-\(testName)-\(themeName)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(aiWriterOn, forKey: AIWriterSettings.Key.isEnabled)
+        defaults.set(aiWriterOn, forKey: AIWriterSettings.Key.consentGiven)
         let view = ComposeView(
             backend: backend,
             from: Correspondent(name: backend.account.displayName, email: backend.account.emailAddress),
             senderOptions: [],
             replyingTo: original,
             prefill: ComposePrefill(bodyText: "Sounds good, see you Tuesday."),
+            aiBackend: aiWriterOn ? StarterSnapshotAIBackend() : nil,
+            backendSupportsAIWriter: aiWriterOn,
             recoveryDefaults: defaults,
             hostStyle: .inline
         )
         .frame(width: 760, height: MailRootInlineReplyLayout.height)
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
+        .defaultAppStorage(defaults)
         .htmlBodyRenderTarget(.staticSnapshot)
         .environment(\.colorScheme, theme.mode.colorScheme)
         .environment(\.locale, Locale(identifier: "en_US"))
@@ -59,7 +79,8 @@ struct InlineReplySnapshotTests {
         host.view.appearance = NSAppearance(named: theme.mode.colorScheme == .dark ? .darkAqua : .aqua)
         host.view.frame = CGRect(origin: .zero, size: size)
         assertSnapshot(of: host, as: .image(size: size), named: themeName,
-                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil,
+                       testName: testName)
     }
 
     private static func theme(named name: String) -> BrevTheme? {
@@ -72,6 +93,20 @@ struct InlineReplySnapshotTests {
         case "gruvboxDark": .gruvboxDark
         default: nil
         }
+    }
+}
+
+private struct StarterSnapshotAIBackend: AIBackend {
+    let identifier = "snapshot-ai"
+    let displayName = "Snapshot AI"
+    let transparencyLabel = "Sent to: Snapshot AI"
+
+    func generateReply(to messages: [AIMessage], instruction: String?) async throws -> AIResponse {
+        AIResponse(text: "Unused")
+    }
+
+    func shortcut(_ action: AIShortcutAction, on text: String) async throws -> AIResponse {
+        AIResponse(text: "Unused")
     }
 }
 #endif

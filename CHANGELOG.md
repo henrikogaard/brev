@@ -25,6 +25,11 @@ All notable changes to Brev are documented here.
   full composer docked under the reader instead of a sheet. It stays open while
   you read other mail and closes on Send or Close, which save the Draft as
   before.
+- Docked reply on macOS (#302): with AI Writer on, quick reply starters (Reply,
+  Say yes, Decline politely, Ask for more time, Ask a question) and a
+  "Describe your reply" field sit under the fields. They run only when clicked
+  and show the usual AI preview before anything lands in the Draft. They are
+  hidden when AI Writer is off.
 - macOS reader toolbar (#306): actions sit in capsules. Reply, Reply All and
   Forward share one; Archive, Delete, Move and Snooze share the next, then
   More. The AI Sidebar button has its own, and search sits at the far right.

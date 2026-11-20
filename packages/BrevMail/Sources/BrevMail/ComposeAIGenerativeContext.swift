@@ -29,7 +29,8 @@ struct ComposeAIGenerativeContext: Equatable, Sendable {
 
     static func replyDraft(
         replyingTo: MessageHeader?,
-        draftBody: String
+        draftBody: String,
+        guidance: String? = nil
     ) -> Self? {
         guard let replyingTo else { return nil }
         var messages = [
@@ -38,6 +39,10 @@ struct ComposeAIGenerativeContext: Equatable, Sendable {
         let draftBody = trimmed(draftBody)
         if !draftBody.isEmpty {
             messages.append(AIMessage(role: .user, content: "Current draft: \(draftBody)"))
+        }
+        // A quick reply starter or the user's description of the reply (#302).
+        if let guidance = guidance.map(trimmed), !guidance.isEmpty {
+            messages.append(AIMessage(role: .user, content: "Reply intent: \(guidance)"))
         }
         return ComposeAIGenerativeContext(
             messages: messages,
