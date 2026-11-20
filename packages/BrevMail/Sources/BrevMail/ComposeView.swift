@@ -238,6 +238,8 @@ public struct ComposeView: View {
     @State private var showAIConsent = false
     @State private var showAIPromptDraft = false
     @State private var aiPromptDraftText = ""
+    /// The docked reply's "Describe your reply" text (#302).
+    @State private var inlineReplyDescription = ""
     @State private var selectedSignatureID: String?
     @State private var insertedSignatureBody: String?
     /// Signed compose body seeded at open for reply/forward. Used to upgrade
@@ -835,6 +837,9 @@ public struct ComposeView: View {
                     inlineActionBar
                 }
                 fieldPanel
+                if showsInlineReplyStarters {
+                    inlineReplyStarters
+                }
                 #else
                 header
                 #endif
@@ -991,6 +996,66 @@ public struct ComposeView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(theme.border.color).frame(height: 0.5)
         }
+    }
+
+    private var showsInlineReplyStarters: Bool {
+        InlineReplyStarter.isVisible(
+            isInline: hostStyle == .inline,
+            hasReplyContext: replyingTo != nil,
+            availability: aiAvailability
+        )
+    }
+
+    /// Quick reply starters and a "Describe your reply" field (#302). Each
+    /// runs AI Writer only on click and lands in the usual AI preview, where
+    /// the user chooses to use the draft or not.
+    private var inlineReplyStarters: some View {
+        HStack(spacing: BrevSpacing.sm) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(theme.accent.color)
+                .accessibilityHidden(true)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrevSpacing.xs) {
+                    ForEach(InlineReplyStarter.presets, id: \.key) { starter in
+                        Button {
+                            startInlineReply(starter)
+                        } label: {
+                            Text(starter.title)
+                                .brevFont(.footnote)
+                                .lineLimit(1)
+                                .brevChip(selected: false)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(disabledReason(for: .replyStarter(starter)) != nil)
+                    }
+                }
+            }
+            TextField(
+                String(localized: "Describe your reply, like “yes, but next week”", bundle: .module),
+                text: $inlineReplyDescription
+            )
+            .textFieldStyle(.plain)
+            .brevFont(.footnote)
+            .padding(.horizontal, BrevSpacing.sm)
+            .padding(.vertical, BrevSpacing.xxs)
+            .background(Capsule().fill(theme.bgSecondary.color))
+            .frame(minWidth: 180, maxWidth: 280)
+            .onSubmit { startInlineReply(.described(inlineReplyDescription)) }
+            .disabled(disabledReason(for: .replyStarter(.described(inlineReplyDescription))) != nil)
+        }
+        .help(aiBackend?.transparencyLabel ?? "")
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.xs)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.border.color).frame(height: 0.5)
+        }
+    }
+
+    private func startInlineReply(_ starter: InlineReplyStarter) {
+        guard let aiBackend else { return }
+        // An empty description would silently become a plain "Reply".
+        if case .described = starter, starter.guidance == nil { return }
+        Task { await runAIAction(.replyStarter(starter), backend: aiBackend) }
     }
     #endif
 
@@ -2866,7 +2931,7 @@ public struct ComposeView: View {
         case .draftFromPrompt:
             showAIPromptDraft = true
             return
-        case .draftReply, .suggestSubject:
+        case .draftReply, .replyStarter, .suggestSubject:
             await runAIGenerativeAction(aiAction, backend: backend)
             return
         case .shortcut:
@@ -2914,6 +2979,14 @@ public struct ComposeView: View {
             context = ComposeAIGenerativeContext.replyDraft(
                 replyingTo: replyingTo,
                 draftBody: bodyText
+            )
+            applyTarget = .body
+            originalText = context?.messages.map(\.content).joined(separator: "\n\n")
+        case .replyStarter(let starter):
+            context = ComposeAIGenerativeContext.replyDraft(
+                replyingTo: replyingTo,
+                draftBody: bodyText,
+                guidance: starter.guidance
             )
             applyTarget = .body
             originalText = context?.messages.map(\.content).joined(separator: "\n\n")

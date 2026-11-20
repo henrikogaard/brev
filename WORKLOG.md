@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-20 — Agent — #302 inline reply, slice 2 (quick reply starters)
+
+- Goal: quick reply starters and a "Describe your reply" field in the docked reply, AI Writer only, hidden when AI is off.
+- Changes: new `InlineReplyStarter` (five presets plus `.described(text)`, intent text and an `isVisible` rule). New `ComposeAIAction.replyStarter`, routed through the existing generative path, so consent, availability checks and the AI preview panel are the same as the AI Writer menu. `ComposeAIGenerativeContext.replyDraft` takes an optional `guidance`, sent as a "Reply intent:" message. `ComposeView` shows the starters row under the fields only when `hostStyle == .inline` (macOS). Catalog entries with nb translations.
+- Red/green: `InlineReplyStarterTests` failed to compile before the change; 11 cases pass after. The new `dockedReplyWithStarters` snapshots (6 themes) were recorded; the existing `dockedReply` snapshots pass unchanged.
+- Verification: 48 compose-AI and inline-reply tests, `scripts/lint.sh`, `scripts/format.sh` (no changes), reviewer agent (no defects).
+- Skipped: macOS and iOS app builds on macmini-devbox (SSH refused while 1Password was locked); CI builds both. No in-app check yet of a starter producing a preview inside the 360 pt dock.
+- Handoff: slice 3 (bottom bar) is next. The slice 1 in-app check (send, Draft save, crash recovery in the mock profile) is still open.
+
 ## 2026-11-19 — Agent — #302 inline reply, slice 1
 
 - Goal: the reply grows into the full composer in place, under the reader.

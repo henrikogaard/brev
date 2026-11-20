@@ -1,6 +1,72 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Say yes": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si ja"
+          }
+        }
+      }
+    },
+    "Decline politely": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avslå høflig"
+          }
+        }
+      }
+    },
+    "Ask for more time": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Be om mer tid"
+          }
+        }
+      }
+    },
+    "Ask a question": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Still et spørsmål"
+          }
+        }
+      }
+    },
+    "Describe your reply, like “yes, but next week”": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beskriv svaret, for eksempel «ja, men neste uke»"
+          }
+        }
+      }
+    },
+    "Draft Reply": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utkast til svar"
+          }
+        }
+      }
+    },
     "Waiting on you": {
       "extractionState": "manual",
       "localizations": {

@@ -17,6 +17,8 @@ enum ComposeAIAction: Equatable, Identifiable, Sendable {
     case draftFromPrompt
     case shortcut(AIShortcutAction, scope: ComposeAIActionScope)
     case draftReply
+    /// A quick reply starter in the docked reply (#302).
+    case replyStarter(InlineReplyStarter)
     case suggestSubject
 
     static let shortcutOrder: [AIShortcutAction] = [
@@ -49,6 +51,8 @@ enum ComposeAIAction: Equatable, Identifiable, Sendable {
             return "shortcut.\(action.rawValue).\(scope.rawValue)"
         case .draftReply:
             return "draftReply"
+        case .replyStarter(let starter):
+            return "replyStarter.\(starter.key)"
         case .suggestSubject:
             return "suggestSubject"
         }
@@ -62,6 +66,8 @@ enum ComposeAIAction: Equatable, Identifiable, Sendable {
             return action.displayLabel
         case .draftReply:
             return "Draft Reply"
+        case .replyStarter(let starter):
+            return starter.title
         case .suggestSubject:
             return "Suggest Subject"
         }
@@ -75,6 +81,8 @@ enum ComposeAIAction: Equatable, Identifiable, Sendable {
             return action.symbolName
         case .draftReply:
             return "arrowshape.turn.up.left"
+        case .replyStarter(let starter):
+            return starter.symbolName
         case .suggestSubject:
             return "textformat.size"
         }
@@ -86,7 +94,7 @@ enum ComposeAIAction: Equatable, Identifiable, Sendable {
             return .prompt
         case .shortcut(_, let scope):
             return scope
-        case .draftReply:
+        case .draftReply, .replyStarter:
             return .replyContext
         case .suggestSubject:
             return .subject
@@ -106,7 +114,7 @@ enum ComposeAIAction: Equatable, Identifiable, Sendable {
             case .prompt, .replyContext, .subject:
                 return []
             }
-        case .draftReply:
+        case .draftReply, .replyStarter:
             return [.replyContext]
         case .suggestSubject:
             return [.bodyText, .subjectTarget]
