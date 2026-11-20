@@ -836,9 +836,11 @@ public struct ComposeView: View {
                 if hostStyle == .inline {
                     inlineActionBar
                 }
-                fieldPanel
-                if showsInlineReplyStarters {
-                    inlineReplyStarters
+                if showsInlineFieldsAndStarters {
+                    fieldPanel
+                    if showsInlineReplyStarters {
+                        inlineReplyStarters
+                    }
                 }
                 #else
                 header
@@ -870,6 +872,9 @@ public struct ComposeView: View {
                 }
                 .disabled(isBusy)
                 aiPreviewPanel
+                    // In the fixed-height dock the preview wins the space
+                    // over the body editor (#302).
+                    .layoutPriority(hostStyle == .inline ? 1 : 0)
             }
             scheduledSendBanner
             errorBanner
@@ -1073,6 +1078,13 @@ public struct ComposeView: View {
         .disabled(isDisabled)
         .keyboardShortcut(.return, modifiers: .command)
         .help(title)
+    }
+
+    private var showsInlineFieldsAndStarters: Bool {
+        InlineReplyPreviewLayout.showsFieldsAndStarters(
+            isInline: hostStyle == .inline,
+            isPreviewing: aiPreview != nil
+        )
     }
 
     private var showsInlineReplyStarters: Bool {
@@ -2595,7 +2607,10 @@ public struct ComposeView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
-                .frame(maxHeight: ComposeLayout.aiPreviewMaxHeight)
+                .frame(
+                    minHeight: InlineReplyPreviewLayout.previewTextMinHeight(isInline: hostStyle == .inline),
+                    maxHeight: ComposeLayout.aiPreviewMaxHeight
+                )
             }
         case .failure(let message):
             BrevInlineStatus(

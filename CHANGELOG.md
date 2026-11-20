@@ -140,6 +140,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- macOS docked reply (#302): the AI Writer preview now has room to show the
+  draft. While a preview is open, the From, To and Subject fields and the
+  reply starters step aside, and they come back when you use or cancel it.
 - A new message's folded "From … Cc/Bcc" row shows the signature picker again,
   so a signature can be chosen without opening Cc and Bcc first (macOS and iOS).
 
