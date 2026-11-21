@@ -1,0 +1,208 @@
+/*
+ Brev - Mail Client for macOS and iOS
+ Copyright (c) 2026 Brev contributors
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the conditions in the LICENSE file.
+ */
+
+@testable import BrevMail
+import Testing
+
+/// Tracking pixels are stripped before a message renders, even with remote
+/// content allowed (#299).
+@Suite("Tracker stripping")
+struct MessageTrackerStripTests {
+    @Test("a 1x1 open pixel is removed and the content image stays")
+    func onePixel() {
+        let html = """
+        <p>Hello</p>\
+        <img src="https://cdn.shop.example/banner.jpg" width="600" height="200" alt="Sale">\
+        <img src="https://email.shop.example/o/eyJ0Ijo" width="1" height="1" alt="" border="0">
+        """
+        let result = MessageRemoteContentDetector.strippingLikelyTrackers(html)
+        #expect(result.removedCount == 1)
+        #expect(!result.html.contains("email.shop.example"))
+        #expect(result.html.contains("https://cdn.shop.example/banner.jpg"))
+        #expect(result.html.contains("<p>Hello</p>"))
+    }
+
+    @Test("hidden images are removed", arguments: [
+        #"<img src="https://t.example.net/a.gif" style="display:none">"#,
+        #"<img style="visibility: hidden" src="https://t.example.net/b.gif">"#,
+        #"<img src='https://t.example.net/c.gif' style='opacity:0;width:0'>"#,
+    ])
+    func hiddenImage(_ tracker: String) {
+        let result = MessageRemoteContentDetector.strippingLikelyTrackers("<div>Hi</div>\(tracker)")
+        #expect(result.removedCount == 1)
+        #expect(!result.html.contains("t.example.net"))
+        #expect(result.html == "<div>Hi</div>")
+    }
+
+    @Test("tracker-looking URLs and known tracker hosts are removed", arguments: [
+        #"<img src="https://news.example.com/track/open?id=42" width="20" height="20">"#,
+        #"<img src="https://mailtrack.io/trace/mail/abc.png">"#,
+        #"<img src="https://t.yesware.com/t/123/abc/spacer.gif">"#,
+    ])
+    func trackerURL(_ tracker: String) {
+        let result = MessageRemoteContentDetector.strippingLikelyTrackers("<p>x</p>\(tracker)")
+        #expect(result.removedCount == 1)
+        #expect(result.html == "<p>x</p>")
+    }
+
+    @Test("a quoted > inside an attribute does not hide the pixel")
+    func quotedAngleBracket() {
+        let html = #"<img alt="a>b" src="https://open.example.org/p.gif" width="1" height="1">"#
+        let result = MessageRemoteContentDetector.strippingLikelyTrackers(html)
+        #expect(result.removedCount == 1)
+        #expect(result.html.isEmpty)
+    }
+
+    @Test("several pixels are all removed and counted")
+    func severalPixels() {
+        let html = """
+        <img src="https://a.example/1.gif" width="1" height="1">\
+        <p>Body</p>\
+        <img src="https://b.example/pixel.png">\
+        <img src="https://c.example/x.gif" style="display: none">
+        """
+        let result = MessageRemoteContentDetector.strippingLikelyTrackers(html)
+        #expect(result.removedCount == 3)
+        #expect(result.html == "<p>Body</p>")
+    }
+
+    @Test("faded and campaign-tagged content images are kept", arguments: [
+        #"<img src="https://cdn.example.com/logo.png" style="opacity:0.8">"#,
+        #"<img src="https://cdn.example.com/hero.jpg" style="opacity: 0.5; width: 600px">"#,
+        #"<img src="https://img.example.com/hero.jpg?utm_campaign=fall&utm_source=mail">"#,
+        #"<img src="https://music.example.com/tracks/cover.jpg">"#,
+        #"<img src="https://shop.example.com/package-tracking-banner.png">"#,
+    ])
+    func contentImagesKept(_ image: String) {
+        let result = MessageRemoteContentDetector.strippingLikelyTrackers(image)
+        #expect(result.removedCount == 0)
+        #expect(result.html == image)
+    }
+
+    @Test("a pixel behind another src-like attribute is still removed")
+    func pixelAfterDataSrc() {
+        let html = #"<img data-src="https://cdn.example.com/real.jpg" src="https://t.example.org/open.gif">"#
+        let result = MessageRemoteContentDetector.strippingLikelyTrackers(html)
+        #expect(result.removedCount == 1)
+        #expect(result.html.isEmpty)
+    }
+
+    @Test("an entity-encoded tracker URL is still removed")
+    func entityEncodedURL() {
+        let html = #"<p>x</p><img src="&#104;ttps://mailtrack.io/trace/a.png">"#
+        let result = MessageRemoteContentDetector.strippingLikelyTrackers(html)
+        #expect(result.removedCount == 1)
+        #expect(result.html == "<p>x</p>")
+    }
+
+    @Test("a fully transparent image is removed", arguments: [
+        #"<img src="https://t.example.net/a.gif" style="opacity:0">"#,
+        #"<img src="https://t.example.net/a.gif" style="opacity: 0.0;">"#,
+    ])
+    func transparentImage(_ tracker: String) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(tracker).removedCount == 1)
+    }
+
+    @Test("images whose names only resemble tracker files are kept", arguments: [
+        #"<img src="https://travel.example.com/photos/beacon-hill.jpg" width="640" height="480">"#,
+        #"<img src="https://cdn.example.com/img/open.gif-banner.png">"#,
+        #"<img src="https://cdn.example.com/track/opening-night.jpg">"#,
+    ])
+    func lookalikeNamesKept(_ image: String) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(image).removedCount == 0)
+    }
+
+    @Test("a sized, hidden responsive image is kept for its media query")
+    func responsiveHiddenImageKept() {
+        let html = #"<img class="mobile" src="https://cdn.example.com/hero-mobile.jpg" width="320" height="200" style="display:none">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 0)
+    }
+
+    @Test("pixels sized by inline CSS are removed", arguments: [
+        #"<img src="https://stats.example.net/o/123" style="width:1px;height:1px">"#,
+        #"<img src="https://stats.example.net/o/124" style="height: 0px; width: 0">"#,
+        #"<img src="https://stats.example.net/o/125" style="max-height:1px;width:1px;height:1px;border:0">"#,
+    ])
+    func cssSizedPixel(_ tracker: String) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(tracker).removedCount == 1)
+    }
+
+    @Test("a body whose only tag was a pixel still renders as HTML")
+    func onlyTagRemovedStaysHTML() {
+        let html = #"Fish &amp; chips<img src="https://a.example/1.gif" width="1" height="1">"#
+        let plan = HTMLBodyLoadPlan.resolve(allowRemoteContent: true, blockerAvailable: true)
+        let document = HTMLBodyDocument.wrap(plan.bodyHTML(originalHTML: html), linkColorHex: "#0000FF")
+        #expect(document.contains("Fish &amp; chips"))
+        #expect(!document.contains("&amp;amp;"))
+        #expect(!document.contains("a.example"))
+    }
+
+    @Test("an icon sized in em is kept")
+    func emSizedIconKept() {
+        let html = #"<img src="https://cdn.example.com/icons/star.png" style="width:0.8em;height:0.8em">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 0)
+    }
+
+    @Test("script-suffixed open-tracking endpoints are removed", arguments: [
+        #"<img src="https://list.example.com/track/open.php?u=1&id=2">"#,
+        #"<img src="https://mail.example.com/wf/open.aspx?upn=abc">"#,
+    ])
+    func scriptSuffixedEndpoint(_ tracker: String) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(tracker).removedCount == 1)
+    }
+
+    @Test("a transparent image is removed even when it declares a size")
+    func sizedTransparentImage() {
+        let html = #"<img src="https://t.example.net/o.gif" width="10" height="10" style="opacity:0">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 1)
+    }
+
+    @Test("look-alike opacity and open names on content images are kept", arguments: [
+        #"<img src="https://cdn.example.com/a.jpg" width="200" height="100" style="--border-opacity:0">"#,
+        #"<img src="https://cdn.example.com/track/open.jpg" width="200" height="100">"#,
+        #"<img src="https://cdn.example.com/wf/open.house/photo.jpg">"#,
+    ])
+    func lookalikeOpacityAndOpenKept(_ image: String) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(image).removedCount == 0)
+    }
+
+    @Test("a zero-percent sized image is removed")
+    func zeroPercentPixel() {
+        let html = #"<img src="https://stats.example.net/o/9" style="width:0%;height:0%">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 1)
+    }
+
+    @Test("plain mail and normal images are left exactly as they are")
+    func nothingToStrip() {
+        let html = #"<p>Hi</p><img src="https://cdn.example.com/photo.jpg" width="320" height="240">"#
+        let result = MessageRemoteContentDetector.strippingLikelyTrackers(html)
+        #expect(result.removedCount == 0)
+        #expect(result.html == html)
+    }
+
+    @Test("the web view loads stripped HTML when remote content is allowed")
+    func loadPlanStripsWhenAllowed() {
+        let html = #"<p>Hi</p><img src="https://a.example/1.gif" width="1" height="1">"#
+        let allowed = HTMLBodyLoadPlan.resolve(allowRemoteContent: true, blockerAvailable: true)
+        #expect(allowed.bodyHTML(originalHTML: html) == "<p>Hi</p>")
+        // Blocked loads keep the original: WebKit's blocker stops every request.
+        let blocked = HTMLBodyLoadPlan.resolve(allowRemoteContent: false, blockerAvailable: true)
+        #expect(blocked.bodyHTML(originalHTML: html) == html)
+    }
+
+    @Test("the reader note counts the blocked trackers")
+    func readerNote() {
+        #expect(MessageTrackerNote.text(removedCount: 0) == nil)
+        #expect(MessageTrackerNote.text(removedCount: 1) == "Blocked 1 tracker")
+        #expect(MessageTrackerNote.text(removedCount: 2) == "Blocked 2 trackers")
+    }
+}
