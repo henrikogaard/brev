@@ -538,6 +538,10 @@ struct ThreadMessageCard: View {
                         RoundedRectangle(cornerRadius: 6)
                             .fill(theme.bgTertiary.color)
                     )
+                } else if allowRemoteContent {
+                    MessageTrackerNote(
+                        removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+                    )
                 }
                 HTMLBodyWebView(
                     store: htmlWebViewStore,
@@ -704,7 +708,11 @@ struct ThreadMessageCard: View {
             bodyPresentationContext
         ) {
         case .attributedHTML(let html):
-            renderedHTML = await MessageHTMLImporter.importAttributedHTML(html)
+            // This path runs with remote content allowed (or none present),
+            // so tracking pixels go before import (#299).
+            renderedHTML = await MessageHTMLImporter.importAttributedHTML(
+                MessageRemoteContentDetector.strippingLikelyTrackers(html).html
+            )
         default:
             renderedHTML = nil
         }

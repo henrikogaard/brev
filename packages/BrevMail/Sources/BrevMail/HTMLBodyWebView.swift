@@ -578,6 +578,10 @@ enum HTMLBodyLoadPlan: Equatable {
 
     func bodyHTML(originalHTML: String) -> String {
         switch self {
+        case .original(blocksRemoteSubresources: false):
+            // Remote content is allowed, so tracking pixels are removed
+            // before WebKit loads anything (#299).
+            return MessageRemoteContentDetector.strippingLikelyTrackers(originalHTML).html
         case .original:
             return originalHTML
         case .blockedFallback:

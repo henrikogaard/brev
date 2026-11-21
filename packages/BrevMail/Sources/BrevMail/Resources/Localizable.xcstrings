@@ -1,6 +1,28 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Blocked 1 tracker": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blokkerte 1 sporer"
+          }
+        }
+      }
+    },
+    "Blocked %lld trackers": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blokkerte %lld sporere"
+          }
+        }
+      }
+    },
     "Later": {
       "extractionState": "manual",
       "localizations": {

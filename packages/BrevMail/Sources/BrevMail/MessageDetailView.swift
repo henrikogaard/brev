@@ -2100,6 +2100,10 @@ public struct MessageDetailView: View {
                     senderEmail: senderEmail,
                     state: remoteContentState
                 )
+            } else if remoteContentState.allowsRemoteContent {
+                MessageTrackerNote(
+                    removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+                )
             }
             ZStack(alignment: .topLeading) {
                 // The web view's document is transparent until its first
@@ -2824,7 +2828,11 @@ public struct MessageDetailView: View {
             useRichRenderer: useRichRenderer,
             allowRemoteContent: allowRemoteContent
         ) else { return nil }
-        return await MessageHTMLImporter.importAttributedHTML(html)
+        // With remote content allowed, tracking pixels go before import (#299).
+        let importHTML = allowRemoteContent
+            ? html.map { MessageRemoteContentDetector.strippingLikelyTrackers($0).html }
+            : html
+        return await MessageHTMLImporter.importAttributedHTML(importHTML)
     }
 }
 
