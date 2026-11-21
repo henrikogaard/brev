@@ -430,11 +430,19 @@ public final class BrevLocalNotificationCenter {
 
     /// Restores a missing local request without replacing one already pending.
     public func ensureFollowUpReminderScheduled(_ reminder: FollowUpReminder, subject: String) async {
-        await ensureAutomaticFollowUpRemindersScheduled(
-            [(reminder, subject)],
-            settingsProvider: { FollowUpSettings.load() },
-            isSourceCurrent: { _ in true }
-        )
+        if reminder.isAutomaticNoReply {
+            await ensureAutomaticFollowUpRemindersScheduled(
+                [(reminder, subject)],
+                settingsProvider: { FollowUpSettings.load() },
+                isSourceCurrent: { _ in true }
+            )
+            return
+        }
+        guard let center else { return }
+        let identifier = Self.followUpReminderIdentifier(for: reminder)
+        let pending = await center.pendingNotificationRequests()
+        guard !pending.contains(where: { $0.identifier == identifier }) else { return }
+        await scheduleFollowUpReminder(reminder, subject: subject)
     }
 
     func ensureAutomaticFollowUpRemindersScheduled(
