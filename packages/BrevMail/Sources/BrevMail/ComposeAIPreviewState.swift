@@ -77,13 +77,13 @@ struct ComposeAIPreviewState: Equatable, Identifiable, Sendable {
 
     var replaceActionTitle: String {
         if case .subject = applyTarget {
-            return "Replace Subject"
+            return String(localized: "Replace Subject", bundle: .module)
         }
         switch request.target {
         case .wholeDraft:
-            return "Replace Draft"
+            return String(localized: "Replace Draft", bundle: .module)
         case .selection:
-            return "Replace Selection"
+            return String(localized: "Replace Selection", bundle: .module)
         }
     }
 
