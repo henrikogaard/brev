@@ -28,6 +28,8 @@ struct NoReplyFollowUpReconcilerTests {
         _ id: String,
         folder: String,
         messageID: String? = nil,
+        threadID: String? = nil,
+        subject: String = "Same subject",
         from: Correspondent? = nil,
         inReplyTo: String? = nil,
         references: [String]? = nil,
@@ -35,11 +37,11 @@ struct NoReplyFollowUpReconcilerTests {
     ) -> MessageHeader {
         MessageHeader(
             id: id,
-            threadID: id,
+            threadID: threadID ?? id,
             folderID: folder,
             from: from ?? other,
             to: [me],
-            subject: "Same subject",
+            subject: subject,
             snippet: "body",
             date: date ?? now,
             messageID: messageID,
@@ -90,13 +92,15 @@ struct NoReplyFollowUpReconcilerTests {
         )
 
         settings = result.settings
-        #expect(settings.reminders.isEmpty)
+        #expect(settings.reminders.count == 1)
+        #expect(settings.reminders[0].isCompleted)
+        #expect(settings.reminders[0].noReplyMetadata?.sourceID == source)
         #expect(settings.pendingNoReplyIntents.isEmpty)
         #expect(result.created.isEmpty)
     }
 
-    @Test("a message dated before the Sent copy is not a later reply")
-    func earlierReferenceDoesNotResolveIntent() {
+    @Test("an exact References link completes despite a backdated reply and survives cache eviction")
+    func backdatedReferenceCompletesAndLeavesTombstone() {
         let sentAt = now
         let result = NoReplyFollowUpReconciler.reconcile(
             settings: FollowUpSettings(reminders: [], pendingNoReplyIntents: [intent()]),
@@ -104,13 +108,42 @@ struct NoReplyFollowUpReconcilerTests {
                 header("sent-id", folder: "sent", messageID: "<out@example.org>", date: sentAt),
                 header(
                     "earlier", folder: "inbox", messageID: "<earlier@x>",
-                    inReplyTo: "<out@example.org>", date: sentAt.addingTimeInterval(-60)
+                    references: ["<out@example.org>"], date: sentAt.addingTimeInterval(-60)
                 )
             ])]
         )
 
-        #expect(result.created.count == 1)
-        #expect(!result.created[0].isCompleted)
+        #expect(result.created.isEmpty)
+        #expect(result.settings.pendingNoReplyIntents.isEmpty)
+        #expect(result.settings.reminders.count == 1)
+        #expect(result.settings.reminders[0].isCompleted)
+
+        let replay = NoReplyFollowUpReconciler.reconcile(
+            settings: result.settings,
+            snapshots: [snapshot(headers: [
+                header("sent-id", folder: "sent", messageID: "<out@example.org>", date: sentAt)
+            ])]
+        )
+        #expect(replay.settings.reminders.count == 1)
+        #expect(replay.settings.reminders[0].isCompleted)
+        #expect(replay.created.isEmpty)
+    }
+
+    @Test("References tokens are parsed independently and malformed tokens do not poison valid links")
+    func referencesTokensAreParsedIndependently() {
+        let sent = header("sent-id", folder: "sent", messageID: "<out@example.org>")
+        let reply = header(
+            "reply", folder: "inbox", messageID: "<reply@x>",
+            references: ["out@example.org", "<another@x>", "<malformed", "<out@example.org>"]
+        )
+        let result = NoReplyFollowUpReconciler.reconcile(
+            settings: FollowUpSettings(reminders: [], pendingNoReplyIntents: [intent()]),
+            snapshots: [snapshot(headers: [sent, reply])]
+        )
+
+        #expect(result.created.isEmpty)
+        #expect(result.settings.reminders.count == 1)
+        #expect(result.settings.reminders[0].isCompleted)
     }
 
     @Test("matching subject without exact reply references does not complete the reminder")
@@ -283,6 +316,41 @@ struct NoReplyFollowUpReconcilerTests {
         #expect(result.settings.pendingNoReplyIntents.count == 1)
     }
 
+    @Test("identical Sent duplicates resolve deterministically")
+    func identicalSentDuplicatesResolveDeterministically() {
+        let settings = FollowUpSettings(reminders: [], pendingNoReplyIntents: [intent()])
+        let copies = [
+            header("z-copy", folder: "sent", messageID: "<out@example.org>", threadID: "thread"),
+            header("a-copy", folder: "sent", messageID: "<out@example.org>", threadID: "thread")
+        ]
+
+        let result = NoReplyFollowUpReconciler.reconcile(settings: settings, snapshots: [snapshot(headers: copies)])
+
+        #expect(result.created.map(\.messageID) == ["a-copy"])
+        #expect(result.settings.pendingNoReplyIntents.isEmpty)
+    }
+
+    @Test("conflicting Sent duplicates stay pending unless an exact locator hint selects a valid copy")
+    func conflictingSentDuplicatesRequireValidHint() {
+        let copies = [
+            header("hinted-copy", folder: "sent", messageID: "<out@example.org>", threadID: "thread-a"),
+            header("other-copy", folder: "sent", messageID: "<out@example.org>", threadID: "thread-b", subject: "Conflict")
+        ]
+        let withoutHint = NoReplyFollowUpReconciler.reconcile(
+            settings: FollowUpSettings(reminders: [], pendingNoReplyIntents: [intent()]),
+            snapshots: [snapshot(headers: copies)]
+        )
+        let withHint = NoReplyFollowUpReconciler.reconcile(
+            settings: FollowUpSettings(reminders: [], pendingNoReplyIntents: [intent(hint: "hinted-copy")]),
+            snapshots: [snapshot(headers: copies)]
+        )
+
+        #expect(withoutHint.created.isEmpty)
+        #expect(withoutHint.settings.pendingNoReplyIntents.count == 1)
+        #expect(withHint.created.map(\.messageID) == ["hinted-copy"])
+        #expect(withHint.settings.pendingNoReplyIntents.isEmpty)
+    }
+
     @Test("self and Sent copies do not complete an active reminder")
     func selfAndSentCopiesAreExcluded() {
         let intent = intent()
@@ -368,6 +436,42 @@ struct NoReplyFollowUpReconcilerTests {
         }
     }
 
+    @Test("replacing an automatic reminder with a manual one retains its terminal identity")
+    func manualReplacementKeepsAutomaticTombstone() {
+        let intent = intent()
+        let automatic = FollowUpReminder(
+            id: intent.id,
+            messageID: "sent-id",
+            threadID: "thread",
+            accountID: source.accountID,
+            mailboxID: source.mailboxID,
+            folderID: "sent",
+            dueAt: now,
+            noReplyMetadata: NoReplyFollowUpMetadata(
+                sourceID: source, draftID: intent.draftID,
+                expectedMessageID: intent.expectedMessageID, sentAt: now
+            )
+        )
+        var settings = FollowUpSettings(reminders: [automatic])
+        settings.add(FollowUpReminder(
+            messageID: automatic.messageID,
+            threadID: automatic.threadID,
+            accountID: source.accountID,
+            mailboxID: source.mailboxID,
+            folderID: automatic.folderID,
+            dueAt: now.addingTimeInterval(3600)
+        ))
+
+        let replay = NoReplyFollowUpReconciler.reconcile(
+            settings: settings,
+            snapshots: [snapshot(headers: [header("sent-id", folder: "sent", messageID: intent.expectedMessageID)])]
+        )
+
+        #expect(replay.settings.reminders.count == 2)
+        #expect(replay.settings.reminders.first(where: { $0.id == intent.id })?.isDismissed == true)
+        #expect(replay.created.isEmpty)
+    }
+
     @Test("Waiting includes active future reminders from exact cached Sent copies only")
     func waitingProjectionUsesCachedSentHeadersAndSource() {
         let future = FollowUpReminder(
@@ -401,4 +505,74 @@ struct NoReplyFollowUpReconcilerTests {
         )
         #expect(result.map(\.id) == ["sent-id"])
     }
+
+    @Test("Waiting projection drops rows when the reminder is dismissed during cache loading")
+    func waitingProjectionUsesLatestReminderState() {
+        let reminder = FollowUpReminder(
+            id: "waiting",
+            messageID: "sent-id",
+            threadID: "sent-id",
+            accountID: source.accountID,
+            mailboxID: source.mailboxID,
+            folderID: "sent",
+            dueAt: now.addingTimeInterval(86400),
+            noReplyMetadata: NoReplyFollowUpMetadata(
+                sourceID: source, draftID: "draft", expectedMessageID: "<out@example.org>", sentAt: now
+            )
+        )
+        let sent = header("sent-id", folder: "sent", messageID: "<out@example.org>")
+        let activeProjection = NoReplyFollowUpWaitingProjection.headers(
+            sourceID: source,
+            sentFolderIDs: ["sent"],
+            cachedHeaders: [sent],
+            reminders: [reminder]
+        )
+        var latestSettings = FollowUpSettings(reminders: [reminder])
+        latestSettings.dismiss(id: reminder.id)
+        let afterDismissal = NoReplyFollowUpWaitingProjection.headers(
+            sourceID: source,
+            sentFolderIDs: ["sent"],
+            cachedHeaders: [sent],
+            reminders: latestSettings.reminders
+        )
+
+        #expect(activeProjection.map(\.id) == ["sent-id"])
+        #expect(afterDismissal.isEmpty)
+    }
+
+    @Test("same-ID source replacement rejects an old backend callback")
+    func sameSourceReplacementRejectsOldBackend() {
+        let oldBackend = FollowUpBackendLifetime()
+        let replacementBackend = FollowUpBackendLifetime()
+        let oldIdentity = ObjectIdentifier(oldBackend)
+        let newIdentity = ObjectIdentifier(replacementBackend)
+
+        #expect(!NoReplyFollowUpOwnership.isCurrent(
+            sourceID: source,
+            currentSourceIDs: Set([source]),
+            currentAccountID: source.accountID,
+            currentBackendIdentity: newIdentity,
+            expectedBackendIdentity: oldIdentity
+        ))
+        #expect(NoReplyFollowUpOwnership.isCurrent(
+            sourceID: source,
+            currentSourceIDs: Set([source]),
+            currentAccountID: source.accountID,
+            currentBackendIdentity: oldIdentity,
+            expectedBackendIdentity: oldIdentity
+        ))
+        #expect(!NoReplyFollowUpOwnership.canApplyRefresh(
+            generation: 1,
+            currentGeneration: 2,
+            sourceSectionsRevision: 5,
+            currentSourceSectionsRevision: 5,
+            sourceID: source,
+            currentSourceIDs: Set([source]),
+            currentAccountID: source.accountID,
+            currentBackendIdentity: newIdentity,
+            expectedBackendIdentity: oldIdentity
+        ))
+    }
 }
+
+private final class FollowUpBackendLifetime {}

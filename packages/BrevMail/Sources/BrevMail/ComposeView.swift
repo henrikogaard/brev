@@ -357,8 +357,8 @@ public struct ComposeView: View {
         isWorkBlocked: Bool = false,
         driveFeature: GoogleDriveFeature? = nil,
         onClose: (() -> Void)? = nil,
-        onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in },
-        onAcceptedSend: ((Draft, SendResult, MailSourceID?, any MailBackend) async -> Void)? = nil
+        onAcceptedSend: ((Draft, SendResult, MailSourceID?, any MailBackend) async -> Void)? = nil,
+        onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
         self.init(
             backend: backend,
@@ -381,6 +381,7 @@ public struct ComposeView: View {
             isWorkBlocked: isWorkBlocked,
             driveFeature: driveFeature,
             onClose: onClose,
+            onAcceptedSend: onAcceptedSend,
             onCompletion: onCompletion
         )
     }
@@ -406,6 +407,7 @@ public struct ComposeView: View {
         isWorkBlocked: Bool = false,
         driveFeature: GoogleDriveFeature? = nil,
         onClose: (() -> Void)? = nil,
+        onAcceptedSend: ((Draft, SendResult, MailSourceID?, any MailBackend) async -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
         self.init(
@@ -432,6 +434,7 @@ public struct ComposeView: View {
             isWorkBlocked: isWorkBlocked,
             driveFeature: driveFeature,
             onClose: onClose,
+            onAcceptedSend: onAcceptedSend,
             onCompletion: onCompletion
         )
     }
@@ -469,6 +472,7 @@ public struct ComposeView: View {
         /// An AI Writer preview to show at once; snapshot tests use it.
         initialAIPreview: ComposeAIPreviewState? = nil,
         onClose: (() -> Void)? = nil,
+        onAcceptedSend: ((Draft, SendResult, MailSourceID?, any MailBackend) async -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
         self.recoveryDefaults = recoveryDefaults
@@ -515,7 +519,7 @@ public struct ComposeView: View {
         self.driveFeature = driveFeature
         self.onClose = onClose
         self.onCompletion = onCompletion
-        onAcceptedSend = onAcceptedSend
+        self.onAcceptedSend = onAcceptedSend
         let initialBodyText: String
         if let replyingTo {
             _to = State(initialValue: ComposeReplyResolver.recipients(
@@ -1467,13 +1471,11 @@ public struct ComposeView: View {
 
             receiptOptionsMenuContent
 
-            if hostStyle != .inline {
-                Toggle(
-                    String(localized: "Remind me if no reply in 3 days", bundle: .module),
-                    isOn: $remindIfNoReply
-                )
-                .disabled(isBusy)
-            }
+            Toggle(
+                String(localized: "Remind me if no reply in 3 days", bundle: .module),
+                isOn: $remindIfNoReply
+            )
+            .disabled(isBusy)
 
             if composeSecurityDefaults.isFeatureEnabled {
                 Menu(ComposeToolbarAction.security.accessibilityLabel) {
@@ -4078,7 +4080,7 @@ public struct ComposeView: View {
         )
     }
 
-    private func currentDraft() -> Draft {
+    func currentDraft() -> Draft {
         var draft = ComposeDraftBuilder.draft(
             id: draftID,
             remoteID: savedDraftRemoteID,
@@ -4578,7 +4580,7 @@ public struct ComposeView: View {
         restoredDraft != nil || isRecoverySession
     }
 
-    private func selectSender(_ option: ComposeSenderOption) {
+    func selectSender(_ option: ComposeSenderOption) {
         guard !isInteractionBlocked else { return }
         guard ComposeDraftRestoration.allowsSender(
             option,
@@ -4598,6 +4600,11 @@ public struct ComposeView: View {
             await loadAliases()
             await reloadServerSignaturesIfPossible()
         }
+    }
+
+    func setNoReplyFollowUpEnabled(_ enabled: Bool) {
+        guard !isInteractionBlocked else { return }
+        remindIfNoReply = enabled
     }
 
     /// Updates the selected alias and (best-effort) reloads the

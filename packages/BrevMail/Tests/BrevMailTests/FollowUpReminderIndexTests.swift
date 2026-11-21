@@ -72,6 +72,37 @@ struct FollowUpReminderIndexTests {
         #expect(index.reminder(for: "missing", sourceID: sourceID) == nil)
     }
 
+    @Test("automatic reminders require exact source scope in both index and settings lookups")
+    func automaticReminderRequiresExactSource() {
+        let dueAt = Date(timeIntervalSince1970: 1_000_000)
+        let source = sourceID
+        let collision = MailSourceID(accountID: source.accountID, mailboxID: "archive")
+        let automatic = FollowUpReminder(
+            id: "automatic",
+            messageID: "m",
+            threadID: "t",
+            accountID: source.accountID,
+            mailboxID: source.mailboxID,
+            dueAt: dueAt,
+            noReplyMetadata: NoReplyFollowUpMetadata(
+                sourceID: source,
+                draftID: "draft",
+                expectedMessageID: "<out@example.org>",
+                sentAt: dueAt
+            )
+        )
+        let settings = FollowUpSettings(reminders: [automatic])
+        let index = FollowUpReminderIndex(settings: settings)
+
+        for candidate in [MailSourceID?.none, collision, source] {
+            #expect(index.reminder(for: "m", sourceID: candidate)?.id
+                == settings.reminder(for: "m", sourceID: candidate)?.id)
+        }
+        #expect(index.reminder(for: "m", sourceID: nil) == nil)
+        #expect(index.reminder(for: "m", sourceID: collision) == nil)
+        #expect(index.reminder(for: "m", sourceID: source)?.id == automatic.id)
+    }
+
     private func reminder(
         id: String,
         messageID: String,

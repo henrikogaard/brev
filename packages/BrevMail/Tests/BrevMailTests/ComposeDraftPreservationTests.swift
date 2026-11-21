@@ -12,7 +12,7 @@
 
 #if os(macOS)
 import AppKit
-import BrevBackend
+@testable import BrevBackend
 @testable import BrevMail
 import SwiftUI
 import Testing
@@ -104,6 +104,127 @@ struct ComposeDraftPreservationTests {
 
         let persisted = try #require(await backend.draft(for: original.remoteID ?? original.id))
         #expect(persisted.followUpRequest == original.followUpRequest)
+    }
+
+    @Test("mounted accepted Send invokes the captured callback exactly once")
+    @MainActor
+    func acceptedSendInvokesCallbackOnce() async throws {
+        let backend = MockBackend()
+        let mailbox = try #require(await backend.mailboxes().first)
+        let sourceID = backend.sourceID(for: mailbox)
+        let original = Draft(
+            id: "accepted-callback",
+            to: [Correspondent(email: "recipient@example.invalid")],
+            subject: "Accepted callback",
+            followUpRequest: DraftNoReplyFollowUpRequest(expectedMessageID: "<accepted@invalid>")
+        )
+        let harness = try Harness(backend: backend, original: original, sourceID: sourceID)
+        defer { harness.dispose() }
+        try await harness.prepare()
+
+        await harness.mounted?.send(bypassingSendGuard: true)
+
+        #expect(harness.acceptedSends.count == 1)
+        #expect(harness.acceptedSends[0].0.id == original.id)
+        #expect(harness.acceptedSends[0].2 == sourceID)
+        #expect(harness.acceptedSends[0].3 == ObjectIdentifier(backend))
+    }
+
+    @Test("closing a mounted composer without Send never invokes the accepted callback")
+    @MainActor
+    func cancelDoesNotInvokeAcceptedCallback() async throws {
+        let backend = MockBackend()
+        let original = Draft(id: "cancelled-callback", to: [Correspondent(email: "recipient@example.invalid")])
+        let harness = try Harness(backend: backend, original: original)
+        defer { harness.dispose() }
+        try await harness.prepare()
+
+        harness.mounted?.close()
+
+        #expect(harness.acceptedSends.isEmpty)
+    }
+
+    @Test("queued mounted send invokes the captured callback once")
+    @MainActor
+    func queuedSendInvokesCallbackOnce() async throws {
+        let backend = MockBackend()
+        backend.sendHandler = { _, _ in
+            SendResult(sentMessageID: "queued", warnings: [.queuedForRetry])
+        }
+        let mailbox = try #require(await backend.mailboxes().first)
+        let sourceID = backend.sourceID(for: mailbox)
+        let original = Draft(id: "queued-callback", to: [Correspondent(email: "recipient@example.invalid")])
+        let harness = try Harness(backend: backend, original: original, sourceID: sourceID)
+        defer { harness.dispose() }
+        try await harness.prepare()
+
+        await harness.mounted?.send(bypassingSendGuard: true)
+
+        #expect(harness.acceptedSends.count == 1)
+        #expect(harness.acceptedSends[0].1.warnings == [.queuedForRetry])
+        #expect(harness.acceptedSends[0].2 == sourceID)
+        #expect(harness.acceptedSends[0].3 == ObjectIdentifier(backend))
+    }
+
+    @Test("failed mounted send never invokes the accepted callback")
+    @MainActor
+    func failedSendDoesNotInvokeCallback() async throws {
+        let backend = MockBackend()
+        backend.sendHandler = { _, _ in throw MockComposeSendFailure.failed }
+        let original = Draft(id: "failed-callback", to: [Correspondent(email: "recipient@example.invalid")])
+        let harness = try Harness(backend: backend, original: original)
+        defer { harness.dispose() }
+        try await harness.prepare()
+
+        await harness.mounted?.send(bypassingSendGuard: true)
+
+        #expect(harness.acceptedSends.isEmpty)
+    }
+
+    @Test("mounted sender switch recomputes the opted-in RFC Message-ID")
+    @MainActor
+    func senderSwitchRecomputesExpectedMessageID() async throws {
+        let backend = MockBackend()
+        let mailboxes = try await backend.mailboxes()
+        let firstMailbox = try #require(mailboxes.first)
+        let secondMailbox = try #require(mailboxes.dropFirst().first)
+        let firstSource = backend.sourceID(for: firstMailbox)
+        let secondSource = backend.sourceID(for: secondMailbox)
+        let options = [
+            ComposeSenderOption(sourceID: firstSource, accountID: backend.account.id,
+                                displayName: "First", email: firstMailbox.email, subtitle: "First"),
+            ComposeSenderOption(sourceID: secondSource, accountID: backend.account.id,
+                                displayName: "Second", email: secondMailbox.email, subtitle: "Second")
+        ]
+        let defaultsName = "ComposeDraftPreservationTests.identity.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: defaultsName))
+        var mounted: ComposeView?
+        var view = ComposeView(
+            backend: backend,
+            sourceID: firstSource,
+            from: options[0].correspondent,
+            senderOptions: options,
+            initialSenderOption: options[0],
+            recoveryDefaults: defaults
+        )
+        view.inspection = { mounted = $0 }
+        let host = NSHostingView(rootView: AnyView(view.defaultAppStorage(defaults)))
+        host.frame = NSRect(x: 0, y: 0, width: 700, height: 600)
+        host.layoutSubtreeIfNeeded()
+        defer {
+            host.rootView = AnyView(EmptyView())
+            defaults.removePersistentDomain(forName: defaultsName)
+        }
+
+        let compose = try #require(mounted)
+        compose.setNoReplyFollowUpEnabled(true)
+        compose.selectSender(options[1])
+        let expected = MIMEMessageBuilder.messageIDHeaderValue(
+            draftID: compose.currentDraft().id,
+            fromEmail: secondMailbox.email
+        )
+
+        #expect(compose.currentDraft().followUpRequest?.expectedMessageID == expected)
     }
 
     @Test("native edit and Send retain restored rich semantics", arguments: [false, true], [false, true])
@@ -520,6 +641,7 @@ struct ComposeDraftPreservationTests {
         var host: NSHostingView<AnyView>?
         var closeCount = 0
         var completions: [ComposeCompletion] = []
+        var acceptedSends: [(Draft, SendResult, MailSourceID?, ObjectIdentifier)] = []
         private let defaultsName = "ComposeDraftPreservationTests.\(UUID().uuidString)"
         private let defaults: UserDefaults
         private let accountID: String
@@ -556,6 +678,9 @@ struct ComposeDraftPreservationTests {
                 existingDraftIsServerSourced: isServerSourced,
                 recoveryDefaults: defaults,
                 onClose: { [weak self] in self?.closeCount += 1 },
+                onAcceptedSend: { [weak self] draft, result, sourceID, sendBackend in
+                    self?.acceptedSends.append((draft, result, sourceID, ObjectIdentifier(sendBackend as AnyObject)))
+                },
                 onCompletion: { [weak self] completion in
                     guard let self else { return }
                     completions.append(completion)
@@ -602,5 +727,9 @@ struct ComposeDraftPreservationTests {
             defaults.removePersistentDomain(forName: defaultsName)
         }
     }
+}
+
+private enum MockComposeSendFailure: Error {
+    case failed
 }
 #endif

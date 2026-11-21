@@ -198,6 +198,48 @@ struct TodayDigestTests {
         #expect(overdue.youreWaitingOn.map(\.header.id) == ["old"])
     }
 
+    @Test("Today recovers an automatic reminder after its provider locator changes")
+    func changedLocatorUsesCanonicalRFCIdentity() {
+        let sent = Self.header(
+            "new-locator", folder: "sent", from: Self.me, to: [Self.maya], hoursAgo: 48, messageID: "<tracked@x>"
+        )
+        let reminder = FollowUpReminder(
+            id: "automatic", messageID: "old-locator", threadID: sent.threadID,
+            accountID: Self.source.accountID, mailboxID: Self.source.mailboxID, folderID: "sent",
+            dueAt: Self.now,
+            noReplyMetadata: NoReplyFollowUpMetadata(
+                sourceID: Self.source, draftID: "draft", expectedMessageID: "<tracked@x>", sentAt: sent.date
+            )
+        )
+
+        let digest = Self.build(inbox: [], sent: [sent], noReplyReminders: [reminder])
+
+        #expect(digest.youreWaitingOn.count == 1)
+        #expect(digest.youreWaitingOn.first?.header.id == sent.id)
+        #expect(digest.youreWaitingOn.first?.dueAt == Self.now)
+    }
+
+    @Test("an unrelated RFC ID never suppresses a generic Today row through a reused locator")
+    func reusedLocatorDoesNotSuppressUnrelatedMessage() {
+        let sent = Self.header(
+            "reused-locator", folder: "sent", from: Self.me, to: [Self.maya], hoursAgo: 48, messageID: "<actual@x>"
+        )
+        let reminder = FollowUpReminder(
+            id: "automatic", messageID: sent.id, threadID: sent.threadID,
+            accountID: Self.source.accountID, mailboxID: Self.source.mailboxID, folderID: "sent",
+            dueAt: Self.now,
+            noReplyMetadata: NoReplyFollowUpMetadata(
+                sourceID: Self.source, draftID: "draft", expectedMessageID: "<different@x>", sentAt: sent.date
+            )
+        )
+
+        let digest = Self.build(inbox: [], sent: [sent], noReplyReminders: [reminder])
+
+        #expect(digest.youreWaitingOn.count == 1)
+        #expect(digest.youreWaitingOn.first?.header.id == sent.id)
+        #expect(digest.youreWaitingOn.first?.dueAt == nil)
+    }
+
     @Test("mail older than the window and my own inbox copies are ignored")
     func windowAndSelf() {
         let digest = Self.build(inbox: [

@@ -80,6 +80,11 @@ settings, passwords, tokens, and settings that would turn on other
 network features are never included. Apple stores this data subject to
 Apple's iCloud terms; Brev has no server and never sees it.
 
+No-reply notification delivery bookkeeping (scheduled, delivered, denied,
+or failed) is stored only in local device preferences. It is not part of
+FollowUpSettings backup or iCloud synchronization and is not sent to a
+service.
+
 **How to disable:** Settings → Sync & Storage → Preferences → "Sync preferences with
 iCloud". Defaults to off. Turning it off stops reading and writing on
 that device; values already in your iCloud account remain there until

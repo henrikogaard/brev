@@ -65,6 +65,10 @@ struct UnifiedInboxListView: View {
     private let sourceSectionsRevisionProvider: (() -> Int)?
     private let isSourceAvailable: ((MailSourceID) -> Bool)?
     private let sourceSections: [MailSourceSection]
+    private let currentSourceSectionsProvider: () -> [MailSourceSection]
+    private let followUpSettingsProvider: () -> FollowUpSettings
+    private let sourceSectionsRevision: Int
+    private let currentSourceSectionsRevisionProvider: () -> Int
     /// Whether Copy/Move to Local Folder may be offered (ADR-0077, macOS).
     private let canFileLocally: Bool
     private let accountOwnedMailboxEmailsByAccountID: [BrevAccount.ID: Set<String>]
@@ -184,13 +188,21 @@ struct UnifiedInboxListView: View {
         onRefresh: (() async -> Bool?)? = nil,
         currentBackendsProvider: (@MainActor () -> [any MailBackend])? = nil,
         sourceSectionsRevisionProvider: (() -> Int)? = nil,
-        isSourceAvailable: ((MailSourceID) -> Bool)? = nil
+        isSourceAvailable: ((MailSourceID) -> Bool)? = nil,
+        currentSourceSectionsProvider: (() -> [MailSourceSection])? = nil,
+        followUpSettingsProvider: (() -> FollowUpSettings)? = nil,
+        sourceSectionsRevision: Int = 0,
+        currentSourceSectionsRevisionProvider: (() -> Int)? = nil
     ) {
         self.navigation = navigation
         _localMessageWorkflowState = localMessageWorkflowState
         self.currentWorkflowStateProvider = currentWorkflowStateProvider
         self.backends = backends
         self.sourceSections = sourceSections
+        self.currentSourceSectionsProvider = currentSourceSectionsProvider ?? { sourceSections }
+        self.followUpSettingsProvider = followUpSettingsProvider ?? { FollowUpSettings.load() }
+        self.sourceSectionsRevision = sourceSectionsRevision
+        self.currentSourceSectionsRevisionProvider = currentSourceSectionsRevisionProvider ?? { sourceSectionsRevision }
         self.canFileLocally = canFileLocally
         self.accountOwnedMailboxEmailsByAccountID = accountOwnedMailboxEmailsByAccountID
         self.smartView = smartView
@@ -696,7 +708,7 @@ struct UnifiedInboxListView: View {
         let sourceKey = sourceSections
             .map { "\($0.id.accountID):\($0.id.mailboxID)" }
             .joined(separator: "|")
-        return "\(savedSearchID ?? smartView?.id ?? "unified"):\(sourceKey)"
+        return "\(savedSearchID ?? smartView?.id ?? "unified"):\(sourceSectionsRevision):\(sourceKey)"
     }
 
     private var searchCapabilityKey: String {
@@ -2488,31 +2500,37 @@ struct UnifiedInboxListView: View {
         loadMoreErrorStatus = nil
         pageCursors = [:]
 
-        let reminders = FollowUpSettings.load().reminders.filter {
+        let capturedRevision = sourceSectionsRevision
+        guard currentSourceSectionsRevisionProvider() == capturedRevision else { return }
+        let reminders = followUpSettingsProvider().reminders.filter {
             $0.isAutomaticNoReply && !$0.isDismissed && !$0.isCompleted
         }
         let activeReminderLocations = Set(reminders.compactMap { reminder -> SourceMessageID? in
-            guard let sourceID = reminder.noReplyMetadata?.sourceID else { return nil }
-            return SourceMessageID(sourceID: sourceID, messageID: reminder.messageID)
+            guard let metadata = reminder.noReplyMetadata,
+                  let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier(metadata.expectedMessageID)
+            else { return nil }
+            return SourceMessageID(sourceID: metadata.sourceID, messageID: identifier)
         })
         var loadedItems = items.filter {
-            activeReminderLocations.contains(SourceMessageID(sourceID: $0.sourceID, messageID: $0.header.id))
+            guard let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier($0.header.messageID) else {
+                return false
+            }
+            return activeReminderLocations.contains(SourceMessageID(sourceID: $0.sourceID, messageID: identifier))
         }
         var firstError: String?
-        for section in sourceSections {
+        for section in currentSourceSectionsProvider() {
             guard loadOwnership.accepts(request), !Task.isCancelled else { return }
             let sectionReminders = reminders.filter { $0.noReplyMetadata?.sourceID == section.id }
-            guard !sectionReminders.isEmpty,
-                  let backend = backends.first(where: { $0.account.id == section.account.id })
-            else {
+            guard !sectionReminders.isEmpty else {
                 loadedItems.removeAll { $0.sourceID == section.id }
                 continue
             }
+            guard let backend = (currentBackendsProvider?() ?? backends).first(where: { $0.account.id == section.account.id }) else {
+                continue
+            }
+            let backendIdentity = ObjectIdentifier(backend as AnyObject)
             let sentFolders = section.folders.filter { $0.role == .sent }
-            guard !sentFolders.isEmpty else {
-                loadedItems.removeAll { $0.sourceID == section.id }
-                continue
-            }
+            guard !sentFolders.isEmpty else { continue }
             var headers: [MessageHeader] = []
             var failed = false
             for folder in sentFolders {
@@ -2524,15 +2542,38 @@ struct UnifiedInboxListView: View {
                     failed = true
                     break
                 }
+                guard loadOwnership.accepts(request),
+                      currentSourceSectionsRevisionProvider() == capturedRevision,
+                      currentSourceSectionsProvider().contains(where: { $0.id == section.id }),
+                      let currentBackend = (currentBackendsProvider?() ?? backends).first(where: { $0.account.id == section.id.accountID }),
+                      ObjectIdentifier(currentBackend as AnyObject) == backendIdentity
+                else { return }
+                let currentReminders = followUpSettingsProvider().reminders.filter {
+                    $0.isAutomaticNoReply && !$0.isDismissed && !$0.isCompleted
+                        && $0.noReplyMetadata?.sourceID == section.id
+                }
+                if currentReminders.isEmpty {
+                    loadedItems.removeAll { $0.sourceID == section.id }
+                    failed = true
+                    break
+                }
             }
             guard loadOwnership.accepts(request), !Task.isCancelled else { return }
             if failed { continue }
 
+            let currentReminders = followUpSettingsProvider().reminders.filter {
+                $0.isAutomaticNoReply && !$0.isDismissed && !$0.isCompleted
+                    && $0.noReplyMetadata?.sourceID == section.id
+            }
+            guard !currentReminders.isEmpty else {
+                loadedItems.removeAll { $0.sourceID == section.id }
+                continue
+            }
             let waitingHeaders = NoReplyFollowUpWaitingProjection.headers(
                 sourceID: section.id,
                 sentFolderIDs: Set(sentFolders.map(\.id)),
                 cachedHeaders: headers,
-                reminders: sectionReminders
+                reminders: currentReminders
             )
             let sentItems = waitingHeaders.compactMap { header -> UnifiedInboxItem? in
                 guard let folder = sentFolders.first(where: { $0.id == header.folderID }) else { return nil }
@@ -2548,8 +2589,24 @@ struct UnifiedInboxListView: View {
             loadedItems.removeAll { $0.sourceID == section.id }
             loadedItems.append(contentsOf: sentItems)
         }
-        guard loadOwnership.accepts(request) else { return }
-        items = UnifiedInboxPagination.sortedItems(loadedItems)
+        guard loadOwnership.accepts(request),
+              currentSourceSectionsRevisionProvider() == capturedRevision else { return }
+        let currentReminders = followUpSettingsProvider().reminders.filter {
+            $0.isAutomaticNoReply && !$0.isDismissed && !$0.isCompleted
+        }
+        let currentReminderLocations = Set(currentReminders.compactMap { reminder -> SourceMessageID? in
+            guard let metadata = reminder.noReplyMetadata,
+                  let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier(metadata.expectedMessageID)
+            else { return nil }
+            return SourceMessageID(sourceID: metadata.sourceID, messageID: identifier)
+        })
+        let currentSourceIDs = Set(currentSourceSectionsProvider().map(\.id))
+        items = UnifiedInboxPagination.sortedItems(loadedItems.filter { item in
+            guard currentSourceIDs.contains(item.sourceID),
+                  let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier(item.header.messageID)
+            else { return false }
+            return currentReminderLocations.contains(SourceMessageID(sourceID: item.sourceID, messageID: identifier))
+        })
         reconcileNavigationAfterItemsChanged()
         if let firstError {
             if items.isEmpty {

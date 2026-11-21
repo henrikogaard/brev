@@ -83,11 +83,13 @@ enum TodayDigestBuilder {
         var sentByThread: [ThreadKey: Date] = [:]
         var sentMessageIDs: Set<String> = []
         var sentLatest: [ThreadKey: (MailSourceID, MessageHeader)] = [:]
-        var sentByLocation: [SourceMessageID: MessageHeader] = [:]
+        var sentByCanonicalID: [SourceMessageID: [MessageHeader]] = [:]
         var trackedNoReplyMessages = Set<SourceMessageID>()
         for reminder in noReplyReminders where reminder.isAutomaticNoReply {
-            guard let sourceID = reminder.noReplyMetadata?.sourceID else { continue }
-            trackedNoReplyMessages.insert(SourceMessageID(sourceID: sourceID, messageID: reminder.messageID))
+            guard let metadata = reminder.noReplyMetadata,
+                  let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier(metadata.expectedMessageID)
+            else { continue }
+            trackedNoReplyMessages.insert(SourceMessageID(sourceID: metadata.sourceID, messageID: identifier))
         }
         // Message ID -> when I last replied to it. IMAP threads each folder
         // on its own, so Inbox and Sent rarely share a thread ID; the reply
@@ -95,7 +97,10 @@ enum TodayDigestBuilder {
         var myReplyDates: [String: Date] = [:]
         for (sourceID, headers) in sent {
             for header in headers {
-                sentByLocation[SourceMessageID(sourceID: sourceID, messageID: header.id)] = header
+                if let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier(header.messageID) {
+                    sentByCanonicalID[SourceMessageID(sourceID: sourceID, messageID: identifier), default: []]
+                        .append(header)
+                }
                 guard header.date >= since else { continue }
                 let key = ThreadKey(sourceID: sourceID, threadID: header.threadID)
                 sentByThread[key] = max(sentByThread[key] ?? .distantPast, header.date)
@@ -140,7 +145,9 @@ enum TodayDigestBuilder {
 
         var waitingOn: [TodayDigest.Row] = []
         for (key, (sourceID, header)) in sentLatest {
-            guard !trackedNoReplyMessages.contains(SourceMessageID(sourceID: sourceID, messageID: header.id)) else { continue }
+            let canonicalID = NoReplyFollowUpReconciler.singleMessageIdentifier(header.messageID)
+            if let canonicalID,
+               trackedNoReplyMessages.contains(SourceMessageID(sourceID: sourceID, messageID: canonicalID)) { continue }
             let other = (header.to + header.cc).first { !isMine($0) }
             let oldEnough = now.timeIntervalSince(header.date) >= replyGrace
             let replied = (inboxByThread[key] ?? .distantPast) > header.date
@@ -153,13 +160,11 @@ enum TodayDigestBuilder {
         for reminder in noReplyReminders where reminder.isAutomaticNoReply
             && !reminder.isDismissed && !reminder.isCompleted && reminder.dueAt <= now {
             guard let metadata = reminder.noReplyMetadata,
-                  let header = sentByLocation[SourceMessageID(sourceID: metadata.sourceID, messageID: reminder.messageID)],
+                  let expectedIdentifier = NoReplyFollowUpReconciler.singleMessageIdentifier(metadata.expectedMessageID),
+                  let header = NoReplyFollowUpReconciler.resolveSentCopy(
+                      sentByCanonicalID[SourceMessageID(sourceID: metadata.sourceID, messageID: expectedIdentifier)] ?? []
+                  ),
                   let other = (header.to + header.cc).first(where: { !isMine($0) })
-            else { continue }
-            guard let expected = try? ConversationMembershipResolver.identifiers(in: metadata.expectedMessageID),
-                  expected.count == 1,
-                  let actual = try? ConversationMembershipResolver.identifiers(in: header.messageID),
-                  actual == expected
             else { continue }
             waitingOn.append(TodayDigest.Row(
                 sourceID: metadata.sourceID,

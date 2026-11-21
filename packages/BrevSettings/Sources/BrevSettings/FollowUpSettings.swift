@@ -283,6 +283,13 @@ public struct FollowUpSettings: Codable, Equatable, Sendable {
 
     public mutating func add(_ reminder: FollowUpReminder) {
         if reminder.isAutomaticNoReply, reminders.contains(where: { $0.id == reminder.id }) { return }
+        if !reminder.isAutomaticNoReply {
+            for index in reminders.indices where reminders[index].isAutomaticNoReply
+                && !reminders[index].isDismissed && !reminders[index].isCompleted
+                && Self.sameScope(reminders[index], reminder) {
+                reminders[index].isDismissed = true
+            }
+        }
         // Dedup only within the same source scope. Legacy records are retained
         // unless they are themselves being replaced, so older persisted data
         // remains available as a migration fallback.
@@ -290,6 +297,7 @@ public struct FollowUpSettings: Codable, Equatable, Sendable {
             $0.messageID == reminder.messageID
                 && !$0.isDismissed
                 && !$0.isCompleted
+                && !$0.isAutomaticNoReply
                 && Self.sameScope($0, reminder)
         }
         reminders.append(reminder)

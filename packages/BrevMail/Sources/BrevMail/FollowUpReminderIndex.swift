@@ -37,6 +37,7 @@ struct FollowUpReminderIndex {
         var globalMatch: FollowUpReminder?
 
         for reminder in activeRemindersByMessageID[messageID] ?? [] {
+            if reminder.isAutomaticNoReply, reminder.noReplyMetadata?.sourceID != sourceID { continue }
             guard let sourceID else {
                 globalMatch = earlier(globalMatch, reminder)
                 continue

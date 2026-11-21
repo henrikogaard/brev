@@ -81,19 +81,30 @@ import Testing
     @Test("mock sends preserve shared RFC identity and exact reply references")
     func sendsCarryRFCMetadata() async throws {
         let backend = MockBackend()
-        let firstDraft = Draft(id: "follow-up-fixture", to: [Correspondent(email: "you@example.test")])
+        let mailbox = try #require(await backend.mailboxes().first)
+        let sourceID = backend.sourceID(for: mailbox)
+        let staleExpectedID = "<stale@example.test>"
+        let draft = Draft(
+            id: "follow-up-fixture",
+            to: [Correspondent(email: "you@example.test")],
+            followUpRequest: DraftNoReplyFollowUpRequest(expectedMessageID: staleExpectedID)
+        )
+        let firstDraft = try await backend.save(draft: draft, sourceID: sourceID)
+        let storedDraft = try await backend.draft(for: #require(firstDraft.remoteID), sourceID: sourceID)
         let firstExpectedID = MIMEMessageBuilder.messageIDHeaderValue(
             draftID: firstDraft.id,
-            fromEmail: backend.account.emailAddress
+            fromEmail: mailbox.email
         )
-        let firstResult = try await backend.send(draft: firstDraft)
+        #expect(storedDraft == firstDraft)
+        let firstResult = try await backend.send(draft: firstDraft, sourceID: sourceID)
         let sentFolder = try #require(await backend.folders().first(where: { $0.role == .sent }))
         let firstHeaders = try await backend.messages(in: sentFolder, pageToken: nil).headers
         let firstSent = try #require(firstHeaders.first(where: { $0.id == firstResult.sentMessageID }))
         #expect(firstSent.messageID == firstExpectedID)
+        #expect(firstSent.messageID != staleExpectedID)
 
         let replyDraft = Draft(id: "reply-fixture", inReplyToMessageID: firstSent.id)
-        let replyResult = try await backend.send(draft: replyDraft)
+        let replyResult = try await backend.send(draft: replyDraft, sourceID: sourceID)
         let updatedHeaders = try await backend.messages(in: sentFolder, pageToken: nil).headers
         let replySent = try #require(updatedHeaders.first(where: { $0.id == replyResult.sentMessageID }))
         #expect(replySent.inReplyTo == firstExpectedID)

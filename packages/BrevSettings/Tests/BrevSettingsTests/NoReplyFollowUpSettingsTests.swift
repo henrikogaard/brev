@@ -90,4 +90,28 @@ struct NoReplyFollowUpSettingsTests {
         #expect(cleaned.pendingNoReplyIntents.isEmpty)
         #expect(cleaned.reminders.map(\.id) == ["global"])
     }
+
+    @Test("manual replacement preserves automatic identity as dismissed")
+    func manualReplacementKeepsAutomaticTombstone() {
+        let source = MailSourceID(accountID: "account", mailboxID: "mailbox")
+        let sentAt = Date(timeIntervalSince1970: 1_000_000)
+        let automatic = FollowUpReminder(
+            id: "automatic", messageID: "sent-id", threadID: "thread",
+            accountID: source.accountID, mailboxID: source.mailboxID,
+            dueAt: sentAt.addingTimeInterval(259_200),
+            noReplyMetadata: NoReplyFollowUpMetadata(
+                sourceID: source, draftID: "draft", expectedMessageID: "<out@example.org>", sentAt: sentAt
+            )
+        )
+        let manual = FollowUpReminder(
+            id: "manual", messageID: automatic.messageID, threadID: automatic.threadID,
+            accountID: source.accountID, mailboxID: source.mailboxID, dueAt: sentAt.addingTimeInterval(864_000)
+        )
+        var settings = FollowUpSettings(reminders: [automatic])
+
+        settings.add(manual)
+
+        #expect(settings.reminders.contains { $0.id == automatic.id && $0.isDismissed })
+        #expect(settings.reminders.contains { $0.id == manual.id && !$0.isDismissed })
+    }
 }

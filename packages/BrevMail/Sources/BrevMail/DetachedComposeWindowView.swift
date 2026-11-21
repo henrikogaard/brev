@@ -151,26 +151,37 @@ public struct DetachedComposeWindowView: View {
             hasTrustedSigningIdentity: (trustedSigningIdentityCountProvider?(account) ?? 0) > 0,
             hasTrustedEncryptionIdentity: (trustedEncryptionIdentityCountProvider?(account) ?? 0) > 0,
             onClose: onClose,
-            onCompletion: onCompletion,
             onAcceptedSend: { draft, result, sentSourceID, sendBackend in
-                guard let request = draft.followUpRequest,
-                      let sentSourceID,
+                guard let sentSourceID,
                       let currentBackend = DetachedWindowResolver.resolveBackend(
                           sourceID: sentSourceID,
                           in: currentBackendsProvider()
                       ),
-                      ObjectIdentifier(currentBackend as AnyObject) == ObjectIdentifier(sendBackend as AnyObject)
+                      NoReplyFollowUpOwnership.isCurrent(
+                          sourceID: sentSourceID,
+                          currentSourceIDs: [sentSourceID],
+                          currentAccountID: currentBackend.account.id,
+                          currentBackendIdentity: ObjectIdentifier(currentBackend as AnyObject),
+                          expectedBackendIdentity: ObjectIdentifier(sendBackend as AnyObject)
+                      )
                 else { return }
                 var settings = FollowUpSettings.load()
-                settings.upsertPendingNoReplyIntent(PendingNoReplyFollowUpIntent(
-                    sourceID: sentSourceID,
-                    draftID: draft.id,
-                    expectedMessageID: request.expectedMessageID,
-                    sentMessageIDHint: result.sentMessageID
-                ))
+                let originalSettings = settings
+                if let request = draft.followUpRequest {
+                    settings.upsertPendingNoReplyIntent(PendingNoReplyFollowUpIntent(
+                        sourceID: sentSourceID,
+                        draftID: draft.id,
+                        expectedMessageID: request.expectedMessageID,
+                        sentMessageIDHint: result.sentMessageID
+                    ))
+                } else {
+                    settings.removePendingNoReplyIntent(sourceID: sentSourceID, draftID: draft.id)
+                }
+                guard settings != originalSettings else { return }
                 settings.save()
                 NotificationCenter.default.post(name: .brevFollowUpDidChange, object: nil)
-            }
+            },
+            onCompletion: onCompletion
         )
     }
 

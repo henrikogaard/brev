@@ -103,7 +103,7 @@ struct ComposeDraftRestorationTests {
         #expect(try await backend.body(for: header.id).html == draft.htmlBody)
     }
 
-    @Test("private SwiftUI wiring uses one authoritative ID set and validated payloads")
+    @Test("draft restoration uses one authoritative ID set and validated payloads")
     func restorationWiring() throws {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/BrevMail")
@@ -111,8 +111,6 @@ struct ComposeDraftRestorationTests {
         let root = try String(contentsOf: source.appendingPathComponent("BrevMailRootView.swift"), encoding: .utf8)
         #expect(root.contains("ComposeDraftRestoration.resolve("))
         #expect(root.contains("existingDraftAttachments: navigation.composeDraftAttachments"))
-        #expect(compose.contains("fromEmail: currentFromEmail"))
-        #expect(compose.contains("remindIfNoReply = draft.followUpRequest != nil"))
         #expect(compose.contains("ComposeDraftRestoration.pendingAttachments(from: existingDraftAttachments)"))
         #expect(compose.contains("let reconciledAttachmentIDs = currentAttachmentIDs"))
         #expect(compose.contains("attachmentIDs: currentAttachmentIDs"))

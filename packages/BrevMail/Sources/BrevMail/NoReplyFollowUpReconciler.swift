@@ -14,6 +14,42 @@ import BrevBackend
 import BrevSettings
 import Foundation
 
+enum NoReplyFollowUpOwnership {
+    static func isCurrent(
+        sourceID: MailSourceID,
+        currentSourceIDs: Set<MailSourceID>,
+        currentAccountID: String?,
+        currentBackendIdentity: ObjectIdentifier?,
+        expectedBackendIdentity: ObjectIdentifier
+    ) -> Bool {
+        currentSourceIDs.contains(sourceID)
+            && currentAccountID == sourceID.accountID
+            && currentBackendIdentity == expectedBackendIdentity
+    }
+
+    static func canApplyRefresh(
+        generation: Int,
+        currentGeneration: Int,
+        sourceSectionsRevision: Int,
+        currentSourceSectionsRevision: Int,
+        sourceID: MailSourceID,
+        currentSourceIDs: Set<MailSourceID>,
+        currentAccountID: String?,
+        currentBackendIdentity: ObjectIdentifier?,
+        expectedBackendIdentity: ObjectIdentifier
+    ) -> Bool {
+        generation == currentGeneration
+            && sourceSectionsRevision == currentSourceSectionsRevision
+            && isCurrent(
+                sourceID: sourceID,
+                currentSourceIDs: currentSourceIDs,
+                currentAccountID: currentAccountID,
+                currentBackendIdentity: currentBackendIdentity,
+                expectedBackendIdentity: expectedBackendIdentity
+            )
+    }
+}
+
 extension Notification.Name {
     static let brevNoReplyFollowUpCacheDidChange = Notification.Name("brev.noReplyFollowUpCacheDidChange")
 }
@@ -45,59 +81,48 @@ enum NoReplyFollowUpReconciler {
             let sourceHeaders = snapshot.headers
             let sentHeaders = sourceHeaders.filter { snapshot.sentFolderIDs.contains($0.folderID) }
             var sentByID: [String: [MessageHeader]] = [:]
-            var sentByLocator: [String: MessageHeader] = [:]
+            var sentByLocator: [String: [MessageHeader]] = [:]
             for header in sentHeaders {
                 if let identifier = Self.singleMessageIdentifier(header.messageID) {
                     sentByID[identifier, default: []].append(header)
                 }
-                if sentByLocator[header.id] == nil { sentByLocator[header.id] = header }
+                sentByLocator[header.id, default: []].append(header)
             }
             let sentIdentifiers = Set(sentByID.keys)
-            var replyDates: [String: Date] = [:]
+            var replyIdentifiers = Set<String>()
             let ownAddresses = Set(snapshot.ownAddresses.map { $0.lowercased() })
             for header in sourceHeaders where !snapshot.sentFolderIDs.contains(header.folderID)
                 && !ownAddresses.contains(header.from.email.lowercased()) {
                 if Self.messageIdentifiers(header.messageID).contains(where: sentIdentifiers.contains) { continue }
-                for identifier in Self.referencedIdentifiers(in: header) {
-                    replyDates[identifier] = max(replyDates[identifier] ?? .distantPast, header.date)
-                }
+                replyIdentifiers.formUnion(Self.referencedIdentifiers(in: header))
             }
 
             let pending = settings.pendingNoReplyIntents.filter { $0.sourceID == snapshot.sourceID }
             for intent in pending {
                 guard let expectedIdentifier = Self.singleMessageIdentifier(intent.expectedMessageID) else { continue }
-                let expected = Set([expectedIdentifier])
-                let hinted = intent.sentMessageIDHint.flatMap { sentByLocator[$0] }
-                let sent = hinted.flatMap { header in
-                    Self.singleMessageIdentifier(header.messageID) == expectedIdentifier ? header : nil
-                } ?? sentByID[expectedIdentifier]?.first
+                let hinted = (intent.sentMessageIDHint.map { sentByLocator[$0] ?? [] } ?? [])
+                    .filter { Self.singleMessageIdentifier($0.messageID) == expectedIdentifier }
+                let sent = Self.resolveSentCopy(
+                    hinted.isEmpty ? sentByID[expectedIdentifier] ?? [] : hinted
+                )
                 guard let sent else { continue }
                 let alreadyExists = settings.reminders.contains { $0.id == intent.id }
-                if expected.contains(where: { (replyDates[$0] ?? .distantPast) > sent.date }) {
-                    if let reminder = settings.reminders.first(where: { $0.id == intent.id }),
-                       !reminder.isDismissed, !reminder.isCompleted {
-                        settings.complete(id: reminder.id)
-                        completed.append(reminder)
+                if replyIdentifiers.contains(expectedIdentifier) {
+                    if let index = settings.reminders.firstIndex(where: { $0.id == intent.id }) {
+                        if !settings.reminders[index].isDismissed && !settings.reminders[index].isCompleted {
+                            settings.reminders[index].isCompleted = true
+                            completed.append(settings.reminders[index])
+                        }
+                    } else {
+                        var tombstone = Self.reminder(for: intent, sent: sent, sourceID: snapshot.sourceID)
+                        tombstone.isCompleted = true
+                        settings.reminders.append(tombstone)
                     }
                     settings.pendingNoReplyIntents.removeAll { $0.id == intent.id }
                     continue
                 }
                 if !alreadyExists {
-                    let reminder = FollowUpReminder(
-                        id: intent.id,
-                        messageID: sent.id,
-                        threadID: sent.threadID,
-                        accountID: snapshot.sourceID.accountID,
-                        mailboxID: snapshot.sourceID.mailboxID,
-                        folderID: sent.folderID,
-                        dueAt: sent.date.addingTimeInterval(intent.delay),
-                        noReplyMetadata: NoReplyFollowUpMetadata(
-                            sourceID: snapshot.sourceID,
-                            draftID: intent.draftID,
-                            expectedMessageID: intent.expectedMessageID,
-                            sentAt: sent.date
-                        )
-                    )
+                    let reminder = Self.reminder(for: intent, sent: sent, sourceID: snapshot.sourceID)
                     settings.reminders.append(reminder)
                     created.append(reminder)
                 }
@@ -109,7 +134,7 @@ enum NoReplyFollowUpReconciler {
                 && !reminder.isDismissed && !reminder.isCompleted {
                 guard let metadata = reminder.noReplyMetadata,
                       let expectedIdentifier = Self.singleMessageIdentifier(metadata.expectedMessageID),
-                      (replyDates[expectedIdentifier] ?? .distantPast) > metadata.sentAt else { continue }
+                      replyIdentifiers.contains(expectedIdentifier) else { continue }
                 settings.complete(id: reminder.id)
                 completed.append(reminder)
             }
@@ -128,8 +153,44 @@ enum NoReplyFollowUpReconciler {
     }
 
     private static func referencedIdentifiers(in header: MessageHeader) -> [String] {
-        let references = (header.references ?? []).joined(separator: " ")
-        return messageIdentifiers(header.inReplyTo) + messageIdentifiers(references)
+        messageIdentifiers(header.inReplyTo)
+            + (header.references ?? []).flatMap { messageIdentifiers($0) }
+    }
+
+    private static func reminder(
+        for intent: PendingNoReplyFollowUpIntent,
+        sent: MessageHeader,
+        sourceID: MailSourceID
+    ) -> FollowUpReminder {
+        FollowUpReminder(
+            id: intent.id,
+            messageID: sent.id,
+            threadID: sent.threadID,
+            accountID: sourceID.accountID,
+            mailboxID: sourceID.mailboxID,
+            folderID: sent.folderID,
+            dueAt: sent.date.addingTimeInterval(intent.delay),
+            noReplyMetadata: NoReplyFollowUpMetadata(
+                sourceID: sourceID,
+                draftID: intent.draftID,
+                expectedMessageID: intent.expectedMessageID,
+                sentAt: sent.date
+            )
+        )
+    }
+
+    static func resolveSentCopy(_ candidates: [MessageHeader]) -> MessageHeader? {
+        guard let first = candidates.sorted(by: sentCopyOrder).first else { return nil }
+        guard candidates.allSatisfy({
+            $0.date == first.date && $0.threadID == first.threadID && $0.subject == first.subject
+                && $0.from == first.from && $0.to == first.to && $0.cc == first.cc
+        }) else { return nil }
+        return first
+    }
+
+    private static func sentCopyOrder(_ lhs: MessageHeader, _ rhs: MessageHeader) -> Bool {
+        if lhs.folderID != rhs.folderID { return lhs.folderID < rhs.folderID }
+        return lhs.id < rhs.id
     }
 }
 
@@ -140,24 +201,19 @@ enum NoReplyFollowUpWaitingProjection {
         cachedHeaders: [MessageHeader],
         reminders: [FollowUpReminder]
     ) -> [MessageHeader] {
-        let byMessageID = Dictionary(
-            reminders.compactMap { reminder -> (String, FollowUpReminder)? in
-                guard reminder.isAutomaticNoReply, !reminder.isDismissed, !reminder.isCompleted,
-                      reminder.noReplyMetadata?.sourceID == sourceID
-                else { return nil }
-                return (reminder.messageID, reminder)
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
+        var result: [MessageHeader] = []
         var seen = Set<String>()
-        return cachedHeaders.compactMap { header in
-            guard sentFolderIDs.contains(header.folderID),
-                  let reminder = byMessageID[header.id],
-                  let expectedMessageID = reminder.noReplyMetadata?.expectedMessageID,
-                  let expectedIdentifier = NoReplyFollowUpReconciler.singleMessageIdentifier(expectedMessageID),
-                  NoReplyFollowUpReconciler.singleMessageIdentifier(header.messageID) == expectedIdentifier
-            else { return nil }
-            return seen.insert(expectedIdentifier).inserted ? header : nil
+        let sentHeaders = cachedHeaders.filter { sentFolderIDs.contains($0.folderID) }
+        for reminder in reminders where reminder.isAutomaticNoReply && !reminder.isDismissed
+            && !reminder.isCompleted && reminder.noReplyMetadata?.sourceID == sourceID {
+            guard let expectedMessageID = reminder.noReplyMetadata?.expectedMessageID,
+                  let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier(expectedMessageID),
+                  seen.insert(identifier).inserted else { continue }
+            let candidates = sentHeaders.filter {
+                NoReplyFollowUpReconciler.singleMessageIdentifier($0.messageID) == identifier
+            }
+            if let sent = NoReplyFollowUpReconciler.resolveSentCopy(candidates) { result.append(sent) }
         }
+        return result
     }
 }

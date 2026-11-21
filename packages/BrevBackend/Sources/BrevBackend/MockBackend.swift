@@ -3616,8 +3616,7 @@ private actor Store {
         let sentFolderID = Self.ensureSentFolderID(in: &updatedData)
         let messageID = "sent-\(draft.remoteID ?? draft.id)"
         let existingHeader = originalData.messagesByFolder.values.flatMap(\.self).first { $0.id == messageID }
-        let rfcMessageID = canonical.followUpRequest?.expectedMessageID
-            ?? MIMEMessageBuilder.messageIDHeaderValue(draftID: canonical.id, fromEmail: from.email)
+        let rfcMessageID = MIMEMessageBuilder.messageIDHeaderValue(draftID: canonical.id, fromEmail: from.email)
         let header = existingHeader ?? MessageHeader(
             id: messageID,
             threadID: Self.threadID(for: canonical, in: originalData) ?? canonical.threadID ?? messageID,

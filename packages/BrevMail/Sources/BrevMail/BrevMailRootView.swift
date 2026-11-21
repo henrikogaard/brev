@@ -353,6 +353,7 @@ public struct BrevMailRootView: View {
     @State private var backendEventRefreshTask: Task<Void, Never>?
     @State private var noReplyFollowUpRefreshTask: Task<Void, Never>?
     @State private var noReplyFollowUpRefreshRequested = false
+    @State private var noReplyFollowUpRefreshGeneration = 0
     @State private var pendingBackgroundAccountIDs: Set<BrevAccount.ID> = []
     @State private var backgroundAccountRefreshTask: Task<Void, Never>?
     @State private var nextBackgroundAccountRefreshRequestID = 0
@@ -805,6 +806,8 @@ public struct BrevMailRootView: View {
                 activeBackgroundAccountRefreshRequestID = nil
                 pendingBackgroundAccountIDs.removeAll()
                 noReplyFollowUpRefreshTask?.cancel()
+                noReplyFollowUpRefreshGeneration += 1
+                noReplyFollowUpRefreshRequested = false
                 noReplyFollowUpRefreshTask = nil
             }
             .onChange(of: mailboxSourcePreferencesData) { _, data in
@@ -911,6 +914,7 @@ public struct BrevMailRootView: View {
         MailRootRenderStage { mailRootLoadingContent }
             .onChange(of: sourceSectionsRevision, initial: true) { _, _ in
                 onSettingsMailboxContextChange?(settingsMailboxContext)
+                requestNoReplyFollowUpRefresh()
             }
             .onChange(of: sourceSections.map(\.id), initial: true) { _, _ in
                 requestNoReplyFollowUpRefresh()
@@ -932,7 +936,7 @@ public struct BrevMailRootView: View {
                 requestNoReplyFollowUpRefresh()
                 Task {
                     await notificationCenter.cancelInactiveFollowUpReminders(
-                        settings: settingsStore.followUpSettings()
+                        settingsProvider: { settingsStore.followUpSettings() }
                     )
                 }
             }
@@ -2666,6 +2670,11 @@ public struct BrevMailRootView: View {
                     navigation: navigation,
                     backends: backends,
                     sourceSections: visibleSourceSections,
+                    currentBackendsProvider: { currentBackendsProvider() },
+                    currentSourceSectionsProvider: { visibleSourceSections },
+                    followUpSettingsProvider: { settingsStore.followUpSettings() },
+                    sourceSectionsRevision: sourceSectionsRevision,
+                    currentSourceSectionsRevisionProvider: { sourceSectionsRevision },
                     canFileLocally: localBackend != nil,
                     accountOwnedMailboxEmailsByAccountID: accountOwnedMailboxEmailsByAccountID,
                     smartView: selectedSmartView,
@@ -5259,11 +5268,11 @@ public struct BrevMailRootView: View {
                           sourceSections.contains(where: { $0.id == cancellationSourceID }),
                           ObjectIdentifier(backend(for: cancellationSourceID) as AnyObject) == cancellationBackendIdentity
                     else { return }
-                    var settings = FollowUpSettings.load()
+                    var settings = settingsStore.followUpSettings()
                     let previousCount = settings.pendingNoReplyIntents.count
                     settings.removePendingNoReplyIntent(sourceID: cancellationSourceID, draftID: draftID)
                     guard settings.pendingNoReplyIntents.count != previousCount else { return }
-                    settings.save()
+                    settingsStore.save(settings)
                     NotificationCenter.default.post(name: .brevFollowUpDidChange, object: nil)
                 }
             )
@@ -7183,7 +7192,7 @@ public struct BrevMailRootView: View {
         notificationCenter.setupNotificationCategories()
         await notificationCenter.currentAuthorizationStatus()
         await notificationCenter.cancelInactiveFollowUpReminders(
-            settings: settingsStore.followUpSettings()
+            settingsProvider: { settingsStore.followUpSettings() }
         )
 
         activeDelegate.onOpen = { route in
@@ -7951,21 +7960,32 @@ public struct BrevMailRootView: View {
         sourceID: MailSourceID?,
         backend: any MailBackend
     ) {
-        guard let request = draft.followUpRequest,
-              let sourceID,
-              sourceSections.contains(where: { $0.id == sourceID })
+        guard let sourceID,
+              sourceSections.contains(where: { $0.id == sourceID }),
+              let currentBackend = currentBackendsProvider().first(where: { $0.account.id == sourceID.accountID })
         else { return }
-        let currentBackend = self.backend(for: sourceID)
-        guard ObjectIdentifier(currentBackend as AnyObject) == ObjectIdentifier(backend as AnyObject) else { return }
-
-        var settings = FollowUpSettings.load()
-        settings.upsertPendingNoReplyIntent(PendingNoReplyFollowUpIntent(
+        guard NoReplyFollowUpOwnership.isCurrent(
             sourceID: sourceID,
-            draftID: draft.id,
-            expectedMessageID: request.expectedMessageID,
-            sentMessageIDHint: result.sentMessageID
-        ))
-        settings.save()
+            currentSourceIDs: Set(sourceSections.map(\.id)),
+            currentAccountID: currentBackend.account.id,
+            currentBackendIdentity: ObjectIdentifier(currentBackend as AnyObject),
+            expectedBackendIdentity: ObjectIdentifier(backend as AnyObject)
+        ) else { return }
+
+        var settings = settingsStore.followUpSettings()
+        let originalSettings = settings
+        if let request = draft.followUpRequest {
+            settings.upsertPendingNoReplyIntent(PendingNoReplyFollowUpIntent(
+                sourceID: sourceID,
+                draftID: draft.id,
+                expectedMessageID: request.expectedMessageID,
+                sentMessageIDHint: result.sentMessageID
+            ))
+        } else {
+            settings.removePendingNoReplyIntent(sourceID: sourceID, draftID: draft.id)
+        }
+        guard settings != originalSettings else { return }
+        settingsStore.save(settings)
         NotificationCenter.default.post(name: .brevFollowUpDidChange, object: nil)
         requestNoReplyFollowUpRefresh()
     }
@@ -7975,8 +7995,11 @@ public struct BrevMailRootView: View {
             noReplyFollowUpRefreshRequested = true
             return
         }
+        noReplyFollowUpRefreshGeneration += 1
+        let generation = noReplyFollowUpRefreshGeneration
         noReplyFollowUpRefreshTask = Task { @MainActor in
-            await reconcileNoReplyFollowUpsFromCache()
+            await reconcileNoReplyFollowUpsFromCache(generation: generation)
+            guard noReplyFollowUpRefreshGeneration == generation else { return }
             let shouldRepeat = noReplyFollowUpRefreshRequested
             let isCancelled = Task.isCancelled
             noReplyFollowUpRefreshRequested = false
@@ -7985,8 +8008,9 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private func reconcileNoReplyFollowUpsFromCache() async {
-        let savedSettings = FollowUpSettings.load()
+    private func reconcileNoReplyFollowUpsFromCache(generation: Int) async {
+        let sourceRevision = sourceSectionsRevision
+        let savedSettings = settingsStore.followUpSettings()
         let eligibleSources = Set(
             savedSettings.pendingNoReplyIntents.map(\.sourceID)
                 + savedSettings.reminders.compactMap { reminder in
@@ -8001,7 +8025,9 @@ public struct BrevMailRootView: View {
         var backendIdentities: [MailSourceID: ObjectIdentifier] = [:]
         for section in sections {
             guard !Task.isCancelled else { return }
-            let owner = backend(for: section.id)
+            guard let owner = currentBackendsProvider().first(where: { $0.account.id == section.id.accountID }) else {
+                return
+            }
             let ownerIdentity = ObjectIdentifier(owner as AnyObject)
             backendIdentities[section.id] = ownerIdentity
             let sentFolderIDs = Set(section.folders.filter { $0.role == .sent }.map(\.id))
@@ -8028,30 +8054,64 @@ public struct BrevMailRootView: View {
             ))
         }
 
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, noReplyFollowUpRefreshGeneration == generation,
+              sourceSectionsRevision == sourceRevision else { return }
         let currentSources = Set(sourceSections.map(\.id))
+        let currentBackends = currentBackendsProvider()
         let currentSnapshots = snapshots.filter { snapshot in
-            guard currentSources.contains(snapshot.sourceID),
-                  let expectedIdentity = backendIdentities[snapshot.sourceID]
-            else { return false }
-            return ObjectIdentifier(backend(for: snapshot.sourceID) as AnyObject) == expectedIdentity
+            guard let expectedIdentity = backendIdentities[snapshot.sourceID] else { return false }
+            let currentBackend = currentBackends.first(where: { $0.account.id == snapshot.sourceID.accountID })
+            return NoReplyFollowUpOwnership.canApplyRefresh(
+                generation: generation,
+                currentGeneration: noReplyFollowUpRefreshGeneration,
+                sourceSectionsRevision: sourceRevision,
+                currentSourceSectionsRevision: sourceSectionsRevision,
+                sourceID: snapshot.sourceID,
+                currentSourceIDs: currentSources,
+                currentAccountID: currentBackend?.account.id,
+                currentBackendIdentity: currentBackend.map { ObjectIdentifier($0 as AnyObject) },
+                expectedBackendIdentity: expectedIdentity
+            )
         }
-        let latestSettings = FollowUpSettings.load()
+        let latestSettings = settingsStore.followUpSettings()
         let result = NoReplyFollowUpReconciler.reconcile(settings: latestSettings, snapshots: currentSnapshots)
         let didChangeSettings = result.settings != latestSettings
-        if didChangeSettings { result.settings.save() }
+        if didChangeSettings { settingsStore.save(result.settings) }
         for reminder in result.completed {
             notificationCenter.cancelFollowUpReminder(reminder)
         }
-        let notificationSettings = FollowUpSettings.load()
-        for reminder in notificationSettings.reminders where reminder.isAutomaticNoReply
-            && !reminder.isDismissed && !reminder.isCompleted {
-            let subject = currentSnapshots
-                .first(where: { $0.sourceID == reminder.noReplyMetadata?.sourceID })?
-                .headers.first(where: { $0.id == reminder.messageID })?.subject ?? ""
-            await notificationCenter.ensureFollowUpReminderScheduled(reminder, subject: subject)
+        let notificationSettings = settingsStore.followUpSettings()
+        let schedulingRequests = notificationSettings.reminders.compactMap { reminder -> (FollowUpReminder, String)? in
+            guard reminder.isAutomaticNoReply, !reminder.isDismissed, !reminder.isCompleted,
+                  let metadata = reminder.noReplyMetadata,
+                  let expectedIdentifier = NoReplyFollowUpReconciler.singleMessageIdentifier(metadata.expectedMessageID)
+            else { return nil }
+            let snapshot = currentSnapshots.first(where: { $0.sourceID == metadata.sourceID })
+            let sentHeader = NoReplyFollowUpReconciler.resolveSentCopy(
+                snapshot?.headers.filter { header in
+                    snapshot?.sentFolderIDs.contains(header.folderID) == true
+                        && NoReplyFollowUpReconciler.singleMessageIdentifier(header.messageID) == expectedIdentifier
+                } ?? []
+            )
+            return (reminder, sentHeader?.subject ?? "")
         }
-        await notificationCenter.cancelInactiveFollowUpReminders(settings: FollowUpSettings.load())
+        await notificationCenter.ensureAutomaticFollowUpRemindersScheduled(
+            schedulingRequests,
+            settingsProvider: { settingsStore.followUpSettings() },
+            isSourceCurrent: { sourceID in
+                guard sourceSectionsRevision == sourceRevision,
+                      currentSources.contains(sourceID),
+                      let expectedIdentity = backendIdentities[sourceID],
+                      let currentBackend = currentBackendsProvider().first(where: { $0.account.id == sourceID.accountID })
+                else { return false }
+                return ObjectIdentifier(currentBackend as AnyObject) == expectedIdentity
+            }
+        )
+        guard noReplyFollowUpRefreshGeneration == generation,
+              sourceSectionsRevision == sourceRevision else { return }
+        await notificationCenter.cancelInactiveFollowUpReminders(
+            settingsProvider: { settingsStore.followUpSettings() }
+        )
         NotificationCenter.default.post(
             name: didChangeSettings ? .brevFollowUpDidChange : .brevNoReplyFollowUpCacheDidChange,
             object: nil

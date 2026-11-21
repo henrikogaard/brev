@@ -33,6 +33,7 @@ public final class MailNavigationState {
     public nonisolated static let doneSmartViewFolderID = "__brev_smart_done"
     public nonisolated static let vipSmartViewFolderID = "__brev_smart_vip"
     public nonisolated static let subscriptionsSmartViewFolderID = "__brev_smart_subscriptions"
+    /// Stable navigation identifier for the cache-backed Waiting view.
     public nonisolated static let waitingSmartViewFolderID = "__brev_smart_waiting"
     public nonisolated static let allAttachmentsSmartViewFolderID = "__brev_smart_all_attachments"
     public nonisolated static let assistantDestinationFolderID = "__brev_assistant"
@@ -379,6 +380,7 @@ public final class MailNavigationState {
         browsingFolderID == Self.subscriptionsSmartViewFolderID
     }
 
+    /// Whether the cache-backed Waiting smart view is selected.
     public var isWaitingSmartViewSelected: Bool {
         browsingFolderID == Self.waitingSmartViewFolderID
     }
@@ -477,6 +479,7 @@ public final class MailNavigationState {
         selectSmartView(folderID: Self.subscriptionsSmartViewFolderID)
     }
 
+    /// Selects the built-in view for active no-reply follow-ups.
     public func selectWaitingSmartView() {
         selectSmartView(folderID: Self.waitingSmartViewFolderID)
     }
