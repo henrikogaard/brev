@@ -259,6 +259,9 @@ public struct MessageListView: View {
                 snoozeWakeScheduleRevision += 1
                 reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
             }
+            .onChange(of: workflowSourceID) { _, _ in
+                snoozeWakeScheduleRevision += 1
+            }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 snoozeWakeScheduleRevision += 1
@@ -2336,22 +2339,7 @@ public struct MessageListView: View {
             let interval = MailUIPerformanceDiagnostics.beginInterval("Message List Presentation Build")
             defer { MailUIPerformanceDiagnostics.endInterval(interval) }
             let workflowHeaders = workflowVisibleHeaders(from: headers, now: now, calendar: calendar)
-            let dateOverridesBySourceMessageID = snoozeWakePromotionEligible
-                ? MessageListSnoozeWakePolicy.effectiveDateOverrides(
-                    for: headers.map {
-                        MessageListSnoozeWakeEntry(
-                            sourceMessageID: SourceMessageID(sourceID: workflowSourceID, messageID: $0.id),
-                            headerDate: $0.date,
-                            threadID: groupByThread && backend.groupsMessagesIntoThreads ? $0.threadID : nil
-                        )
-                    },
-                    snoozes: localMessageWorkflowState.snoozes,
-                    now: now
-                )
-                : [:]
-            let dateOverrides = Dictionary(
-                uniqueKeysWithValues: dateOverridesBySourceMessageID.map { ($0.key.messageID, $0.value) }
-            )
+            let dateOverrides = snoozeWakeDateOverrides(for: headers, now: now)
             let presentationHeaders = MessageListSortPolicy.sorted(
                 visibleHeaders(for: workflowHeaders),
                 by: mailboxSortOrder,
@@ -2367,16 +2355,57 @@ public struct MessageListView: View {
                 calendar: calendar,
                 sourceHeaders: headers,
                 filteredUngroupedHeaders: workflowHeaders,
-                navigationHeaders: MessageListNavigationHeaders.headers(
-                    from: workflowHeaders,
-                    threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
-                    pinnedIDs: pinnedMessageIDs
+                navigationHeaders: projectedNavigationHeaders(
+                    from: headers,
+                    workflowHeaders: workflowHeaders,
+                    dateOverrides: dateOverrides
                 ),
                 sourceID: sourceID,
-                dateOverrides: dateOverrides,
-                groupsThreads: groupByThread && backend.groupsMessagesIntoThreads
+                groupsThreads: groupByThread && backend.groupsMessagesIntoThreads,
+                dateOverrides: dateOverrides
             )
         }
+    }
+
+    private func snoozeWakeDateOverrides(
+        for headers: [MessageHeader],
+        now: Date
+    ) -> [MessageHeader.ID: Date] {
+        guard snoozeWakePromotionEligible else { return [:] }
+        let sourceScopedOverrides = MessageListSnoozeWakePolicy.effectiveDateOverrides(
+            for: headers.map {
+                MessageListSnoozeWakeEntry(
+                    sourceMessageID: SourceMessageID(sourceID: workflowSourceID, messageID: $0.id),
+                    headerDate: $0.date,
+                    threadID: groupByThread && backend.groupsMessagesIntoThreads ? $0.threadID : nil
+                )
+            },
+            snoozes: localMessageWorkflowState.snoozes,
+            now: now
+        )
+        return Dictionary(
+            uniqueKeysWithValues: sourceScopedOverrides.map { ($0.key.messageID, $0.value) }
+        )
+    }
+
+    private func projectedNavigationHeaders(
+        from sourceHeaders: [MessageHeader],
+        workflowHeaders: [MessageHeader],
+        dateOverrides: [MessageHeader.ID: Date]
+    ) -> [MessageHeader] {
+        let orderedHeaders = snoozeWakePromotionEligible
+            ? MessageListSortPolicy.sorted(
+                workflowHeaders,
+                by: mailboxSortOrder,
+                pinnedIDs: pinnedMessageIDs,
+                dateOverrides: dateOverrides
+            )
+            : workflowHeaders
+        return MessageListNavigationHeaders.headers(
+            from: orderedHeaders,
+            threadContext: groupByThread && backend.groupsMessagesIntoThreads ? sourceHeaders : [],
+            pinnedIDs: pinnedMessageIDs
+        )
     }
 
     private var selectedBulkHeaders: [MessageHeader] {
@@ -4009,10 +4038,11 @@ public struct MessageListView: View {
             // does not imply unchanged snooze, calendar-day, or workflow inputs.
             return presentationSnapshot.navigationHeaders
         }
-        return MessageListNavigationHeaders.headers(
-            from: workflowVisibleHeaders(from: headers),
-            threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
-            pinnedIDs: pinnedMessageIDs
+        let workflowHeaders = workflowVisibleHeaders(from: headers)
+        return projectedNavigationHeaders(
+            from: headers,
+            workflowHeaders: workflowHeaders,
+            dateOverrides: snoozeWakeDateOverrides(for: headers, now: Date())
         )
     }
 

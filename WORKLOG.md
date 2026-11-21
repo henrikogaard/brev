@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-21 — Agent — #297 snooze-wake review corrections
+
+- Goal: address the pre-PR review findings without broadening the message-scoped wake slice.
+- Changes: equal effective wake dates now tie-break by original header date before ID; the single-list wake task restarts when its source changes; eligible Inbox navigation headers and fallback navigation use the same promoted newest-first ordering as visible headers; corrected the snapshot initializer argument order and both new-file MIT headers.
+- Red/green: the external Swift Testing harness compiled the actual MessageListSortPolicy.swift, UnifiedInboxThreadGrouping.swift, and sort test file; the new tie regression failed before the comparator change with ordered IDs ["a", "z"] and parent ["a"], then all 16 sort tests passed. The policy harness compiled the actual policy source and test file; all 7 tests passed, including active-source deadline selection.
+- Verification: pinned SwiftFormat reported 0/6 files require formatting; git diff --check passed.
+- Skipped: native BrevMail/SwiftUI compilation and presentation-snapshot tests are unavailable on Linux. No PR or hosted CI action was performed.
+
 ## 2026-11-21 — Agent — #297 snooze wake ordering
 
 - Goal: promote expired, source-scoped snoozes in Inbox ordering and refresh lists at the nearest wake deadline without changing provider timestamps or persisted models.

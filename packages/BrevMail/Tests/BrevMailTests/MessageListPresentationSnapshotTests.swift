@@ -88,6 +88,26 @@ struct MessageListPresentationSnapshotTests {
                                        expandedThreadIDs: []) == nil)
     }
 
+    @Test("wake ordering is shared by visible and navigable message projections")
+    func wakeOrderingMatchesNavigableHeaders() {
+        let older = Self.header(id: "a", threadID: "thread", date: Date(timeIntervalSince1970: 100))
+        let newer = Self.header(id: "z", threadID: "thread", date: Date(timeIntervalSince1970: 200))
+        let wakeAt = Date(timeIntervalSince1970: 300)
+        let visible = MessageListSortPolicy.sorted(
+            [older, newer],
+            by: .newestFirst,
+            pinnedIDs: [],
+            dateOverrides: [older.id: wakeAt, newer.id: wakeAt]
+        )
+        let navigable = MessageListNavigationHeaders.headers(
+            from: visible,
+            threadContext: [older, newer]
+        )
+
+        #expect(visible.map(\.id) == ["z", "a"])
+        #expect(navigable.map(\.id) == ["z", "a"])
+    }
+
     @Test("selection follows filtered representative, date visibility and current header membership")
     func filteredSelectionRepresentative() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)

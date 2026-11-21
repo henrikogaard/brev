@@ -148,6 +148,9 @@ enum MessageListSortPolicy {
         if lhsDate != rhsDate {
             return lhsDate > rhsDate
         }
+        if lhs.date != rhs.date {
+            return lhs.date > rhs.date
+        }
         return lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
     }
 

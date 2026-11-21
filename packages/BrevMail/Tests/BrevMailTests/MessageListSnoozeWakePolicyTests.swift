@@ -7,8 +7,7 @@
  in the Software without restriction, including without limitation the rights
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
- in the LICENSE file.
+ furnished to do so, subject to the conditions in the LICENSE file.
  */
 
 import BrevBackend
@@ -166,6 +165,35 @@ struct MessageListSnoozeWakePolicyTests {
         ) == secondWake)
         #expect(MessageListSnoozeWakePolicy.sleepNanoseconds(until: secondWake, now: Self.now)
             == 120_000_000_000)
+    }
+
+    @Test("nearest wake selection follows the active source set")
+    func nearestWakeTracksSourceChanges() {
+        let otherSource = MailSourceID(accountID: "other-account", mailboxID: "other-mailbox")
+        let localID = SourceMessageID(sourceID: Self.source, messageID: "local")
+        let otherID = SourceMessageID(sourceID: otherSource, messageID: "other")
+        let localWake = Self.now.addingTimeInterval(120)
+        let otherWake = Self.now.addingTimeInterval(60)
+        let snoozes = [
+            LocalMessageSnooze(messageID: localID, wakeAt: localWake),
+            LocalMessageSnooze(messageID: otherID, wakeAt: otherWake),
+        ]
+
+        #expect(MessageListSnoozeWakePolicy.nearestWakeDate(
+            in: snoozes,
+            sourceIDs: [Self.source],
+            after: Self.now
+        ) == localWake)
+        #expect(MessageListSnoozeWakePolicy.nearestWakeDate(
+            in: snoozes,
+            sourceIDs: [otherSource],
+            after: Self.now
+        ) == otherWake)
+        #expect(MessageListSnoozeWakePolicy.nearestWakeDate(
+            in: snoozes,
+            sourceIDs: [],
+            after: Self.now
+        ) == nil)
     }
 
     private static func entry(
