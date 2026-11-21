@@ -10,8 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-@testable import BrevAI
-@testable import BrevMail
+import BrevAI
 import Foundation
 import Testing
 
