@@ -9,11 +9,16 @@
   toolbar reserves a wider item for its label; the iOS toolbar keeps 44 pt
   controls and places the title between the action groups. The inline-reply
   Later action is unchanged.
+- Review follow-up: qualified toolbar-width assertion arguments with the
+  MacComposeToolbarItemIdentifier namespace.
 - Red/green: the actual pure presentation source and focused Swift Testing file
   first failed to compile because canPresentScheduleSend was missing; after
   implementation, both policy tests passed in an external Linux SPM harness.
   The harness used only a Linux compatibility shim for CoreGraphics/localized
   bundle APIs; production source and test code were copied unchanged.
+- Local checks: pinned SwiftFormat lint reported 0/1 files requiring formatting;
+  scripts/check-adr-required.sh exited 0; git diff --check and
+  git diff --cached --check had no diagnostics.
 - Skipped: native BrevMail tests and macOS/iOS builds, in-app visual QA, and
   snapshot recording require macOS 26. Scheduled-send restart and account-cleanup
   QA remain unverified; this slice makes no persistence or backend changes.

@@ -211,8 +211,8 @@ struct MacMailAuxiliaryWindowConfigurationTests {
             MacComposeToolbarItemIdentifier.more
         ])
         #expect(
-            MacComposeToolbarItemIdentifier.itemWidth(for: .scheduleSend)
-                > MacComposeToolbarItemIdentifier.itemWidth(for: .send)
+            MacComposeToolbarItemIdentifier.itemWidth(for: MacComposeToolbarItemIdentifier.scheduleSend)
+                > MacComposeToolbarItemIdentifier.itemWidth(for: MacComposeToolbarItemIdentifier.send)
         )
         #expect(configuration.title == String(localized: "New Message", bundle: .module))
     }
