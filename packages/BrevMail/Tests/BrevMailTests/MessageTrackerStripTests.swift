@@ -238,6 +238,8 @@ struct MessageTrackerStripTests {
         // Text inside another attribute's value is never an attribute: kept.
         (#"<img alt="style='width:1px;height:1px'" src="https://cdn.example.com/d.jpg" style="width:300px;height:200px">"#, 0),
         (#"<img title='a "style=width:1px;height:1px"' src="https://cdn.example.com/e.jpg">"#, 0),
+        // A combining mark after a closing quote does not hide the next attribute.
+        ("<img src=\"https://stats.example.net/o/7\" title=\"x\"\u{0301} style=\"width:1px;height:1px\">", 1),
     ])
     func realStyleAttribute(html: String, expected: Int) {
         #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == expected)

@@ -223,28 +223,33 @@ enum MessageRemoteContentDetector {
         /// values are double-quoted, single-quoted or unquoted. Text inside a
         /// value is never read as another attribute.
         static func tagAttributes(_ tag: String) -> [(name: String, value: String)] {
-            let chars = Array(tag)
+            // Unicode scalars, not Characters: a quote followed by a combining
+            // mark is one Character in Swift but still a quote to HTML.
+            let chars = Array(tag.unicodeScalars)
+            func isSpace(_ scalar: Unicode.Scalar) -> Bool {
+                [" ", "\t", "\n", "\r", "\u{0C}"].contains(scalar)
+            }
             var index = 0
             if index < chars.count, chars[index] == "<" { index += 1 }
             // Skip the tag name.
-            while index < chars.count, !chars[index].isWhitespace, chars[index] != "/", chars[index] != ">" {
+            while index < chars.count, !isSpace(chars[index]), chars[index] != "/", chars[index] != ">" {
                 index += 1
             }
             var attributes: [(name: String, value: String)] = []
             while index < chars.count {
-                while index < chars.count, chars[index].isWhitespace || chars[index] == "/" {
+                while index < chars.count, isSpace(chars[index]) || chars[index] == "/" {
                     index += 1
                 }
                 guard index < chars.count, chars[index] != ">" else { break }
                 let nameStart = index
                 index += 1
-                while index < chars.count, !chars[index].isWhitespace,
+                while index < chars.count, !isSpace(chars[index]),
                       !["/", "=", ">"].contains(chars[index]) {
                     index += 1
                 }
-                let name = String(chars[nameStart ..< index]).lowercased()
+                let name = String(String.UnicodeScalarView(chars[nameStart ..< index])).lowercased()
                 var cursor = index
-                while cursor < chars.count, chars[cursor].isWhitespace {
+                while cursor < chars.count, isSpace(chars[cursor]) {
                     cursor += 1
                 }
                 guard cursor < chars.count, chars[cursor] == "=" else {
@@ -252,7 +257,7 @@ enum MessageRemoteContentDetector {
                     continue
                 }
                 index = cursor + 1
-                while index < chars.count, chars[index].isWhitespace {
+                while index < chars.count, isSpace(chars[index]) {
                     index += 1
                 }
                 var value = ""
@@ -263,14 +268,14 @@ enum MessageRemoteContentDetector {
                     while index < chars.count, chars[index] != quote {
                         index += 1
                     }
-                    value = String(chars[valueStart ..< min(index, chars.count)])
+                    value = String(String.UnicodeScalarView(chars[valueStart ..< min(index, chars.count)]))
                     index += 1
                 } else {
                     let valueStart = index
-                    while index < chars.count, !chars[index].isWhitespace, chars[index] != ">" {
+                    while index < chars.count, !isSpace(chars[index]), chars[index] != ">" {
                         index += 1
                     }
-                    value = String(chars[valueStart ..< index])
+                    value = String(String.UnicodeScalarView(chars[valueStart ..< index]))
                 }
                 attributes.append((name, value))
             }
