@@ -196,6 +196,10 @@ enum MessageRemoteContentDetector {
                cssWidth <= 1, cssHeight <= 1 {
                 return true
             }
+            // Fully transparent images are never shown, whatever their size.
+            if isFullyTransparent(lower) {
+                return true
+            }
             // A hidden image given a real size is usually a responsive
             // variant a media query shows on narrow screens, not a pixel.
             let hasRealSize = (width ?? 0) > 1 || (height ?? 0) > 1
@@ -204,14 +208,13 @@ enum MessageRemoteContentDetector {
                     || lower.contains("display: none")
                     || lower.contains("visibility:hidden")
                     || lower.contains("visibility: hidden")
-                    || isFullyTransparent(lower)
             )
         }
 
         /// An inline-CSS `width`/`height` in px (or unitless 0), ignoring
         /// `max-`/`min-` variants.
         private static func cssPixelSize(_ property: String, in html: String) -> Double? {
-            let pattern = #"(?<![-a-z])\#(property)\s*:\s*(\d+(?:\.\d+)?)(px)?\b"#
+            let pattern = #"(?<![-a-z])\#(property)\s*:\s*(\d+(?:\.\d+)?)(px)?(?![\w.%])"#
             guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
             let range = NSRange(html.startIndex ..< html.endIndex, in: html)
             for match in regex.matches(in: html, range: range) {
@@ -264,8 +267,10 @@ enum MessageRemoteContentDetector {
             if segments.contains("beacon") {
                 return true
             }
+            // `/track/open`, `/track/open.php`, `/wf/open.aspx` and the like.
             return zip(segments, segments.dropFirst()).contains { pair in
-                (pair.0 == "track" || pair.0 == "wf") && pair.1 == "open"
+                (pair.0 == "track" || pair.0 == "wf")
+                    && pair.1.split(separator: ".", maxSplits: 1).first == "open"
             }
         }
     }

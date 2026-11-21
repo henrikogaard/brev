@@ -146,6 +146,26 @@ struct MessageTrackerStripTests {
         #expect(!document.contains("a.example"))
     }
 
+    @Test("an icon sized in em is kept")
+    func emSizedIconKept() {
+        let html = #"<img src="https://cdn.example.com/icons/star.png" style="width:0.8em;height:0.8em">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 0)
+    }
+
+    @Test("script-suffixed open-tracking endpoints are removed", arguments: [
+        #"<img src="https://list.example.com/track/open.php?u=1&id=2">"#,
+        #"<img src="https://mail.example.com/wf/open.aspx?upn=abc">"#,
+    ])
+    func scriptSuffixedEndpoint(_ tracker: String) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(tracker).removedCount == 1)
+    }
+
+    @Test("a transparent image is removed even when it declares a size")
+    func sizedTransparentImage() {
+        let html = #"<img src="https://t.example.net/o.gif" width="10" height="10" style="opacity:0">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 1)
+    }
+
     @Test("plain mail and normal images are left exactly as they are")
     func nothingToStrip() {
         let html = #"<p>Hi</p><img src="https://cdn.example.com/photo.jpg" width="320" height="240">"#

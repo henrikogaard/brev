@@ -2002,26 +2002,27 @@ public struct MessageDetailView: View {
                     }
                 }
             case .attributedHTML:
-                if let renderedHTML {
-                    VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                        // Native mode imports only allowed or remote-free
-                        // HTML, so every removed pixel was allowed content.
-                        if let html {
-                            MessageTrackerNote(
-                                removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
-                            )
-                        }
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    // Native mode imports only allowed or remote-free HTML, so
+                    // every removed pixel was allowed content. Shown even when
+                    // stripping left nothing to import.
+                    if let html {
+                        MessageTrackerNote(
+                            removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+                        )
+                    }
+                    if let renderedHTML {
                         Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
                             .font(messageBodyFont)
                             .foregroundStyle(theme.textPrimary.color)
                             .textSelection(.enabled)
                             .tint(theme.accent.color)
+                    } else if let html {
+                        Text(htmlFallback(html))
+                            .font(messageBodyFont)
+                            .foregroundStyle(theme.textSecondary.color)
+                            .textSelection(.enabled)
                     }
-                } else if let html {
-                    Text(htmlFallback(html))
-                        .font(messageBodyFont)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .textSelection(.enabled)
                 }
             case .plainText(let text):
                 quotedPlainBody(text)
