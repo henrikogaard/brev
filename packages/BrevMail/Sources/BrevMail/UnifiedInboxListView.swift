@@ -170,6 +170,10 @@ struct UnifiedInboxListView: View {
         navigation: MailNavigationState,
         backends: [any MailBackend],
         sourceSections: [MailSourceSection],
+        currentSourceSectionsProvider: (() -> [MailSourceSection])? = nil,
+        followUpSettingsProvider: (() -> FollowUpSettings)? = nil,
+        sourceSectionsRevision: Int = 0,
+        currentSourceSectionsRevisionProvider: (() -> Int)? = nil,
         canFileLocally: Bool = false,
         accountOwnedMailboxEmailsByAccountID: [BrevAccount.ID: Set<String>] = [:],
         smartView: MailboxSmartView? = nil,
@@ -188,11 +192,7 @@ struct UnifiedInboxListView: View {
         onRefresh: (() async -> Bool?)? = nil,
         currentBackendsProvider: (@MainActor () -> [any MailBackend])? = nil,
         sourceSectionsRevisionProvider: (() -> Int)? = nil,
-        isSourceAvailable: ((MailSourceID) -> Bool)? = nil,
-        currentSourceSectionsProvider: (() -> [MailSourceSection])? = nil,
-        followUpSettingsProvider: (() -> FollowUpSettings)? = nil,
-        sourceSectionsRevision: Int = 0,
-        currentSourceSectionsRevisionProvider: (() -> Int)? = nil
+        isSourceAvailable: ((MailSourceID) -> Bool)? = nil
     ) {
         self.navigation = navigation
         _localMessageWorkflowState = localMessageWorkflowState

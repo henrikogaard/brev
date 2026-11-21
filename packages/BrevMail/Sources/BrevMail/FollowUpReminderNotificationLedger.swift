@@ -23,6 +23,7 @@ struct FollowUpReminderNotificationLedger: Codable, Equatable {
     struct Entry: Codable, Equatable {
         var dueAt: Date
         var state: State
+        var nextRetryAt: Date? = nil
     }
 
     static let userDefaultsKey = "notifications.followUpReminderLedger.v1"
@@ -54,8 +55,10 @@ struct FollowUpReminderNotificationLedger: Codable, Equatable {
         }
         guard let entry = entries[identifier] else { return true }
         switch entry.state {
-        case .delivered, .failed:
+        case .delivered:
             return false
+        case .failed:
+            return entry.nextRetryAt.map { now >= $0 } ?? true
         case .denied:
             return true
         case .scheduled:
@@ -71,8 +74,8 @@ struct FollowUpReminderNotificationLedger: Codable, Equatable {
         entries[identifier] = Entry(dueAt: dueAt, state: .scheduled)
     }
 
-    mutating func markFailed(identifier: String, dueAt: Date) {
-        entries[identifier] = Entry(dueAt: dueAt, state: .failed)
+    mutating func markFailed(identifier: String, dueAt: Date, now: Date = Date()) {
+        entries[identifier] = Entry(dueAt: dueAt, state: .failed, nextRetryAt: now.addingTimeInterval(60))
     }
 
     mutating func remove(identifier: String) {

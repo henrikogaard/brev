@@ -7,11 +7,7 @@
  in the Software without restriction, including without limitation the rights
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
- - The above copyright notice and this permission notice shall be included
-   in all copies or substantial portions of the Software.
- - The Software may not be used to train, fine-tune, or evaluate AI systems
-   without a separate written license from the copyright holder.
+ furnished to do so, subject to the conditions in the LICENSE file.
  */
 
 @testable import BrevMail
@@ -73,7 +69,8 @@ struct FollowUpReminderNotificationLedgerTests {
             authorizationAvailable: true
         )
         #expect(!deliveredDecision)
-        defaults.set(try JSONEncoder().encode(ledger), forKey: FollowUpReminderNotificationLedger.userDefaultsKey)
+        let ledgerData = try JSONEncoder().encode(ledger)
+        defaults.set(ledgerData, forKey: FollowUpReminderNotificationLedger.userDefaultsKey)
 
         let data = try #require(defaults.data(forKey: FollowUpReminderNotificationLedger.userDefaultsKey))
         let restored = try JSONDecoder().decode(FollowUpReminderNotificationLedger.self, from: data)
@@ -122,8 +119,8 @@ struct FollowUpReminderNotificationLedgerTests {
         #expect(shouldReschedule)
     }
 
-    @Test("denied permission is retried without prompting and failed scheduling stays recorded")
-    func deniedAndFailedScheduling() {
+    @Test("denied permission retries without prompting and failed scheduling retries after its deadline")
+    func deniedAndFailedScheduling() throws {
         var ledger = FollowUpReminderNotificationLedger()
         let deniedDecision = ledger.shouldSchedule(
             identifier: identifier,
@@ -143,15 +140,47 @@ struct FollowUpReminderNotificationLedgerTests {
             authorizationAvailable: true
         )
         #expect(permissionGrantedDecision)
-        ledger.markFailed(identifier: identifier, dueAt: dueAt)
-        let failedDecision = ledger.shouldSchedule(
+        let failedAt = dueAt.addingTimeInterval(-120)
+        ledger.markFailed(identifier: identifier, dueAt: dueAt, now: failedAt)
+        let ledgerData = try JSONEncoder().encode(ledger)
+        var restartedLedger = try JSONDecoder().decode(
+            FollowUpReminderNotificationLedger.self,
+            from: ledgerData
+        )
+        let tooSoonDecision = restartedLedger.shouldSchedule(
             identifier: identifier,
             dueAt: dueAt,
-            now: dueAt.addingTimeInterval(-30),
+            now: failedAt.addingTimeInterval(59),
             pendingIDs: [],
             deliveredIDs: [],
             authorizationAvailable: true
         )
-        #expect(!failedDecision)
+        let retryDecision = restartedLedger.shouldSchedule(
+            identifier: identifier,
+            dueAt: dueAt,
+            now: failedAt.addingTimeInterval(60),
+            pendingIDs: [],
+            deliveredIDs: [],
+            authorizationAvailable: true
+        )
+        #expect(!tooSoonDecision)
+        #expect(retryDecision)
+        restartedLedger.markScheduled(identifier: identifier, dueAt: dueAt)
+        let duplicateDecision = restartedLedger.shouldSchedule(
+            identifier: identifier,
+            dueAt: dueAt,
+            now: failedAt.addingTimeInterval(61),
+            pendingIDs: [identifier],
+            deliveredIDs: [],
+            authorizationAvailable: true
+        )
+        #expect(!duplicateDecision)
+    }
+
+    @Test("failed ledger entries without a retry date remain decodable")
+    func legacyFailedEntryDecodes() throws {
+        let data = Data("{\"dueAt\":123,\"state\":\"failed\"}".utf8)
+        let entry = try JSONDecoder().decode(FollowUpReminderNotificationLedger.Entry.self, from: data)
+        #expect(entry.nextRetryAt == nil)
     }
 }

@@ -2670,7 +2670,6 @@ public struct BrevMailRootView: View {
                     navigation: navigation,
                     backends: backends,
                     sourceSections: visibleSourceSections,
-                    currentBackendsProvider: { currentBackendsProvider() },
                     currentSourceSectionsProvider: { visibleSourceSections },
                     followUpSettingsProvider: { settingsStore.followUpSettings() },
                     sourceSectionsRevision: sourceSectionsRevision,
@@ -5265,8 +5264,16 @@ public struct BrevMailRootView: View {
                 onClose: onClose,
                 onScheduledSendCancelled: { draftID in
                     guard let cancellationSourceID,
-                          sourceSections.contains(where: { $0.id == cancellationSourceID }),
-                          ObjectIdentifier(backend(for: cancellationSourceID) as AnyObject) == cancellationBackendIdentity
+                          let currentBackend = currentBackendsProvider().first(where: {
+                              $0.account.id == cancellationSourceID.accountID
+                          }),
+                          NoReplyFollowUpOwnership.isCurrent(
+                              sourceID: cancellationSourceID,
+                              currentSourceIDs: Set(sourceSections.map(\.id)),
+                              currentAccountID: currentBackend.account.id,
+                              currentBackendIdentity: ObjectIdentifier(currentBackend as AnyObject),
+                              expectedBackendIdentity: cancellationBackendIdentity
+                          )
                     else { return }
                     var settings = settingsStore.followUpSettings()
                     let previousCount = settings.pendingNoReplyIntents.count
@@ -8076,7 +8083,10 @@ public struct BrevMailRootView: View {
         let latestSettings = settingsStore.followUpSettings()
         let result = NoReplyFollowUpReconciler.reconcile(settings: latestSettings, snapshots: currentSnapshots)
         let didChangeSettings = result.settings != latestSettings
-        if didChangeSettings { settingsStore.save(result.settings) }
+        if didChangeSettings {
+            settingsStore.save(result.settings)
+            NotificationCenter.default.post(name: .brevFollowUpDidChange, object: nil)
+        }
         for reminder in result.completed {
             notificationCenter.cancelFollowUpReminder(reminder)
         }
@@ -8112,10 +8122,9 @@ public struct BrevMailRootView: View {
         await notificationCenter.cancelInactiveFollowUpReminders(
             settingsProvider: { settingsStore.followUpSettings() }
         )
-        NotificationCenter.default.post(
-            name: didChangeSettings ? .brevFollowUpDidChange : .brevNoReplyFollowUpCacheDidChange,
-            object: nil
-        )
+        if !didChangeSettings {
+            NotificationCenter.default.post(name: .brevNoReplyFollowUpCacheDidChange, object: nil)
+        }
     }
 
     /// Send and save results from the reply docked under the reader (#302).
