@@ -227,6 +227,16 @@ struct MessageTrackerStripTests {
         #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == expected)
     }
 
+    @Test("only the real style attribute counts, quoted or not", arguments: [
+        // `data-style` is metadata, not the image's style: kept.
+        (#"<img data-style="width:1px;height:1px" src="https://cdn.example.com/c.jpg" style="width:300px;height:200px">"#, 0),
+        // An unquoted style is valid HTML: the pixel is removed.
+        (#"<img src="https://stats.example.net/o/4" style=width:1px;height:1px>"#, 1),
+    ])
+    func realStyleAttribute(html: String, expected: Int) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == expected)
+    }
+
     @Test("an ASP.NET handler open endpoint is removed")
     func ashxEndpoint() {
         let html = #"<img src="https://mail.example.com/track/open.ashx?id=7">"#

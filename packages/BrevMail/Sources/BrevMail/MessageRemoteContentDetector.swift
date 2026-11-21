@@ -215,11 +215,13 @@ enum MessageRemoteContentDetector {
         /// The element's `style` attribute value, so comment markers in other
         /// attributes cannot reach the size check; empty when there is none.
         private static func styleAttribute(in html: String) -> String {
-            let pattern = #"\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')"#
+            // Preceded by whitespace, so `data-style` does not count; the value
+            // may be double-quoted, single-quoted or unquoted.
+            let pattern = #"(?<=\s)style\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))"#
             guard let regex = try? NSRegularExpression(pattern: pattern),
                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex ..< html.endIndex, in: html))
             else { return "" }
-            for index in 1 ... 2 {
+            for index in 1 ... 3 {
                 if let range = Range(match.range(at: index), in: html) { return String(html[range]) }
             }
             return ""
