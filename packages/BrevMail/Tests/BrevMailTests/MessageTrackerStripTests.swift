@@ -215,6 +215,18 @@ struct MessageTrackerStripTests {
         #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == expected)
     }
 
+    @Test("CSS sizes are read from the style attribute as the browser does", arguments: [
+        // A multiline comment hides the tiny sizes: kept.
+        ("<img src=\"https://cdn.example.com/a.jpg\" style=\"/* width:1px;\nheight:1px; */ width:300px; height:200px\">", 0),
+        // A comment between number and unit makes an invalid size: kept.
+        (#"<img src="https://cdn.example.com/b.jpg" style="width:1/**/px;height:1/**/px">"#, 0),
+        // Comment markers in another attribute do not hide the real sizes.
+        (#"<img alt="/*" src="https://stats.example.net/o/3" style="width:1px;height:1px" title="*/">"#, 1),
+    ])
+    func styleAttributeSizes(html: String, expected: Int) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == expected)
+    }
+
     @Test("an ASP.NET handler open endpoint is removed")
     func ashxEndpoint() {
         let html = #"<img src="https://mail.example.com/track/open.ashx?id=7">"#

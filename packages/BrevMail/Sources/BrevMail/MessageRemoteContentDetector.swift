@@ -192,7 +192,8 @@ enum MessageRemoteContentDetector {
             if width.map({ $0 <= 1 }) == true, height.map({ $0 <= 1 }) == true {
                 return true
             }
-            if let cssWidth = cssPixelSize("width", in: lower), let cssHeight = cssPixelSize("height", in: lower),
+            let style = styleAttribute(in: lower)
+            if let cssWidth = cssPixelSize("width", in: style), let cssHeight = cssPixelSize("height", in: style),
                cssWidth <= 1, cssHeight <= 1 {
                 return true
             }
@@ -211,13 +212,27 @@ enum MessageRemoteContentDetector {
             )
         }
 
+        /// The element's `style` attribute value, so comment markers in other
+        /// attributes cannot reach the size check; empty when there is none.
+        private static func styleAttribute(in html: String) -> String {
+            let pattern = #"\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')"#
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: html, range: NSRange(html.startIndex ..< html.endIndex, in: html))
+            else { return "" }
+            for index in 1 ... 2 {
+                if let range = Range(match.range(at: index), in: html) { return String(html[range]) }
+            }
+            return ""
+        }
+
         /// An inline-CSS `width`/`height` in px (or unitless 0), ignoring
         /// `max-`/`min-` variants.
         private static func cssPixelSize(_ property: String, in html: String) -> Double? {
             let pattern = #"(?<![-a-z])\#(property)\s*:\s*(\d+(?:\.\d+)?)(px|%)?(?![\w.%])\s*(!\s*important)?"#
             guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-            // CSS comments are not declarations, and may sit inside `!important`.
-            let html = html.replacingOccurrences(of: #"/\*.*?\*/"#, with: "", options: .regularExpression)
+            // CSS comments are not declarations and may span lines. As in the
+            // browser, a comment separates tokens: `1/**/px` is not `1px`.
+            let html = html.replacingOccurrences(of: #"/\*[\s\S]*?\*/"#, with: " ", options: .regularExpression)
             let range = NSRange(html.startIndex ..< html.endIndex, in: html)
             // As in the browser: the last `!important` declaration wins,
             // otherwise the last declaration.
