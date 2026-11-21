@@ -1,5 +1,15 @@
 # Worklog
 
+## 2026-11-21 — Agent — #299
+
+- Goal: make tracking-pixel removal default on and independently configurable without changing remote-content permission.
+- Changes: added the Privacy toggle and persistence, wired WebKit and native HTML imports to the preference, and made the reader note distinguish blocked trackers from likely trackers that may load. Added English/Norwegian strings and updated PRIVACY.md and CHANGELOG.md.
+- Tests: added regression coverage for the default, persistence, web/native render policies, note counts, and catalog translations. The pre-toolchain package-test attempt could not start (`bash: line 1: swift: command not found`, exit 127). RED/GREEN results came from external harnesses compiling production Foundation sources, not native package suites; the old-backup case passed and current import policy passed 10 assertions.
+- Review corrections: missing backup keys default to tracking removal on; native imports validate generation, message, and captured preference, and defer a refreshed import if the setting changes during body loading. BrevSettings/BrevMail preference keys have a source contract test. Removed duplicate privacy copy and preserved the slice-1 changelog bullet.
+- Tools: installed Swift 6.4.3 and pinned SwiftFormat 0.58.7. `swiftformat --lint` reported 0/11 changed Swift files need formatting. Pinned SwiftLint 0.63.0's Linux binary requires GLIBC_2.38; source build succeeded, but execution crashed with `Loading libsourcekitdInProc.so failed` on this Ubuntu 22.04 host.
+- Skipped: native SwiftUI/package suites remain CI-only on macOS; the tracker-note snapshot still needs recording on macOS 26. No snapshots changed. The project board remains unchanged because it was unavailable; no issue or board writes were made.
+- Handoff: native BrevMail/BrevSettings package and app build verification is delegated to macOS CI; record the tracker-note snapshot on macOS 26.
+
 ## 2026-11-22 — Agent — Issue #293
 
 - Goal: implement Triage mode (one conversation at a time, single-key decisions, Undo, next-body preloading, Today and menu entry, restore list position on Escape/Done).

@@ -87,7 +87,7 @@ struct PrivacySection: View {
                     symbolName: "eye.slash",
                     title: String(localized: "Remote content starts blocked", bundle: .module),
                     subtitle: String(
-                        localized: "Images, web fonts, and tracking pixels remain off unless you allow remote content.",
+                        localized: "Images and web fonts stay blocked until you allow remote content; likely tracking images are removed by default.",
                         bundle: .module
                     )
                 )
@@ -242,6 +242,16 @@ struct PrivacySection: View {
                     subtitle: String(localized: "Allows remote images after rich HTML rendering is enabled.", bundle: .module),
                     isOn: mailboxBinding(for: \.allowRemoteContent),
                     isEnabled: mailboxSettings.useRichRenderer
+                )
+
+                SettingsToggleRow(
+                    symbolName: "eye.slash",
+                    title: String(localized: "Remove tracking pixels", bundle: .module),
+                    subtitle: String(
+                        localized: "Remove likely tracking images before they render, even when remote content is allowed.",
+                        bundle: .module
+                    ),
+                    isOn: mailboxBinding(for: \.stripTrackingPixels)
                 )
 
                 SettingsInfoCallout(symbolName: "checkmark.shield", message: remoteContentStatus, tone: .info)

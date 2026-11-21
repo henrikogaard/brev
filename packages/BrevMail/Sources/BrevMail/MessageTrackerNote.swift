@@ -13,30 +13,41 @@
 import BrevDesign
 import SwiftUI
 
-/// The quiet "Blocked 2 trackers" note above a message whose remote content
-/// is allowed but whose tracking pixels were removed (#299).
+/// The quiet tracker-count note above a message with remote content allowed (#299).
 struct MessageTrackerNote: View {
     @Environment(\.brevTheme) private var theme
 
-    let removedCount: Int
+    let trackerCount: Int
+    let strippingEnabled: Bool
 
-    /// The note's text; nil when nothing was removed.
-    static func text(removedCount: Int) -> String? {
+    /// The note's text; nil when no likely trackers were found.
+    static func text(trackerCount: Int, strippingEnabled: Bool = true) -> String? {
         // Singular and plural are separate keys: SwiftPM test builds on older
         // toolchains do not resolve catalog plural variations.
-        switch removedCount {
-        case ..<1: nil
-        case 1: String(localized: "Blocked 1 tracker", bundle: .module)
-        default: String(localized: "Blocked \(removedCount) trackers", bundle: .module)
+        guard trackerCount > 0 else { return nil }
+        if strippingEnabled {
+            if trackerCount == 1 {
+                return String(localized: "Blocked 1 tracker", bundle: .module)
+            }
+            return String(localized: "Blocked \(trackerCount) trackers", bundle: .module)
         }
+        if trackerCount == 1 {
+            return String(localized: "1 likely tracker may load", bundle: .module)
+        }
+        return String(localized: "\(trackerCount) likely trackers may load", bundle: .module)
     }
 
     var body: some View {
-        if let text = Self.text(removedCount: removedCount) {
-            Label(text, systemImage: "eye.slash")
+        if let text = Self.text(trackerCount: trackerCount, strippingEnabled: strippingEnabled) {
+            Label(text, systemImage: strippingEnabled ? "eye.slash" : "eye")
                 .brevFont(.caption)
                 .foregroundStyle(theme.textTertiary.color)
                 .accessibilityLabel(text)
         }
     }
+}
+
+enum MessageTrackingPixelPreference {
+    static let storageKey = "body.stripTrackingPixels"
+    static let enabledByDefault = true
 }

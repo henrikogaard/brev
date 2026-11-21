@@ -42,6 +42,9 @@ All notable changes to Brev are documented here.
 - Tracking pixels are removed before a message renders, even when remote
   images are allowed, so senders can't tell when you opened their mail. The
   reader shows a quiet "Blocked 2 trackers" note (#299).
+- Privacy adds a default-on "Remove tracking pixels" setting, independent of
+  remote-content permission. The reader reports trackers removed or likely to
+  load according to that setting (#299).
 - Add an explicitly approved isolated mock content-QA build option for native
   body rendering and read-only attachment picking; strict and shipping permissions stay unchanged.
 

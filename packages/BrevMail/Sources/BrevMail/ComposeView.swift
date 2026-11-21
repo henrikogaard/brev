@@ -324,6 +324,8 @@ public struct ComposeView: View {
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.platformDefault
         .rawValue
     @AppStorage(MailboxViewPreferenceKey.textSize) private var mailboxTextSizeRaw = MailboxTextSize.medium.rawValue
+    @AppStorage(MessageTrackingPixelPreference.storageKey)
+    private var stripTrackingPixels = MessageTrackingPixelPreference.enabledByDefault
     @AppStorage(AIWriterSettings.Key.isEnabled) private var aiEnabled = false
     @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
 
@@ -2538,6 +2540,7 @@ public struct ComposeView: View {
                 store: htmlPreviewWebViewStore,
                 html: html,
                 allowRemoteContent: false,
+                stripTrackingPixels: stripTrackingPixels,
                 fontFamily: fontFamily,
                 textSize: textSize,
                 renderingMode: ComposeHTMLPreviewSource.renderingMode(for: bodyAppearance),

@@ -85,6 +85,7 @@ public struct MessageDetailView: View {
     @State private var messageBody: MessageBody?
     @State private var messageSecurityState: MessageSecurityState = .none
     @State private var renderedHTML: AttributedString?
+    @State private var nativeHTMLImportGeneration = 0
     /// `true` once the current message's HTML web view has finished its first
     /// paint — drives the skeleton that fills the render gap on open.
     @State private var htmlBodyPainted = false
@@ -147,6 +148,8 @@ public struct MessageDetailView: View {
 
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
+    @AppStorage(MessageTrackingPixelPreference.storageKey)
+    private var stripTrackingPixels = MessageTrackingPixelPreference.enabledByDefault
     @AppStorage(MailboxViewPreferenceKey.showSenderAvatars) private var showSenderAvatars = true
     @SectionFontFamily(.reader) private var mailboxFontFamily
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
@@ -220,6 +223,9 @@ public struct MessageDetailView: View {
             }
         }
         .task(id: reloadKey) { await reload() }
+        .onChange(of: stripTrackingPixels) { _, _ in
+            refreshRenderedHTMLForCurrentTrackingPreference()
+        }
         .task {
             // This view sits in the detail column from launch on macOS /
             // iPadOS, so its web view can warm before the first open rather
@@ -2021,11 +2027,12 @@ public struct MessageDetailView: View {
             case .attributedHTML:
                 VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                     // Native mode imports only allowed or remote-free HTML, so
-                    // every removed pixel was allowed content. Shown even when
-                    // stripping left nothing to import.
+                    // the note counts candidates eligible for rendering. Keep
+                    // it visible if tracker removal leaves nothing to import.
                     if let html {
                         MessageTrackerNote(
-                            removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+                            trackerCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount,
+                            strippingEnabled: stripTrackingPixels
                         )
                     }
                     if let renderedHTML {
@@ -2129,7 +2136,8 @@ public struct MessageDetailView: View {
                 )
             } else if remoteContentState.allowsRemoteContent {
                 MessageTrackerNote(
-                    removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+                    trackerCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount,
+                    strippingEnabled: stripTrackingPixels
                 )
             }
             ZStack(alignment: .topLeading) {
@@ -2143,6 +2151,7 @@ public struct MessageDetailView: View {
                     store: htmlWebViewStore,
                     html: html,
                     allowRemoteContent: remoteContentState.allowsRemoteContent,
+                    stripTrackingPixels: stripTrackingPixels,
                     fontFamily: mailboxFontFamily,
                     textSize: mailboxTextSize,
                     renderingMode: htmlRenderingMode(for: header),
@@ -2301,13 +2310,46 @@ public struct MessageDetailView: View {
     }
 
     private func refreshRenderedHTMLForCurrentRemoteContentDecision() {
+        refreshRenderedHTML(allowRemoteContent: true)
+    }
+
+    private func refreshRenderedHTMLForCurrentTrackingPreference() {
+        refreshRenderedHTML(allowRemoteContent: remoteContentState.allowsRemoteContent)
+    }
+
+    private func nextNativeHTMLImportRequest() -> MessageHTMLImportRequest {
+        nativeHTMLImportGeneration &+= 1
+        return MessageHTMLImportRequest(
+            generation: nativeHTMLImportGeneration,
+            messageKey: reloadKey,
+            stripTrackingPixels: stripTrackingPixels
+        )
+    }
+
+    private func canApplyNativeHTMLImport(_ request: MessageHTMLImportRequest) -> Bool {
+        request.matchesCurrent(
+            generation: nativeHTMLImportGeneration,
+            messageKey: reloadKey,
+            stripTrackingPixels: stripTrackingPixels
+        )
+    }
+
+    private func refreshRenderedHTML(allowRemoteContent: Bool) {
         guard !usesRichHTMLBodyRenderer else { return }
+        let request = nextNativeHTMLImportRequest()
+        let html = messageBody?.html
+        let usesRichRenderer = usesRichHTMLBodyRenderer
         Task {
-            renderedHTML = await Self.renderHTML(
-                messageBody?.html,
-                useRichRenderer: usesRichHTMLBodyRenderer,
-                allowRemoteContent: true
+            let importedHTML = await Self.renderHTML(
+                html,
+                useRichRenderer: usesRichRenderer,
+                allowRemoteContent: allowRemoteContent,
+                stripTrackingPixels: request.stripTrackingPixels
             )
+            guard canApplyNativeHTMLImport(request),
+                  usesRichHTMLBodyRenderer == usesRichRenderer,
+                  messageBody?.html == html else { return }
+            renderedHTML = importedHTML
         }
     }
 
@@ -2326,6 +2368,7 @@ public struct MessageDetailView: View {
     @MainActor
     private func reload() async {
         guard let header else {
+            nativeHTMLImportGeneration &+= 1
             postVisibleEnrichmentTask?.cancel()
             postVisibleEnrichmentTask = nil
             activeLoadRequest = nil
@@ -2341,6 +2384,7 @@ public struct MessageDetailView: View {
             rememberReloadAfterWorkUnblocks()
             return
         }
+        nativeHTMLImportGeneration &+= 1
         needsReloadAfterWorkUnblocks = false
         postVisibleEnrichmentTask?.cancel()
         postVisibleEnrichmentTask = nil
@@ -2374,15 +2418,20 @@ public struct MessageDetailView: View {
             )
             messageSecurityState = rendered.securityState
             isLoading = false
-            renderedHTML = await Self.renderHTML(
+            let importRequest = nextNativeHTMLImportRequest()
+            let importedHTML = await Self.renderHTML(
                 rendered.html,
                 useRichRenderer: usesRichHTMLBodyRenderer,
                 allowRemoteContent: allowsRemoteContent(
                     html: rendered.html,
                     senderEmail: header.from.email
-                )
+                ),
+                stripTrackingPixels: importRequest.stripTrackingPixels
             )
             guard canApplyOrFinishLoad(request) else { return }
+            if canApplyNativeHTMLImport(importRequest) {
+                renderedHTML = importedHTML
+            }
             if MessageOpenRenderCompletionPolicy.stage(
                 hasHTML: rendered.html != nil,
                 usesRichRenderer: usesRichHTMLBodyRenderer
@@ -2476,14 +2525,20 @@ public struct MessageDetailView: View {
                     ),
                     fallbackSnippet: header.snippet
                 )
-                renderedHTML = await Self.renderHTML(
+                let importRequest = nextNativeHTMLImportRequest()
+                let importedHTML = await Self.renderHTML(
                     resolvedHTML,
                     useRichRenderer: usesRichHTMLBodyRenderer,
                     allowRemoteContent: allowsRemoteContent(
                         html: resolvedHTML,
                         senderEmail: header.from.email
-                    )
+                    ),
+                    stripTrackingPixels: importRequest.stripTrackingPixels
                 )
+                guard !Task.isCancelled, canApplyPostVisibleResponse(request) else { return }
+                if canApplyNativeHTMLImport(importRequest) {
+                    renderedHTML = importedHTML
+                }
             }
             guard !Task.isCancelled, canApplyPostVisibleResponse(request) else { return }
             await loadInviteIfPresent(
@@ -2855,17 +2910,22 @@ public struct MessageDetailView: View {
     private static func renderHTML(
         _ html: String?,
         useRichRenderer: Bool,
-        allowRemoteContent: Bool
+        allowRemoteContent: Bool,
+        stripTrackingPixels: Bool
     ) async -> AttributedString? {
         guard MessageHTMLRenderPolicy.shouldImportAttributedHTML(
             html,
             useRichRenderer: useRichRenderer,
             allowRemoteContent: allowRemoteContent
         ) else { return nil }
-        // With remote content allowed, tracking pixels go before import (#299).
-        let importHTML = allowRemoteContent
-            ? html.map { MessageRemoteContentDetector.strippingLikelyTrackers($0).html }
-            : html
+        // With remote content allowed and pixel removal enabled, trackers go before import (#299).
+        let importHTML = html.map {
+            MessageHTMLImportPolicy.prepareForRemoteContentImport(
+                $0,
+                allowRemoteContent: allowRemoteContent,
+                stripTrackingPixels: stripTrackingPixels
+            )
+        }
         return await MessageHTMLImporter.importAttributedHTML(importHTML)
     }
 }

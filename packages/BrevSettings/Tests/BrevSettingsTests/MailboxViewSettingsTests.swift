@@ -25,6 +25,7 @@ struct MailboxViewSettingsTests {
 
         #expect(settings.useRichRenderer == true)
         #expect(settings.allowRemoteContent == false)
+        #expect(settings.stripTrackingPixels == true)
         #expect(settings.groupByThread == true)
         #expect(settings.groupByDate == true)
         #expect(settings.showSenderAvatars == true)
@@ -46,6 +47,7 @@ struct MailboxViewSettingsTests {
         let settings = MailboxViewSettings(
             useRichRenderer: true,
             allowRemoteContent: true,
+            stripTrackingPixels: false,
             groupByThread: false,
             groupByDate: false,
             showAbsoluteArrivalTime: true,
@@ -65,6 +67,20 @@ struct MailboxViewSettingsTests {
         let restored = MailboxViewSettings.load(from: defaults)
 
         #expect(restored == settings)
+    }
+
+    @Test("older settings backups default tracking-pixel removal on")
+    func olderSettingsBackupsDefaultTrackingPixelRemovalOn() throws {
+        let currentMailboxView = try JSONEncoder().encode(MailboxViewSettings.defaults)
+        var oldMailboxView = try #require(
+            JSONSerialization.jsonObject(with: currentMailboxView) as? [String: Any]
+        )
+        oldMailboxView.removeValue(forKey: "stripTrackingPixels")
+        let oldBackup = try JSONSerialization.data(withJSONObject: ["mailboxView": oldMailboxView])
+
+        let payload = try JSONDecoder().decode(SettingsBackupPayload.self, from: oldBackup)
+
+        #expect(payload.mailboxView?.stripTrackingPixels == true)
     }
 
     @Test("invalid enum raw values fall back to defaults")
@@ -89,10 +105,76 @@ struct MailboxViewSettingsTests {
         #expect(settings.folderStatsDetail == .compact)
     }
 
+    @Test("tracking-pixel privacy copy is translated to Norwegian")
+    func trackingPixelPrivacyCopyHasNorwegianTranslations() throws {
+        let strings = try Self.loadSettingsCatalogStrings()
+        for key in [
+            "Remove tracking pixels",
+            "Remove likely tracking images before they render, even when remote content is allowed.",
+            "Images and web fonts stay blocked until you allow remote content; likely tracking images are removed by default."
+        ] {
+            let localizations = (strings[key] as? [String: Any])?["localizations"] as? [String: Any]
+            let norwegian = localizations?["nb"] as? [String: Any]
+            let unit = norwegian?["stringUnit"] as? [String: Any]
+            #expect(unit?["state"] as? String == "translated", "missing nb for \(key)")
+            #expect((unit?["value"] as? String)?.isEmpty == false, "empty nb for \(key)")
+        }
+    }
+
+    @Test("BrevSettings and BrevMail share the tracking-pixel preference key")
+    func trackingPixelPreferenceKeyMatchesBrevMail() throws {
+        let settingsKey = try Self.stringConstant(
+            named: "stripTrackingPixels",
+            relativePath: "packages/BrevSettings/Sources/BrevSettings/MailboxViewSettings.swift"
+        )
+        let mailKey = try Self.stringConstant(
+            named: "storageKey",
+            relativePath: "packages/BrevMail/Sources/BrevMail/MessageTrackerNote.swift"
+        )
+
+        #expect(settingsKey == "body.stripTrackingPixels")
+        #expect(mailKey == settingsKey)
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "MailboxViewSettingsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
         return defaults
+    }
+
+    private static func loadSettingsCatalogStrings() throws -> [String: Any] {
+        let relativePath = "packages/BrevSettings/Sources/BrevSettings/Resources/Localizable.xcstrings"
+        let data = try Data(contentsOf: Self.repositoryFile(relativePath))
+        let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return try #require(root?["strings"] as? [String: Any])
+    }
+
+    private static func stringConstant(named name: String, relativePath: String) throws -> String {
+        let source = try String(contentsOf: Self.repositoryFile(relativePath), encoding: .utf8)
+        let pattern = "static let \(NSRegularExpression.escapedPattern(for: name))\\s*=\\s*\"([^\"]+)\""
+        let regex = try NSRegularExpression(pattern: pattern)
+        let range = NSRange(source.startIndex..., in: source)
+        guard let match = regex.firstMatch(in: source, range: range),
+              let valueRange = Range(match.range(at: 1), in: source) else {
+            throw CatalogLookupError.notFound
+        }
+        return String(source[valueRange])
+    }
+
+    private static func repositoryFile(_ relativePath: String) throws -> URL {
+        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        for _ in 0 ..< 8 {
+            let candidate = directory.appendingPathComponent(relativePath)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+            directory.deleteLastPathComponent()
+        }
+        throw CatalogLookupError.notFound
+    }
+
+    private enum CatalogLookupError: Error {
+        case notFound
     }
 }

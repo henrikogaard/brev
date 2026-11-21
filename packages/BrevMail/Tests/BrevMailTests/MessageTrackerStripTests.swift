@@ -146,6 +146,61 @@ struct MessageTrackerStripTests {
         #expect(!document.contains("a.example"))
     }
 
+    @Test("turning tracker removal off does not change remote-content permission")
+    func trackerRemovalOptOutKeepsRemotePermissionIndependent() {
+        let html = #"<img src="https://a.example/1.gif" width="1" height="1">"#
+        let allowed = HTMLBodyLoadPlan.resolve(allowRemoteContent: true, blockerAvailable: false)
+        #expect(allowed.bodyHTML(originalHTML: html, stripTrackingPixels: false) == html)
+
+        let blocked = HTMLBodyLoadPlan.resolve(allowRemoteContent: false, blockerAvailable: true)
+        #expect(blocked == .original(blocksRemoteSubresources: true))
+        #expect(blocked.bodyHTML(originalHTML: html, stripTrackingPixels: false) == html)
+        #expect(HTMLBodyLoadPlan.resolve(allowRemoteContent: false, blockerAvailable: false) == .blockedFallback)
+    }
+
+    @Test("native imports honor tracking and remote-content preferences")
+    func nativeImportPreferences() {
+        let html = #"<p>Body</p><img src="https://a.example/1.gif" width="1" height="1">"#
+        #expect(MessageHTMLImportPolicy.prepareForNativeImport(html, stripTrackingPixels: true) == "<p>Body</p>")
+        #expect(MessageHTMLImportPolicy.prepareForNativeImport(html, stripTrackingPixels: false) == html)
+        #expect(MessageHTMLImportPolicy.prepareForRemoteContentImport(
+            html,
+            allowRemoteContent: false,
+            stripTrackingPixels: true
+        ) == html)
+        #expect(MessageHTMLImportPolicy.prepareForNativeImport("<p>Body</p>", stripTrackingPixels: true) == "<p>Body</p>")
+    }
+
+    @Test("native import results require the current message, generation, and preference")
+    func staleNativeImportRequestCannotApply() {
+        let request = MessageHTMLImportRequest(
+            generation: 3,
+            messageKey: "account/inbox/message-1",
+            stripTrackingPixels: true
+        )
+
+        #expect(request.matchesCurrent(
+            generation: 3,
+            messageKey: "account/inbox/message-1",
+            stripTrackingPixels: true
+        ))
+        #expect(!request.matchesCurrent(
+            generation: 4,
+            messageKey: "account/inbox/message-1",
+            stripTrackingPixels: true
+        ))
+        #expect(!request.matchesCurrent(
+            generation: 3,
+            messageKey: "account/inbox/message-2",
+            stripTrackingPixels: true
+        ))
+        #expect(!request.matchesCurrent(
+            generation: 3,
+            messageKey: "account/inbox/message-1",
+            stripTrackingPixels: false
+        ))
+    }
+
     @Test("an icon sized in em is kept")
     func emSizedIconKept() {
         let html = #"<img src="https://cdn.example.com/icons/star.png" style="width:0.8em;height:0.8em">"#
@@ -269,10 +324,12 @@ struct MessageTrackerStripTests {
         #expect(blocked.bodyHTML(originalHTML: html) == html)
     }
 
-    @Test("the reader note counts the blocked trackers")
+    @Test("the reader note accurately counts blocked and unblocked trackers")
     func readerNote() {
-        #expect(MessageTrackerNote.text(removedCount: 0) == nil)
-        #expect(MessageTrackerNote.text(removedCount: 1) == "Blocked 1 tracker")
-        #expect(MessageTrackerNote.text(removedCount: 2) == "Blocked 2 trackers")
+        #expect(MessageTrackerNote.text(trackerCount: 0, strippingEnabled: true) == nil)
+        #expect(MessageTrackerNote.text(trackerCount: 1, strippingEnabled: true) == "Blocked 1 tracker")
+        #expect(MessageTrackerNote.text(trackerCount: 2, strippingEnabled: true) == "Blocked 2 trackers")
+        #expect(MessageTrackerNote.text(trackerCount: 1, strippingEnabled: false) == "1 likely tracker may load")
+        #expect(MessageTrackerNote.text(trackerCount: 2, strippingEnabled: false) == "2 likely trackers may load")
     }
 }
