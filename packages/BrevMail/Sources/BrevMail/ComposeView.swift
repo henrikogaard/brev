@@ -152,6 +152,7 @@ enum ComposeRichTextCommand: CaseIterable {
 public struct ComposeView: View {
     @StateObject private var htmlPreviewWebViewStore = HTMLBodyWebViewStore()
     @Environment(\.brevTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -292,6 +293,7 @@ public struct ComposeView: View {
     // #155 Undo-send
     @State private var pendingUndoSendTask: Task<Void, Never>?
     @State private var pendingUndoSendCountdown = 0
+    @State private var pendingUndoSendProgress = 0.0
 
     // #251 Rich-compose: inline images + link sheet
     /// Owned here so the same registry lives for the whole compose session.
@@ -949,13 +951,30 @@ public struct ComposeView: View {
     @ViewBuilder
     private var undoSendBanner: some View {
         if pendingUndoSendTask != nil {
-            BrevDivider()
-            BrevInlineStatus(
+            BrevToast(
                 message: String(localized: "Sending in \(pendingUndoSendCountdown)s…", bundle: .module),
                 tone: .warning,
                 actionTitle: String(localized: "Undo", bundle: .module),
                 onAction: { cancelUndoSend() }
             )
+            .overlay(alignment: .leading) {
+                ZStack {
+                    Circle().fill(theme.bgTertiary.color)
+                    Circle().stroke(theme.border.color, lineWidth: 2)
+                    Circle()
+                        .trim(from: 0, to: pendingUndoSendProgress)
+                        .stroke(theme.accent.color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                .frame(width: 16, height: 16)
+                .padding(.leading, BrevSpacing.md)
+                .animation(reduceMotion ? nil : .linear(duration: 1), value: pendingUndoSendProgress)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text("Undo send countdown", bundle: .module))
+                .accessibilityValue(
+                    String(localized: "Sending in \(pendingUndoSendCountdown)s…", bundle: .module)
+                )
+            }
         }
     }
 
@@ -2900,22 +2919,43 @@ public struct ComposeView: View {
 
     // MARK: - Undo-send
 
-    private func beginUndoSend(action: @escaping () async -> Void) {
+    private func beginUndoSend(action: @escaping @MainActor () async -> Void) {
         let delaySeconds = ComposeUndoSendPolicy.delaySeconds()
         guard delaySeconds > 0 else {
-            Task { await action() }
+            Task { @MainActor in
+                try? await ComposeUndoSendCountdown.run(
+                    delaySeconds: delaySeconds,
+                    onProgress: { _, _ in },
+                    onCountdownComplete: {},
+                    send: action
+                )
+            }
             return
         }
         pendingUndoSendCountdown = delaySeconds
+        pendingUndoSendProgress = 0
         pendingUndoSendTask = Task { @MainActor in
-            for remaining in ComposeUndoSendPolicy.countdownValues(for: delaySeconds) {
-                guard !Task.isCancelled else { return }
-                pendingUndoSendCountdown = remaining
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            do {
+                try await ComposeUndoSendCountdown.run(
+                    delaySeconds: delaySeconds,
+                    onProgress: { remaining, progress in
+                        pendingUndoSendCountdown = remaining
+                        pendingUndoSendProgress = progress
+                    },
+                    onCountdownComplete: {
+                        pendingUndoSendTask = nil
+                        pendingUndoSendCountdown = 0
+                        pendingUndoSendProgress = 1
+                    },
+                    send: action
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                pendingUndoSendTask = nil
+                pendingUndoSendCountdown = 0
+                pendingUndoSendProgress = 0
             }
-            guard !Task.isCancelled else { return }
-            pendingUndoSendTask = nil
-            await action()
         }
     }
 
@@ -2923,6 +2963,7 @@ public struct ComposeView: View {
         pendingUndoSendTask?.cancel()
         pendingUndoSendTask = nil
         pendingUndoSendCountdown = 0
+        pendingUndoSendProgress = 0
     }
 
     // MARK: - AI Writer

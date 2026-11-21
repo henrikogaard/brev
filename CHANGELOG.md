@@ -278,6 +278,7 @@ All notable changes to Brev are documented here.
   invalidated session.
 
 ### Added
+- Compose Undo Send now shows a compact countdown toast with a ring and Undo
 
 - macOS Today page (#292): with no message open, the reader greets you and
   lists conversations from people that wait on you and sent mail still waiting

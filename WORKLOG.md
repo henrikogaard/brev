@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-21 — Agent — #297 undo-send countdown
+
+- Goal: replace Compose's Undo Send countdown banner with a compact ring toast and Undo action using the existing `compose.undoSendDelay` setting.
+- Changes: added a cancellable countdown runner with an injected sleeper and progress callback; wired the Compose toast to its configured duration, theme tokens, Reduce Motion, accessible remaining time, and the existing send action. Cancellation leaves the draft untouched; sending is only invoked at expiry. Added `nb` copy and a catalog test, plus the Unreleased changelog entry.
+- Verification: the production-source harness first failed against the unchanged `origin/main` subset because `ComposeUndoSendCountdown` did not exist. After the extraction it printed `PASS: final-interval cancellation suppresses send`, `PASS: expiry sends once after configured ring duration`, `PASS: zero delay sends once without sleeping`, and `GREEN: 3 production countdown scenarios passed`. Pinned SwiftFormat reported `0/4 files require formatting`; the BrevMail catalog parsed and the new `nb` entry was present; `scripts/check-adr-required.sh` exited 0; `git diff --check` passed.
+- Skipped: native BrevMail SwiftUI/package tests, app builds, visual verification, and recording a new snapshot; this Linux host cannot run SwiftUI, and the snapshot needs macOS 26. No existing snapshots or protected packages were changed.
+- Handoff: branch `feature/undo-send-countdown` is based on `origin/main`; PR #322's branch was not touched. The user will create the PR and handle issue/board actions.
+
 ## 2026-11-23 — Agent — PR #322 (#299 rebase and macOS snapshots)
 
 - Goal: rebase PR #322 onto `origin/main`, record the missing macOS 26 snapshots for `MessageTrackerNote` (blocked and opt-out states) and `PrivacySection` ("Remove tracking pixels" toggle), and resolve the Devin Review snapshot finding.
