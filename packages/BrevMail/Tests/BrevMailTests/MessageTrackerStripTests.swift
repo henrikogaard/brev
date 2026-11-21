@@ -193,6 +193,28 @@ struct MessageTrackerStripTests {
         #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 1)
     }
 
+    @Test("a later !important size beats an earlier !important one")
+    func laterImportantWins() {
+        let html = #"<img src="https://cdn.example.com/a.jpg" style="width:1px !important;height:1px !important;width:300px !important;height:200px !important">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 0)
+    }
+
+    @Test("CSS comments are ignored when reading sizes", arguments: [
+        // Commented-out tiny sizes do not apply: the image is kept.
+        (
+            #"<img src="https://cdn.example.com/a.jpg" style="/* width:1px !important; height:1px !important; */ width:300px; height:200px">"#,
+            0
+        ),
+        // A comment inside the priority marker still counts as !important.
+        (
+            #"<img src="https://stats.example.net/o/2" style="width:1px !/**/important;height:1px !/**/important;width:300px;height:200px">"#,
+            1
+        ),
+    ])
+    func cssCommentsIgnored(html: String, expected: Int) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == expected)
+    }
+
     @Test("an ASP.NET handler open endpoint is removed")
     func ashxEndpoint() {
         let html = #"<img src="https://mail.example.com/track/open.ashx?id=7">"#

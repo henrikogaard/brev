@@ -216,6 +216,8 @@ enum MessageRemoteContentDetector {
         private static func cssPixelSize(_ property: String, in html: String) -> Double? {
             let pattern = #"(?<![-a-z])\#(property)\s*:\s*(\d+(?:\.\d+)?)(px|%)?(?![\w.%])\s*(!\s*important)?"#
             guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+            // CSS comments are not declarations, and may sit inside `!important`.
+            let html = html.replacingOccurrences(of: #"/\*.*?\*/"#, with: "", options: .regularExpression)
             let range = NSRange(html.startIndex ..< html.endIndex, in: html)
             // As in the browser: the last `!important` declaration wins,
             // otherwise the last declaration.
