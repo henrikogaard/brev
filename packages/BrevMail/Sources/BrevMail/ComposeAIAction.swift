@@ -61,15 +61,30 @@ enum ComposeAIAction: Equatable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .draftFromPrompt:
-            return "Draft from Prompt"
+            return String(localized: "Draft from Prompt", bundle: .module)
         case .shortcut(let action, _):
-            return action.displayLabel
+            return Self.shortcutTitle(action)
         case .draftReply:
-            return "Draft Reply"
+            return String(localized: "Draft Reply", bundle: .module)
         case .replyStarter(let starter):
             return starter.title
         case .suggestSubject:
-            return "Suggest Subject"
+            return String(localized: "Suggest Subject", bundle: .module)
+        }
+    }
+
+    /// `AIShortcutAction` lives in BrevAI, so its English `displayLabel`
+    /// stays a model token and this layer owns the localized words.
+    private static func shortcutTitle(_ action: AIShortcutAction) -> String {
+        switch action {
+        case .shorten: String(localized: "Shorten", bundle: .module)
+        case .expand: String(localized: "Expand", bundle: .module)
+        case .formal: String(localized: "Make formal", bundle: .module)
+        case .casual: String(localized: "Make casual", bundle: .module)
+        case .friendly: String(localized: "Make friendly", bundle: .module)
+        case .improveWriting: String(localized: "Improve writing", bundle: .module)
+        case .fixSpelling: String(localized: "Fix spelling & grammar", bundle: .module)
+        case .translate: String(localized: "Translate", bundle: .module)
         }
     }
 
@@ -173,27 +188,27 @@ enum ComposeAIActionDisabledReason: Equatable, Sendable {
     var title: String {
         switch self {
         case .missingBackend:
-            return "AI Writer is unavailable for this compose window."
+            return String(localized: "AI Writer is unavailable for this compose window.", bundle: .module)
         case .notEnabled:
-            return "AI Writer is turned off."
+            return String(localized: "AI Writer is turned off.", bundle: .module)
         case .consentRequired:
-            return "AI Writer needs consent before sending text."
+            return String(localized: "AI Writer needs consent before sending text.", bundle: .module)
         case .unsupportedAccount:
-            return "This account does not support AI Writer."
+            return String(localized: "This account does not support AI Writer.", bundle: .module)
         case .busy:
-            return "Finish the current compose action first."
+            return String(localized: "Finish the current compose action first.", bundle: .module)
         case .requestInFlight:
-            return "AI Writer is already working."
+            return String(localized: "AI Writer is already working.", bundle: .module)
         case .bodyTextRequired:
-            return "Write draft text before using this action."
+            return String(localized: "Write draft text before using this action.", bundle: .module)
         case .selectedTextRequired:
-            return "Select text before using this action."
+            return String(localized: "Select text before using this action.", bundle: .module)
         case .promptRequired:
-            return "Enter a prompt before using this action."
+            return String(localized: "Enter a prompt before using this action.", bundle: .module)
         case .replyContextRequired:
-            return "Open this from a reply compose window."
+            return String(localized: "Open this from a reply compose window.", bundle: .module)
         case .subjectTargetRequired:
-            return "Open a compose window with an editable subject."
+            return String(localized: "Open a compose window with an editable subject.", bundle: .module)
         }
     }
 }

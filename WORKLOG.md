@@ -6,6 +6,12 @@
 - Changes: `MessageRemoteContentDetector.strippingLikelyTrackers` removes `<img>` elements the existing tracker test flags (1x1, hidden, tracker-style URL) plus a bundled `MessageKnownTrackerHosts` list. `HTMLBodyLoadPlan` strips when remote content is allowed; the attributed import path strips too. New `MessageTrackerNote` ("Blocked N trackers") in the reader and thread cards. PRIVACY.md updated; no network call added (the list ships with the app).
 - Red/green: `MessageTrackerStripTests` failed to compile before; 26 cases pass after. A reviewer pass found over-stripping (`opacity:0.8`, `utm_`, `/tracks/`), a missed `data-src`/entity pixel and an unstripped thread-card import path; each got a red test first, then the fix. Tracker URL matching is now path-only. PR review (Devin, Codex) added: whole-segment URL matching (`beacon-hill.jpg` kept), sized hidden images kept as responsive variants, inline-CSS 1px pixels removed, a body whose only tag was a pixel stays HTML, and the note also shows in native (non-rich) mode; each with a red test first. Snapshot of the note still to record on the devbox (unreachable).
 - Skipped: the Privacy setting toggle (slice 2); devbox app run (SSH timed out earlier).
+## 2026-11-21 — Agent — #302 AI Writer nb strings
+
+- Goal: devbox QA showed "Replace Draft" and the Write menu in English in the nb UI.
+- Changes: `ComposeAIPreviewState.replaceActionTitle`, `ComposeAIAction.title` and the availability reasons use `String(localized:bundle:.module)`; shortcut labels are localized in BrevMail (`ComposeAIAction.shortcutTitle`) because `AIShortcutAction` in BrevAI is a protected path, following the `CalendarInviteResponsePresentation` pattern. 23 nb catalog entries added.
+- Verification: 37 compose-AI and inline-reply tests; `scripts/lint.sh`; `scripts/format.sh` (no changes). New `AIWriterCopyLocalizationTests` reads the catalog JSON and checks an nb value for all 25 keys (the keys were missing on main).
+- Skipped: devbox run (SSH timed out); in-app nb check left to Henrik's QA.
 
 ## 2026-11-20 — Agent — #302 docked reply AI preview fix
 
