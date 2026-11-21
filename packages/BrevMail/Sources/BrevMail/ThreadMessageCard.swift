@@ -504,19 +504,25 @@ struct ThreadMessageCard: View {
                 .modifier(MessageReadingColumn(style: messageBodyStyle))
 
         case .attributedHTML(let html):
-            if let renderedHTML {
-                Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
-                    .font(messageBodyFont)
-                    .foregroundStyle(theme.textPrimary.color)
-                    .textSelection(.enabled)
-                    .tint(theme.accent.color)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text(ThreadMessageBodyPresentation.htmlFallback(html, plainText: renderedBody?.plainText))
-                    .font(messageBodyFont)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                // Shown even when stripping left nothing to import.
+                MessageTrackerNote(
+                    removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+                )
+                if let renderedHTML {
+                    Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
+                        .font(messageBodyFont)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .textSelection(.enabled)
+                        .tint(theme.accent.color)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(ThreadMessageBodyPresentation.htmlFallback(html, plainText: renderedBody?.plainText))
+                        .font(messageBodyFont)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
 
         case .richHTML(let html, let allowRemoteContent, let showsRemoteContentBanner):
@@ -537,6 +543,10 @@ struct ThreadMessageCard: View {
                     .background(
                         RoundedRectangle(cornerRadius: 6)
                             .fill(theme.bgTertiary.color)
+                    )
+                } else if allowRemoteContent {
+                    MessageTrackerNote(
+                        removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
                     )
                 }
                 HTMLBodyWebView(
@@ -704,7 +714,11 @@ struct ThreadMessageCard: View {
             bodyPresentationContext
         ) {
         case .attributedHTML(let html):
-            renderedHTML = await MessageHTMLImporter.importAttributedHTML(html)
+            // This path runs with remote content allowed (or none present),
+            // so tracking pixels go before import (#299).
+            renderedHTML = await MessageHTMLImporter.importAttributedHTML(
+                MessageRemoteContentDetector.strippingLikelyTrackers(html).html
+            )
         default:
             renderedHTML = nil
         }

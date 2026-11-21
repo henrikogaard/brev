@@ -578,6 +578,16 @@ enum HTMLBodyLoadPlan: Equatable {
 
     func bodyHTML(originalHTML: String) -> String {
         switch self {
+        case .original(blocksRemoteSubresources: false):
+            // Remote content is allowed, so tracking pixels are removed
+            // before WebKit loads anything (#299).
+            let stripped = MessageRemoteContentDetector.strippingLikelyTrackers(originalHTML)
+            // If the pixel was the body's only tag, keep the rest read as
+            // HTML; otherwise `&amp;` would be escaped again as plain text.
+            if stripped.removedCount > 0, !HTMLBodyDocument.containsHTMLMarkup(stripped.html) {
+                return stripped.html + "<span></span>"
+            }
+            return stripped.html
         case .original:
             return originalHTML
         case .blockedFallback:
@@ -712,7 +722,7 @@ enum HTMLBodyDocument {
         )
     }
 
-    private static func containsHTMLMarkup(_ value: String) -> Bool {
+    fileprivate static func containsHTMLMarkup(_ value: String) -> Bool {
         let knownHTMLTagPattern = #"<\s*/?\s*(?:a|b|blockquote|br|div|em|font|h[1-6]|head|html|hr|i|img|li|meta|ol|p|span|strong|style|table|tbody|td|th|thead|title|tr|u|ul|body)\b[^>]*>"#
         return value.range(of: knownHTMLTagPattern, options: [.caseInsensitive, .regularExpression]) != nil
     }

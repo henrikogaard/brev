@@ -1,5 +1,11 @@
 # Worklog
 
+## 2026-11-21 — Agent — #299 strip tracking pixels (slice 1)
+
+- Goal: remove tracking images even when remote content is allowed, and show the count.
+- Changes: `MessageRemoteContentDetector.strippingLikelyTrackers` removes `<img>` elements the existing tracker test flags (1x1, hidden, tracker-style URL) plus a bundled `MessageKnownTrackerHosts` list. `HTMLBodyLoadPlan` strips when remote content is allowed; the attributed import path strips too. New `MessageTrackerNote` ("Blocked N trackers") in the reader and thread cards. PRIVACY.md updated; no network call added (the list ships with the app).
+- Red/green: `MessageTrackerStripTests` failed to compile before; 26 cases pass after. A reviewer pass found over-stripping (`opacity:0.8`, `utm_`, `/tracks/`), a missed `data-src`/entity pixel and an unstripped thread-card import path; each got a red test first, then the fix. Tracker URL matching is now path-only. PR review (Devin, Codex) added: whole-segment URL matching (`beacon-hill.jpg` kept), sized hidden images kept as responsive variants, inline-CSS 1px pixels removed, a body whose only tag was a pixel stays HTML, and the note also shows in native (non-rich) mode; each with a red test first. Snapshot of the note still to record on the devbox (unreachable).
+- Skipped: the Privacy setting toggle (slice 2); devbox app run (SSH timed out earlier).
 ## 2026-11-21 — Agent — #302 AI Writer nb strings
 
 - Goal: devbox QA showed "Replace Draft" and the Write menu in English in the nb UI.

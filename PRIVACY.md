@@ -144,9 +144,13 @@ no new destinations are contacted. Defaults to off.
 
 ### Remote HTML assets
 
-If enabled: Brev lets message HTML load remote images, fonts, and
-tracking pixels from the hosts referenced by the message. Those hosts
-can see your IP address and the time of the request.
+If enabled: Brev lets message HTML load remote images and fonts from the
+hosts referenced by the message. Those hosts can see your IP address and
+the time of the request. Images that look like tracking pixels (1x1 or
+hidden images, tracker-style URLs, and a small list of tracking-only hosts
+that ships with the app) are removed before the message renders, so they
+are not requested even when remote content is allowed. The reader shows how
+many were removed. The tracker list is never fetched from the network.
 
 Brev blocks remote HTML assets by default. You can load remote content
 once for a single message, always allow a sender, always allow a
