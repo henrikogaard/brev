@@ -214,14 +214,16 @@ enum MessageRemoteContentDetector {
         /// An inline-CSS `width`/`height` in px (or unitless 0), ignoring
         /// `max-`/`min-` variants.
         private static func cssPixelSize(_ property: String, in html: String) -> Double? {
-            let pattern = #"(?<![-a-z])\#(property)\s*:\s*(\d+(?:\.\d+)?)(px)?(?![\w.%])"#
+            let pattern = #"(?<![-a-z])\#(property)\s*:\s*(\d+(?:\.\d+)?)(px|%)?(?![\w.%])"#
             guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
             let range = NSRange(html.startIndex ..< html.endIndex, in: html)
             for match in regex.matches(in: html, range: range) {
                 guard let valueRange = Range(match.range(at: 1), in: html),
                       let value = Double(html[valueRange]) else { continue }
-                let hasPx = match.range(at: 2).location != NSNotFound
-                if hasPx || value == 0 { return value }
+                // px counts as-is; `0`, `0px` and `0%` are all zero.
+                let unitRange = Range(match.range(at: 2), in: html)
+                let unit = unitRange.map { String(html[$0]) }
+                if unit == "px" || value == 0 { return value }
             }
             return nil
         }
@@ -243,7 +245,7 @@ enum MessageRemoteContentDetector {
         // `opacity:0` or `opacity: 0.0`, but not `opacity:0.8`: these images
         // are now removed, so a faded content image must not match (#299).
         private static let transparentOpacityRegex = try? NSRegularExpression(
-            pattern: #"opacity\s*:\s*0+(?:\.0*)?(?![0-9.])"#
+            pattern: #"(?<![-a-z])opacity\s*:\s*0+(?:\.0*)?(?![0-9.])"#
         )
 
         private static func isFullyTransparent(_ html: String) -> Bool {
@@ -267,10 +269,11 @@ enum MessageRemoteContentDetector {
             if segments.contains("beacon") {
                 return true
             }
-            // `/track/open`, `/track/open.php`, `/wf/open.aspx` and the like.
+            // `/track/open`, `/track/open.php`, `/wf/open.aspx`: the open
+            // endpoint itself, with no extension or a server-script one.
+            let openEndpoints: Set<String> = ["open", "open.php", "open.aspx", "open.asp", "open.jsp", "open.cgi"]
             return zip(segments, segments.dropFirst()).contains { pair in
-                (pair.0 == "track" || pair.0 == "wf")
-                    && pair.1.split(separator: ".", maxSplits: 1).first == "open"
+                (pair.0 == "track" || pair.0 == "wf") && openEndpoints.contains(pair.1)
             }
         }
     }

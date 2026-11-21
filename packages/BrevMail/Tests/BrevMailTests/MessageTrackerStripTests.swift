@@ -166,6 +166,21 @@ struct MessageTrackerStripTests {
         #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 1)
     }
 
+    @Test("look-alike opacity and open names on content images are kept", arguments: [
+        #"<img src="https://cdn.example.com/a.jpg" width="200" height="100" style="--border-opacity:0">"#,
+        #"<img src="https://cdn.example.com/track/open.jpg" width="200" height="100">"#,
+        #"<img src="https://cdn.example.com/wf/open.house/photo.jpg">"#,
+    ])
+    func lookalikeOpacityAndOpenKept(_ image: String) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(image).removedCount == 0)
+    }
+
+    @Test("a zero-percent sized image is removed")
+    func zeroPercentPixel() {
+        let html = #"<img src="https://stats.example.net/o/9" style="width:0%;height:0%">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 1)
+    }
+
     @Test("plain mail and normal images are left exactly as they are")
     func nothingToStrip() {
         let html = #"<p>Hi</p><img src="https://cdn.example.com/photo.jpg" width="320" height="240">"#
