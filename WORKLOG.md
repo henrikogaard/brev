@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-21 — Agent — PR #322 CI follow-up
+
+- Goal: resolve CI failures on the tracking-pixel setting PR without changing its draft state.
+- Changes: `MessageDetailView` now derives remote-content permission from the current message and policy when refreshing after a tracking-preference change; added a regression asserting opt-out leaves HTML unchanged even when remote content is allowed.
+- CI evidence before fix: PR #322 at `723017d` had five failed checks. `gh run view --log-failed` showed the shared compiler error `cannot find 'remoteContentState' in scope` in macOS, iOS, BrevMail tests, and snapshot-test; record-review-images stopped after that build failure. `lint` and 17 other checks passed.
+- Reviews: no PR review events or inline review comments were present; the only conversation comment was the integration bot's monitoring control.
+- Verification after fix: pending the macOS CI run for this follow-up commit. No native local tests were run on this Linux host; no tooling was installed. No snapshots or CI gates were changed.
+- Handoff: keep PR #322 draft; no review-thread replies are needed. If hosted checks pass, report the new SHA and complete check summary.
+
 ## 2026-11-21 — Agent — #299
 
 - Goal: make tracking-pixel removal default on and independently configurable without changing remote-content permission.

@@ -2314,7 +2314,13 @@ public struct MessageDetailView: View {
     }
 
     private func refreshRenderedHTMLForCurrentTrackingPreference() {
-        refreshRenderedHTML(allowRemoteContent: remoteContentState.allowsRemoteContent)
+        guard let header else { return }
+        refreshRenderedHTML(
+            allowRemoteContent: allowsRemoteContent(
+                html: messageBody?.html,
+                senderEmail: header.from.email
+            )
+        )
     }
 
     private func nextNativeHTMLImportRequest() -> MessageHTMLImportRequest {

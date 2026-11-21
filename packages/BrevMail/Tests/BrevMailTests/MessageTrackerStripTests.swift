@@ -168,6 +168,11 @@ struct MessageTrackerStripTests {
             allowRemoteContent: false,
             stripTrackingPixels: true
         ) == html)
+        #expect(MessageHTMLImportPolicy.prepareForRemoteContentImport(
+            html,
+            allowRemoteContent: true,
+            stripTrackingPixels: false
+        ) == html)
         #expect(MessageHTMLImportPolicy.prepareForNativeImport("<p>Body</p>", stripTrackingPixels: true) == "<p>Body</p>")
     }
 
