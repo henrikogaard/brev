@@ -187,6 +187,12 @@ struct MessageTrackerStripTests {
         #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 0)
     }
 
+    @Test("an !important tiny size beats a later larger one")
+    func importantSizeWins() {
+        let html = #"<img src="https://stats.example.net/o/1" style="width:1px !important;height:1px !important;width:300px;height:200px">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 1)
+    }
+
     @Test("an ASP.NET handler open endpoint is removed")
     func ashxEndpoint() {
         let html = #"<img src="https://mail.example.com/track/open.ashx?id=7">"#

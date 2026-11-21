@@ -214,11 +214,14 @@ enum MessageRemoteContentDetector {
         /// An inline-CSS `width`/`height` in px (or unitless 0), ignoring
         /// `max-`/`min-` variants.
         private static func cssPixelSize(_ property: String, in html: String) -> Double? {
-            let pattern = #"(?<![-a-z])\#(property)\s*:\s*(\d+(?:\.\d+)?)(px|%)?(?![\w.%])"#
+            let pattern = #"(?<![-a-z])\#(property)\s*:\s*(\d+(?:\.\d+)?)(px|%)?(?![\w.%])\s*(!\s*important)?"#
             guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
             let range = NSRange(html.startIndex ..< html.endIndex, in: html)
-            // The last declaration wins, as it does in the browser.
-            guard let match = regex.matches(in: html, range: range).last,
+            // As in the browser: the last `!important` declaration wins,
+            // otherwise the last declaration.
+            let matches = regex.matches(in: html, range: range)
+            let important = matches.last { $0.range(at: 3).location != NSNotFound }
+            guard let match = important ?? matches.last,
                   let valueRange = Range(match.range(at: 1), in: html),
                   let value = Double(html[valueRange]) else { return nil }
             // px counts as-is; `0`, `0px` and `0%` are all zero; any other
