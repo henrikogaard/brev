@@ -112,6 +112,40 @@ struct MessageTrackerStripTests {
         #expect(MessageRemoteContentDetector.strippingLikelyTrackers(tracker).removedCount == 1)
     }
 
+    @Test("images whose names only resemble tracker files are kept", arguments: [
+        #"<img src="https://travel.example.com/photos/beacon-hill.jpg" width="640" height="480">"#,
+        #"<img src="https://cdn.example.com/img/open.gif-banner.png">"#,
+        #"<img src="https://cdn.example.com/track/opening-night.jpg">"#,
+    ])
+    func lookalikeNamesKept(_ image: String) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(image).removedCount == 0)
+    }
+
+    @Test("a sized, hidden responsive image is kept for its media query")
+    func responsiveHiddenImageKept() {
+        let html = #"<img class="mobile" src="https://cdn.example.com/hero-mobile.jpg" width="320" height="200" style="display:none">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 0)
+    }
+
+    @Test("pixels sized by inline CSS are removed", arguments: [
+        #"<img src="https://stats.example.net/o/123" style="width:1px;height:1px">"#,
+        #"<img src="https://stats.example.net/o/124" style="height: 0px; width: 0">"#,
+        #"<img src="https://stats.example.net/o/125" style="max-height:1px;width:1px;height:1px;border:0">"#,
+    ])
+    func cssSizedPixel(_ tracker: String) {
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(tracker).removedCount == 1)
+    }
+
+    @Test("a body whose only tag was a pixel still renders as HTML")
+    func onlyTagRemovedStaysHTML() {
+        let html = #"Fish &amp; chips<img src="https://a.example/1.gif" width="1" height="1">"#
+        let plan = HTMLBodyLoadPlan.resolve(allowRemoteContent: true, blockerAvailable: true)
+        let document = HTMLBodyDocument.wrap(plan.bodyHTML(originalHTML: html), linkColorHex: "#0000FF")
+        #expect(document.contains("Fish &amp; chips"))
+        #expect(!document.contains("&amp;amp;"))
+        #expect(!document.contains("a.example"))
+    }
+
     @Test("plain mail and normal images are left exactly as they are")
     func nothingToStrip() {
         let html = #"<p>Hi</p><img src="https://cdn.example.com/photo.jpg" width="320" height="240">"#

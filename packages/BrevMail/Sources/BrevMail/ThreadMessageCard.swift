@@ -505,12 +505,17 @@ struct ThreadMessageCard: View {
 
         case .attributedHTML(let html):
             if let renderedHTML {
-                Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
-                    .font(messageBodyFont)
-                    .foregroundStyle(theme.textPrimary.color)
-                    .textSelection(.enabled)
-                    .tint(theme.accent.color)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    MessageTrackerNote(
+                        removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+                    )
+                    Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
+                        .font(messageBodyFont)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .textSelection(.enabled)
+                        .tint(theme.accent.color)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             } else {
                 Text(ThreadMessageBodyPresentation.htmlFallback(html, plainText: renderedBody?.plainText))
                     .font(messageBodyFont)

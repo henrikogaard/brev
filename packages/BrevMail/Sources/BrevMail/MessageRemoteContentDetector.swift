@@ -187,18 +187,40 @@ enum MessageRemoteContentDetector {
 
         private static func imageLooksHiddenOrTiny(_ html: String) -> Bool {
             let lower = html.lowercased()
-            if lower.contains("display:none")
-                || lower.contains("display: none")
-                || lower.contains("visibility:hidden")
-                || lower.contains("visibility: hidden")
-                || isFullyTransparent(lower) {
-                return true
-            }
-
             let width = numericAttribute("width", in: lower)
             let height = numericAttribute("height", in: lower)
-            return width.map { $0 <= 1 } == true
-                && height.map { $0 <= 1 } == true
+            if width.map({ $0 <= 1 }) == true, height.map({ $0 <= 1 }) == true {
+                return true
+            }
+            if let cssWidth = cssPixelSize("width", in: lower), let cssHeight = cssPixelSize("height", in: lower),
+               cssWidth <= 1, cssHeight <= 1 {
+                return true
+            }
+            // A hidden image given a real size is usually a responsive
+            // variant a media query shows on narrow screens, not a pixel.
+            let hasRealSize = (width ?? 0) > 1 || (height ?? 0) > 1
+            return !hasRealSize && (
+                lower.contains("display:none")
+                    || lower.contains("display: none")
+                    || lower.contains("visibility:hidden")
+                    || lower.contains("visibility: hidden")
+                    || isFullyTransparent(lower)
+            )
+        }
+
+        /// An inline-CSS `width`/`height` in px (or unitless 0), ignoring
+        /// `max-`/`min-` variants.
+        private static func cssPixelSize(_ property: String, in html: String) -> Double? {
+            let pattern = #"(?<![-a-z])\#(property)\s*:\s*(\d+(?:\.\d+)?)(px)?\b"#
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+            let range = NSRange(html.startIndex ..< html.endIndex, in: html)
+            for match in regex.matches(in: html, range: range) {
+                guard let valueRange = Range(match.range(at: 1), in: html),
+                      let value = Double(html[valueRange]) else { continue }
+                let hasPx = match.range(at: 2).location != NSNotFound
+                if hasPx || value == 0 { return value }
+            }
+            return nil
         }
 
         private static func numericAttribute(_ name: String, in html: String) -> Int? {
@@ -232,10 +254,19 @@ enum MessageRemoteContentDetector {
         /// matched (#299).
         private static func urlLooksTracker(_ urlText: String) -> Bool {
             let path = (URLComponents(string: urlText)?.path ?? urlText).lowercased()
-            return [
-                "/track/open", "/wf/open", "/beacon", "/open.gif", "/open.png",
-                "/pixel.gif", "/pixel.png",
-            ].contains { path.contains($0) }
+            // Whole path segments and file names only, so `beacon-hill.jpg`
+            // or `/track/opening-night.jpg` stay.
+            let segments = path.split(separator: "/").map(String.init)
+            if let fileName = segments.last,
+               ["open.gif", "open.png", "pixel.gif", "pixel.png", "beacon.gif", "beacon.png"].contains(fileName) {
+                return true
+            }
+            if segments.contains("beacon") {
+                return true
+            }
+            return zip(segments, segments.dropFirst()).contains { pair in
+                (pair.0 == "track" || pair.0 == "wf") && pair.1 == "open"
+            }
         }
     }
 

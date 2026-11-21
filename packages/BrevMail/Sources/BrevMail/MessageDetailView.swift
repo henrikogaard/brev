@@ -2003,11 +2003,20 @@ public struct MessageDetailView: View {
                 }
             case .attributedHTML:
                 if let renderedHTML {
-                    Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
-                        .font(messageBodyFont)
-                        .foregroundStyle(theme.textPrimary.color)
-                        .textSelection(.enabled)
-                        .tint(theme.accent.color)
+                    VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                        // Native mode imports only allowed or remote-free
+                        // HTML, so every removed pixel was allowed content.
+                        if let html {
+                            MessageTrackerNote(
+                                removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+                            )
+                        }
+                        Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
+                            .font(messageBodyFont)
+                            .foregroundStyle(theme.textPrimary.color)
+                            .textSelection(.enabled)
+                            .tint(theme.accent.color)
+                    }
                 } else if let html {
                     Text(htmlFallback(html))
                         .font(messageBodyFont)
