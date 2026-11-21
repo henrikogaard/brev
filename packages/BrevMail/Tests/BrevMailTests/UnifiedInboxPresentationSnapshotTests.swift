@@ -155,6 +155,35 @@ struct UnifiedInboxPresentationSnapshotTests {
         #expect(regularSection.visibleItems.map(\.id) == [regular.id])
     }
 
+    @Test("wake date overrides group by the effective date without changing message timestamps")
+    func wakeDateOverridesDriveUnifiedDateSections() throws {
+        let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let oldDate = referenceDate.addingTimeInterval(-16 * 86400)
+        let folder = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let woken = Self.item(
+            accountID: "personal",
+            mailboxID: "primary",
+            folder: folder,
+            messageID: "woken",
+            subject: "Woken message",
+            date: oldDate
+        )
+        let sourceMessageID = SourceMessageID(sourceID: woken.sourceID, messageID: woken.header.id)
+        let snapshot = UnifiedInboxPresentationSnapshot(
+            visibleItems: [woken],
+            pinnedMessageIDs: [],
+            groupByDate: true,
+            collapsedDateSectionIDs: [],
+            referenceDate: referenceDate,
+            effectiveDateOverrides: [sourceMessageID: referenceDate]
+        )
+        let section = try #require(snapshot.dateSections.first)
+
+        #expect(section.title == "Today")
+        #expect(section.visibleItems.map(\.id) == [woken.id])
+        #expect(snapshot.visibleItems.first?.header.date == oldDate)
+    }
+
     @Test("unread and pinned tallies are derived over the source items")
     func derivesFolderStatsCountsOverSourceItems() {
         let referenceDate = Date(timeIntervalSince1970: 1_700_000_000)

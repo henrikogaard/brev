@@ -4,6 +4,8 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Snoozed messages return to newest-first Inbox ordering when they wake;
+  message timestamps and provider data remain unchanged (#297).
 - Assistant sidebar destination (#294): clicking Assistant in the sidebar or
   "Ask about my mail" on Today now opens a full Assistant view beside the
   sidebar with grounded conversation cards grouped into Needs you, Worth a

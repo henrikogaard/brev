@@ -163,6 +163,45 @@ struct MessageListSortPolicyTests {
         #expect(sorted.map(\.header.id) == ["pinned", "a", "z"])
     }
 
+    @Test("newer arrivals stay above woken older mail and pins keep precedence")
+    func snoozeWakeDatesRespectNewestFirstAndPins() {
+        let wokenDate = Date(timeIntervalSince1970: 100)
+        let arrivalDate = Date(timeIntervalSince1970: 200)
+        let wakeAt = Date(timeIntervalSince1970: 150)
+        let woken = Self.makeHeader(id: "woken", date: wokenDate)
+        let arrival = Self.makeHeader(id: "arrival", date: arrivalDate)
+        let sorted = MessageListSortPolicy.sorted(
+            [woken, arrival],
+            by: .newestFirst,
+            pinnedIDs: [],
+            dateOverrides: [woken.id: wakeAt]
+        )
+        #expect(sorted.map(\.id) == ["arrival", "woken"])
+
+        let pinned = Self.makeHeader(id: "pinned", date: wokenDate.addingTimeInterval(-50))
+        let pinnedSorted = MessageListSortPolicy.sorted(
+            [woken, arrival, pinned],
+            by: .newestFirst,
+            pinnedIDs: [pinned.id],
+            dateOverrides: [woken.id: arrivalDate.addingTimeInterval(100)]
+        )
+        #expect(pinnedSorted.first?.id == pinned.id)
+    }
+
+    @Test("wake date overrides do not change other sort orders")
+    func wakeDateOverridesDoNotChangeOtherSortOrders() {
+        let older = Self.makeHeader(id: "older", date: Date(timeIntervalSince1970: 100))
+        let newer = Self.makeHeader(id: "newer", date: Date(timeIntervalSince1970: 200))
+        let sorted = MessageListSortPolicy.sorted(
+            [newer, older],
+            by: .oldestFirst,
+            pinnedIDs: [],
+            dateOverrides: [newer.id: Date(timeIntervalSince1970: 50)]
+        )
+
+        #expect(sorted.map(\.id) == ["older", "newer"])
+    }
+
     @Test("filter excludes non-matching headers")
     func filterExcludesNonMatching() {
         let headers = [

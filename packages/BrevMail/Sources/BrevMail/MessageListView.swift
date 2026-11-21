@@ -47,6 +47,7 @@ public struct MessageListView: View {
     @Environment(\.undoQueue) private var undoQueue
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
+    @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -201,6 +202,7 @@ public struct MessageListView: View {
     // bursts, flag-only mutations) coalesce into one O(n) pass instead of
     // rebuilding on every intermediate update.
     @State private var threadCountsRebuildTask: Task<Void, Never>?
+    @State private var snoozeWakeScheduleRevision = 0
 
     public init(
         navigation: MailNavigationState,
@@ -254,6 +256,12 @@ public struct MessageListView: View {
     public var body: some View {
         workflowObservedContent
             .onChange(of: localMessageWorkflowState) {
+                snoozeWakeScheduleRevision += 1
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                snoozeWakeScheduleRevision += 1
                 reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
             }
             // Not a `.task(id:)`: that also runs on appear, where the `reloadKey` task has
@@ -305,6 +313,9 @@ public struct MessageListView: View {
                 refreshPinnedMessageIDSet()
                 followUpReminderIndex = FollowUpReminderIndex(settings: .load())
                 await reloadVisibleMessages()
+            }
+            .task(id: snoozeWakeScheduleRevision) {
+                await refreshAtNextSnoozeWake()
             }
             .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
                 followUpReminderIndex = FollowUpReminderIndex(settings: .load())
@@ -636,6 +647,16 @@ public struct MessageListView: View {
 
     private var workflowVisibilityMode: LocalMessageWorkflowVisibilityMode {
         trimmedSearchText.isEmpty ? .active : .search
+    }
+
+    private var snoozeWakePromotionEligible: Bool {
+        MessageListSnoozeWakePolicy.shouldPromoteInboxWake(
+            isInbox: folder?.role == .inbox,
+            isNewestFirst: mailboxSortOrder == .newestFirst,
+            hasActiveSearch: !trimmedSearchText.isEmpty,
+            isSmartView: false,
+            isSavedSearch: false
+        )
     }
 
     private var selectsFirstMessageWhenNeeded: Bool {
@@ -2294,6 +2315,7 @@ public struct MessageListView: View {
             workflowVisibilityMode: workflowVisibilityMode,
             workflowState: localMessageWorkflowState,
             sourceID: sourceID,
+            snoozeWakePromotionEligible: snoozeWakePromotionEligible,
             activeInboxCategory: activeInboxCategory,
             showsPeopleUpdatesBar: showsPeopleUpdatesBar,
             activePeopleUpdatesTab: activePeopleUpdatesTab,
@@ -2314,10 +2336,27 @@ public struct MessageListView: View {
             let interval = MailUIPerformanceDiagnostics.beginInterval("Message List Presentation Build")
             defer { MailUIPerformanceDiagnostics.endInterval(interval) }
             let workflowHeaders = workflowVisibleHeaders(from: headers, now: now, calendar: calendar)
+            let dateOverridesBySourceMessageID = snoozeWakePromotionEligible
+                ? MessageListSnoozeWakePolicy.effectiveDateOverrides(
+                    for: headers.map {
+                        MessageListSnoozeWakeEntry(
+                            sourceMessageID: SourceMessageID(sourceID: workflowSourceID, messageID: $0.id),
+                            headerDate: $0.date,
+                            threadID: groupByThread && backend.groupsMessagesIntoThreads ? $0.threadID : nil
+                        )
+                    },
+                    snoozes: localMessageWorkflowState.snoozes,
+                    now: now
+                )
+                : [:]
+            let dateOverrides = Dictionary(
+                uniqueKeysWithValues: dateOverridesBySourceMessageID.map { ($0.key.messageID, $0.value) }
+            )
             let presentationHeaders = MessageListSortPolicy.sorted(
                 visibleHeaders(for: workflowHeaders),
                 by: mailboxSortOrder,
-                pinnedIDs: pinnedMessageIDs
+                pinnedIDs: pinnedMessageIDs,
+                dateOverrides: dateOverrides
             )
             return MessageListPresentationSnapshot(
                 headers: presentationHeaders,
@@ -2334,6 +2373,7 @@ public struct MessageListView: View {
                     pinnedIDs: pinnedMessageIDs
                 ),
                 sourceID: sourceID,
+                dateOverrides: dateOverrides,
                 groupsThreads: groupByThread && backend.groupsMessagesIntoThreads
             )
         }
@@ -3942,6 +3982,25 @@ public struct MessageListView: View {
             navigationHeaders(for: headers),
             selectFirstIfNeeded: selectFirstIfNeeded
         )
+    }
+
+    private func refreshAtNextSnoozeWake() async {
+        let now = Date()
+        guard let wakeAt = MessageListSnoozeWakePolicy.nearestWakeDate(
+            in: localMessageWorkflowState.snoozes,
+            sourceIDs: [workflowSourceID],
+            after: now
+        ) else { return }
+        do {
+            try await Task.sleep(
+                nanoseconds: MessageListSnoozeWakePolicy.sleepNanoseconds(until: wakeAt, now: now)
+            )
+        } catch {
+            return
+        }
+        guard !Task.isCancelled else { return }
+        reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+        snoozeWakeScheduleRevision += 1
     }
 
     private func navigationHeaders(for headers: [MessageHeader]) -> [MessageHeader] {

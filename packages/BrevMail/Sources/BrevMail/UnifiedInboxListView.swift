@@ -53,6 +53,7 @@ struct UnifiedInboxListView: View {
     @Environment(\.undoQueue) private var undoQueue
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
+    @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -150,6 +151,7 @@ struct UnifiedInboxListView: View {
     @State private var workflowLookupCache = LocalMessageWorkflowLookupCache()
     /// Memoizes search-chip detection per (text, mode, execution) triple.
     @State private var searchChipsCache = UnifiedInboxSearchChipsCache()
+    @State private var snoozeWakeScheduleRevision = 0
 
     init(
         navigation: MailNavigationState,
@@ -222,6 +224,12 @@ struct UnifiedInboxListView: View {
     var body: some View {
         workflowObservedContent
             .onChange(of: localMessageWorkflowState) {
+                snoozeWakeScheduleRevision += 1
+                reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: navigation.selectedMessageID != nil)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                snoozeWakeScheduleRevision += 1
                 reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: navigation.selectedMessageID != nil)
             }
         #if os(iOS)
@@ -465,6 +473,9 @@ struct UnifiedInboxListView: View {
             activeSearchRequest = nil
             await reloadVisibleItems()
         }
+        .task(id: snoozeWakeScheduleRevision) {
+            await refreshAtNextSnoozeWake()
+        }
         .onAppear { refreshPinnedMessageIDSet() }
         .onDisappear {
             loadOwnership.invalidate()
@@ -475,6 +486,9 @@ struct UnifiedInboxListView: View {
         .onChange(of: reloadKey) {
             expandedThreadKeys.removeAll()
             isSearchOptionsExpanded = false
+        }
+        .onChange(of: sourceSections.map(\.id)) {
+            snoozeWakeScheduleRevision += 1
         }
         .onChange(of: pinnedMessageIDsRaw) { refreshPinnedMessageIDSet() }
         .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
@@ -682,6 +696,7 @@ struct UnifiedInboxListView: View {
             savedSearchText: navigation.searchText,
             savedSearchQuery: savedSearchQuery,
             mailboxSortOrder: mailboxSortOrder,
+            snoozeWakePromotionEligible: snoozeWakePromotionEligible,
             temporalInvalidationKey: temporalInvalidationKey,
             calendarDay: calendar.startOfDay(for: now),
             calendarIdentifier: calendar.identifier,
@@ -705,7 +720,8 @@ struct UnifiedInboxListView: View {
                 referenceDate: now,
                 calendar: calendar,
                 threadCounts: listed.threadCounts,
-                sourceItems: items
+                sourceItems: items,
+                effectiveDateOverrides: listed.dateOverrides
             )
         }
     }
@@ -721,7 +737,7 @@ struct UnifiedInboxListView: View {
         now: Date,
         calendar: Calendar,
         groupThreads: Bool = true
-    ) -> (items: [UnifiedInboxItem], threadCounts: [String: Int]) {
+    ) -> (items: [UnifiedInboxItem], threadCounts: [String: Int], dateOverrides: [SourceMessageID: Date]) {
         let workflowVisible = LocalMessageWorkflowVisibilityPolicy.items(
             items,
             mode: workflowVisibilityMode,
@@ -748,19 +764,39 @@ struct UnifiedInboxListView: View {
                 calendar: calendar
             ) ?? true }
             .filter { refinement?.matches($0.header) ?? true }
+        let threadedSourceIDs = Set(sourceSections.compactMap { section in
+            backend(for: section.id)?.groupsMessagesIntoThreads == true ? section.id : nil
+        })
+        let dateOverrides = snoozeWakePromotionEligible
+            ? MessageListSnoozeWakePolicy.effectiveDateOverrides(
+                for: items.map { item in
+                    MessageListSnoozeWakeEntry(
+                        sourceMessageID: SourceMessageID(sourceID: item.sourceID, messageID: item.header.id),
+                        headerDate: item.header.date,
+                        threadID: groupThreads && groupByThread && threadedSourceIDs.contains(item.sourceID)
+                            ? item.header.threadID
+                            : nil
+                    )
+                },
+                snoozes: localMessageWorkflowState.snoozes,
+                now: now
+            )
+            : [:]
         let sorted = MessageListSortPolicy.sortedItems(
             filtered,
             by: mailboxSortOrder,
-            pinnedIDs: pinnedMessageIDs
+            pinnedIDs: pinnedMessageIDs,
+            dateOverrides: dateOverrides
         )
-        guard groupThreads, groupByThread else { return (sorted, [:]) }
+        guard groupThreads, groupByThread else { return (sorted, [:], dateOverrides) }
         let threadCounts = UnifiedInboxThreadGrouping.counts(
             for: sorted,
             isThreadedSource: isThreadedSource
         )
         return (
             UnifiedInboxThreadGrouping.parents(from: sorted, counts: threadCounts),
-            threadCounts
+            threadCounts,
+            dateOverrides
         )
     }
 
@@ -813,6 +849,35 @@ struct UnifiedInboxListView: View {
             return .search
         }
         return trimmedSearchText.isEmpty ? .active : .search
+    }
+
+    private var snoozeWakePromotionEligible: Bool {
+        MessageListSnoozeWakePolicy.shouldPromoteInboxWake(
+            isInbox: navigation.isUnifiedInboxSelected,
+            isNewestFirst: mailboxSortOrder == .newestFirst,
+            hasActiveSearch: !trimmedSearchText.isEmpty,
+            isSmartView: smartView != nil,
+            isSavedSearch: savedSearchID != nil || savedSearchTitle != nil || savedSearchQuery != nil
+        )
+    }
+
+    private func refreshAtNextSnoozeWake() async {
+        let now = Date()
+        guard let wakeAt = MessageListSnoozeWakePolicy.nearestWakeDate(
+            in: localMessageWorkflowState.snoozes,
+            sourceIDs: Set(sourceSections.map(\.id)),
+            after: now
+        ) else { return }
+        do {
+            try await Task.sleep(
+                nanoseconds: MessageListSnoozeWakePolicy.sleepNanoseconds(until: wakeAt, now: now)
+            )
+        } catch {
+            return
+        }
+        guard !Task.isCancelled else { return }
+        reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: navigation.selectedMessageID != nil)
+        snoozeWakeScheduleRevision += 1
     }
 
     private var mailboxTextSize: MailboxTextSize {

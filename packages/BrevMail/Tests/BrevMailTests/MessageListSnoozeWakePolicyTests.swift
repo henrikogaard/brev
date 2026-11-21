@@ -1,0 +1,178 @@
+/*
+ Brev - Mail Client for macOS and iOS
+ Copyright (c) 2026 Brev contributors
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ in the LICENSE file.
+ */
+
+import BrevBackend
+@testable import BrevMail
+import Foundation
+import Testing
+
+@Suite("Message list snooze wake policy")
+struct MessageListSnoozeWakePolicyTests {
+    private static let now = Date(timeIntervalSince1970: 1_800_000_000)
+    private static let source = MailSourceID(accountID: "account", mailboxID: "mailbox")
+
+    @Test("an expired snooze promotes at the exact wake boundary")
+    func expiresAtBoundary() {
+        let messageID = SourceMessageID(sourceID: Self.source, messageID: "message")
+        let wakeAt = Self.now
+        let overrides = MessageListSnoozeWakePolicy.effectiveDateOverrides(
+            for: [Self.entry(messageID, date: wakeAt.addingTimeInterval(-86400))],
+            snoozes: [LocalMessageSnooze(messageID: messageID, wakeAt: wakeAt)],
+            now: wakeAt
+        )
+
+        #expect(overrides[messageID] == wakeAt)
+        #expect(MessageListSnoozeWakePolicy.nearestWakeDate(
+            in: [LocalMessageSnooze(messageID: messageID, wakeAt: wakeAt)],
+            sourceIDs: [Self.source],
+            after: wakeAt
+        ) == nil)
+    }
+
+    @Test("a canceled or future snooze does not promote a message")
+    func canceledAndFutureSnoozesDoNotPromote() {
+        let messageID = SourceMessageID(sourceID: Self.source, messageID: "message")
+        let entry = Self.entry(messageID, date: Self.now.addingTimeInterval(-86400))
+
+        #expect(MessageListSnoozeWakePolicy.effectiveDateOverrides(
+            for: [entry],
+            snoozes: [],
+            now: Self.now
+        ).isEmpty)
+
+        let futureWake = Self.now.addingTimeInterval(3600)
+        #expect(MessageListSnoozeWakePolicy.effectiveDateOverrides(
+            for: [entry],
+            snoozes: [LocalMessageSnooze(messageID: messageID, wakeAt: futureWake)],
+            now: Self.now
+        ).isEmpty)
+    }
+
+    @Test("a snooze on one source cannot promote a colliding message on another source")
+    func sourceScopedPromotion() {
+        let otherSource = MailSourceID(accountID: "other-account", mailboxID: "other-mailbox")
+        let firstID = SourceMessageID(sourceID: Self.source, messageID: "shared")
+        let otherID = SourceMessageID(sourceID: otherSource, messageID: "shared")
+        let date = Self.now.addingTimeInterval(-86400)
+        let overrides = MessageListSnoozeWakePolicy.effectiveDateOverrides(
+            for: [Self.entry(firstID, date: date), Self.entry(otherID, date: date)],
+            snoozes: [LocalMessageSnooze(messageID: firstID, wakeAt: Self.now)],
+            now: Self.now
+        )
+
+        #expect(overrides[firstID] == Self.now)
+        #expect(overrides[otherID] == nil)
+    }
+
+    @Test("a threaded representative inherits the latest effective date of loaded members")
+    func threadRepresentativeUsesLatestMemberWake() {
+        let representative = SourceMessageID(sourceID: Self.source, messageID: "representative")
+        let member = SourceMessageID(sourceID: Self.source, messageID: "member")
+        let wakeAt = Self.now
+        let overrides = MessageListSnoozeWakePolicy.effectiveDateOverrides(
+            for: [
+                Self.entry(representative, date: wakeAt.addingTimeInterval(-172_800), threadID: "thread"),
+                Self.entry(member, date: wakeAt.addingTimeInterval(-86400), threadID: "thread"),
+            ],
+            snoozes: [LocalMessageSnooze(messageID: member, wakeAt: wakeAt)],
+            now: wakeAt
+        )
+
+        #expect(overrides[representative] == wakeAt)
+        #expect(overrides[member] == wakeAt)
+    }
+
+    @Test("promotion is limited to unsearched newest-first Inbox lists")
+    func eligibilityIsNarrow() {
+        #expect(MessageListSnoozeWakePolicy.shouldPromoteInboxWake(
+            isInbox: true,
+            isNewestFirst: true,
+            hasActiveSearch: false,
+            isSmartView: false,
+            isSavedSearch: false
+        ))
+        #expect(!MessageListSnoozeWakePolicy.shouldPromoteInboxWake(
+            isInbox: false,
+            isNewestFirst: true,
+            hasActiveSearch: false,
+            isSmartView: false,
+            isSavedSearch: false
+        ))
+        #expect(!MessageListSnoozeWakePolicy.shouldPromoteInboxWake(
+            isInbox: true,
+            isNewestFirst: false,
+            hasActiveSearch: false,
+            isSmartView: false,
+            isSavedSearch: false
+        ))
+        #expect(!MessageListSnoozeWakePolicy.shouldPromoteInboxWake(
+            isInbox: true,
+            isNewestFirst: true,
+            hasActiveSearch: true,
+            isSmartView: false,
+            isSavedSearch: false
+        ))
+        #expect(!MessageListSnoozeWakePolicy.shouldPromoteInboxWake(
+            isInbox: true,
+            isNewestFirst: true,
+            hasActiveSearch: false,
+            isSmartView: true,
+            isSavedSearch: false
+        ))
+        #expect(!MessageListSnoozeWakePolicy.shouldPromoteInboxWake(
+            isInbox: true,
+            isNewestFirst: true,
+            hasActiveSearch: false,
+            isSmartView: false,
+            isSavedSearch: true
+        ))
+    }
+
+    @Test("nearest future wake advances after cancellation and expiry")
+    func nearestWakeReschedules() {
+        let first = SourceMessageID(sourceID: Self.source, messageID: "first")
+        let second = SourceMessageID(sourceID: Self.source, messageID: "second")
+        let firstWake = Self.now.addingTimeInterval(60)
+        let secondWake = Self.now.addingTimeInterval(120)
+        let snoozes = [
+            LocalMessageSnooze(messageID: first, wakeAt: firstWake),
+            LocalMessageSnooze(messageID: second, wakeAt: secondWake),
+        ]
+
+        #expect(MessageListSnoozeWakePolicy.nearestWakeDate(
+            in: snoozes,
+            sourceIDs: [Self.source],
+            after: Self.now
+        ) == firstWake)
+        #expect(MessageListSnoozeWakePolicy.nearestWakeDate(
+            in: [snoozes[1]],
+            sourceIDs: [Self.source],
+            after: Self.now
+        ) == secondWake)
+        #expect(MessageListSnoozeWakePolicy.nearestWakeDate(
+            in: snoozes,
+            sourceIDs: [Self.source],
+            after: firstWake
+        ) == secondWake)
+        #expect(MessageListSnoozeWakePolicy.sleepNanoseconds(until: secondWake, now: Self.now)
+            == 120_000_000_000)
+    }
+
+    private static func entry(
+        _ messageID: SourceMessageID,
+        date: Date,
+        threadID: String? = nil
+    ) -> MessageListSnoozeWakeEntry {
+        MessageListSnoozeWakeEntry(sourceMessageID: messageID, headerDate: date, threadID: threadID)
+    }
+}

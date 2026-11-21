@@ -44,6 +44,7 @@ final class MessageListPresentationSnapshotCache {
         let workflowVisibilityMode: LocalMessageWorkflowVisibilityMode
         let workflowState: LocalMessageWorkflowState
         let sourceID: MailSourceID?
+        var snoozeWakePromotionEligible = false
         let activeInboxCategory: InboxCategory
         var showsPeopleUpdatesBar = false
         var activePeopleUpdatesTab: InboxSplitTab = .all
@@ -118,7 +119,8 @@ struct MessageListPresentationSnapshot {
         filteredUngroupedHeaders: [MessageHeader]? = nil,
         navigationHeaders: [MessageHeader]? = nil,
         sourceID: MailSourceID? = nil,
-        groupsThreads: Bool = false
+        groupsThreads: Bool = false,
+        dateOverrides: [MessageHeader.ID: Date] = [:]
     ) {
         self.headers = headers
         self.sourceID = sourceID
@@ -143,7 +145,8 @@ struct MessageListPresentationSnapshot {
                     for: headers,
                     pinnedIDs: pinnedMessageIDs,
                     referenceDate: referenceDate,
-                    calendar: calendar
+                    calendar: calendar,
+                    dateOverrides: dateOverrides
                 ),
                 collapsedIDs: collapsedDateSectionIDs
             )

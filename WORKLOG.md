@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-21 — Agent — #297 snooze wake ordering
+
+- Goal: promote expired, source-scoped snoozes in Inbox ordering and refresh lists at the nearest wake deadline without changing provider timestamps or persisted models.
+- Changes: added a pure wake-date projection and deadline selector; newest-first regular/unified Inbox lists apply overrides to sorting and date sections only, preserve pin precedence, and aggregate loaded thread members only for capable sources. A view-owned cancellable task refreshes navigation and snoozed views at expiry, after workflow-state changes, and on scene activation. The feature remains message-scoped; unloaded/new conversation replies are not included.
+- Red/green: the external SwiftPM harness compiled the actual policy test file; the baseline failed with the missing MessageListSnoozeWakeEntry type, then the production policy and six Swift Testing cases passed on Swift 6.4.3.
+- Verification: pinned SwiftFormat reported 0/11 files require formatting; git diff --check and scripts/check-adr-required.sh passed.
+- Skipped: native BrevMail tests/build and visual QA require macOS; no existing snapshot PNGs were changed. Persisted-state round-trip/account-cleanup regressions already exist in LocalMessageWorkflowStateTests and were not rerun.
+- Handoff: no PR was created and hosted CI was not monitored, as requested. Project board #9 remains unavailable in this environment; no board change was made. Full persisted conversation snooze scope remains a later slice.
+
 ## 2026-11-23 — Agent — PR #323 (#297 undo-send rebase and macOS snapshots)
 
 - Goal: rebase PR #323 onto `origin/main`, extract `ComposeUndoSendToastView` for direct snapshot verification, record macOS 26+ snapshots, and resolve the Devin Review snapshot finding.
