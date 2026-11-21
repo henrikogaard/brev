@@ -1,6 +1,259 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Shorten": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjør kortere"
+          }
+        }
+      }
+    },
+    "Expand": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utdyp"
+          }
+        }
+      }
+    },
+    "Make formal": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjør formell"
+          }
+        }
+      }
+    },
+    "Make casual": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjør uformell"
+          }
+        }
+      }
+    },
+    "Make friendly": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjør vennlig"
+          }
+        }
+      }
+    },
+    "Improve writing": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forbedre teksten"
+          }
+        }
+      }
+    },
+    "Fix spelling & grammar": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rett stavemåte og grammatikk"
+          }
+        }
+      }
+    },
+    "Translate": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oversett"
+          }
+        }
+      }
+    },
+    "Replace Draft": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erstatt utkast"
+          }
+        }
+      }
+    },
+    "Replace Subject": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erstatt emne"
+          }
+        }
+      }
+    },
+    "Replace Selection": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erstatt markering"
+          }
+        }
+      }
+    },
+    "Draft from Prompt": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utkast fra instruks"
+          }
+        }
+      }
+    },
+    "Suggest Subject": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foreslå emne"
+          }
+        }
+      }
+    },
+    "AI Writer is unavailable for this compose window.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI-skriver er ikke tilgjengelig i dette skrivevinduet."
+          }
+        }
+      }
+    },
+    "AI Writer needs consent before sending text.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI-skriver trenger samtykke før tekst sendes."
+          }
+        }
+      }
+    },
+    "This account does not support AI Writer.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kontoen støtter ikke AI-skriver."
+          }
+        }
+      }
+    },
+    "Finish the current compose action first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fullfør den pågående handlingen først."
+          }
+        }
+      }
+    },
+    "AI Writer is already working.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI-skriver jobber allerede."
+          }
+        }
+      }
+    },
+    "Write draft text before using this action.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv tekst i utkastet før du bruker denne handlingen."
+          }
+        }
+      }
+    },
+    "Select text before using this action.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merk tekst før du bruker denne handlingen."
+          }
+        }
+      }
+    },
+    "Enter a prompt before using this action.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv en instruks før du bruker denne handlingen."
+          }
+        }
+      }
+    },
+    "Open this from a reply compose window.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne dette fra et svarvindu."
+          }
+        }
+      }
+    },
+    "Open a compose window with an editable subject.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne et skrivevindu med et emne som kan endres."
+          }
+        }
+      }
+    },
     "Later": {
       "extractionState": "manual",
       "localizations": {
