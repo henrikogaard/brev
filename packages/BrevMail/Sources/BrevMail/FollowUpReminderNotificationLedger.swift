@@ -23,7 +23,7 @@ struct FollowUpReminderNotificationLedger: Codable, Equatable {
     struct Entry: Codable, Equatable {
         var dueAt: Date
         var state: State
-        var nextRetryAt: Date? = nil
+        var nextRetryAt: Date?
     }
 
     static let userDefaultsKey = "notifications.followUpReminderLedger.v1"

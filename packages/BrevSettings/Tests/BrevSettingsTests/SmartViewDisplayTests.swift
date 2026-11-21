@@ -21,7 +21,8 @@ struct SmartViewDisplayTests {
         var settings = SmartMailboxSettings(mailboxes: [
             .init(id: "custom", name: "Invoices", query: .init(text: "invoice"), isEnabled: true)
         ])
-        settings.moveEntry(id: "custom:custom", by: -7)
+        let customIndex = try #require(settings.orderedEntries.firstIndex { $0.id == "custom:custom" })
+        settings.moveEntry(id: "custom:custom", by: -customIndex)
         #expect(settings.orderedEntries.first?.id == "custom:custom")
         let first = try #require(settings.orderedEntries.first)
         settings.setEntry(first, isEnabled: false)

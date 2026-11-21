@@ -14,6 +14,7 @@
 import BrevAI
 import BrevBackend
 import BrevDesign
+import BrevSettings
 import BrevThemes
 import Foundation
 import SwiftUI

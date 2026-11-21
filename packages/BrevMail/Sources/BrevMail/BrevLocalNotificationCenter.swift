@@ -455,7 +455,8 @@ public final class BrevLocalNotificationCenter {
         guard !Task.isCancelled else { return }
         var deliveredIDs = await deliveredFollowUpNotificationIdentifiers(from: center)
         guard !Task.isCancelled else { return }
-        let authorization = await center.notificationSettings().authorizationStatus
+        let authorizationStatus = await center.notificationSettings().authorizationStatus
+        let authorization = Self.map(authorizationStatus)
         let authorizationAvailable = authorization == .authorized
             || authorization == .provisional
             || authorization == .ephemeral
