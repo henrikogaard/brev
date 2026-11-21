@@ -208,11 +208,18 @@ enum ComposePresentation {
         isSending || isSavingDraft || isAIWorking
     }
 
+    static func canPresentScheduleSend(
+        hasCapability: Bool,
+        isInteractionBlocked: Bool
+    ) -> Bool {
+        hasCapability && !isInteractionBlocked
+    }
+
     static func toolbarActionLayout(for platform: ComposeLayoutPlatform) -> ComposeToolbarActionLayout {
         switch platform {
         case .compactIOS, .compactIOSAccessibility, .regularIOS:
             ComposeToolbarActionLayout(
-                primaryActions: [.close, .send],
+                primaryActions: [.close, .scheduleSend, .send],
                 utilityActions: [.attach, .format, .moreActions],
                 overflowActions: [
                     .templates,
@@ -228,7 +235,7 @@ enum ComposePresentation {
             )
         case .macOS:
             ComposeToolbarActionLayout(
-                primaryActions: [.attach, .format, .send, .moreActions],
+                primaryActions: [.attach, .format, .send, .scheduleSend, .moreActions],
                 utilityActions: [],
                 overflowActions: [
                     .templates,

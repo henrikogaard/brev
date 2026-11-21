@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-11-21 — Agent — #297 scheduled send compose action
+
+- Goal: expose scheduled send beside Send in the full macOS and iOS composers.
+- Changes: added a localized Later button that opens the existing schedule
+  sheet, gates presentation on ScheduledSendManaging and existing work
+  blockers, and preserves the selected/edit-schedule indication. The macOS
+  toolbar reserves a wider item for its label; the iOS toolbar keeps 44 pt
+  controls and places the title between the action groups. The inline-reply
+  Later action is unchanged.
+- Red/green: the actual pure presentation source and focused Swift Testing file
+  first failed to compile because canPresentScheduleSend was missing; after
+  implementation, both policy tests passed in an external Linux SPM harness.
+  The harness used only a Linux compatibility shim for CoreGraphics/localized
+  bundle APIs; production source and test code were copied unchanged.
+- Skipped: native BrevMail tests and macOS/iOS builds, in-app visual QA, and
+  snapshot recording require macOS 26. Scheduled-send restart and account-cleanup
+  QA remain unverified; this slice makes no persistence or backend changes.
+- Handoff: no PR or CI was started. Project board #9 could not be opened from
+  this environment; intended status is In review after local verification.
+
 ## 2026-11-22 — Sidekick — #324 date-section compile correction
 
 - Goal: fix the second native test-target compile failure in the collapsed-row wake regression and audit the added presentation/cache test APIs.

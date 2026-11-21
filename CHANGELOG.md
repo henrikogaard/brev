@@ -58,6 +58,9 @@ All notable changes to Brev are documented here.
   action for the configured delay (#297).
 - Add an explicitly approved isolated mock content-QA build option for native
   body rendering and read-only attachment picking; strict and shipping permissions stay unchanged.
+- Full compose now has a localized Later action beside Send on macOS and iOS.
+  Later opens the existing schedule sheet, which explains that delivery needs
+  Brev running and connected.
 
 ### Changed
 

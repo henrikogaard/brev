@@ -204,11 +204,16 @@ struct MacMailAuxiliaryWindowConfigurationTests {
 
         #expect(MacComposeToolbarItemIdentifier.defaultOrder == [
             MacComposeToolbarItemIdentifier.send,
+            MacComposeToolbarItemIdentifier.scheduleSend,
             .flexibleSpace,
             MacComposeToolbarItemIdentifier.format,
             MacComposeToolbarItemIdentifier.attachment,
             MacComposeToolbarItemIdentifier.more
         ])
+        #expect(
+            MacComposeToolbarItemIdentifier.itemWidth(for: .scheduleSend)
+                > MacComposeToolbarItemIdentifier.itemWidth(for: .send)
+        )
         #expect(configuration.title == String(localized: "New Message", bundle: .module))
     }
 

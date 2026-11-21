@@ -644,6 +644,7 @@ public struct ComposeView: View {
                         ComposeWindowTitleBridge(title: windowTitle)
                         ComposeNativeToolbarContentBridge(items: [
                             MacComposeToolbarItemIdentifier.send: AnyView(sendButton),
+                            MacComposeToolbarItemIdentifier.scheduleSend: AnyView(scheduleSendButton),
                             MacComposeToolbarItemIdentifier.format: AnyView(formatMenu),
                             MacComposeToolbarItemIdentifier.attachment: AnyView(
                                 toolbarButton(
@@ -1179,17 +1180,8 @@ public struct ComposeView: View {
 
     private var mobileToolbar: some View {
         HStack(spacing: BrevSpacing.sm) {
-            cancelButton
-
+            cancelButton.fixedSize(horizontal: true, vertical: false)
             Spacer(minLength: 0)
-
-            sendButton
-        }
-        // Centre the title like a nav bar: overlaying keeps it visually
-        // centred regardless of the Send label's width.
-        .overlay {
-            // At accessibility sizes Cancel, the title and Send cannot share
-            // one row on a phone; the title yields.
             if !isAccessibilityFieldLayout {
                 Text(composeTitle)
                     .brevFont(.headline)
@@ -1198,6 +1190,9 @@ public struct ComposeView: View {
                     .accessibilityAddTraits(.isHeader)
                     .allowsHitTesting(false)
             }
+            Spacer(minLength: 0)
+            scheduleSendButton.fixedSize(horizontal: true, vertical: false)
+            sendButton
         }
         .padding(.leading, BrevSpacing.sm)
         .padding(.trailing, BrevSpacing.sm)
@@ -1736,6 +1731,34 @@ public struct ComposeView: View {
             }
             .disabled(isInteractionBlocked)
         }
+    }
+
+    private var scheduleSendButton: some View {
+        Button(action: presentScheduleSendSheet) {
+            Label(String(localized: "Later", bundle: .module), systemImage: "clock")
+                .brevFont(.footnote)
+                .brevChip(selected: scheduledSendDate != nil)
+                .frame(minHeight: toolbarMetrics.hitTargetSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canPresentScheduleSend)
+        .accessibilityLabel(
+            scheduledSendDate == nil
+                ? String(localized: "Later", bundle: .module)
+                : String(localized: "Edit scheduled send", bundle: .module)
+        )
+        .accessibilityAddTraits(scheduledSendDate != nil ? .isSelected : [])
+        .help(
+            scheduledSendDate == nil
+                ? ComposeToolbarAction.scheduleSend.accessibilityLabel
+                : String(localized: "Edit scheduled send", bundle: .module)
+        )
+    }
+
+    private func presentScheduleSendSheet() {
+        guard canPresentScheduleSend else { return }
+        isScheduleSheetPresented = true
     }
 
     private var isSendButtonDisabled: Bool {
@@ -3574,6 +3597,13 @@ public struct ComposeView: View {
 
     private var isInteractionBlocked: Bool {
         isBusy || isWorkBlocked || restorationBlocksWork
+    }
+
+    private var canPresentScheduleSend: Bool {
+        ComposePresentation.canPresentScheduleSend(
+            hasCapability: selectedComposeBackend.extensionService(ScheduledSendManaging.self) != nil,
+            isInteractionBlocked: isInteractionBlocked
+        )
     }
 
     private var restorationBlocksWork: Bool {
