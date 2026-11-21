@@ -212,20 +212,69 @@ enum MessageRemoteContentDetector {
             )
         }
 
-        /// The element's `style` attribute value, so comment markers in other
-        /// attributes cannot reach the size check; empty when there is none.
+        /// The element's `style` attribute value, so text in other attributes
+        /// cannot reach the size check; empty when there is none.
         private static func styleAttribute(in html: String) -> String {
-            // Preceded by whitespace, `/` or a closing quote, which separate
-            // attributes in HTML, so `data-style` does not count; the value
-            // may be double-quoted, single-quoted or unquoted.
-            let pattern = #"(?<=[\s/"'])style\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))"#
-            guard let regex = try? NSRegularExpression(pattern: pattern),
-                  let match = regex.firstMatch(in: html, range: NSRange(html.startIndex ..< html.endIndex, in: html))
-            else { return "" }
-            for index in 1 ... 3 {
-                if let range = Range(match.range(at: index), in: html) { return String(html[range]) }
+            tagAttributes(html).first { $0.name == "style" }?.value ?? ""
+        }
+
+        /// The attributes of one start tag, read in order the way an HTML
+        /// tokenizer does: names end at whitespace, `/`, `=` or `>`, and
+        /// values are double-quoted, single-quoted or unquoted. Text inside a
+        /// value is never read as another attribute.
+        static func tagAttributes(_ tag: String) -> [(name: String, value: String)] {
+            let chars = Array(tag)
+            var index = 0
+            if index < chars.count, chars[index] == "<" { index += 1 }
+            // Skip the tag name.
+            while index < chars.count, !chars[index].isWhitespace, chars[index] != "/", chars[index] != ">" {
+                index += 1
             }
-            return ""
+            var attributes: [(name: String, value: String)] = []
+            while index < chars.count {
+                while index < chars.count, chars[index].isWhitespace || chars[index] == "/" {
+                    index += 1
+                }
+                guard index < chars.count, chars[index] != ">" else { break }
+                let nameStart = index
+                index += 1
+                while index < chars.count, !chars[index].isWhitespace,
+                      !["/", "=", ">"].contains(chars[index]) {
+                    index += 1
+                }
+                let name = String(chars[nameStart ..< index]).lowercased()
+                var cursor = index
+                while cursor < chars.count, chars[cursor].isWhitespace {
+                    cursor += 1
+                }
+                guard cursor < chars.count, chars[cursor] == "=" else {
+                    attributes.append((name, ""))
+                    continue
+                }
+                index = cursor + 1
+                while index < chars.count, chars[index].isWhitespace {
+                    index += 1
+                }
+                var value = ""
+                if index < chars.count, chars[index] == "\"" || chars[index] == "'" {
+                    let quote = chars[index]
+                    let valueStart = index + 1
+                    index = valueStart
+                    while index < chars.count, chars[index] != quote {
+                        index += 1
+                    }
+                    value = String(chars[valueStart ..< min(index, chars.count)])
+                    index += 1
+                } else {
+                    let valueStart = index
+                    while index < chars.count, !chars[index].isWhitespace, chars[index] != ">" {
+                        index += 1
+                    }
+                    value = String(chars[valueStart ..< index])
+                }
+                attributes.append((name, value))
+            }
+            return attributes
         }
 
         /// An inline-CSS `width`/`height` in px (or unitless 0), ignoring

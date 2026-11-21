@@ -235,6 +235,9 @@ struct MessageTrackerStripTests {
         // A slash or a closing quote also separates attributes in HTML.
         (#"<img src="https://stats.example.net/o/5"/style="width:1px;height:1px">"#, 1),
         (#"<img src="https://stats.example.net/o/6"style="width:1px;height:1px">"#, 1),
+        // Text inside another attribute's value is never an attribute: kept.
+        (#"<img alt="style='width:1px;height:1px'" src="https://cdn.example.com/d.jpg" style="width:300px;height:200px">"#, 0),
+        (#"<img title='a "style=width:1px;height:1px"' src="https://cdn.example.com/e.jpg">"#, 0),
     ])
     func realStyleAttribute(html: String, expected: Int) {
         #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == expected)
