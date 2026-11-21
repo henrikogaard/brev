@@ -181,6 +181,18 @@ struct MessageTrackerStripTests {
         #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 1)
     }
 
+    @Test("a later CSS size overrides an earlier zero, like the browser")
+    func laterDeclarationWins() {
+        let html = #"<img src="https://cdn.example.com/a.jpg" style="width:0%;height:0%;width:300px;height:200px">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 0)
+    }
+
+    @Test("an ASP.NET handler open endpoint is removed")
+    func ashxEndpoint() {
+        let html = #"<img src="https://mail.example.com/track/open.ashx?id=7">"#
+        #expect(MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount == 1)
+    }
+
     @Test("plain mail and normal images are left exactly as they are")
     func nothingToStrip() {
         let html = #"<p>Hi</p><img src="https://cdn.example.com/photo.jpg" width="320" height="240">"#

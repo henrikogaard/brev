@@ -217,15 +217,14 @@ enum MessageRemoteContentDetector {
             let pattern = #"(?<![-a-z])\#(property)\s*:\s*(\d+(?:\.\d+)?)(px|%)?(?![\w.%])"#
             guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
             let range = NSRange(html.startIndex ..< html.endIndex, in: html)
-            for match in regex.matches(in: html, range: range) {
-                guard let valueRange = Range(match.range(at: 1), in: html),
-                      let value = Double(html[valueRange]) else { continue }
-                // px counts as-is; `0`, `0px` and `0%` are all zero.
-                let unitRange = Range(match.range(at: 2), in: html)
-                let unit = unitRange.map { String(html[$0]) }
-                if unit == "px" || value == 0 { return value }
-            }
-            return nil
+            // The last declaration wins, as it does in the browser.
+            guard let match = regex.matches(in: html, range: range).last,
+                  let valueRange = Range(match.range(at: 1), in: html),
+                  let value = Double(html[valueRange]) else { return nil }
+            // px counts as-is; `0`, `0px` and `0%` are all zero; any other
+            // unit or percentage is not a known pixel size.
+            let unit = Range(match.range(at: 2), in: html).map { String(html[$0]) }
+            return unit == "px" || value == 0 ? value : nil
         }
 
         private static func numericAttribute(_ name: String, in html: String) -> Int? {
@@ -271,7 +270,9 @@ enum MessageRemoteContentDetector {
             }
             // `/track/open`, `/track/open.php`, `/wf/open.aspx`: the open
             // endpoint itself, with no extension or a server-script one.
-            let openEndpoints: Set<String> = ["open", "open.php", "open.aspx", "open.asp", "open.jsp", "open.cgi"]
+            let openEndpoints: Set<String> = [
+                "open", "open.php", "open.aspx", "open.ashx", "open.asp", "open.jsp", "open.cgi",
+            ]
             return zip(segments, segments.dropFirst()).contains { pair in
                 (pair.0 == "track" || pair.0 == "wf") && openEndpoints.contains(pair.1)
             }
