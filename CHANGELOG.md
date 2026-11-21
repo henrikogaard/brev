@@ -140,6 +140,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- AI Writer speaks Norwegian: the action names (Shorten, Translate and the
+  others), Replace Draft, Replace Subject and Replace Selection, and the
+  "why is this unavailable" messages now follow the app language.
 - macOS docked reply (#302): the AI Writer preview now has room to show the
   draft. While a preview is open, the From, To and Subject fields and the
   reply starters step aside, and they come back when you use or cancel it.

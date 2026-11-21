@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-21 — Agent — #302 AI Writer nb strings
+
+- Goal: devbox QA showed "Replace Draft" and the Write menu in English in the nb UI.
+- Changes: `ComposeAIPreviewState.replaceActionTitle`, `ComposeAIAction.title` and the availability reasons use `String(localized:bundle:.module)`; shortcut labels are localized in BrevMail (`ComposeAIAction.shortcutTitle`) because `AIShortcutAction` in BrevAI is a protected path, following the `CalendarInviteResponsePresentation` pattern. 23 nb catalog entries added.
+- Verification: 37 compose-AI and inline-reply tests; `scripts/lint.sh`; `scripts/format.sh` (no changes). No new test: SPM test runs do not compile the catalog, so nb lookups cannot be asserted there.
+- Skipped: devbox run (SSH timed out); in-app nb check left to Henrik's QA.
+
 ## 2026-11-20 — Agent — #302 docked reply AI preview fix
 
 - Goal: in-app QA on macmini-devbox found the AI Writer preview in the docked reply had no room for the draft text (fixed 360 pt dock).
