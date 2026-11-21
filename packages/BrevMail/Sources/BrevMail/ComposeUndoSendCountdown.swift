@@ -22,6 +22,14 @@
 
 import Foundation
 
+enum ComposeUndoSendProgress {
+    static func fraction(startedAt: TimeInterval, now: TimeInterval, duration: TimeInterval) -> Double {
+        guard startedAt.isFinite, now.isFinite, duration.isFinite else { return 0 }
+        guard duration > 0 else { return 1 }
+        return min(max((now - startedAt) / duration, 0), 1)
+    }
+}
+
 enum ComposeUndoSendCountdown {
     typealias Sleeper = @MainActor (UInt64) async throws -> Void
 

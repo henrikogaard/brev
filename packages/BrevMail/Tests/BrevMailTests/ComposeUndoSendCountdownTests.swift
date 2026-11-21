@@ -44,6 +44,9 @@ struct ComposeUndoSendCountdownTests {
             try await task.value
             Issue.record("Expected cancellation before send")
         } catch is CancellationError {}
+        catch {
+            Issue.record("Unexpected error awaiting countdown: \(error)")
+        }
 
         #expect(sleepCount == 3)
         #expect(completionCount == 0)
@@ -98,6 +101,20 @@ struct ComposeUndoSendCountdownTests {
         #expect(progressCount == 0)
         #expect(completionCount == 0)
         #expect(sendCount == 1)
+    }
+
+    @Test("ring progress clamps to the configured monotonic duration")
+    func ringProgressClampsAtStartMidpointAndEnd() {
+        let start = 100.0
+
+        #expect(ComposeUndoSendProgress.fraction(startedAt: start, now: start - 1, duration: 4) == 0)
+        #expect(ComposeUndoSendProgress.fraction(startedAt: start, now: start, duration: 4) == 0)
+        #expect(ComposeUndoSendProgress.fraction(startedAt: start, now: start + 2, duration: 4) == 0.5)
+        #expect(ComposeUndoSendProgress.fraction(startedAt: start, now: start + 4, duration: 4) == 1)
+        #expect(ComposeUndoSendProgress.fraction(startedAt: start, now: start + 5, duration: 4) == 1)
+        #expect(ComposeUndoSendProgress.fraction(startedAt: start, now: start, duration: 1) == 0)
+        #expect(ComposeUndoSendProgress.fraction(startedAt: start, now: start + 0.5, duration: 1) == 0.5)
+        #expect(ComposeUndoSendProgress.fraction(startedAt: start, now: start + 1, duration: 1) == 1)
     }
 }
 
