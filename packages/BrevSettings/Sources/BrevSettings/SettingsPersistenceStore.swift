@@ -302,5 +302,13 @@ public struct SettingsPersistenceStore: Equatable {
         RecentRecipientStore(defaults: defaults).removeAccount(accountID)
         RelatedConversationConsentStore(defaults: defaults).revokeConsent(accountID: accountID)
         LocalMessageWorkflowStateStorage.removeAccount(accountID, from: defaults)
+        var followUps = FollowUpSettings.load(from: defaults)
+        let previous = followUps
+        followUps.reminders.removeAll { $0.accountID == accountID }
+        followUps.pendingNoReplyIntents.removeAll { $0.sourceID.accountID == accountID }
+        if followUps != previous {
+            followUps.save(to: defaults)
+            NotificationCenter.default.post(name: .brevFollowUpDidChange, object: nil)
+        }
     }
 }

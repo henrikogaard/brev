@@ -296,6 +296,7 @@ All notable changes to Brev are documented here.
   invalidated session.
 
 ### Added
+- Compose can optionally add a three-day no-reply follow-up. Sent copies and
 
 - macOS Today page (#292): with no message open, the reader greets you and
   lists conversations from people that wait on you and sent mail still waiting

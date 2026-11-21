@@ -422,6 +422,15 @@ public final class BrevLocalNotificationCenter {
         try? await center.add(request)
     }
 
+    /// Restores a missing local request without replacing one already pending.
+    public func ensureFollowUpReminderScheduled(_ reminder: FollowUpReminder, subject: String) async {
+        guard let center else { return }
+        let identifier = Self.followUpReminderIdentifier(for: reminder)
+        let pending = await center.pendingNotificationRequests()
+        guard !pending.contains(where: { $0.identifier == identifier }) else { return }
+        await scheduleFollowUpReminder(reminder, subject: subject)
+    }
+
     /// Cancel the pending reminder for a persisted reminder, including its legacy ID.
     public func cancelFollowUpReminder(_ reminder: FollowUpReminder) {
         guard let center else { return }

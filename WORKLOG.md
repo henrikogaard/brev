@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-21 — Agent — #297
+
+- Goal: add an opt-in three-day no-reply reminder flow without provider/network changes.
+- Changes: `Draft` persists the exact shared-helper RFC Message-ID request; accepted compose sends and scheduled queues register source/backend-owned pending intents. Detached iPad completion checks the current AppSession backend list before registering, rejecting removed/recreated account lifetimes. A cache-only indexed reconciler creates reminders from actual Sent dates, completes them only for exact later replies, and preserves state for incomplete reads. Added the Waiting smart view with inactive-item pruning, explicit Today due-date handling, notification restoration/cancellation, account cleanup, Mock RFC headers, Norwegian Bokmål strings, and backup/sync privacy documentation.
+- Verification: TDD RED reproduced a persisted pending-intent delay of `60.0` seconds instead of the fixed `259200.0`; after enforcing the three-day delay on creation and decode, the Linux Swift Testing harness compiled actual `NoReplyFollowUpReconciler.swift`, `FollowUpSettings.swift`, and `TodayDigest.swift` plus their BrevMail tests against narrow model/platform stubs: `Test run with 25 tests in 2 suites passed after 0.002 seconds.` `mise exec -- swiftformat --lint` on the 31 changed Swift paths reported `0/31 files require formatting.` After the final Waiting-list adjustment, targeted lint reported `0/2 files require formatting.` Full and targeted `swiftc -frontend -parse` checks succeeded. `scripts/check-adr-required.sh` exited 0; both catalog JSON files validated with all three new `nb` strings; new file headers matched the template (3/3); `git diff --check` passed with no diagnostics.
+- Skipped: full BrevBackend tests cannot build on Linux (`no such module 'PDFKit'` at `AttachmentTextExtractor.swift:14`); BrevSettings tests cannot build (`no such module 'SwiftUI'` at `BrevPluginRegistry.swift:14`). The Settings test invocation fetched existing SwiftPM dependencies before that platform failure. Native BrevMail compilation, app/visual QA, and snapshot recording remain for macOS 26.
+- Limits and handoff: reconciliation and Waiting use only per-source cached folder headers; no remote related-mail lookup or body fetch was added. Scheduled-send restart/account-removal and native send/cancel flows still need macOS QA. No PR or CI was started. Project board #9 was inaccessible in the prior handoff; intended status is In progress during work and In review after local verification.
+
 ## 2026-11-22 — Agent — #297 collision fixture resource identity
 
 - Goal: retain valid attachment lookup metadata when deliberately seeding duplicate IDs across Mock mailboxes.

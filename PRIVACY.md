@@ -72,7 +72,8 @@ Apple's iCloud Key-Value Storage under your own Apple ID so they follow
 you between your Mac and iPhone: snoozes (including normalized RFC message
 identifier seeds used to keep a snoozed conversation together) and done markers, VIP senders,
 manual inbox category choices, pinned messages, blocked senders,
-follow-up reminders, signatures, message templates, smart mailbox
+follow-up reminders, including pending no-reply follow-ups and their source,
+draft, RFC Message-ID, and delivery-date metadata, signatures, message templates, smart mailbox
 definitions, compose preferences, and sidebar smart-folder visibility.
 The exact key list is in ADR-0056. Mail content, attachments, account
 settings, passwords, tokens, and settings that would turn on other

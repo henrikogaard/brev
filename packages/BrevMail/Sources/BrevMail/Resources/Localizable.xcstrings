@@ -16792,6 +16792,17 @@
           }
         }
       }
+    },
+    "Remind me if no reply in 3 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minn meg på nytt hvis jeg ikke får svar om 3 dager"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

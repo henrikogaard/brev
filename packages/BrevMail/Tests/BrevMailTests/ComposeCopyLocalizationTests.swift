@@ -22,7 +22,8 @@ struct ComposeCopyLocalizationTests {
         "Display text",
         "Cc/Bcc",
         "Save the current message as a template\nto reuse it in future conversations.",
-        "Your last draft couldn't be reopened here. Any saved copy is still in Drafts."
+        "Your last draft couldn't be reopened here. Any saved copy is still in Drafts.",
+        "Remind me if no reply in 3 days"
     ]
 
     @Test("compose copy has a Norwegian translation", arguments: keys)

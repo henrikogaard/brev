@@ -78,6 +78,28 @@ import Testing
         #expect(dates == dates.sorted(by: >))
     }
 
+    @Test("mock sends preserve shared RFC identity and exact reply references")
+    func sendsCarryRFCMetadata() async throws {
+        let backend = MockBackend()
+        let firstDraft = Draft(id: "follow-up-fixture", to: [Correspondent(email: "you@example.test")])
+        let firstExpectedID = MIMEMessageBuilder.messageIDHeaderValue(
+            draftID: firstDraft.id,
+            fromEmail: backend.account.emailAddress
+        )
+        let firstResult = try await backend.send(draft: firstDraft)
+        let sentFolder = try #require(await backend.folders().first(where: { $0.role == .sent }))
+        let firstHeaders = try await backend.messages(in: sentFolder, pageToken: nil).headers
+        let firstSent = try #require(firstHeaders.first(where: { $0.id == firstResult.sentMessageID }))
+        #expect(firstSent.messageID == firstExpectedID)
+
+        let replyDraft = Draft(id: "reply-fixture", inReplyToMessageID: firstSent.id)
+        let replyResult = try await backend.send(draft: replyDraft)
+        let updatedHeaders = try await backend.messages(in: sentFolder, pageToken: nil).headers
+        let replySent = try #require(updatedHeaders.first(where: { $0.id == replyResult.sentMessageID }))
+        #expect(replySent.inReplyTo == firstExpectedID)
+        #expect(replySent.references == [firstExpectedID])
+    }
+
     @Test("folder counts are derived from current messages")
     func folderCountsAreDerivedFromCurrentMessages() async throws {
         let backend = MockBackend()

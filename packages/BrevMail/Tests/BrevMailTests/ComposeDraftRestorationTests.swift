@@ -111,6 +111,8 @@ struct ComposeDraftRestorationTests {
         let root = try String(contentsOf: source.appendingPathComponent("BrevMailRootView.swift"), encoding: .utf8)
         #expect(root.contains("ComposeDraftRestoration.resolve("))
         #expect(root.contains("existingDraftAttachments: navigation.composeDraftAttachments"))
+        #expect(compose.contains("fromEmail: currentFromEmail"))
+        #expect(compose.contains("remindIfNoReply = draft.followUpRequest != nil"))
         #expect(compose.contains("ComposeDraftRestoration.pendingAttachments(from: existingDraftAttachments)"))
         #expect(compose.contains("let reconciledAttachmentIDs = currentAttachmentIDs"))
         #expect(compose.contains("attachmentIDs: currentAttachmentIDs"))

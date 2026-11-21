@@ -102,4 +102,32 @@ struct DraftContentFingerprintTests {
             )
         )
     }
+
+    @Test("legacy drafts decode without a follow-up request")
+    func legacyDraftDecodesWithoutFollowUpRequest() throws {
+        let draft = try JSONDecoder().decode(Draft.self, from: Data(#"{"id":"legacy"}"#.utf8))
+
+        #expect(draft.followUpRequest == nil)
+    }
+
+    @Test("the follow-up request round-trips and participates in the fingerprint")
+    func followUpRequestRoundTripsAndChangesFingerprint() throws {
+        let request = DraftNoReplyFollowUpRequest(expectedMessageID: "<brev-d1@example.org>")
+        let draft = Draft(id: "d1", subject: "Hello", followUpRequest: request)
+        let decoded = try JSONDecoder().decode(Draft.self, from: JSONEncoder().encode(draft))
+        let withoutRequest = Draft(id: "d1", subject: "Hello")
+        let otherSender = Draft(
+            id: "d1",
+            subject: "Hello",
+            followUpRequest: DraftNoReplyFollowUpRequest(expectedMessageID: "<brev-d1@other.example>")
+        )
+
+        #expect(decoded.followUpRequest == request)
+        #expect(DraftContentFingerprint.fingerprint(for: draft) != DraftContentFingerprint.fingerprint(for: withoutRequest))
+        #expect(DraftContentFingerprint.fingerprint(for: draft) != DraftContentFingerprint.fingerprint(for: otherSender))
+
+        let modifiedDelay = Data(#"{"expectedMessageID":"<brev-d1@example.org>","delay":1}"#.utf8)
+        #expect(try JSONDecoder().decode(DraftNoReplyFollowUpRequest.self, from: modifiedDelay).delay
+            == DraftNoReplyFollowUpRequest.threeDayDelay)
+    }
 }

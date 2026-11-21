@@ -38,7 +38,8 @@ struct SmartViewDisplayTests {
         #expect(settings.showInSidebar)
         settings.displayOrder = ["removed", "builtin:vip", "builtin:vip"]
         #expect(settings.orderedEntries.first?.id == "builtin:vip")
-        #expect(settings.orderedEntries.count == 7)
+        #expect(settings.orderedEntries.count == 8)
+        #expect(settings.orderedEntries.contains { $0.id == "builtin:waiting" })
     }
 
     @Test("dragging a row to a new position reorders entries, as List.onMove reports it")

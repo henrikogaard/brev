@@ -351,6 +351,8 @@ public struct BrevMailRootView: View {
     @State private var activeComposeCompletionRequest: MailRootComposeCompletionRequest?
     @State private var pendingBackendEventRefresh = MailRootBackendEventRefreshBatch()
     @State private var backendEventRefreshTask: Task<Void, Never>?
+    @State private var noReplyFollowUpRefreshTask: Task<Void, Never>?
+    @State private var noReplyFollowUpRefreshRequested = false
     @State private var pendingBackgroundAccountIDs: Set<BrevAccount.ID> = []
     @State private var backgroundAccountRefreshTask: Task<Void, Never>?
     @State private var nextBackgroundAccountRefreshRequestID = 0
@@ -802,6 +804,8 @@ public struct BrevMailRootView: View {
                 backgroundAccountRefreshTask = nil
                 activeBackgroundAccountRefreshRequestID = nil
                 pendingBackgroundAccountIDs.removeAll()
+                noReplyFollowUpRefreshTask?.cancel()
+                noReplyFollowUpRefreshTask = nil
             }
             .onChange(of: mailboxSourcePreferencesData) { _, data in
                 cachedMailboxSourcePreferences = MailboxSourcePreferencesStorage.decode(data) ?? .defaults
@@ -908,6 +912,9 @@ public struct BrevMailRootView: View {
             .onChange(of: sourceSectionsRevision, initial: true) { _, _ in
                 onSettingsMailboxContextChange?(settingsMailboxContext)
             }
+            .onChange(of: sourceSections.map(\.id), initial: true) { _, _ in
+                requestNoReplyFollowUpRefresh()
+            }
             .modifier(externalInputConsumer)
             .onChange(of: navigation.composePresentationID) {
                 handleComposePresentationChange()
@@ -922,6 +929,7 @@ public struct BrevMailRootView: View {
                 handleInlineReplyChange(isDocked: isDocked)
             }
             .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
+                requestNoReplyFollowUpRefresh()
                 Task {
                     await notificationCenter.cancelInactiveFollowUpReminders(
                         settings: settingsStore.followUpSettings()
@@ -962,6 +970,7 @@ public struct BrevMailRootView: View {
             }
             .onChange(of: scenePhase) { previousPhase, newPhase in
                 handleScenePhaseChange(previousPhase: previousPhase, newPhase: newPhase)
+                if newPhase == .active { requestNoReplyFollowUpRefresh() }
             }
             .onChange(of: BrevIntentHandoff.shared.refreshRequestCount) { _, _ in
                 // Check Mail enqueues here because openAppWhenRun fires no
@@ -2335,6 +2344,7 @@ public struct BrevMailRootView: View {
         let myAddresses = addresses
         let readInbox = inbox
         let readSent = sent
+        let noReplyReminders = settingsStore.followUpSettings().reminders
         // The rules and the keyword classifier walk every cached header, so
         // keep them off the main actor.
         let digest = await Task.detached(priority: .userInitiated) {
@@ -2344,6 +2354,7 @@ public struct BrevMailRootView: View {
                 sent: readSent,
                 myAddresses: myAddresses,
                 now: .now,
+                noReplyReminders: noReplyReminders,
                 classify: { header, sourceID in
                     InboxClassificationPolicy.classification(for: header, sourceID: sourceID, overrideStore: overrides)
                         .category
@@ -5099,6 +5110,14 @@ public struct BrevMailRootView: View {
             driveFeature: driveFeature,
             hostStyle: hostStyle,
             onClose: onClose,
+            onAcceptedSend: { draft, result, sentSourceID, sendBackend in
+                registerAcceptedNoReplyFollowUp(
+                    draft: draft,
+                    result: result,
+                    sourceID: sentSourceID,
+                    backend: sendBackend
+                )
+            },
             onCompletion: { completion in
                 if hostStyle == .inline {
                     handleDockedReplyCompletion(
@@ -5227,11 +5246,26 @@ public struct BrevMailRootView: View {
             }
         case .outbox:
             let activeBackend = selectedBackend
+            let cancellationSourceID = navigation.selectedSourceID ?? activeMailboxID.map {
+                MailSourceID(accountID: activeBackend.account.id, mailboxID: $0)
+            }
+            let cancellationBackendIdentity = ObjectIdentifier(activeBackend as AnyObject)
             OutboxView(
                 backend: activeBackend,
-                sourceID: navigation.selectedSourceID
-                    ?? activeMailboxID.map { MailSourceID(accountID: activeBackend.account.id, mailboxID: $0) },
-                onClose: onClose
+                sourceID: cancellationSourceID,
+                onClose: onClose,
+                onScheduledSendCancelled: { draftID in
+                    guard let cancellationSourceID,
+                          sourceSections.contains(where: { $0.id == cancellationSourceID }),
+                          ObjectIdentifier(backend(for: cancellationSourceID) as AnyObject) == cancellationBackendIdentity
+                    else { return }
+                    var settings = FollowUpSettings.load()
+                    let previousCount = settings.pendingNoReplyIntents.count
+                    settings.removePendingNoReplyIntent(sourceID: cancellationSourceID, draftID: draftID)
+                    guard settings.pendingNoReplyIntents.count != previousCount else { return }
+                    settings.save()
+                    NotificationCenter.default.post(name: .brevFollowUpDidChange, object: nil)
+                }
             )
             .brevSheetAppearance(theme)
             .task { await refreshOutboxCount() }
@@ -7911,6 +7945,119 @@ public struct BrevMailRootView: View {
         Task { await loadFolders() }
     }
 
+    private func registerAcceptedNoReplyFollowUp(
+        draft: Draft,
+        result: SendResult,
+        sourceID: MailSourceID?,
+        backend: any MailBackend
+    ) {
+        guard let request = draft.followUpRequest,
+              let sourceID,
+              sourceSections.contains(where: { $0.id == sourceID })
+        else { return }
+        let currentBackend = self.backend(for: sourceID)
+        guard ObjectIdentifier(currentBackend as AnyObject) == ObjectIdentifier(backend as AnyObject) else { return }
+
+        var settings = FollowUpSettings.load()
+        settings.upsertPendingNoReplyIntent(PendingNoReplyFollowUpIntent(
+            sourceID: sourceID,
+            draftID: draft.id,
+            expectedMessageID: request.expectedMessageID,
+            sentMessageIDHint: result.sentMessageID
+        ))
+        settings.save()
+        NotificationCenter.default.post(name: .brevFollowUpDidChange, object: nil)
+        requestNoReplyFollowUpRefresh()
+    }
+
+    private func requestNoReplyFollowUpRefresh() {
+        guard noReplyFollowUpRefreshTask == nil else {
+            noReplyFollowUpRefreshRequested = true
+            return
+        }
+        noReplyFollowUpRefreshTask = Task { @MainActor in
+            await reconcileNoReplyFollowUpsFromCache()
+            let shouldRepeat = noReplyFollowUpRefreshRequested
+            let isCancelled = Task.isCancelled
+            noReplyFollowUpRefreshRequested = false
+            noReplyFollowUpRefreshTask = nil
+            if shouldRepeat, !isCancelled { requestNoReplyFollowUpRefresh() }
+        }
+    }
+
+    private func reconcileNoReplyFollowUpsFromCache() async {
+        let savedSettings = FollowUpSettings.load()
+        let eligibleSources = Set(
+            savedSettings.pendingNoReplyIntents.map(\.sourceID)
+                + savedSettings.reminders.compactMap { reminder in
+                    guard reminder.isAutomaticNoReply, !reminder.isDismissed, !reminder.isCompleted else { return nil }
+                    return reminder.noReplyMetadata?.sourceID
+                }
+        )
+        let sections = sourceSections.filter { eligibleSources.contains($0.id) }
+        guard !sections.isEmpty else { return }
+
+        var snapshots: [NoReplyFollowUpCacheSnapshot] = []
+        var backendIdentities: [MailSourceID: ObjectIdentifier] = [:]
+        for section in sections {
+            guard !Task.isCancelled else { return }
+            let owner = backend(for: section.id)
+            let ownerIdentity = ObjectIdentifier(owner as AnyObject)
+            backendIdentities[section.id] = ownerIdentity
+            let sentFolderIDs = Set(section.folders.filter { $0.role == .sent }.map(\.id))
+            var headers: [MessageHeader] = []
+            var isComplete = true
+            for folder in section.folders {
+                do {
+                    let cachedHeaders = try await owner.cachedMessageHeaders(in: folder, sourceID: section.id)
+                    headers.append(contentsOf: cachedHeaders)
+                } catch {
+                    isComplete = false
+                }
+                if Task.isCancelled { return }
+            }
+            snapshots.append(NoReplyFollowUpCacheSnapshot(
+                sourceID: section.id,
+                headers: headers,
+                sentFolderIDs: sentFolderIDs,
+                ownAddresses: Set(
+                    [section.mailbox.email, owner.account.emailAddress]
+                        + headers.filter { sentFolderIDs.contains($0.folderID) }.map { $0.from.email }
+                ),
+                isComplete: isComplete
+            ))
+        }
+
+        guard !Task.isCancelled else { return }
+        let currentSources = Set(sourceSections.map(\.id))
+        let currentSnapshots = snapshots.filter { snapshot in
+            guard currentSources.contains(snapshot.sourceID),
+                  let expectedIdentity = backendIdentities[snapshot.sourceID]
+            else { return false }
+            return ObjectIdentifier(backend(for: snapshot.sourceID) as AnyObject) == expectedIdentity
+        }
+        let latestSettings = FollowUpSettings.load()
+        let result = NoReplyFollowUpReconciler.reconcile(settings: latestSettings, snapshots: currentSnapshots)
+        let didChangeSettings = result.settings != latestSettings
+        if didChangeSettings { result.settings.save() }
+        for reminder in result.completed {
+            notificationCenter.cancelFollowUpReminder(reminder)
+        }
+        let notificationSettings = FollowUpSettings.load()
+        for reminder in notificationSettings.reminders where reminder.isAutomaticNoReply
+            && !reminder.isDismissed && !reminder.isCompleted {
+            let subject = currentSnapshots
+                .first(where: { $0.sourceID == reminder.noReplyMetadata?.sourceID })?
+                .headers.first(where: { $0.id == reminder.messageID })?.subject ?? ""
+            await notificationCenter.ensureFollowUpReminderScheduled(reminder, subject: subject)
+        }
+        await notificationCenter.cancelInactiveFollowUpReminders(settings: FollowUpSettings.load())
+        NotificationCenter.default.post(
+            name: didChangeSettings ? .brevFollowUpDidChange : .brevNoReplyFollowUpCacheDidChange,
+            object: nil
+        )
+    }
+
     /// Send and save results from the reply docked under the reader (#302).
     /// The dock does not hold the sheet's completion request: that request
     /// blocks refreshes and mail actions, which suits a modal sheet but not a
@@ -8916,6 +9063,7 @@ public struct BrevMailRootView: View {
         bumpRootWorkProgress()
         switch event {
         case .outboxChanged:
+            requestNoReplyFollowUpRefresh()
             guard ObjectIdentifier(backend) == ObjectIdentifier(selectedBackend) else { return }
             await refreshOutboxCount()
         case .folderRefreshed, .messagesAdded, .messagesRemoved, .messagesUpdated:
@@ -8924,6 +9072,7 @@ public struct BrevMailRootView: View {
                 signInCodeArrivalController?.handle(event, from: backend)
             }
             #endif
+            requestNoReplyFollowUpRefresh()
             let effects = MailRootAccountEventPolicy.mailboxEventEffects(
                 for: event,
                 eventAccountID: backend.account.id,

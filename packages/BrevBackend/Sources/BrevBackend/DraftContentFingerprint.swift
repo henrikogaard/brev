@@ -56,6 +56,9 @@ public struct DraftContentFingerprint: Equatable, Sendable, Hashable, Codable {
         lines.append(contentsOf: recipientLines(prefix: "cc", recipients: draft.cc))
         lines.append(contentsOf: recipientLines(prefix: "bcc", recipients: draft.bcc))
         lines.append("body=\(normalizeBody(draft.htmlBody))")
+        if let request = draft.followUpRequest {
+            lines.append("no-reply-follow-up=\(request.expectedMessageID)|\(request.delay)")
+        }
         return lines.joined(separator: "\n")
     }
 

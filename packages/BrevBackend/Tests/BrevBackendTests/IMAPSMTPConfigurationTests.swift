@@ -185,6 +185,10 @@ struct MIMEMessageBuilderTests {
         let id = messageIDLine(in: first)
 
         #expect(id == "Message-ID: <brev-local-1@example.com>")
+        #expect(MIMEMessageBuilder
+            .messageIDHeaderValue(draftID: "local-1", fromEmail: "sender@example.com") == "<brev-local-1@example.com>")
+        #expect(MIMEMessageBuilder
+            .messageIDHeaderValue(draftID: "local-1", fromEmail: "sender@other.example") == "<brev-local-1@other.example>")
         // Stable across rebuilds of the same draft so a retried/replayed send
         // dedups at the receiver instead of delivering two copies.
         #expect(messageIDLine(in: first) == messageIDLine(in: second))

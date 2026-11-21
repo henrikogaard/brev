@@ -39,6 +39,7 @@ public struct DetachedComposeWindowView: View {
     private let payload: ComposeWindowPayload
     // Snapshot of the backend list captured at window-open time.
     private let backends: [any MailBackend]
+    private let currentBackendsProvider: () -> [any MailBackend]
     private let aiBackends: [BrevAccount.ID: any AIBackend]
     private let signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)?
     private let composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)?
@@ -55,6 +56,7 @@ public struct DetachedComposeWindowView: View {
     public init(
         payload: ComposeWindowPayload,
         backends: [any MailBackend],
+        currentBackendsProvider: (() -> [any MailBackend])? = nil,
         aiBackends: [BrevAccount.ID: any AIBackend] = [:],
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
         composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)? = nil,
@@ -63,6 +65,7 @@ public struct DetachedComposeWindowView: View {
     ) {
         self.payload = payload
         self.backends = backends
+        self.currentBackendsProvider = currentBackendsProvider ?? { backends }
         self.aiBackends = aiBackends
         self.signatureContextProvider = signatureContextProvider
         self.composeSecurityDefaultsProvider = composeSecurityDefaultsProvider
@@ -148,7 +151,26 @@ public struct DetachedComposeWindowView: View {
             hasTrustedSigningIdentity: (trustedSigningIdentityCountProvider?(account) ?? 0) > 0,
             hasTrustedEncryptionIdentity: (trustedEncryptionIdentityCountProvider?(account) ?? 0) > 0,
             onClose: onClose,
-            onCompletion: onCompletion
+            onCompletion: onCompletion,
+            onAcceptedSend: { draft, result, sentSourceID, sendBackend in
+                guard let request = draft.followUpRequest,
+                      let sentSourceID,
+                      let currentBackend = DetachedWindowResolver.resolveBackend(
+                          sourceID: sentSourceID,
+                          in: currentBackendsProvider()
+                      ),
+                      ObjectIdentifier(currentBackend as AnyObject) == ObjectIdentifier(sendBackend as AnyObject)
+                else { return }
+                var settings = FollowUpSettings.load()
+                settings.upsertPendingNoReplyIntent(PendingNoReplyFollowUpIntent(
+                    sourceID: sentSourceID,
+                    draftID: draft.id,
+                    expectedMessageID: request.expectedMessageID,
+                    sentMessageIDHint: result.sentMessageID
+                ))
+                settings.save()
+                NotificationCenter.default.post(name: .brevFollowUpDidChange, object: nil)
+            }
         )
     }
 

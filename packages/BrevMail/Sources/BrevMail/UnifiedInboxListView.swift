@@ -515,6 +515,14 @@ struct UnifiedInboxListView: View {
         .onChange(of: pinnedMessageIDsRaw) { refreshPinnedMessageIDSet() }
         .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
             followUpReminderIndex = FollowUpReminderIndex(settings: .load())
+            if smartView?.id == MailboxSmartView.waiting.id {
+                Task { await reload() }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .brevNoReplyFollowUpCacheDidChange)) { _ in
+            if smartView?.id == MailboxSmartView.waiting.id {
+                Task { await reload() }
+            }
         }
         .onChange(of: searchCapabilityKey) {
             reconcileSearchExecutionWithVisibleSources()
@@ -2071,6 +2079,10 @@ struct UnifiedInboxListView: View {
             await reloadSavedSearch(savedSearchQuery)
             return
         }
+        if smartView?.id == MailboxSmartView.waiting.id {
+            await reloadWaitingFollowUps()
+            return
+        }
         guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }
         let loadRequest = loadOwnership.begin()
         let loadSourceRevision = sourceSectionsRevisionProvider?()
@@ -2460,6 +2472,94 @@ struct UnifiedInboxListView: View {
             backendIdentity: backendIdentity,
             currentBackendIdentity: currentBackendIdentity
         )
+    }
+
+    private func reloadWaitingFollowUps() async {
+        guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }
+        let request = loadOwnership.begin()
+        defer { if loadOwnership.current == request { isLoading = false } }
+        let contentKey = "waiting:\(reloadKey)"
+        if loadedContentKey != contentKey { items = [] }
+        loadedContentKey = contentKey
+        isLoading = true
+        isLoadingMore = false
+        errorMessage = nil
+        partialLoadErrorStatus = nil
+        loadMoreErrorStatus = nil
+        pageCursors = [:]
+
+        let reminders = FollowUpSettings.load().reminders.filter {
+            $0.isAutomaticNoReply && !$0.isDismissed && !$0.isCompleted
+        }
+        let activeReminderLocations = Set(reminders.compactMap { reminder -> SourceMessageID? in
+            guard let sourceID = reminder.noReplyMetadata?.sourceID else { return nil }
+            return SourceMessageID(sourceID: sourceID, messageID: reminder.messageID)
+        })
+        var loadedItems = items.filter {
+            activeReminderLocations.contains(SourceMessageID(sourceID: $0.sourceID, messageID: $0.header.id))
+        }
+        var firstError: String?
+        for section in sourceSections {
+            guard loadOwnership.accepts(request), !Task.isCancelled else { return }
+            let sectionReminders = reminders.filter { $0.noReplyMetadata?.sourceID == section.id }
+            guard !sectionReminders.isEmpty,
+                  let backend = backends.first(where: { $0.account.id == section.account.id })
+            else {
+                loadedItems.removeAll { $0.sourceID == section.id }
+                continue
+            }
+            let sentFolders = section.folders.filter { $0.role == .sent }
+            guard !sentFolders.isEmpty else {
+                loadedItems.removeAll { $0.sourceID == section.id }
+                continue
+            }
+            var headers: [MessageHeader] = []
+            var failed = false
+            for folder in sentFolders {
+                do {
+                    let cachedHeaders = try await backend.cachedMessageHeaders(in: folder, sourceID: section.id)
+                    headers.append(contentsOf: cachedHeaders)
+                } catch {
+                    firstError = firstError ?? error.localizedDescription
+                    failed = true
+                    break
+                }
+            }
+            guard loadOwnership.accepts(request), !Task.isCancelled else { return }
+            if failed { continue }
+
+            let waitingHeaders = NoReplyFollowUpWaitingProjection.headers(
+                sourceID: section.id,
+                sentFolderIDs: Set(sentFolders.map(\.id)),
+                cachedHeaders: headers,
+                reminders: sectionReminders
+            )
+            let sentItems = waitingHeaders.compactMap { header -> UnifiedInboxItem? in
+                guard let folder = sentFolders.first(where: { $0.id == header.folderID }) else { return nil }
+                return UnifiedInboxItem(
+                    sourceID: section.id,
+                    folder: folder,
+                    header: header,
+                    sourceTitle: section.title,
+                    sourceSubtitle: section.subtitle,
+                    archiveFolder: section.folders.first { $0.role == .archive }
+                )
+            }
+            loadedItems.removeAll { $0.sourceID == section.id }
+            loadedItems.append(contentsOf: sentItems)
+        }
+        guard loadOwnership.accepts(request) else { return }
+        items = UnifiedInboxPagination.sortedItems(loadedItems)
+        reconcileNavigationAfterItemsChanged()
+        if let firstError {
+            if items.isEmpty {
+                errorMessage = firstError
+            } else {
+                partialLoadErrorStatus = MessageListPresentation.partialLoadErrorStatus(
+                    for: MailBackendError.backendSpecific(message: firstError)
+                )
+            }
+        }
     }
 
     private func reloadSavedSearch(_ query: SmartMailbox.SavedQuery) async {

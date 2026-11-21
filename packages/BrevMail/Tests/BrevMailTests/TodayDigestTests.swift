@@ -13,6 +13,7 @@
 import BrevBackend
 import BrevDesign
 @testable import BrevMail
+import BrevSettings
 import Foundation
 import Testing
 
@@ -55,6 +56,7 @@ struct TodayDigestTests {
     private static func build(
         inbox: [MessageHeader],
         sent: [MessageHeader] = [],
+        noReplyReminders: [FollowUpReminder] = [],
         category: @escaping (MessageHeader) -> InboxCategory = { _ in .primary }
     ) -> TodayDigest {
         TodayDigestBuilder.build(
@@ -62,6 +64,7 @@ struct TodayDigestTests {
             sent: [(source, sent)],
             myAddresses: ["alex@example.org"],
             now: now,
+            noReplyReminders: noReplyReminders,
             classify: { header, _ in category(header) }
         )
     }
@@ -156,6 +159,43 @@ struct TodayDigestTests {
         #expect(digest.youreWaitingOn.map(\.header.id) == ["s1"])
         #expect(digest.youreWaitingOn.first?.person == Self.maya)
         #expect(digest.youreWaitingOnCount == 1)
+    }
+
+    @Test("explicit no-reply due dates suppress early nudges and include overdue old mail")
+    func explicitNoReplyDueDates() {
+        let sent = Self.header(
+            "tracked", folder: "sent", from: Self.me, to: [Self.maya], hoursAgo: 48, messageID: "<tracked@x>"
+        )
+        let source = Self.source
+        func reminder(dueAt: Date, messageID: String = "tracked") -> FollowUpReminder {
+            FollowUpReminder(
+                id: "automatic-\(dueAt.timeIntervalSince1970)",
+                messageID: messageID,
+                threadID: sent.threadID,
+                accountID: source.accountID,
+                mailboxID: source.mailboxID,
+                folderID: "sent",
+                dueAt: dueAt,
+                noReplyMetadata: NoReplyFollowUpMetadata(
+                    sourceID: source,
+                    draftID: "draft",
+                    expectedMessageID: messageID == "old" ? "<old@x>" : "<tracked@x>",
+                    sentAt: sent.date
+                )
+            )
+        }
+
+        let before = Self.build(inbox: [], sent: [sent], noReplyReminders: [reminder(dueAt: Self.now.addingTimeInterval(1))])
+        let exact = Self.build(inbox: [], sent: [sent], noReplyReminders: [reminder(dueAt: Self.now)])
+        let overdue = Self.build(
+            inbox: [],
+            sent: [Self.header("old", folder: "sent", from: Self.me, to: [Self.maya], hoursAgo: 24 * 30, messageID: "<old@x>")],
+            noReplyReminders: [reminder(dueAt: Self.now.addingTimeInterval(-1), messageID: "old")]
+        )
+
+        #expect(before.youreWaitingOn.isEmpty)
+        #expect(exact.youreWaitingOn.first?.dueAt == Self.now)
+        #expect(overdue.youreWaitingOn.map(\.header.id) == ["old"])
     }
 
     @Test("mail older than the window and my own inbox copies are ignored")

@@ -83,6 +83,29 @@ struct ComposeDraftPreservationTests {
         #expect(persisted.remoteID == original.remoteID)
     }
 
+    @Test("no-reply opt-in survives existing and crash-recovered draft saves", arguments: [false, true])
+    func noReplyRequestSurvivesRestoration(recovery: Bool) async throws {
+        let backend = MockBackend()
+        let messageID = MIMEMessageBuilder.messageIDHeaderValue(
+            draftID: "no-reply-restore",
+            fromEmail: "sender@example.invalid"
+        )
+        let original = try await backend.save(draft: Draft(
+            id: "no-reply-restore",
+            to: [Correspondent(email: "recipient@example.invalid")],
+            subject: "No-reply restoration",
+            followUpRequest: DraftNoReplyFollowUpRequest(expectedMessageID: messageID)
+        ))
+        let harness = try Harness(backend: backend, original: original, recovery: recovery)
+        defer { harness.dispose() }
+        try await harness.prepare()
+
+        await harness.mounted?.saveDraft()
+
+        let persisted = try #require(await backend.draft(for: original.remoteID ?? original.id))
+        #expect(persisted.followUpRequest == original.followUpRequest)
+    }
+
     @Test("native edit and Send retain restored rich semantics", arguments: [false, true], [false, true])
     func editRoundTrip(recovery: Bool, send: Bool) async throws {
         let backend = MockBackend()

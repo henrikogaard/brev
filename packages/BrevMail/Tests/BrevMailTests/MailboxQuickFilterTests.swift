@@ -159,7 +159,7 @@ struct MailboxQuickFilterTests {
         #expect(MailboxSmartView.done.symbolName == "checkmark.circle")
         #expect(MailboxSmartView.done.workflowMode == .done)
 
-        #expect(MailboxSmartView.builtIns.map(\.id) == ["today", "flagged", "snoozed", "done", "vip"])
+        #expect(MailboxSmartView.builtIns.map(\.id) == ["today", "flagged", "snoozed", "done", "vip", "waiting"])
     }
 
     @Test("selected smart view maps every navigation smart view")
@@ -181,6 +181,9 @@ struct MailboxQuickFilterTests {
 
         navigation.selectVIPSmartView()
         #expect(MailboxSmartView.selected(for: navigation) == .vip)
+
+        navigation.selectWaitingSmartView()
+        #expect(MailboxSmartView.selected(for: navigation) == .waiting)
 
         navigation.selectFolder(
             "inbox",

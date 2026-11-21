@@ -39,16 +39,24 @@ public struct OutboxView: View {
     private let backend: any MailBackend
     private let sourceID: MailSourceID?
     private let onClose: (() -> Void)?
+    private let onScheduledSendCancelled: ((String) -> Void)?
 
     /// Creates the account's Outbox, filtering source-owned schedules to the effective mailbox.
     /// - Parameters:
     ///   - backend: Backend providing pending mutations and schedules.
     ///   - sourceID: Selected mailbox owner; nil keeps legacy unowned schedules only.
     ///   - onClose: Optional dismissal action for the containing sheet.
-    public init(backend: any MailBackend, sourceID: MailSourceID? = nil, onClose: (() -> Void)? = nil) {
+    ///   - onScheduledSendCancelled: Optional callback invoked with the draft ID when a scheduled send is cancelled.
+    public init(
+        backend: any MailBackend,
+        sourceID: MailSourceID? = nil,
+        onClose: (() -> Void)? = nil,
+        onScheduledSendCancelled: ((String) -> Void)? = nil
+    ) {
         self.backend = backend
         self.sourceID = sourceID
         self.onClose = onClose
+        self.onScheduledSendCancelled = onScheduledSendCancelled
     }
 
     public var body: some View {
@@ -368,6 +376,7 @@ public struct OutboxView: View {
         var actionError: String?
         do {
             _ = try await editor.cancelScheduledSend(id: entry.id)
+            onScheduledSendCancelled?(entry.draftID)
         } catch {
             actionError = error.localizedDescription
         }

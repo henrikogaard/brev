@@ -33,6 +33,7 @@ public final class MailNavigationState {
     public nonisolated static let doneSmartViewFolderID = "__brev_smart_done"
     public nonisolated static let vipSmartViewFolderID = "__brev_smart_vip"
     public nonisolated static let subscriptionsSmartViewFolderID = "__brev_smart_subscriptions"
+    public nonisolated static let waitingSmartViewFolderID = "__brev_smart_waiting"
     public nonisolated static let allAttachmentsSmartViewFolderID = "__brev_smart_all_attachments"
     public nonisolated static let assistantDestinationFolderID = "__brev_assistant"
     private static let savedSearchFolderIDPrefix = "__brev_saved_search_"
@@ -378,6 +379,10 @@ public final class MailNavigationState {
         browsingFolderID == Self.subscriptionsSmartViewFolderID
     }
 
+    public var isWaitingSmartViewSelected: Bool {
+        browsingFolderID == Self.waitingSmartViewFolderID
+    }
+
     public var isAllAttachmentsSelected: Bool {
         browsingFolderID == Self.allAttachmentsSmartViewFolderID
     }
@@ -409,6 +414,7 @@ public final class MailNavigationState {
             || isSnoozedSmartViewSelected
             || isDoneSmartViewSelected
             || isVIPSmartViewSelected
+            || isWaitingSmartViewSelected
     }
 
     public func selectUnifiedInbox() {
@@ -469,6 +475,10 @@ public final class MailNavigationState {
     /// Selects the built-in Subscriptions smart view (#295).
     public func selectSubscriptionsSmartView() {
         selectSmartView(folderID: Self.subscriptionsSmartViewFolderID)
+    }
+
+    public func selectWaitingSmartView() {
+        selectSmartView(folderID: Self.waitingSmartViewFolderID)
     }
 
     public func selectAllAttachmentsSmartView() {
