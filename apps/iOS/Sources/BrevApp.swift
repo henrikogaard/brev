@@ -667,11 +667,14 @@ enum BrevBackgroundRefreshCoordinator {
                 BrevIOSAppDelegate.currentBackends
             }
             if backends.isEmpty {
+                guard !Task.isCancelled else { return }
                 await BrevIOSAppDelegate.sharedSession.ensureAccountsRestored()
+                guard !Task.isCancelled else { return }
                 backends = await MainActor.run {
                     BrevIOSAppDelegate.sharedSession.visibleBackends
                 }
             }
+            guard !Task.isCancelled else { return }
             guard !backends.isEmpty else {
                 completion.complete(success: true)
                 return

@@ -234,7 +234,16 @@ struct BrevApp: App {
                 session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
                 session.startReconnectMutationReplay(monitor: networkMonitor)
                 session.openMainWindowForPanelReply = {
-                    openWindow(id: BrevWindowID.main)
+                    // A WindowGroup's openWindow always creates another window;
+                    // prefer surfacing an existing main window over a duplicate.
+                    if let existing = NSApp.windows.first(where: {
+                        $0.identifier?.rawValue.hasPrefix(BrevWindowID.main) == true && $0.isVisible
+                    }) {
+                        existing.makeKeyAndOrderFront(nil)
+                    } else {
+                        openWindow(id: BrevWindowID.main)
+                    }
+                    NSApp.activate()
                 }
                 session.syncBackgroundPanelSubscriptions()
                 BrevMacOSAppDelegate.currentSession = session
