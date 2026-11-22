@@ -130,11 +130,21 @@ struct ComposeDraftPreservationTests {
             attachmentIDs: [attachmentID],
             scheduledFor: scheduledFor
         ), sourceID: sourceID)
+        #expect(original.remoteID == "server-draft-follow-up")
+        #expect(original.scheduledFor == scheduledFor)
         let attachments = try await backing.localDraftAttachments(for: original, sourceID: sourceID)
+        let restoredAttachments = ComposeDraftRestoration.pendingAttachments(from: attachments)
+        #expect(restoredAttachments.count == original.attachmentIDs.count)
+        #expect(restoredAttachments.allSatisfy { $0.uploadedAttachmentID != nil })
         let backend = NormalizingDraftSaveBackend(backing: backing, behavior: .stripIntentFromResponse)
-        let probe = ComposeDraftSendProbe(backend: backing)
+        let probe = ComposeDraftSendProbe()
         backing.sendHandler = { draft, sendSourceID in
-            await probe.record(draft: draft, sourceID: sendSourceID)
+            let saveAttemptsBeforeSend = await backend.saveAttemptCount()
+            await probe.record(
+                draft: draft,
+                sourceID: sendSourceID,
+                saveAttemptsBeforeSend: saveAttemptsBeforeSend
+            )
             return SendResult(sentMessageID: "accepted")
         }
         let harness = try Harness(
@@ -147,26 +157,36 @@ struct ComposeDraftPreservationTests {
         defer { harness.dispose() }
         try await harness.prepare()
 
-        harness.mounted?.setNoReplyFollowUpEnabled(true)
-        await harness.mounted?.send(bypassingSendGuard: true)
+        let mounted = try #require(harness.mounted)
+        #expect(mounted.locksSenderToOriginalSource)
+        let draftBeforeOptIn = mounted.currentDraft()
+        #expect(draftBeforeOptIn.remoteID == original.remoteID)
+        #expect(draftBeforeOptIn.scheduledFor == scheduledFor)
+        #expect(draftBeforeOptIn.attachmentIDs == original.attachmentIDs)
+        let saveAttemptsBeforeSend = await backend.saveAttemptCount()
+        #expect(saveAttemptsBeforeSend == 0)
 
-        let observation = await probe.snapshot()
-        let sentDraft = try #require(observation.sentDraft)
-        let persistedDraft = try #require(observation.persistedDraft)
         let expectedMessageID = MIMEMessageBuilder.messageIDHeaderValue(
             draftID: original.id,
             fromEmail: "sender@example.invalid"
         )
         let expectedRequest = DraftNoReplyFollowUpRequest(expectedMessageID: expectedMessageID)
+        mounted.setNoReplyFollowUpEnabled(true)
+        let optedInDraft = mounted.currentDraft()
+        #expect(optedInDraft.remoteID == original.remoteID)
+        #expect(optedInDraft.scheduledFor == scheduledFor)
+        #expect(optedInDraft.followUpRequest == expectedRequest)
+        await mounted.send(bypassingSendGuard: true)
+
+        let observation = await probe.snapshot()
+        let sentDraft = try #require(observation.sentDraft)
         #expect(observation.sourceID == sourceID)
+        #expect(observation.saveAttemptsBeforeSend > 0)
+        #expect(sentDraft.remoteID == original.remoteID)
         #expect(sentDraft.scheduledFor == scheduledFor)
         #expect(sentDraft.followUpRequest == expectedRequest)
-        #expect(persistedDraft.scheduledFor == scheduledFor)
-        #expect(persistedDraft.followUpRequest == expectedRequest)
         #expect(sentDraft.htmlBody == original.htmlBody)
         #expect(sentDraft.attachmentIDs == original.attachmentIDs)
-        #expect(persistedDraft.htmlBody == original.htmlBody)
-        #expect(persistedDraft.attachmentIDs == original.attachmentIDs)
         #expect(harness.acceptedSends.count == 1)
     }
 
@@ -198,10 +218,15 @@ struct ComposeDraftPreservationTests {
         defer { harness.dispose() }
         try await harness.prepare()
 
-        harness.mounted?.setNoReplyFollowUpEnabled(true)
-        await harness.mounted?.send(bypassingSendGuard: true)
+        let saveAttemptsBeforeSend = await backend.saveAttemptCount()
+        #expect(saveAttemptsBeforeSend == 0)
+        let mounted = try #require(harness.mounted)
+        mounted.setNoReplyFollowUpEnabled(true)
+        await mounted.send(bypassingSendGuard: true)
 
         let sendAttemptCount = await sendAttempts.count()
+        let saveAttemptCount = await backend.saveAttemptCount()
+        #expect(saveAttemptCount > 0)
         #expect(sendAttemptCount == 0)
         #expect(harness.acceptedSends.isEmpty)
     }
@@ -772,6 +797,7 @@ struct ComposeDraftPreservationTests {
 
         private let backing: MockBackend
         private let behavior: Behavior
+        private let saveAttempts = ComposeSendAttemptCounter()
 
         var account: BrevAccount { backing.account }
         var capabilities: BackendCapabilities { backing.capabilities }
@@ -812,7 +838,8 @@ struct ComposeDraftPreservationTests {
         func delete(messageIDs: [String]) async throws { try await backing.delete(messageIDs: messageIDs) }
 
         func save(draft: Draft) async throws -> Draft {
-            try await normalizedSave(draft) { try await backing.save(draft: $0) }
+            await saveAttempts.record()
+            return try await normalizedSave(draft) { try await backing.save(draft: $0) }
         }
 
         func draft(for messageID: String) async throws -> Draft? {
@@ -840,8 +867,11 @@ struct ComposeDraftPreservationTests {
         func subscribeToChanges() -> AsyncStream<MailEvent> { backing.subscribeToChanges() }
 
         func save(draft: Draft, sourceID: MailSourceID) async throws -> Draft {
-            try await normalizedSave(draft) { try await backing.save(draft: $0, sourceID: sourceID) }
+            await saveAttempts.record()
+            return try await normalizedSave(draft) { try await backing.save(draft: $0, sourceID: sourceID) }
         }
+
+        func saveAttemptCount() async -> Int { await saveAttempts.count() }
 
         func draft(for messageID: String, sourceID: MailSourceID) async throws -> Draft? {
             try await backing.draft(for: messageID, sourceID: sourceID)
@@ -879,25 +909,18 @@ struct ComposeDraftPreservationTests {
     }
 
     private actor ComposeDraftSendProbe {
-        private let backing: MockBackend
         private var sentDraft: Draft?
-        private var persistedDraft: Draft?
         private var sourceID: MailSourceID?
+        private var saveAttemptsBeforeSend = 0
 
-        init(backend: MockBackend) { backing = backend }
-
-        func record(draft: Draft, sourceID: MailSourceID?) async {
+        func record(draft: Draft, sourceID: MailSourceID?, saveAttemptsBeforeSend: Int) {
             sentDraft = draft
             self.sourceID = sourceID
-            if let sourceID {
-                persistedDraft = try? await backing.draft(for: draft.remoteID ?? draft.id, sourceID: sourceID)
-            } else {
-                persistedDraft = try? await backing.draft(for: draft.remoteID ?? draft.id)
-            }
+            self.saveAttemptsBeforeSend = saveAttemptsBeforeSend
         }
 
-        func snapshot() -> (sentDraft: Draft?, persistedDraft: Draft?, sourceID: MailSourceID?) {
-            (sentDraft, persistedDraft, sourceID)
+        func snapshot() -> (sentDraft: Draft?, sourceID: MailSourceID?, saveAttemptsBeforeSend: Int) {
+            (sentDraft, sourceID, saveAttemptsBeforeSend)
         }
     }
 

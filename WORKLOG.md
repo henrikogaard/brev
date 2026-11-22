@@ -1,6 +1,13 @@
 # Worklog
 
-## 2026-11-22 — Sidekick — PR #326 Gmail canonical identity
+## 2026-11-22 — Agent — PR #326 persistence regression review
+
+- Goal: make the mounted regression prove the existing remote draft and scheduled intent survive initial mock persistence and are present before Send.
+- Changes: assert the seeded and mounted `remoteID`/`scheduledFor`, verify restored attachments carry uploaded IDs so they do not trigger the attachment policy, and record a successful save attempt before the send handler runs. The failure case asserts an attempted save and no send/acceptance. Audited the wrapper's source-scoped save, draft, send, and attachment delegation; assertions target the sent payload rather than relying on storage normalization.
+- Verification: compiled and ran the production `ComposeSendDraftPersistencePolicy` in a Foundation harness; all 8 truth-table cases passed. SwiftFormat lint reported 0/1 files needing formatting; Swift parse passed; diff and ADR-required checks passed. Native compose tests were not rerun, as requested; this Linux host lacks SwiftUI/PDFKit.
+- Handoff: separate local commit only; do not push until Waiting-search is complete.
+
+## 2026-11-22 — Agent — PR #326 Gmail canonical identity
 
 - Goal: persist an opted-in existing server draft before Send so its canonical RFC Message-ID matches the no-reply request without losing Send Later intent.
 - Changes: added provider-neutral persistence for pending attachments or opted-in drafts with an existing remote ID. Compose reuses `persistDraft` and restores requested `scheduledFor` and `followUpRequest` on the saved response. Added policy truth-table, mounted server-draft save/failure and intent-preservation regressions, plus Gmail stub-transport MIME identity coverage. Updated `PRIVACY.md`, ADR-0006, and `CHANGELOG.md`; Gmail provider code and the no-reply reconciler are unchanged.
