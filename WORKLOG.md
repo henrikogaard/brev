@@ -1,5 +1,9 @@
 # Worklog
 
+## 2026-11-22 — Agent — #300 typing in the mounted compose and search controls
+
+- The keyboard UI regression now mounts the actual compose editor and list search field inside the enabled shortcut modifier. It sends events through AppKit and checks both the typed text and the action callback, even when the pane still reports keyboard focus. This is an in-process native UI test; full app keyboard QA remains on the issue. Swift parse, format and diff checks ran on Linux; the macOS package suite executes the test.
+
 ## 2026-11-22 — Agent — #300 tooltip catalog build
 
 - Xcode could not generate a Swift symbol for a key made entirely of placeholders and punctuation. Gave the shortcut tooltip a named key with the same English and Norwegian format. The catalog regression checks that key; native catalog compilation runs on CI.

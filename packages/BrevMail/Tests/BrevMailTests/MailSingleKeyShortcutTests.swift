@@ -14,6 +14,8 @@
 import AppKit
 import BrevBackend
 @testable import BrevMail
+import BrevSettings
+import SwiftUI
 import Testing
 
 @Suite("Single-key mail shortcuts")
@@ -45,19 +47,46 @@ struct MailSingleKeyShortcutTests {
         )
         window.isReleasedWhenClosed = false
         defer { window.close() }
-        let compose = ComposeRichTextView(frame: window.contentLayoutRect)
-        window.contentView = compose
-        #expect(window.makeFirstResponder(compose))
+        var actions: [MailSingleKeyShortcut] = []
+        var bodyText = "", searchText = ""
+        let suite = UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: MailKeyboardPreferences.singleKeyShortcuts)
+        // Mount the real controls inside a pane that still considers itself focused.
+        let host = NSHostingView(rootView: VStack {
+            MessageListSearchField(text: Binding(get: { searchText }, set: { searchText = $0 }), prompt: "Search")
+            ComposeBodyEditor(
+                text: Binding(get: { bodyText }, set: { bodyText = $0 }),
+                richHTML: .constant(nil), selection: .constant(nil), insertionPoint: .constant(nil),
+                bodyFormat: .plainText, appearance: .light,
+                textCheckingConfiguration: ComposeTextCheckingPolicy.configuration(isEnabled: false)
+            )
+        }
+        .focusable()
+        .modifier(MailSingleKeyShortcutModifier(focused: true) { actions.append($0); return true })
+        .defaultAppStorage(defaults))
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        host.layoutSubtreeIfNeeded()
+        let compose = try #require(descendant(ComposeRichTextView.self, in: host))
+        try #require(window.makeFirstResponder(compose))
         try typeShortcutLetters(in: window)
         #expect(compose.string == "erjksh#")
+        #expect(actions.isEmpty)
 
-        let search = NSSearchField(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
-        window.contentView = search
+        let search = try #require(descendant(NSSearchField.self, in: host))
         search.selectText(nil)
         let editor = try #require(search.currentEditor() as? NSTextView)
         #expect(window.firstResponder === editor)
         try typeShortcutLetters(in: window)
         #expect(editor.string == "erjksh#")
+        #expect(actions.isEmpty)
+    }
+
+    private func descendant<T: NSView>(_ type: T.Type, in view: NSView) -> T? {
+        if let match = view as? T { return match }
+        return view.subviews.lazy.compactMap { descendant(type, in: $0) }.first
     }
 
     private func typeShortcutLetters(in window: NSWindow) throws {
@@ -70,7 +99,7 @@ struct MailSingleKeyShortcutTests {
             ))
             // Even a stale SwiftUI focus value cannot claim a native editor's event.
             #expect(MailSingleKeyShortcut.resolve(event, window: window, enabled: true, focused: true) == nil)
-            window.sendEvent(event)
+            NSApplication.shared.sendEvent(event)
         }
     }
 
