@@ -39,7 +39,9 @@ struct MockScheduledSendTests {
     func schedulingUsesOpaqueSourceOwnedIdentifiers() async throws {
         let directory = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let backend = Self.backend(persistenceDirectory: directory)
+        let clock = MockScheduledSendClock(Self.now)
+        let dueAt = Self.now.addingTimeInterval(60)
+        let backend = Self.backend(persistenceDirectory: directory, now: { clock.now })
         let scheduler = try #require(backend.extensionService(ScheduledSendEditing.self))
 
         let firstAttachmentID = try await backend.uploadAttachment(
@@ -80,16 +82,17 @@ struct MockScheduledSendTests {
         let events = backend.subscribeToChanges()
 
         var scheduledFirst = first
-        scheduledFirst.scheduledFor = Self.now
+        scheduledFirst.scheduledFor = dueAt
         var scheduledSecond = second
-        scheduledSecond.scheduledFor = Self.now
+        scheduledSecond.scheduledFor = dueAt
         let firstResult = try await backend.send(draft: scheduledFirst, sourceID: Self.sourceA)
         let secondResult = try await backend.send(draft: scheduledSecond, sourceID: Self.sourceB)
         let committedQueueEvent = try await nextEvent(from: events) { $0 == .outboxChanged }
 
         #expect(firstResult.sentMessageID == nil)
-        #expect(firstResult.scheduledFor == Self.now)
+        #expect(firstResult.scheduledFor == dueAt)
         #expect(secondResult.sentMessageID == nil)
+        #expect(secondResult.scheduledFor == dueAt)
         let entries = scheduler.pendingScheduledSends()
         #expect(entries.count == 2)
         #expect(committedQueueEvent == .outboxChanged)
@@ -103,6 +106,8 @@ struct MockScheduledSendTests {
         let firstID = try #require(entries.first { $0.sourceID == Self.sourceA }?.id)
         let secondID = try #require(entries.first { $0.sourceID == Self.sourceB }?.id)
         let editing = try #require(backend.extensionService(ScheduledSendEditing.self))
+        #expect(try await backend.draft(for: first.id, sourceID: Self.sourceA)?.subject == "A")
+        #expect(try await backend.draft(for: second.id, sourceID: Self.sourceB)?.subject == "B")
         let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
         _ = try journal.transact { records in
             guard let index = records.firstIndex(where: {
@@ -144,6 +149,7 @@ struct MockScheduledSendTests {
         #expect(try await editing.scheduledDraft(id: secondID).subject == "B")
         let canceledFirst = try #require(try await backend.draft(for: first.id, sourceID: Self.sourceA))
         #expect(try await backend.localDraftAttachments(for: canceledFirst, sourceID: Self.sourceA).map(\.data) == [Data([1])])
+        clock.advance(to: dueAt)
         await scheduler.deliverDueScheduledSends()
         #expect(scheduler.pendingScheduledSends().isEmpty)
 

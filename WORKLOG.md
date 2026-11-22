@@ -7,6 +7,14 @@
 
 # Worklog
 
+## 2026-11-22 — Agent — PR #325 scheduled-draft restoration fixture
+
+- Goal: keep source-owned canonical drafts available while the collision test restores the scheduled-send journal.
+- Cause: the test scheduled both drafts exactly at its injected clock time, then called `connect()`. `Store.resume()` calls `deliverDueScheduledSends()`, which correctly delivers entries with due dates at or before the clock; delivery removes the canonical Draft projection before the restore assertions.
+- Changes: schedule at a future injected-clock time, assert each canonical draft both before and after reconnect, then advance the clock before explicit delivery. Kept the deliberate cross-mailbox attachment-ID collision and both byte-isolation assertions. No production changes.
+- Verification: hosted Backend log 137172444853 recorded this single failure after completing the suite. Local BrevBackend tests could not build on Linux because PDFKit is unavailable; formatter, parse, diff, and ADR results are recorded in the handoff.
+- Handoff: commit and push this fixture correction normally; do not wait for CI.
+
 ## 2026-11-22 — Agent — Issue #297 / PR #325 Backend CI repair
 
 - Goal: resolve hosted Backend fixture and assertion failures and ensure missing events fail boundedly instead of hanging.
