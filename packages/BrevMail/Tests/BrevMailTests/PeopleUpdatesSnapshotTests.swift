@@ -136,32 +136,45 @@ struct PeopleUpdatesSnapshotTests {
                 onMoveSenderToPeople: {}
             ) {
                 ForEach(bundle.headers) { header in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: header.subject)
-                            .brevFont(.callout)
-                            .foregroundStyle(theme.textPrimary.color)
-                        Text(verbatim: header.snippet)
-                            .brevFont(.caption)
-                            .foregroundStyle(theme.textSecondary.color)
-                    }
-                    .padding(.vertical, BrevSpacing.xs)
+                    MessageListRow(
+                        header: header,
+                        threadCount: 1,
+                        isSelected: header.id == h1.id,
+                        isChecked: false,
+                        isInSelectionMode: false,
+                        isPinned: false,
+                        isThreadExpanded: false,
+                        showAvatar: true,
+                        previewLineCount: 1,
+                        fontFamily: .system,
+                        textSize: .medium,
+                        density: .comfortable,
+                        showsAbsoluteArrivalTime: true,
+                        sourceContext: nil,
+                        isBlockedSender: false,
+                        hasFollowUp: false,
+                        onActivate: {},
+                        onToggleCheck: {},
+                        onToggleThread: {}
+                    )
                 }
             }
             .padding(.horizontal, BrevSpacing.md)
             .padding(.vertical, BrevSpacing.xs)
             Spacer()
         }
-        .frame(width: 480, height: 220)
+        .frame(width: 480, height: 260)
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
         .environment(\.colorScheme, theme.mode.colorScheme)
         .environment(\.locale, Locale(identifier: "en_US"))
+        .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
 
         let host = NSHostingController(rootView: view)
         host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
         assertSnapshot(
             of: host,
-            as: .image(size: CGSize(width: 480, height: 220)),
+            as: .image(size: CGSize(width: 480, height: 260)),
             named: "people-updates-expanded-bundle-" + mode,
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )

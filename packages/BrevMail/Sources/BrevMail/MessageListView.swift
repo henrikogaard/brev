@@ -2629,32 +2629,22 @@ public struct MessageListView: View {
             let nextIndex = min(max(0, index + delta), rows.count - 1)
             target = rows[nextIndex]
         } else {
-            target = delta < 0 ? rows[rows.count - 1] : rows[0]
+            target = rows[0]
         }
-        selectMessage(target, expandsSelectedMessage: false)
+        navigation.selectedMessageID = target.id
     }
 
     private func moveUpdatesKeyboardSelection(command: MessageListKeyCommand) {
         let rows = renderedSelectableHeaders(in: presentationSnapshot)
-        guard !rows.isEmpty else { return }
-        let pageStep = MessageListKeyboardNavigation.pageStep
         let currentIndex = navigation.selectedMessageID.flatMap { id in
             rows.firstIndex(where: { $0.id == id })
         }
-        let targetIndex: Int
-        switch command {
-        case .moveToStart:
-            targetIndex = 0
-        case .moveToEnd:
-            targetIndex = rows.count - 1
-        case .pageUp:
-            targetIndex = max(0, (currentIndex ?? 0) - pageStep)
-        case .pageDown:
-            targetIndex = min(rows.count - 1, (currentIndex ?? 0) + pageStep)
-        case .deleteSelection, .clearSelection:
-            return
-        }
-        selectMessage(rows[targetIndex], expandsSelectedMessage: false)
+        guard let targetIndex = MessageListKeyboardNavigation.targetIndex(
+            for: command,
+            current: currentIndex,
+            count: rows.count
+        ) else { return }
+        navigation.selectedMessageID = rows[targetIndex].id
     }
 
     /// Moves the bulk selection, or the single selected message, to Trash
