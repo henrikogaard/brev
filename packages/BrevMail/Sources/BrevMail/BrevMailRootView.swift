@@ -1426,9 +1426,18 @@ public struct BrevMailRootView: View {
     private func exitTriage() {
         guard let session = triageSession else { return }
         session.cancelPreload()
-        // Main `navigation` (saved searches, smart views, filters, and list
-        // selection) stayed untouched while Triage used `triageReaderNavigation`.
         triageSession = nil
+        let ret = session.returnPosition
+        // Restore browsing state if a reader context-menu action shifted
+        // `navigation` away from Unified Inbox or the original folder during Triage.
+        if ret.isUnifiedInboxSelected, !navigation.isUnifiedInboxSelected {
+            navigation.selectUnifiedInbox()
+            navigation.selectedMessageID = ret.selectedMessageID
+        } else if !ret.isUnifiedInboxSelected, !ret.isSmartViewSelected,
+                  navigation.selectedFolderID != ret.selectedFolderID || navigation.selectedSourceID != ret.selectedSourceID {
+            navigation.selectFolder(ret.selectedFolderID, in: ret.selectedSourceID)
+            navigation.selectedMessageID = ret.selectedMessageID
+        }
         navigation.requestReload()
     }
 
@@ -4829,9 +4838,11 @@ public struct BrevMailRootView: View {
             }
             .brevSheetAppearance(theme)
         case .compose:
+            let composeAnchorSourceID = navigation.composeSourceID ?? navigation.selectedSourceID
+            let composeActiveBackend = composeAnchorSourceID.map { backend(for: $0) } ?? selectedBackend
             composeEditor(
-                anchorSourceID: navigation.selectedSourceID,
-                activeBackend: selectedBackend,
+                anchorSourceID: composeAnchorSourceID,
+                activeBackend: composeActiveBackend,
                 replyingTo: navigation.composeReplyTo,
                 replyMode: navigation.composeReplyMode,
                 forwardingFrom: navigation.composeForwardOf,

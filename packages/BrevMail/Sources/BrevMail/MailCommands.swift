@@ -111,7 +111,7 @@ public struct MailCommands: Commands {
             Button(String(localized: "Reply", bundle: .module)) {
                 guard isComposePresentationAvailable,
                       let header = navigation?.selectedHeader else { return }
-                composeActions?.reply(header)
+                composeActions?.reply(header, sourceID: navigation?.selectedSourceID)
             }
             .keyboardShortcut("r")
             .disabled(!messageCommandState.canReply)
@@ -119,7 +119,7 @@ public struct MailCommands: Commands {
             Button(String(localized: "Reply All", bundle: .module)) {
                 guard isComposePresentationAvailable,
                       let header = navigation?.selectedHeader else { return }
-                composeActions?.replyAll(header)
+                composeActions?.replyAll(header, sourceID: navigation?.selectedSourceID)
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .disabled(!messageCommandState.canReplyAll)
@@ -127,7 +127,7 @@ public struct MailCommands: Commands {
             Button(String(localized: "Forward", bundle: .module)) {
                 guard isComposePresentationAvailable,
                       let header = navigation?.selectedHeader else { return }
-                composeActions?.forward(header)
+                composeActions?.forward(header, sourceID: navigation?.selectedSourceID)
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
             .disabled(!messageCommandState.canForward)

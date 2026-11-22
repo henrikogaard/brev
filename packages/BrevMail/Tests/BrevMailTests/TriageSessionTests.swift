@@ -362,6 +362,14 @@ struct TriageSessionTests {
             )
         )
 
+        // Preload body under the original UID before archiving so Undo must evict the stale key.
+        let originalID = SourceMessageID(sourceID: Self.source, messageID: "INBOX:42")
+        session.storePreloadedBody(
+            MessageBody(messageID: "INBOX:42", html: nil, plainText: "Original cached body"),
+            for: originalID
+        )
+        #expect(session.preloadedBody(for: originalID) != nil)
+
         let archived = await session.archiveCurrent(undoQueue: undoQueue) { _ in
             return { ["INBOX:42": "INBOX:73"] }
         }
@@ -372,14 +380,19 @@ struct TriageSessionTests {
         #expect(undone)
         #expect(session.currentItem?.header.id == "INBOX:73")
         #expect(session.currentItem?.threadHeaders.map(\.id) == ["INBOX:73"])
+        #expect(session.preloadedBody(for: originalID) == nil)
     }
 
-    @Test("Archive without a provider undo receipt skips registering a broken undo step")
+    @Test("Archive without a provider undo receipt discards any older pending undo step")
     func archiveWithoutReceiptDoesNotRegisterUndo() async {
         let h1 = Self.header(id: "m1", subject: "One")
+        let h2 = Self.header(id: "m2", subject: "Two")
         let undoQueue = UndoQueue(timeout: 30)
         let session = TriageSession(
-            items: [TriageItem(sourceID: Self.source, header: h1, threadHeaders: [h1])],
+            items: [
+                TriageItem(sourceID: Self.source, header: h1, threadHeaders: [h1]),
+                TriageItem(sourceID: Self.source, header: h2, threadHeaders: [h2]),
+            ],
             returnPosition: TriageReturnPosition(
                 selectedSourceID: Self.source,
                 selectedFolderID: "inbox",
@@ -389,9 +402,19 @@ struct TriageSessionTests {
             )
         )
 
+        // Seed an older undoable decision first (Skip on m1), then archive m2 without a receipt.
+        session.skipCurrent(registeringUndoIn: undoQueue)
+        #expect(undoQueue.canUndo)
+
         let archived = await session.archiveCurrent(undoQueue: undoQueue) { _ in nil }
         #expect(archived)
         #expect(!undoQueue.canUndo)
+
+        // Reaching caught-up clears reader navigation so menu commands cannot target finished items.
+        let readerNav = MailNavigationState()
+        readerNav.selectMessage(h2, in: Self.source, headers: [h2])
+        session.syncReaderNavigation(readerNav)
+        #expect(readerNav.selectedHeader == nil)
     }
 
     @Test("Triage copy has Norwegian localizations")

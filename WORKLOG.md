@@ -1,6 +1,6 @@
 # Worklog
 
-## 2026-11-22 — Local session — Issue #293
+## 2026-11-22 — Agent — Issue #293
 
 - Goal: implement Triage mode (one conversation at a time, single-key decisions, Undo, next-body preloading, Today and menu entry, restore list position on Escape/Done).
 - Changes: added `TriageSession`, `TriageQueueBuilder`, `TriageKeyboardPolicy`, `TriagePresentation`, and `TriageView` in `BrevMail`; added optional `preloadedBody` support to `MessageDetailView` so preloaded conversations render without a skeleton flash; added `onStartTriage` button on `TodayPageView` (default `nil` to keep existing `TodayPageSnapshotTests` unchanged); added `Start Triage` / `Exit Triage` (`⇧⌘T`) menu command in `MailCommands` via `FocusedMailTriageActionKey`; wired full-window triage workspace, archive/snooze/reply/skip, `UndoQueue` reversal, next-body preloading, and list-position restore in `BrevMailRootView`; added English and Norwegian (`nb`) String Catalog entries and `TriageViewSnapshotTests` (registered in `.github/workflows/build.yml`).

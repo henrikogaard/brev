@@ -2868,6 +2868,10 @@ extension GmailAPIBackend: SignInTrustAssessing {
 }
 
 extension GmailAPIBackend: CachedMessageBodyProviding {
+    /// Returns the locally cached Gmail body for `messageID` without network fetches.
+    /// - Parameters:
+    ///   - messageID: Gmail message identifier.
+    ///   - sourceID: Ignored because each `GmailAPIBackend` instance owns one mailbox.
     public func cachedBody(for messageID: MessageHeader.ID, sourceID _: MailSourceID?) async -> MessageBody? {
         if let cached = try? await readCache?.cachedBody(accountID: account.id, messageID: messageID),
            Self.hasBodyContent(cached) {

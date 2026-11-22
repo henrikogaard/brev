@@ -237,6 +237,11 @@ final class TriageSession {
         preloadedBodies[id]
     }
 
+    /// Seeds a preloaded body in memory (used by deterministic tests).
+    func storePreloadedBody(_ body: MessageBody, for id: SourceMessageID) {
+        preloadedBodies[id] = body
+    }
+
     /// Cancels any in-flight body preload (for example when exiting Triage).
     func cancelPreload() {
         preloadTask?.cancel()
@@ -285,7 +290,10 @@ final class TriageSession {
     /// `MessageDetailView` accepts body loads without mutating the hidden list's
     /// browsing state (#293).
     func syncReaderNavigation(_ readerNavigation: MailNavigationState) {
-        guard let item = currentItem else { return }
+        guard let item = currentItem else {
+            readerNavigation.selectFolder(nil, in: nil)
+            return
+        }
         readerNavigation.selectMessage(item.header, in: item.sourceID, headers: item.threadHeaders)
     }
 
@@ -327,6 +335,8 @@ final class TriageSession {
                     },
                     lease: lease
                 )
+            } else {
+                undoQueue.discardPendingUndo(lease: lease)
             }
             return true
         } catch {
