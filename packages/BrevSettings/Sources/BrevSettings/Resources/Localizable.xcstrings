@@ -1,6 +1,28 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Drop a compact alert from the top of the screen with Archive, Mark as read, and Reply actions. Auto-dismisses.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis et kompakt varsel øverst på skjermen med Arkiver, Merk som lest og Svar. Lukkes automatisk."
+          }
+        }
+      }
+    },
+    "Show new-mail drop-down panel": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis nedtrekkspanel for ny e-post"
+          }
+        }
+      }
+    },
     " %lld/%lld folders complete, %lld messages indexed": {
       "extractionState": "manual",
       "localizations": {

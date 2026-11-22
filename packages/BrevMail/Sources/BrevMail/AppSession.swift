@@ -70,6 +70,13 @@ public final class AppSession {
     /// in the background" setting is on (ADR-0075). Inert until the app
     /// target calls `start(interval:)`.
     public let backgroundMail: BackgroundMailCoordinator
+    /// Session-owned executor for Mark-as-read and Archive notification
+    /// actions (#307, ADR-0075). Works even when no mail window is open.
+    public let notificationActionExecutor: NotificationActionExecutor
+    #if os(macOS)
+    /// Session-owned presenter for the opt-in macOS new-mail drop-down panel (#307).
+    public let newMailPanelController = NewMailDropDownPanelController()
+    #endif
     /// Session-owned periodic sync loop for PIM sources the user opted into
     /// sync (`PIMSource.syncEnabled`). Inert until a view or the app target
     /// calls `start(interval:)` with the configured fetch interval.
@@ -377,8 +384,10 @@ public final class AppSession {
         self.pendingMutationCleanup = pendingMutationCleanup
         self.localBackend = localBackend
         backgroundMail = BackgroundMailCoordinator()
+        notificationActionExecutor = NotificationActionExecutor()
         pimSyncScheduler = PIMSyncScheduler()
         backgroundMail.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
+        notificationActionExecutor.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         pimSyncScheduler.sourcesProvider = { [weak self] in
             guard let coordinator = self?.pimSourceCoordinator else { return [] }
             let sources = try? await coordinator.allSources()
@@ -398,6 +407,19 @@ public final class AppSession {
             backends[localBackend.account.id] = localBackend
         }
         refreshLocalFolders()
+    }
+
+    /// Installs session-owned async Mark-as-read and Archive handlers on the
+    /// shared notification delegate so notification actions drain after cold
+    /// launch and keep working when no main window is open (#307, ADR-0075).
+    public func installNotificationActionHandlers(on delegate: BrevNotificationDelegate) {
+        let executor = notificationActionExecutor
+        delegate.onMarkRead = { route in
+            _ = await executor.markRead(route: route)
+        }
+        delegate.onArchive = { route in
+            _ = await executor.archive(route: route)
+        }
     }
 
     /// Runs one sync pass for a PIM source through the service matching its

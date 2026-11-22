@@ -215,6 +215,18 @@ struct NotificationSection: View {
                         .dependentRowsEnabled(notificationsEnabled: settings.notificationsEnabled)
                 )
 
+                #if os(macOS)
+                SettingsToggleRow(
+                    symbolName: "rectangle.topthird.inset.filled",
+                    title: String(localized: "Show new-mail drop-down panel", bundle: .module),
+                    subtitle: String(
+                        localized: "Drop a compact alert from the top of the screen with Archive, Mark as read, and Reply actions. Auto-dismisses.",
+                        bundle: .module
+                    ),
+                    isOn: binding(for: \.newMailPanelEnabled)
+                )
+                #endif
+
                 testNotificationButton
 
                 #if os(macOS)

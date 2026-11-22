@@ -224,6 +224,7 @@ struct BrevApp: App {
                         readerCommandHandoff: readerCommandHandoff,
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
+                        notificationActionExecutor: session.notificationActionExecutor,
                         pimSyncScheduler: session.pimSyncScheduler,
                         localBackend: session.localBackend,
                         onLocalFoldersChanged: { session.refreshLocalFolders() },
@@ -368,6 +369,7 @@ struct BrevApp: App {
                 applyIOSAppIcon(appIconVariant)
                 await session.restoreAllAccounts()
                 sessionRestoreAttempted = true
+                session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
                 BrevIOSAppDelegate.currentBackends = session.visibleBackends
                 if session.visibleBackends.isEmpty {
                     installUnavailableNotificationReplyHandler()

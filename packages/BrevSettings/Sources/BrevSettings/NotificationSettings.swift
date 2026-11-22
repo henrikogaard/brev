@@ -73,6 +73,7 @@ public struct NotificationSettings: Equatable, Sendable, Codable {
         // ADR-0056 iCloud key-value allowlist in `PreferenceSyncAllowlist`.
         static let backgroundMailEnabled = "notifications.backgroundMailEnabled"
         static let launchAtLogin = "notifications.launchAtLogin"
+        static let newMailPanelEnabled = "notifications.newMailPanelEnabled"
     }
 
     public var notificationsEnabled: Bool
@@ -90,6 +91,10 @@ public struct NotificationSettings: Equatable, Sendable, Codable {
     /// Records that the user asked for launch-at-login. The rendered state
     /// always comes from `SMAppService.mainApp.status`, not this flag.
     public var launchAtLoginRequested = false
+    /// Opt-in macOS drop-down panel at the top of the screen for incoming
+    /// messages with quick Archive, Mark as read, and Reply buttons (#307).
+    /// Off by default; per-device only.
+    public var newMailPanelEnabled = false
 
     public static let defaults = NotificationSettings(
         notificationsEnabled: false,
@@ -158,6 +163,11 @@ public struct NotificationSettings: Equatable, Sendable, Codable {
                 for: Key.launchAtLogin,
                 defaultValue: Self.defaults.launchAtLoginRequested,
                 defaults: defaults
+            ),
+            newMailPanelEnabled: bool(
+                for: Key.newMailPanelEnabled,
+                defaultValue: Self.defaults.newMailPanelEnabled,
+                defaults: defaults
             )
         )
     }
@@ -176,6 +186,7 @@ public struct NotificationSettings: Equatable, Sendable, Codable {
         defaults.set(quietHoursEnd, forKey: Key.quietHoursEnd)
         defaults.set(backgroundMailEnabled, forKey: Key.backgroundMailEnabled)
         defaults.set(launchAtLoginRequested, forKey: Key.launchAtLogin)
+        defaults.set(newMailPanelEnabled, forKey: Key.newMailPanelEnabled)
     }
 
     public mutating func setAccountOverride(

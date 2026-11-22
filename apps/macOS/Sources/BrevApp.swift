@@ -142,6 +142,8 @@ struct BrevApp: App {
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
                         backgroundMail: session.backgroundMail,
+                        notificationActionExecutor: session.notificationActionExecutor,
+                        newMailPanelController: session.newMailPanelController,
                         pimSyncScheduler: session.pimSyncScheduler,
                         localBackend: session.localBackend,
                         onLocalFoldersChanged: { session.refreshLocalFolders() },
@@ -229,6 +231,7 @@ struct BrevApp: App {
                 consumeIntentHandoff()
                 await session.restoreAllAccounts()
                 sessionRestoreAttempted = true
+                session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
                 BrevMacOSAppDelegate.currentSession = session
                 if !session.accountRestoreErrors.isEmpty,
                    !session.visibleBackends.isEmpty {

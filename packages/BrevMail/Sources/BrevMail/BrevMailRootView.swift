@@ -454,6 +454,8 @@ public struct BrevMailRootView: View {
     /// the root view pushes the badge unread count into it and, when the
     /// background-mail setting is on, leaves the tick loop to it.
     private let backgroundMail: BackgroundMailCoordinator?
+    private let notificationActionExecutor: NotificationActionExecutor?
+    private let newMailPanelController: NewMailDropDownPanelController?
     /// Session-owned periodic sync for PIM sources the user enabled sync on.
     /// The root view hands it the fetch interval so its cadence tracks the
     /// mail schedule; once started it keeps ticking while the session lives.
@@ -516,6 +518,8 @@ public struct BrevMailRootView: View {
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
         onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
         backgroundMail: BackgroundMailCoordinator? = nil,
+        notificationActionExecutor: NotificationActionExecutor? = nil,
+        newMailPanelController: NewMailDropDownPanelController? = nil,
         pimSyncScheduler: PIMSyncScheduler? = nil,
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
@@ -548,6 +552,8 @@ public struct BrevMailRootView: View {
             initialMailboxSelectionAccountID: initialMailboxSelectionAccountID,
             onFinishInitialMailboxSelection: onFinishInitialMailboxSelection,
             backgroundMail: backgroundMail,
+            notificationActionExecutor: notificationActionExecutor,
+            newMailPanelController: newMailPanelController,
             pimSyncScheduler: pimSyncScheduler,
             localBackend: localBackend,
             onLocalFoldersChanged: onLocalFoldersChanged,
@@ -588,6 +594,8 @@ public struct BrevMailRootView: View {
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
         onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
         backgroundMail: BackgroundMailCoordinator? = nil,
+        notificationActionExecutor: NotificationActionExecutor? = nil,
+        newMailPanelController: NewMailDropDownPanelController? = nil,
         pimSyncScheduler: PIMSyncScheduler? = nil,
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
@@ -635,6 +643,8 @@ public struct BrevMailRootView: View {
         self.initialMailboxSelectionAccountID = initialMailboxSelectionAccountID
         self.onFinishInitialMailboxSelection = onFinishInitialMailboxSelection
         self.backgroundMail = backgroundMail
+        self.notificationActionExecutor = notificationActionExecutor
+        self.newMailPanelController = newMailPanelController
         self.pimSyncScheduler = pimSyncScheduler
         self.localBackend = localBackend
         self.onLocalFoldersChanged = onLocalFoldersChanged
@@ -871,6 +881,10 @@ public struct BrevMailRootView: View {
                 // Badge + widget snapshot re-derive from the saved
                 // settings, so a previews-off toggle republishes a
                 // counts-only widget snapshot immediately (ADR-0083).
+                updateUnreadBadge()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NotificationActionExecutor.didMutateNotification)) { _ in
+                navigation.requestReload()
                 updateUnreadBadge()
             }
             .onChange(of: navigation.selectedSourceID) {
@@ -6604,23 +6618,17 @@ public struct BrevMailRootView: View {
                 openNotificationRoute(route)
             }
         }
-        activeDelegate.onMarkRead = { route in
-            Task { @MainActor in
-                // Fail closed: only act on the exact account the notification
-                // targets. Falling back to the current account would mark a
-                // DIFFERENT message read after the source account was signed out,
-                // removed, or before it restored.
-                guard let routeBackend = connectedBackend(forAccountID: route.accountID) else { return }
-                try? await routeBackend.setRead(true, for: [route.messageID])
+        let executor = notificationActionExecutor ?? NotificationActionExecutor(
+            backendsProvider: { backends }
+        )
+        if activeDelegate.onMarkRead == nil {
+            activeDelegate.onMarkRead = { route in
+                _ = await executor.markRead(route: route)
             }
         }
-        activeDelegate.onArchive = { route in
-            Task { @MainActor in
-                // Fail closed — archiving the wrong account's message is
-                // destructive (see onMarkRead).
-                guard let routeBackend = connectedBackend(forAccountID: route.accountID) else { return }
-                guard let archiveFolder = await Self.archiveFolder(for: routeBackend) else { return }
-                try? await routeBackend.move(messageIDs: [route.messageID], to: archiveFolder)
+        if activeDelegate.onArchive == nil {
+            activeDelegate.onArchive = { route in
+                _ = await executor.archive(route: route)
             }
         }
         activeDelegate.onReply = { route, userText in
@@ -8180,7 +8188,12 @@ public struct BrevMailRootView: View {
             settings: settings,
             accountID: backend.account.id
         )
-        guard decision.shouldDeliver else { return }
+        #if os(macOS)
+        let wantsDropDownPanel = settings.newMailPanelEnabled && newMailPanelController != nil
+        #else
+        let wantsDropDownPanel = false
+        #endif
+        guard decision.shouldDeliver || wantsDropDownPanel else { return }
         guard let messageID = messageIDs.first else { return }
         let folderName = folderDisplayName(folderID: folderID, backend: backend)
         // Populate the preview from the locally cached header. The header
@@ -8199,25 +8212,64 @@ public struct BrevMailRootView: View {
         } else {
             preview = nil
         }
-        let allowsInlineReply = supportsCachedHeaders
-            && backend.capabilities.contains(.smtpOAuth)
-            && preview != nil
-            && NotificationInlineReplyAvailabilityPolicy.allows(
-                undoSendDelaySeconds: ComposeUndoSendPolicy.delaySeconds()
+
+        if decision.shouldDeliver {
+            let allowsInlineReply = supportsCachedHeaders
+                && backend.capabilities.contains(.smtpOAuth)
+                && preview != nil
+                && NotificationInlineReplyAvailabilityPolicy.allows(
+                    undoSendDelaySeconds: ComposeUndoSendPolicy.delaySeconds()
+                )
+            await notificationCenter.postNewMailNotification(
+                from: preview?.from ?? Correspondent(name: nil, email: ""),
+                subject: preview?.subject ?? "",
+                snippet: preview?.snippet ?? "",
+                receivedAt: preview?.date ?? Date(),
+                messageID: messageID,
+                accountID: backend.account.id,
+                folderID: folderID,
+                folderName: folderName,
+                showPreviews: decision.showPreviews,
+                playSound: decision.playSound,
+                allowsInlineReply: allowsInlineReply
             )
-        await notificationCenter.postNewMailNotification(
-            from: preview?.from ?? Correspondent(name: nil, email: ""),
-            subject: preview?.subject ?? "",
-            snippet: preview?.snippet ?? "",
-            receivedAt: preview?.date ?? Date(),
-            messageID: messageID,
-            accountID: backend.account.id,
-            folderID: folderID,
-            folderName: folderName,
-            showPreviews: decision.showPreviews,
-            playSound: decision.playSound,
-            allowsInlineReply: allowsInlineReply
-        )
+        }
+
+        #if os(macOS)
+        if let panelController = newMailPanelController {
+            let route = NotificationMailRoute(
+                accountID: backend.account.id,
+                folderID: folderID,
+                messageID: messageID
+            )
+            if let payload = NewMailPanelPolicy.payload(
+                settings: settings,
+                route: route,
+                correspondent: preview?.from ?? Correspondent(name: nil, email: ""),
+                subject: preview?.subject ?? "",
+                snippet: preview?.snippet ?? "",
+                receivedAt: preview?.date ?? Date()
+            ) {
+                let executor = notificationActionExecutor ?? NotificationActionExecutor(
+                    backendsProvider: { backends }
+                )
+                panelController.present(
+                    payload: payload,
+                    theme: theme,
+                    onArchive: {
+                        Task { _ = await executor.archive(route: route) }
+                    },
+                    onMarkRead: {
+                        Task { _ = await executor.markRead(route: route) }
+                    },
+                    onReply: {
+                        NSApplication.shared.activate()
+                        openNotificationRoute(route)
+                    }
+                )
+            }
+        }
+        #endif
     }
 
     private func folderDisplayName(

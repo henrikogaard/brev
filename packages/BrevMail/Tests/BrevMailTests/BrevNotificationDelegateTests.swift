@@ -44,6 +44,60 @@ struct BrevNotificationDelegateTests {
         #expect(delegate.pendingReplyCount == 0)
         #expect(await recorder.replies == [NotificationReplyRecord(route: route, text: "Thanks!")])
     }
+
+    @Test("cold-launch mark-as-read and archive actions wait for async handlers")
+    func coldLaunchMarkReadAndArchiveWaitForHandlers() async {
+        let delegate = BrevNotificationDelegate()
+        let recorder = NotificationActionRecorder()
+        let markReadRoute = NotificationMailRoute(
+            accountID: "acct-1",
+            folderID: "inbox",
+            messageID: "msg-read"
+        )
+        let archiveRoute = NotificationMailRoute(
+            accountID: "acct-1",
+            folderID: "inbox",
+            messageID: "msg-archive"
+        )
+
+        await withCheckedContinuation { completion in
+            delegate.handleMarkRead(route: markReadRoute) {
+                completion.resume()
+            }
+            #expect(delegate.pendingMarkReadCount == 1)
+            delegate.onMarkRead = { route in
+                await recorder.recordMarkRead(route)
+            }
+        }
+
+        await withCheckedContinuation { completion in
+            delegate.handleArchive(route: archiveRoute) {
+                completion.resume()
+            }
+            #expect(delegate.pendingArchiveCount == 1)
+            delegate.onArchive = { route in
+                await recorder.recordArchive(route)
+            }
+        }
+
+        #expect(delegate.pendingMarkReadCount == 0)
+        #expect(delegate.pendingArchiveCount == 0)
+        #expect(await recorder.markedRead == [markReadRoute])
+        #expect(await recorder.archived == [archiveRoute])
+    }
+}
+
+private actor NotificationActionRecorder {
+    private(set) var markedRead: [NotificationMailRoute] = []
+    private(set) var archived: [NotificationMailRoute] = []
+
+    func recordMarkRead(_ route: NotificationMailRoute) {
+        markedRead.append(route)
+    }
+
+    func recordArchive(_ route: NotificationMailRoute) {
+        archived.append(route)
+    }
 }
 
 private struct NotificationReplyRecord: Equatable, Sendable {

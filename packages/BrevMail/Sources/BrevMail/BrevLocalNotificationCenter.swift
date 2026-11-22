@@ -102,32 +102,43 @@ public final class BrevLocalNotificationCenter {
             return
         }
 
-        let markRead = UNNotificationAction(
-            identifier: Self.markReadActionIdentifier,
-            title: "Mark Read",
-            options: [.foreground]
-        )
-        let archive = UNNotificationAction(
-            identifier: Self.archiveActionIdentifier,
-            title: "Archive",
-            options: [.destructive, .authenticationRequired]
-        )
+        let markRead = Self.makeMarkReadAction()
+        let archive = Self.makeArchiveAction()
         let reply = Self.makeReplyAction()
         let category = UNNotificationCategory(
             identifier: Self.newMailCategoryIdentifier,
             actions: [markRead, archive],
             intentIdentifiers: [],
-            hiddenPreviewsBodyPlaceholder: "New mail",
+            hiddenPreviewsBodyPlaceholder: String(localized: "New mail", bundle: .module),
             options: [.customDismissAction]
         )
         let replyCategory = UNNotificationCategory(
             identifier: Self.newMailReplyCategoryIdentifier,
             actions: [markRead, archive, reply],
             intentIdentifiers: [],
-            hiddenPreviewsBodyPlaceholder: "New mail",
+            hiddenPreviewsBodyPlaceholder: String(localized: "New mail", bundle: .module),
             options: [.customDismissAction]
         )
         center.setNotificationCategories([category, replyCategory])
+    }
+
+    /// Background Mark-as-read action used by the new-mail category (#307).
+    /// Omitting `.foreground` updates the mailbox without pulling Brev forward.
+    static func makeMarkReadAction() -> UNNotificationAction {
+        UNNotificationAction(
+            identifier: markReadActionIdentifier,
+            title: String(localized: "Mark as Read", bundle: .module),
+            options: [.authenticationRequired]
+        )
+    }
+
+    /// Background Archive action used by the new-mail category (#307).
+    static func makeArchiveAction() -> UNNotificationAction {
+        UNNotificationAction(
+            identifier: archiveActionIdentifier,
+            title: String(localized: "Archive", bundle: .module),
+            options: [.destructive, .authenticationRequired]
+        )
     }
 
     /// Text-input Reply action used by the new-mail category.
