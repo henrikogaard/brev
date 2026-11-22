@@ -48,7 +48,6 @@ public enum AppSessionFactoryError: Error, Sendable, Equatable, LocalizedError {
 /// Builds the app-level session shared by the macOS and iOS targets.
 @MainActor
 private final class PersistentMockBackendRegistry {
-    static let shared = PersistentMockBackendRegistry()
     private var backends: [BrevAccount.ID: MockBackend] = [:]
 
     func make(_ factory: @MainActor () -> any MailBackend) -> any MailBackend {
@@ -57,6 +56,12 @@ private final class PersistentMockBackendRegistry {
             backends[mock.account.id] = mock
         }
         return backend
+    }
+
+    func login(_ factory: @MainActor () -> any MailBackend) async throws -> AppSession.LoginResult {
+        let backend = make(factory)
+        try await backend.connect()
+        return AppSession.LoginResult(backend: backend, account: backend.account)
     }
 
     func purge(accountID: BrevAccount.ID) async throws -> Bool {
@@ -189,20 +194,21 @@ public enum AppSessionFactory {
         themeDefaults: UserDefaults = .standard,
         mockPersistenceDirectory: URL? = nil
     ) -> AppSession {
-        let mock = MockBackend(
-            capabilities: .full.union(.smtpOAuth),
-            persistenceDirectory: mockPersistenceDirectory
-        )
+        let registry = PersistentMockBackendRegistry()
+        let makeMock: @MainActor () -> any MailBackend = {
+            MockBackend(capabilities: .full.union(.smtpOAuth), persistenceDirectory: mockPersistenceDirectory)
+        }
+        let mock = registry.make(makeMock)
         let secrets = IsolatedMockSecretStore()
         return AppSession(
             backend: mock,
             accountStore: InMemoryAccountStore(accounts: [mock.account], current: mock.account),
             tokenStore: secrets,
             themeDefaults: themeDefaults,
-            loginCoordinator: { AppSession.LoginResult(backend: mock, account: mock.account) },
+            loginCoordinator: { try await registry.login(makeMock) },
             googleOAuthIsConfigured: false,
-            demoLoginCoordinator: { AppSession.LoginResult(backend: mock, account: mock.account) },
-            signOutCoordinator: { _ in try await mock.purgePersistentState() },
+            demoLoginCoordinator: { try await registry.login(makeMock) },
+            signOutCoordinator: { account in _ = try await registry.purge(accountID: account.id) },
             aiProviderAssignmentCleanup: { _ in },
             aiProviderBackendResolver: AIProviderBackendResolver(defaults: themeDefaults, secretStore: secrets)
         )
@@ -361,17 +367,17 @@ public enum AppSessionFactory {
                 )
             }
 
+        let mockRegistry = PersistentMockBackendRegistry()
+
         #if DEBUG
         if configuration.isDemoModeRequested() {
-            let mock = PersistentMockBackendRegistry.shared.make(configuration.makeDemoBackend)
+            let mock = mockRegistry.make(configuration.makeDemoBackend)
             let store = InMemoryAccountStore(accounts: [mock.account], current: mock.account)
             return AppSession(
                 backend: mock,
                 accountStore: store,
                 tokenStore: KeychainTokenStore(),
-                loginCoordinator: {
-                    AppSession.LoginResult(backend: mock, account: mock.account)
-                },
+                loginCoordinator: { try await mockRegistry.login(configuration.makeDemoBackend) },
                 imapAccountDiscoveryCoordinator: { emailAddress in
                     // Offline discovery only: the built-in profile table
                     // and manual fallback need no DNS/autoconfig calls, so
@@ -383,6 +389,9 @@ public enum AppSessionFactory {
                         forEmailAddress: emailAddress
                     )
                 },
+                signOutCoordinator: { account in
+                    _ = try await mockRegistry.purge(accountID: account.id)
+                },
                 pimSourceCoordinator: pimSourceCoordinator,
                 pimCollectionService: pimCollectionService,
                 pimEventSyncService: pimEventSyncService,
@@ -392,9 +401,6 @@ public enum AppSessionFactory {
                 pimContactWriteService: pimContactWriteService,
                 pimTaskWriteService: pimTaskWriteService,
                 googleDriveFeature: googleDriveFeature,
-                signOutCoordinator: { account in
-                    _ = try await PersistentMockBackendRegistry.shared.purge(accountID: account.id)
-                },
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
         }
@@ -425,8 +431,7 @@ public enum AppSessionFactory {
 
         #if DEBUG
         let demoLoginCoordinator: AppSession.DemoLoginCoordinator? = {
-            let mock = PersistentMockBackendRegistry.shared.make(configuration.makeDemoBackend)
-            return AppSession.LoginResult(backend: mock, account: mock.account)
+            try await mockRegistry.login(configuration.makeDemoBackend)
         }
         #else
         let demoLoginCoordinator: AppSession.DemoLoginCoordinator? = nil
@@ -503,7 +508,7 @@ public enum AppSessionFactory {
             },
             demoLoginCoordinator: demoLoginCoordinator,
             signOutCoordinator: { account in
-                if try await PersistentMockBackendRegistry.shared.purge(accountID: account.id) { return }
+                if try await mockRegistry.purge(accountID: account.id) { return }
                 if account.backendIdentifier == BrevAccount.gmailAPIBackendIdentifier {
                     guard let coordinator = configuration.googleOAuthRemovalCoordinator else {
                         throw AppSessionFactoryError.missingGoogleOAuthRemovalCoordinator

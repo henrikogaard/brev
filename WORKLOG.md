@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-06-16 — Agent — Issue #297 / PR #325 Mock scheduling corrections
+
+- Goal: apply the review correction pass to PR #325 on `feature/compose-later-action`; keep PR #324 untouched and do not push.
+- Changes: restored `sendHandler` as a top-level send override and kept due delivery/worker transactions in Store. Hardened the versioned journal with established-file detection, read-back verification, semantic validation, frozen sender/reply context and last-known-good state on storage errors. Added transaction-owned delivery identity, stale-lifetime guards, per-factory Mock cleanup, exact Outbox context ownership, isolated lifecycle/re-login regressions and canceled-Draft autosave wording. Added malformed-record and transient-draft/attachment cleanup coverage. Compose snapshots remain capability-disabled; no PNGs or localization catalogs changed.
+- Verification: `swiftc -frontend -parse` parsed 13 changed Swift files. `scripts/lint.sh` reported `0/1383 files require formatting, 191 files skipped`; SwiftLint could not start because its pinned binary requires unavailable GLIBC 2.38. The focused BrevBackend test stopped before test execution at `AttachmentTextExtractor.swift:14:8: error: no such module 'PDFKit'`. The BrevMail test stopped before test execution at `BrevPluginRegistry.swift:14:8: error: no such module 'SwiftUI'`. All 22 String Catalog JSON files parsed; no catalog changes or new `nb` entries were needed. Header comparison found no changes in the 13 existing Swift headers. `scripts/check-adr-required.sh`, `git diff --check` and `git diff --cached --check` passed before commit.
+- Limits: native tests/typechecking, Xcode builds, CI and visual QA remain unverified on this Linux host. The repository blueprint targets macOS, so the Xcode workspace preparation command was not run. No enabled-state compose snapshot was recorded; if needed, record it on macOS 26.
+- Handoff: local commit only, awaiting review; no push, PR/issue/board edits, CI, network actions or PNG changes.
+
 ## 2026-11-21 — Agent — #297 scheduled send compose action
 
 - Goal: expose scheduled send beside Send in the full macOS and iOS composers.

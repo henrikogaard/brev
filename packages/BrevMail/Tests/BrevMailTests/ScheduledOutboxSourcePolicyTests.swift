@@ -12,6 +12,7 @@
 
 import BrevBackend
 @testable import BrevMail
+import Foundation
 import Testing
 
 @Suite("Scheduled Outbox source selection")
@@ -35,5 +36,57 @@ struct ScheduledOutboxSourcePolicyTests {
             "legacy"
         ])
         #expect(ScheduledOutboxSourcePolicy.visibleEntries(entries, selectedSourceID: nil).map(\.id) == ["legacy"])
+    }
+
+    @Test("a loaded Outbox context cannot publish or act after backend or source changes")
+    func staleContextRejectsActionsAndPublications() {
+        let backendA = NSObject()
+        let backendB = NSObject()
+        let sourceA = MailSourceID(accountID: "account", mailboxID: "a")
+        let sourceB = MailSourceID(accountID: "account", mailboxID: "b")
+        let contextA = ScheduledOutboxContext(backendID: ObjectIdentifier(backendA), sourceID: sourceA)
+        let contextB = ScheduledOutboxContext(backendID: ObjectIdentifier(backendA), sourceID: sourceB)
+        let otherBackend = ScheduledOutboxContext(backendID: ObjectIdentifier(backendB), sourceID: sourceA)
+
+        #expect(ScheduledOutboxSourcePolicy.isCurrent(
+            requested: contextA,
+            current: contextA,
+            generation: 4,
+            currentGeneration: 4,
+            isCancelled: false
+        ))
+        #expect(!ScheduledOutboxSourcePolicy.isCurrent(
+            requested: contextA,
+            current: contextB,
+            generation: 4,
+            currentGeneration: 5,
+            isCancelled: false
+        ))
+        #expect(!ScheduledOutboxSourcePolicy.isCurrent(
+            requested: contextA,
+            current: otherBackend,
+            generation: 4,
+            currentGeneration: 4,
+            isCancelled: false
+        ))
+        #expect(!ScheduledOutboxSourcePolicy.isCurrent(
+            requested: contextA,
+            current: contextA,
+            generation: 4,
+            currentGeneration: 4,
+            isCancelled: true
+        ))
+        #expect(ScheduledOutboxSourcePolicy.isLoaded(
+            loaded: contextA,
+            requested: contextA,
+            loadedGeneration: 4,
+            currentGeneration: 4
+        ))
+        #expect(!ScheduledOutboxSourcePolicy.isLoaded(
+            loaded: contextA,
+            requested: contextB,
+            loadedGeneration: 4,
+            currentGeneration: 4
+        ))
     }
 }

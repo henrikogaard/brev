@@ -65,43 +65,97 @@ struct AppSessionFactoryTests {
         #expect(await session.accountStore.current == demo.account)
         #expect(!session.canUseDemoAccount)
         #expect(session.canUseInteractiveSignIn)
-
-        let mailbox = try await demo.currentMailbox()
-        _ = try await demo.send(
-            draft: Draft(id: "demo-remove", scheduledFor: Date(timeIntervalSince1970: 2_000_000_000)),
-            sourceID: demo.sourceID(for: mailbox)
-        )
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
-        await session.removeAccount(demo.account)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     }
 
-    @Test("ordinary demo login registers its persistent Mock for account cleanup")
+    @Test("factory-owned demo lifecycle reconnects and cleans up after relogin")
     func demoLoginRegistersMockForCleanup() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("AppSessionDemoLoginJournal-\(UUID().uuidString)", isDirectory: true)
+        let suiteName = "AppSessionDemoLoginDefaults-\(UUID().uuidString)"
         defer { try? FileManager.default.removeItem(at: directory) }
-        let demo = MockBackend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
-        let configuration = AppSessionFactory.Configuration(
-            applicationSupportURL: URL(filePath: "/tmp/brev-app-session-factory-tests"),
-            oauthPresentationAnchor: { fatalError("OAuth anchor is not needed in demo mode") },
-            isDemoModeRequested: { false },
-            makeDemoBackend: { demo }
-        )
-        let session = AppSessionFactory.makeDefault(configuration: configuration)
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let session = AppSessionFactory.makeIsolatedMock(themeDefaults: defaults, mockPersistenceDirectory: directory)
 
         await session.signInWithDemo()
-        #expect(session.backend?.account.id == demo.account.id)
-        let mailbox = try await demo.currentMailbox()
-        _ = try await demo.send(
+        let first = try #require(session.backend as? MockBackend)
+        #expect(session.backend?.account.id == first.account.id)
+        let mailbox = try await first.currentMailbox()
+        _ = try await first.send(
             draft: Draft(id: "ordinary-demo-remove", scheduledFor: Date(timeIntervalSince1970: 2_000_000_000)),
-            sourceID: demo.sourceID(for: mailbox)
+            sourceID: first.sourceID(for: mailbox)
         )
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 2)
 
-        await session.removeAccount(demo.account)
+        await session.removeAccount(first.account)
 
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+        await #expect(throws: (any Error).self) {
+            try await first.send(draft: Draft(id: "late-send"), sourceID: first.sourceID(for: mailbox))
+        }
+
+        await session.signInWithDemo()
+        let second = try #require(session.backend as? MockBackend)
+        #expect(ObjectIdentifier(second) != ObjectIdentifier(first))
+        let secondMailbox = try await second.currentMailbox()
+        _ = try await second.send(
+            draft: Draft(id: "fresh-after-relogin", scheduledFor: .distantPast),
+            sourceID: second.sourceID(for: secondMailbox)
+        )
+        await second.deliverDueScheduledSends()
+        #expect(second.pendingScheduledSends().isEmpty)
+        await session.removeAccount(second.account)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
+
+    @Test("same-account demo sessions clean only their own persistence directories")
+    func demoCleanupIsPerSession() async throws {
+        let firstDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AppSessionDemoJournalA-\(UUID().uuidString)", isDirectory: true)
+        let secondDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AppSessionDemoJournalB-\(UUID().uuidString)", isDirectory: true)
+        let firstSuite = "AppSessionDemoDefaultsA-\(UUID().uuidString)"
+        let secondSuite = "AppSessionDemoDefaultsB-\(UUID().uuidString)"
+        defer {
+            try? FileManager.default.removeItem(at: firstDirectory)
+            try? FileManager.default.removeItem(at: secondDirectory)
+        }
+        let firstDefaults = try #require(UserDefaults(suiteName: firstSuite))
+        let secondDefaults = try #require(UserDefaults(suiteName: secondSuite))
+        defer {
+            firstDefaults.removePersistentDomain(forName: firstSuite)
+            secondDefaults.removePersistentDomain(forName: secondSuite)
+        }
+        let firstSession = AppSessionFactory.makeIsolatedMock(
+            themeDefaults: firstDefaults,
+            mockPersistenceDirectory: firstDirectory
+        )
+        let secondSession = AppSessionFactory.makeIsolatedMock(
+            themeDefaults: secondDefaults,
+            mockPersistenceDirectory: secondDirectory
+        )
+        let first = try #require(firstSession.backend as? MockBackend)
+        let second = try #require(secondSession.backend as? MockBackend)
+        #expect(first.account.id == second.account.id)
+        let firstMailbox = try await first.currentMailbox()
+        let secondMailbox = try await second.currentMailbox()
+        _ = try await first.send(
+            draft: Draft(id: "session-a", scheduledFor: Date(timeIntervalSince1970: 2_000_000_000)),
+            sourceID: first.sourceID(for: firstMailbox)
+        )
+        _ = try await second.send(
+            draft: Draft(id: "session-b", scheduledFor: Date(timeIntervalSince1970: 2_000_000_000)),
+            sourceID: second.sourceID(for: secondMailbox)
+        )
+
+        await firstSession.removeAccount(first.account)
+
+        #expect(try FileManager.default.contentsOfDirectory(atPath: firstDirectory).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: secondDirectory).count == 2)
+        #expect(second.pendingScheduledSends().map(\.draftID) == ["session-b"])
+
+        await secondSession.removeAccount(second.account)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: secondDirectory).isEmpty)
     }
     #endif
 

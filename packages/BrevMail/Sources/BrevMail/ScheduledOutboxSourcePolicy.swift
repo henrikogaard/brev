@@ -12,11 +12,35 @@
 
 import BrevBackend
 
+struct ScheduledOutboxContext: Hashable {
+    let backendID: ObjectIdentifier
+    let sourceID: MailSourceID?
+}
+
 enum ScheduledOutboxSourcePolicy {
     static func visibleEntries(
         _ entries: [PendingScheduledSend],
         selectedSourceID: MailSourceID?
     ) -> [PendingScheduledSend] {
         entries.filter { $0.sourceID == nil || $0.sourceID == selectedSourceID }
+    }
+
+    static func isCurrent(
+        requested: ScheduledOutboxContext,
+        current: ScheduledOutboxContext,
+        generation: Int,
+        currentGeneration: Int,
+        isCancelled: Bool
+    ) -> Bool {
+        !isCancelled && requested == current && generation == currentGeneration
+    }
+
+    static func isLoaded(
+        loaded: ScheduledOutboxContext?,
+        requested: ScheduledOutboxContext,
+        loadedGeneration: Int,
+        currentGeneration: Int
+    ) -> Bool {
+        loaded == requested && loadedGeneration == currentGeneration
     }
 }

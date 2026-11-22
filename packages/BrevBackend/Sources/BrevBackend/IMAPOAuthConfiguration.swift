@@ -113,7 +113,7 @@ public struct MIMEMessageBuilder: Sendable {
     /// §3.6.4 also recommends every message carry one; previously outgoing mail
     /// had none, which hurts deliverability and threading.
     /// Returns the stable wire Message-ID shared by sending and draft identity projection.
-    static func messageIDHeaderValue(draftID: String, fromEmail: String) -> String {
+    public static func messageIDHeaderValue(draftID: String, fromEmail: String) -> String {
         let domainSource = fromEmail.split(separator: "@", maxSplits: 1).last.map(String.init) ?? ""
         let domain = Self.sanitizedMessageIDComponent(domainSource, fallback: "localhost")
         let localPart = "brev-" + Self.sanitizedMessageIDComponent(draftID, fallback: "draft")

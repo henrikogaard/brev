@@ -37,6 +37,9 @@ struct MockSendJournalRecord: Codable, Sendable, Equatable {
     var sentHeader: MessageHeader?
     var sentBody: MessageBody?
     var nextAttemptAt: Date?
+    var sender: Correspondent? = nil
+    var parentMessageID: String? = nil
+    var references: [String]? = nil
 }
 
 private struct MockSendJournalFile: Codable {
@@ -46,7 +49,7 @@ private struct MockSendJournalFile: Codable {
 
 struct MockSendJournal: @unchecked Sendable {
     private static let transactionLock = NSRecursiveLock()
-    private static let version = 1
+    private static let version = 2
 
     let directoryURL: URL
     let accountID: BrevAccount.ID
@@ -70,8 +73,12 @@ struct MockSendJournal: @unchecked Sendable {
             var records = try loadWithoutLock()
             let previous = records
             let value = try operation(&records)
+            try Self.validate(records, accountID: accountID)
             if records != previous {
                 try persistWithoutLock(records)
+                let verified = try loadWithoutLock()
+                guard verified == records else { throw MockSendJournalError.invalidFile }
+                records = verified
             }
             return (value, records)
         }
@@ -84,6 +91,9 @@ struct MockSendJournal: @unchecked Sendable {
             if fileManager.fileExists(atPath: url.path) {
                 try fileManager.removeItem(at: url)
             }
+            if fileManager.fileExists(atPath: markerURL.path) {
+                try fileManager.removeItem(at: markerURL)
+            }
         }
     }
 
@@ -95,16 +105,24 @@ struct MockSendJournal: @unchecked Sendable {
         return directoryURL.appendingPathComponent("account-\(encodedAccount).mock-sends.json")
     }
 
+    private var markerURL: URL {
+        fileURL.deletingPathExtension().appendingPathExtension("established")
+    }
+
     private func loadWithoutLock() throws -> [MockSendJournalRecord] {
         guard directoryURL.isFileURL else { throw MockSendJournalError.invalidDirectory }
         try validateDirectoryIfPresent()
-        guard fileManager.fileExists(atPath: fileURL.path) else { return [] }
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            guard !fileManager.fileExists(atPath: markerURL.path) else { throw MockSendJournalError.invalidFile }
+            return []
+        }
+        try writeEstablishedMarkerIfNeeded()
         let data = try Data(contentsOf: fileURL)
         let decoded = try JSONDecoder().decode(MockSendJournalFile.self, from: data)
-        guard decoded.version == Self.version,
-              decoded.records.allSatisfy({ $0.accountID == accountID && $0.sourceID.accountID == accountID }) else {
+        guard decoded.version == Self.version else {
             throw MockSendJournalError.invalidFile
         }
+        try Self.validate(decoded.records, accountID: accountID)
         return decoded.records
     }
 
@@ -126,9 +144,95 @@ struct MockSendJournal: @unchecked Sendable {
             attributes: [.posixPermissions: 0o700]
         )
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directoryURL.path)
+        try writeEstablishedMarkerIfNeeded()
         let data = try JSONEncoder().encode(MockSendJournalFile(version: Self.version, records: records))
         try data.write(to: fileURL, options: .atomic)
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    }
+
+    private func writeEstablishedMarkerIfNeeded() throws {
+        guard !fileManager.fileExists(atPath: markerURL.path) else { return }
+        try Data([1]).write(to: markerURL, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: markerURL.path)
+    }
+
+    private static func validate(_ records: [MockSendJournalRecord], accountID: BrevAccount.ID) throws {
+        struct SourceDraft: Hashable {
+            let sourceID: MailSourceID
+            let draftID: String
+        }
+
+        var identities: Set<SourceDraft> = []
+        var recordIDs: Set<String> = []
+        var scheduleIDs: Set<String> = []
+        for record in records {
+            guard record.accountID == accountID,
+                  record.sourceID.accountID == accountID,
+                  !record.draftID.isEmpty,
+                  !record.recordID.isEmpty,
+                  recordIDs.insert(record.recordID).inserted,
+                  identities.insert(SourceDraft(sourceID: record.sourceID, draftID: record.draftID)).inserted,
+                  record.scheduleID.map({ !$0.isEmpty && $0 != record.draftID && scheduleIDs.insert($0).inserted }) ?? true,
+                  record.nextAttemptAt?.timeIntervalSince1970.isFinite ?? true else {
+                throw MockSendJournalError.invalidFile
+            }
+            let attachmentIDs = record.attachments.map { $0.metadata.id }
+            let references = record.references ?? []
+            guard Set(attachmentIDs).count == attachmentIDs.count,
+                  record.draft.map({ Set($0.attachmentIDs).count == $0.attachmentIDs.count }) ?? true,
+                  record.attachments.allSatisfy({ $0.draftID == record.draftID }),
+                  Set(attachmentIDs) == Set(record.draft?.attachmentIDs ?? []),
+                  Set(references).count == references.count,
+                  references.allSatisfy({ !$0.isEmpty }) else {
+                throw MockSendJournalError.invalidFile
+            }
+            switch record.state {
+            case .queued:
+                guard let draft = record.draft, draft.id == record.draftID else {
+                    throw MockSendJournalError.invalidFile
+                }
+                guard let date = record.scheduledFor,
+                      date.timeIntervalSince1970.isFinite,
+                      draft.scheduledFor == date,
+                      record.scheduleID != nil,
+                      record.sender != nil,
+                      record.sentHeader == nil,
+                      record.sentBody == nil else { throw MockSendJournalError.invalidFile }
+            case .canceled:
+                guard record.scheduledFor == nil,
+                      record.scheduleID == nil,
+                      record.sentHeader == nil,
+                      record.sentBody == nil else { throw MockSendJournalError.invalidFile }
+                if let draft = record.draft {
+                    guard draft.id == record.draftID, draft.scheduledFor == nil else {
+                        throw MockSendJournalError.invalidFile
+                    }
+                } else if !record.attachments.isEmpty {
+                    throw MockSendJournalError.invalidFile
+                }
+            case .delivered:
+                guard let draft = record.draft, draft.id == record.draftID else {
+                    throw MockSendJournalError.invalidFile
+                }
+                guard record.scheduledFor == nil,
+                      draft.scheduledFor == nil,
+                      let header = record.sentHeader,
+                      let body = record.sentBody,
+                      !header.id.isEmpty,
+                      !header.folderID.isEmpty,
+                      header.id == body.messageID,
+                      body.html == draft.htmlBody,
+                      header.from == record.sender,
+                      header.to == draft.to,
+                      header.cc == draft.cc,
+                      header.bcc == draft.bcc,
+                      header.subject == draft.subject,
+                      header.hasAttachments == !draft.attachmentIDs.isEmpty,
+                      header.inReplyTo == record.parentMessageID,
+                      header.references == (references.isEmpty ? nil : references),
+                      body.attachments.map(\.id) == attachmentIDs else { throw MockSendJournalError.invalidFile }
+            }
+        }
     }
 }
 

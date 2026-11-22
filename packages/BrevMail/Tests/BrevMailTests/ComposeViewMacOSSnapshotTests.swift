@@ -28,7 +28,7 @@ struct ComposeViewMacOSSnapshotTests {
     @Test("compose header renders aligned optional and subject rows", arguments: ["light", "dark"])
     func composeChrome(mode: String) {
         let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
-        let backend = MockBackend()
+        let backend = MockBackend(supportsScheduledSend: false)
         let accountID = backend.account.id
         let senderOptions = [
             ComposeSenderOption(
@@ -78,7 +78,7 @@ struct ComposeViewMacOSSnapshotTests {
     func collapsedHeader(mode: String) {
         let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
         let view = ComposeView(
-            backend: MockBackend(),
+            backend: MockBackend(supportsScheduledSend: false),
             from: Correspondent(name: "Henrik Øgård", email: "henrik@ogard.example"),
             prefill: ComposePrefill(to: ["qa-recipient@example.org"], subject: "Header alignment")
         )

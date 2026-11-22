@@ -57,20 +57,55 @@ struct IsolatedMockSessionTests {
         let backend = try #require(session.backend)
         let mailbox = try await backend.currentMailbox()
         let sourceID = backend.sourceID(for: mailbox)
+        let attachmentID = try await backend.uploadAttachment(
+            draftID: "unsaved-before-remove",
+            data: Data([7, 8, 9]),
+            filename: "kept-only-in-memory.bin",
+            mimeType: "application/octet-stream",
+            sourceID: sourceID
+        )
+        let unsavedDraft = Draft(id: "unsaved-before-remove", attachmentIDs: [attachmentID])
+        _ = try await backend.save(draft: unsavedDraft, sourceID: sourceID)
         _ = try await backend.send(
             draft: Draft(id: "remove-me", scheduledFor: Date(timeIntervalSince1970: 2_000_000_000)),
             sourceID: sourceID
         )
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 2)
 
         await session.removeAccount(backend.account)
 
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
         #expect(await session.accountStore.current == nil)
-        try await backend.connect()
-        await backend.deliverDueScheduledSends()
-        #expect(backend.pendingScheduledSends().isEmpty)
-        #expect(try await backend.draft(for: "remove-me", sourceID: sourceID) == nil)
+        await #expect(throws: (any Error).self) {
+            try await backend.send(draft: Draft(id: "late-isolated-send"), sourceID: sourceID)
+        }
+        await #expect(throws: (any Error).self) {
+            try await backend.send(
+                draft: Draft(id: "late-isolated-queue", scheduledFor: Date(timeIntervalSince1970: 2_000_000_000)),
+                sourceID: sourceID
+            )
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await backend.save(draft: Draft(id: "late-isolated-save"), sourceID: sourceID)
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+        await session.signInWithDemo()
+        #expect(session.backend?.account.id == backend.account.id)
+        let reconnected = try #require(session.backend as? MockBackend)
+        #expect(ObjectIdentifier(reconnected) != ObjectIdentifier(backend))
+        _ = try await reconnected.send(
+            draft: Draft(id: "isolated-fresh-send", scheduledFor: .distantPast),
+            sourceID: sourceID
+        )
+        await reconnected.deliverDueScheduledSends()
+        #expect(reconnected.pendingScheduledSends().isEmpty)
+        #expect(try await reconnected.draft(for: "remove-me", sourceID: sourceID) == nil)
+        #expect(try await reconnected.draft(for: unsavedDraft.id, sourceID: sourceID) == nil)
+        await #expect(throws: (any Error).self) {
+            try await reconnected.localDraftAttachments(for: unsavedDraft, sourceID: sourceID)
+        }
+        await session.removeAccount(reconnected.account)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     }
 
     @Test("failed Mock cleanup retains the account for retry")

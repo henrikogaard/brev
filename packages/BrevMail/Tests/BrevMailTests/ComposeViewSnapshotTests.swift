@@ -61,7 +61,7 @@ struct ComposeViewSnapshotTests {
     @Test("Empty compose renders with header fields and toolbar in default theme")
     func emptyCompose() {
         let theme = BrevTheme.brevPaper
-        let backend = MockBackend()
+        let backend = MockBackend(supportsScheduledSend: false)
         #expect(backend.account.emailAddress == "henrik@ogard.example")
         let view = ComposeView(
             backend: backend,
@@ -88,7 +88,7 @@ struct ComposeViewSnapshotTests {
     @Test("Long recipient address truncates inside the compact field")
     func longRecipientAddress() {
         let theme = BrevTheme.brevPaper
-        let backend = MockBackend()
+        let backend = MockBackend(supportsScheduledSend: false)
         let view = ComposeView(
             backend: backend,
             from: backend.account,
@@ -125,7 +125,7 @@ struct ComposeViewSnapshotTests {
             ComposeReplyFormatter.timeZoneOverride = nil
         }
         let theme = BrevTheme.brevPaper
-        let backend = MockBackend()
+        let backend = MockBackend(supportsScheduledSend: false)
         let header = MessageHeader(
             id: "m1",
             threadID: "thread-standup",
@@ -175,7 +175,7 @@ struct ComposeViewSnapshotTests {
         defer { plugin.isEnabled = false }
 
         let theme = BrevTheme.brevPaper
-        let backend = MockBackend()
+        let backend = MockBackend(supportsScheduledSend: false)
         let view = VStack {
             ComposeView(backend: backend, from: backend.account)
                 .compactComposeActionsMenuContent

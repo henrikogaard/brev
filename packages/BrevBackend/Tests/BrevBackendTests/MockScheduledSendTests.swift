@@ -40,7 +40,7 @@ struct MockScheduledSendTests {
         let directory = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let backend = Self.backend(persistenceDirectory: directory)
-        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        let scheduler = try #require(backend.extensionService(ScheduledSendEditing.self))
 
         let firstAttachmentID = try await backend.uploadAttachment(
             draftID: "same-draft",
@@ -72,7 +72,12 @@ struct MockScheduledSendTests {
             htmlBody: "B body",
             attachmentIDs: [secondAttachmentID]
         ), sourceID: Self.sourceB)
+        _ = try await backend.save(
+            draft: Draft(id: "future-autosave", scheduledFor: Self.now.addingTimeInterval(60)),
+            sourceID: Self.sourceA
+        )
         #expect(scheduler.pendingScheduledSends().isEmpty)
+        var events = backend.subscribeToChanges().makeAsyncIterator()
 
         var scheduledFirst = first
         scheduledFirst.scheduledFor = Self.now
@@ -80,12 +85,21 @@ struct MockScheduledSendTests {
         scheduledSecond.scheduledFor = Self.now
         let firstResult = try await backend.send(draft: scheduledFirst, sourceID: Self.sourceA)
         let secondResult = try await backend.send(draft: scheduledSecond, sourceID: Self.sourceB)
+        var receivedCommittedQueueEvent = false
+        for _ in 0 ..< 4 {
+            guard let event = await events.next() else { break }
+            if event == .outboxChanged {
+                receivedCommittedQueueEvent = true
+                break
+            }
+        }
 
         #expect(firstResult.sentMessageID == nil)
         #expect(firstResult.scheduledFor == Self.now)
         #expect(secondResult.sentMessageID == nil)
         let entries = scheduler.pendingScheduledSends()
         #expect(entries.count == 2)
+        #expect(receivedCommittedQueueEvent)
         #expect(Set(entries.map(\.id)).count == 2)
         #expect(entries.allSatisfy { $0.id != "same-draft" })
         #expect(Set(entries.compactMap(\.sourceID)) == [Self.sourceA, Self.sourceB])
@@ -106,6 +120,22 @@ struct MockScheduledSendTests {
         let sent = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .sent })
         let (sentHeaders, _) = try await backend.messages(in: sent, pageToken: nil, sourceID: Self.sourceA)
         #expect(sentHeaders.isEmpty)
+    }
+
+    @Test("the Mock send handler overrides both local sends and scheduled inputs")
+    func sendHandlerOverridesScheduledInput() async throws {
+        let backend = Self.backend(persistenceDirectory: nil)
+        backend.sendHandler = { draft, sourceID in
+            SendResult(sentMessageID: "override-\(sourceID?.mailboxID ?? "active")-\(draft.id)")
+        }
+
+        let result = try await backend.send(
+            draft: Draft(id: "handler-schedule", scheduledFor: Self.now),
+            sourceID: Self.sourceA
+        )
+
+        #expect(result.sentMessageID == "override-mailbox-a-handler-schedule")
+        #expect(backend.pendingScheduledSends().isEmpty)
     }
 
     @Test("concurrent journal writes preserve colliding source-scoped draft identifiers")
@@ -287,8 +317,8 @@ struct MockScheduledSendTests {
             subject: "Reply",
             htmlBody: "<p>Exact reply</p>",
             attachmentIDs: [attachmentID],
-            scheduledFor: Self.now,
-            inReplyToMessageID: parent.id
+            inReplyToMessageID: parent.id,
+            scheduledFor: Self.now
         )
         let result = try await backend.send(draft: draft, sourceID: Self.sourceA)
         #expect(result.sentMessageID == nil)
@@ -317,6 +347,8 @@ struct MockScheduledSendTests {
         let (restoredHeaders, _) = try await restored.messages(in: parentFolder, pageToken: nil, sourceID: Self.sourceA)
         #expect(restoredHeaders.filter { $0.messageID == expectedMessageID }.count == 1)
         #expect(restoredHeaders.contains { $0.id == parent.id && $0.messageID == parent.messageID })
+        let restoredSent = try #require(restoredHeaders.first { $0.id == sent.id })
+        #expect(restoredSent == sent)
         #expect(try await restored.body(for: sent.id, sourceID: Self.sourceA) == sentBody)
         await restored.extensionService(ScheduledSendManaging.self)?.deliverDueScheduledSends()
         let (afterRetry, _) = try await restored.messages(in: parentFolder, pageToken: nil, sourceID: Self.sourceA)
@@ -409,6 +441,231 @@ struct MockScheduledSendTests {
         #expect(try Data(contentsOf: journal.fileURL) == corruptBytes)
     }
 
+    @Test("invalid queued identity retains the last known good queue and fails connect")
+    func invalidQueuedIdentityFailsClosed() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory)
+        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        _ = try await backend.send(
+            draft: Draft(id: "invalid-queue", scheduledFor: Self.now),
+            sourceID: Self.sourceA
+        )
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        var file = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: journal.fileURL)) as? [String: Any]
+        )
+        var records = try #require(file["records"] as? [[String: Any]])
+        records[0]["scheduleID"] = records[0]["draftID"]
+        file["records"] = records
+        let invalidData = try JSONSerialization.data(withJSONObject: file, options: [.sortedKeys])
+        try invalidData.write(to: journal.fileURL, options: .atomic)
+
+        await #expect(throws: (any Error).self) { try await backend.connect() }
+        #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["invalid-queue"])
+    }
+
+    @Test("missing established journal retains the last good queue and fails visibly")
+    func missingEstablishedJournalFailsClosed() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory)
+        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        _ = try await backend.send(
+            draft: Draft(id: "missing-file", scheduledFor: Self.now),
+            sourceID: Self.sourceA
+        )
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        try FileManager.default.removeItem(at: journal.fileURL)
+
+        await scheduler.deliverDueScheduledSends()
+
+        #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["missing-file"])
+        await #expect(throws: (any Error).self) { try await backend.connect() }
+        #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["missing-file"])
+    }
+
+    @Test("one source and draft identity reuses the exact delivered receipt")
+    func deliveredDraftIdentityIsImmutable() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory)
+        let draft = Draft(id: "one-send", subject: "Original", htmlBody: "Original body")
+        let first = try await backend.send(draft: draft, sourceID: Self.sourceA)
+        let sentID = try #require(first.sentMessageID)
+        var laterSubmission = draft
+        laterSubmission.subject = "Changed after delivery"
+        laterSubmission.htmlBody = "Changed body"
+        laterSubmission.scheduledFor = Self.now.addingTimeInterval(60)
+
+        let repeated = try await backend.send(draft: laterSubmission, sourceID: Self.sourceA)
+        _ = try await backend.save(draft: laterSubmission, sourceID: Self.sourceA)
+
+        #expect(repeated.sentMessageID == sentID)
+        #expect(repeated.scheduledFor == nil)
+        #expect(backend.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends().isEmpty == true)
+        #expect(try await backend.draft(for: draft.id, sourceID: Self.sourceA) == nil)
+        let sentFolder = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .sent })
+        let (headers, _) = try await backend.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        #expect(headers.count == 1)
+        #expect(headers[0].id == sentID)
+        #expect(headers[0].subject == "Original")
+        #expect(try await backend.body(for: sentID, sourceID: Self.sourceA).html == "Original body")
+        #expect(try MockSendJournal(directoryURL: directory, accountID: Self.account.id).load().count == 1)
+    }
+
+    @Test("concurrent immediate sends from separate Mock instances commit one receipt")
+    func concurrentImmediateSendsShareTransactionIdentity() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let firstBackend = Self.backend(persistenceDirectory: directory)
+        let secondBackend = Self.backend(persistenceDirectory: directory)
+        let draft = Draft(id: "concurrent-immediate", subject: "One receipt")
+
+        async let first = firstBackend.send(draft: draft, sourceID: Self.sourceA)
+        async let second = secondBackend.send(draft: draft, sourceID: Self.sourceA)
+        let (firstResult, secondResult) = try await (first, second)
+
+        #expect(firstResult.sentMessageID == secondResult.sentMessageID)
+        #expect(try MockSendJournal(directoryURL: directory, accountID: Self.account.id).load().count == 1)
+    }
+
+    @Test("cancel and resubmit replace one source-scoped journal record")
+    func cancelAndResubmitReplaceJournalIdentity() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory)
+        let editor = try #require(backend.extensionService(ScheduledSendEditing.self))
+        var draft = Draft(id: "cancel-resubmit", scheduledFor: Self.now.addingTimeInterval(60))
+        _ = try await backend.send(draft: draft, sourceID: Self.sourceA)
+        let originalID = try #require(editor.pendingScheduledSends().first?.id)
+        _ = try await editor.cancelScheduledSend(id: originalID)
+        draft.scheduledFor = Self.now.addingTimeInterval(120)
+
+        _ = try await backend.send(draft: draft, sourceID: Self.sourceA)
+
+        let replacementID = try #require(editor.pendingScheduledSends().first?.id)
+        #expect(replacementID != originalID)
+        let records = try MockSendJournal(directoryURL: directory, accountID: Self.account.id).load()
+        #expect(records.count == 1)
+        #expect(records[0].scheduleID == replacementID)
+    }
+
+    @Test("a pre-existing Mock refreshes canceled payloads and delivered attachments and reply context")
+    func crossInstanceRefreshProjectsFrozenPayload() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let parent = MessageHeader(
+            id: "seed-parent",
+            threadID: "seed-thread",
+            folderID: "inbox",
+            from: Correspondent(email: "parent@example.test"),
+            subject: "Parent",
+            snippet: "",
+            date: Self.now,
+            messageID: "parent@example.test",
+            references: ["root@example.test", "parent@example.test"]
+        )
+        let original = Self.backend(persistenceDirectory: directory, messagesByFolder: ["inbox": [parent]])
+        let second = Self.backend(persistenceDirectory: directory, sourceAMailboxEmail: "changed@example.test")
+        let cancelAttachmentID = try await original.uploadAttachment(
+            draftID: "cross-cancel",
+            data: Data([4, 5]),
+            filename: "cancel.bin",
+            mimeType: "application/octet-stream",
+            sourceID: Self.sourceA
+        )
+        let canceledDraft = Draft(
+            id: "cross-cancel",
+            attachmentIDs: [cancelAttachmentID],
+            scheduledFor: Self.now.addingTimeInterval(60)
+        )
+        _ = try await original.send(draft: canceledDraft, sourceID: Self.sourceA)
+        let originalEditor = try #require(original.extensionService(ScheduledSendEditing.self))
+        let canceledID = try #require(originalEditor.pendingScheduledSends().first?.id)
+        _ = try await originalEditor.cancelScheduledSend(id: canceledID)
+
+        await second.deliverDueScheduledSends()
+
+        let refreshedDraft = try #require(try await second.draft(for: canceledDraft.id, sourceID: Self.sourceA))
+        #expect(refreshedDraft.scheduledFor == nil)
+        #expect(try await second.localDraftAttachments(for: refreshedDraft, sourceID: Self.sourceA).map(\.data) == [Data([4, 5])])
+
+        let sentAttachmentID = try await original.uploadAttachment(
+            draftID: "cross-reply",
+            data: Data([6, 7, 8]),
+            filename: "reply.bin",
+            mimeType: "application/octet-stream",
+            sourceID: Self.sourceA
+        )
+        let reply = Draft(
+            id: "cross-reply",
+            inReplyToMessageID: parent.id,
+            to: [Correspondent(email: "recipient@example.test")],
+            subject: "Reply",
+            htmlBody: "Frozen reply",
+            attachmentIDs: [sentAttachmentID],
+            scheduledFor: Self.now
+        )
+        _ = try await original.send(draft: reply, sourceID: Self.sourceA)
+        await second.deliverDueScheduledSends()
+
+        let sentFolder = try #require(await second.folders(in: Self.sourceA).first { $0.role == .sent })
+        let (headers, _) = try await second.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let sent = try #require(headers.first { $0.subject == "Reply" })
+        #expect(sent.from.email == "primary@example.test")
+        #expect(sent.messageID == MIMEMessageBuilder.messageIDHeaderValue(
+            draftID: reply.id,
+            fromEmail: "primary@example.test"
+        ))
+        #expect(sent.inReplyTo == "parent@example.test")
+        #expect(sent.references == ["root@example.test", "parent@example.test"])
+        let body = try await second.body(for: sent.id, sourceID: Self.sourceA)
+        #expect(try await second.downloadAttachment(#require(body.attachments.first), sourceID: Self.sourceA) == Data([6, 7, 8]))
+    }
+
+    @Test("an unavailable source stays queued for another instance that owns it")
+    func unavailableSourceDoesNotConsumeQueue() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let owner = Self.backend(persistenceDirectory: directory)
+        _ = try await owner.send(
+            draft: Draft(id: "unavailable-source", scheduledFor: Self.now),
+            sourceID: Self.sourceB
+        )
+        let unknownSource = Self.backend(
+            persistenceDirectory: directory,
+            mailboxes: [Mailbox(id: "mailbox-a", email: "primary@example.test", displayName: "A", isPrimary: true)]
+        )
+
+        await unknownSource.deliverDueScheduledSends()
+
+        #expect(unknownSource.pendingScheduledSends().map(\.sourceID) == [Self.sourceB])
+        await owner.deliverDueScheduledSends()
+        #expect(owner.pendingScheduledSends().isEmpty)
+    }
+
+    @Test("failed discard retains scheduled state and reports the storage failure")
+    func failedDiscardDoesNotCancelSchedule() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory)
+        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        let draft = try await backend.save(draft: Draft(id: "discard-failure"), sourceID: Self.sourceA)
+        _ = try await backend.send(
+            draft: Draft(id: draft.id, scheduledFor: Self.now.addingTimeInterval(60)),
+            sourceID: Self.sourceA
+        )
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        try FileManager.default.removeItem(at: directory)
+        try Data([0x7F]).write(to: directory)
+
+        await #expect(throws: (any Error).self) { try await backend.discard(draftID: draft.id) }
+        await #expect(throws: (any Error).self) { try await backend.discard(draftID: draft.id, sourceID: Self.sourceA) }
+        #expect(scheduler.pendingScheduledSends().map(\.draftID) == [draft.id])
+        #expect(FileManager.default.fileExists(atPath: journal.fileURL.path) == false)
+    }
+
     @Test("restored overdue work starts the automatic worker")
     func restoredQueueStartsWorker() async throws {
         let directory = try Self.temporaryDirectory()
@@ -449,8 +706,8 @@ struct MockScheduledSendTests {
         #expect(scheduler.pendingScheduledSends().isEmpty)
     }
 
-    @Test("overlapping reconnects retain a current worker after an in-flight send")
-    func overlappingReconnectsKeepWorker() async throws {
+    @Test("concurrent reconnects deliver one local receipt")
+    func concurrentReconnectsDeliverOnce() async throws {
         let directory = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let original = Self.backend(persistenceDirectory: directory)
@@ -469,14 +726,8 @@ struct MockScheduledSendTests {
             now: { Self.now },
             automaticDeliveryEnabled: true
         )
-        let gate = MockScheduledSendGate()
-        restored.sendHandler = { _, _ in
-            await gate.waitForFirstCallIfNeeded()
-            return SendResult(sentMessageID: "handler-result")
-        }
         let editor = try #require(restored.extensionService(ScheduledSendEditing.self))
         try await editor.rescheduleSend(id: scheduleID, for: Self.now)
-        await gate.waitUntilFirstCall()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0 ..< 8 {
@@ -484,14 +735,12 @@ struct MockScheduledSendTests {
             }
             try await group.waitForAll()
         }
-        await gate.releaseFirstCall()
         let scheduler = try #require(restored.extensionService(ScheduledSendManaging.self))
         for _ in 0 ..< 500 {
             if scheduler.pendingScheduledSends().isEmpty { break }
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(scheduler.pendingScheduledSends().isEmpty)
-        #expect(await gate.callCount() >= 2)
         let sentFolder = try #require(await restored.folders(in: Self.sourceA).first { $0.role == .sent })
         let (headers, _) = try await restored.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
         #expect(headers.filter { $0.subject == "Worker race" }.count == 1)
@@ -500,7 +749,10 @@ struct MockScheduledSendTests {
     private static func backend(
         persistenceDirectory: URL?,
         now: @escaping @Sendable () -> Date = { Self.now },
-        automaticDeliveryEnabled: Bool = false
+        automaticDeliveryEnabled: Bool = false,
+        messagesByFolder: [String: [MessageHeader]] = [:],
+        sourceAMailboxEmail: String = "primary@example.test",
+        mailboxes: [Mailbox]? = nil
     ) -> MockBackend {
         let folders = [
             Folder(id: "inbox", name: "Inbox", role: .inbox),
@@ -510,9 +762,9 @@ struct MockScheduledSendTests {
         return MockBackend(
             account: Self.account,
             folders: folders,
-            messagesByFolder: [:],
-            mailboxes: [
-                Mailbox(id: "mailbox-a", email: "primary@example.test", displayName: "A", isPrimary: true),
+            messagesByFolder: messagesByFolder,
+            mailboxes: mailboxes ?? [
+                Mailbox(id: "mailbox-a", email: sourceAMailboxEmail, displayName: "A", isPrimary: true),
                 Mailbox(id: "mailbox-b", email: "secondary@example.test", displayName: "B")
             ],
             supportsScheduledSend: true,
@@ -543,35 +795,5 @@ private final class MockScheduledSendClock: @unchecked Sendable {
 
     func advance(to value: Date) {
         lock.withLock { self.value = value }
-    }
-}
-
-private actor MockScheduledSendGate {
-    private var hasStarted = false
-    private var firstCallContinuation: CheckedContinuation<Void, Never>?
-    private var releaseContinuation: CheckedContinuation<Void, Never>?
-    private var calls = 0
-
-    func waitUntilFirstCall() async {
-        if hasStarted { return }
-        await withCheckedContinuation { firstCallContinuation = $0 }
-    }
-
-    func waitForFirstCallIfNeeded() async {
-        calls += 1
-        guard calls == 1 else { return }
-        hasStarted = true
-        firstCallContinuation?.resume()
-        firstCallContinuation = nil
-        await withCheckedContinuation { releaseContinuation = $0 }
-    }
-
-    func releaseFirstCall() {
-        releaseContinuation?.resume()
-        releaseContinuation = nil
-    }
-
-    func callCount() -> Int {
-        calls
     }
 }

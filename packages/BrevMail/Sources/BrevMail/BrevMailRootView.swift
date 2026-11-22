@@ -7807,23 +7807,10 @@ public struct BrevMailRootView: View {
         let owner = selectedBackend
         let selectedSource = navigation.selectedSourceID
         let activeMailbox = activeMailboxID
+        let sourceCandidate = selectedSource
+            ?? activeMailbox.map { MailSourceID(accountID: owner.account.id, mailboxID: $0) }
+        let sourceID = sourceCandidate.flatMap { $0.accountID == owner.account.id ? $0 : nil }
         let mutations = await owner.extensionService(OutboxManaging.self)?.pendingMutations() ?? []
-        let sourceCandidate: MailSourceID?
-        if let selectedSource {
-            sourceCandidate = selectedSource
-        } else if let activeMailbox {
-            sourceCandidate = MailSourceID(accountID: owner.account.id, mailboxID: activeMailbox)
-        } else if let mailbox = try? await owner.currentMailbox() {
-            sourceCandidate = owner.sourceID(for: mailbox)
-        } else {
-            sourceCandidate = nil
-        }
-        let knownMailboxes = try? await owner.mailboxes()
-        let sourceID = sourceCandidate.flatMap { candidate in
-            guard candidate.accountID == owner.account.id,
-                  knownMailboxes?.contains(where: { $0.id == candidate.mailboxID }) == true else { return nil }
-            return candidate
-        }
         let scheduled = ScheduledOutboxSourcePolicy.visibleEntries(
             owner.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends() ?? [],
             selectedSourceID: sourceID
@@ -7831,7 +7818,10 @@ public struct BrevMailRootView: View {
         guard !Task.isCancelled,
               ObjectIdentifier(owner) == ObjectIdentifier(selectedBackend),
               selectedSource == navigation.selectedSourceID,
-              activeMailbox == activeMailboxID else { return }
+              activeMailbox == activeMailboxID,
+              sourceCandidate == (navigation.selectedSourceID
+                  ?? activeMailboxID.map { MailSourceID(accountID: selectedBackend.account.id, mailboxID: $0) }),
+              sourceID?.accountID == nil || sourceID?.accountID == owner.account.id else { return }
         outboxPendingCount = mutations.count + scheduled.count
     }
 
