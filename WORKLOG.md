@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-22 — Devin — PR #324 collapsed wake-order correction
+
+- Goal: complete collapsed-row wake ordering on both the single-folder and Unified Inbox surfaces without changing individual RFC-scoped message state.
+- Changes: added a shared row-date policy that uses the newest effective date among the actual visible group members, preserving the parent's original date against older wakes and retaining singleton overrides. Single-folder and Unified Inbox sorting now use row-display dates; Unified Inbox date sections receive the same row map separately from per-message overrides. Navigation and expanded thread buckets continue to use original members and dates.
+- Red/green: the prior Unified Inbox production helper failed the no-demotion regression by placing an ordinary row ahead of a representative whose original date was newer than its member's wake. The Foundation harness passed after correction, including newer wake promotion, no demotion, singleton preservation, source collisions, pin precedence, and ordinary sort behavior.
+- Verification: Foundation harness passed 73 tests in 8 suites; SwiftFormat lint reported 0/8 files needing formatting; Swift parse passed for 8 changed Swift files; `git diff --check` and `scripts/check-adr-required.sh origin/feature/snooze-wake-order` exited successfully.
+- Limits: native SwiftUI BrevMail tests were not run on this Linux host. The harness compiled the production row-date, sort, and Unified grouping sources; no snapshot PNGs changed.
+- Handoff: separate local correction commit only; do not push until requested.
+
 ## 2026-11-22 — Devin — Issue #297 / PR #324 collapsed Inbox wake priority
 
 - Goal: prioritize collapsed Inbox thread rows when a visible member has an expired conversation snooze, without changing RFC-scoped membership.

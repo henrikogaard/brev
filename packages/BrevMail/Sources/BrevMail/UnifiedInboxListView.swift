@@ -748,7 +748,8 @@ struct UnifiedInboxListView: View {
                 calendar: calendar,
                 threadCounts: listed.threadCounts,
                 sourceItems: items,
-                effectiveDateOverrides: listed.dateOverrides
+                effectiveDateOverrides: listed.dateOverrides,
+                displayDateOverrides: listed.rowDateOverrides
             )
         }
     }
@@ -764,7 +765,12 @@ struct UnifiedInboxListView: View {
         now: Date,
         calendar: Calendar,
         groupThreads: Bool = true
-    ) -> (items: [UnifiedInboxItem], threadCounts: [String: Int], dateOverrides: [SourceMessageID: Date]) {
+    ) -> (
+        items: [UnifiedInboxItem],
+        threadCounts: [String: Int],
+        dateOverrides: [SourceMessageID: Date],
+        rowDateOverrides: [SourceMessageID: Date]
+    ) {
         let workflowVisible = LocalMessageWorkflowVisibilityPolicy.items(
             items,
             candidates: smartView?.workflowMode == .snoozed ? snoozedCacheCandidates : nil,
@@ -819,22 +825,19 @@ struct UnifiedInboxListView: View {
             pinnedIDs: pinnedMessageIDs,
             dateOverrides: dateOverrides
         )
-        guard groupThreads, groupByThread else { return (sorted, [:], dateOverrides) }
+        guard groupThreads, groupByThread else { return (sorted, [:], dateOverrides, dateOverrides) }
         let threadCounts = UnifiedInboxThreadGrouping.counts(
             for: sorted,
             isThreadedSource: isThreadedSource
         )
-        return (
-            UnifiedInboxThreadGrouping.sortedParents(
-                from: sorted,
-                counts: threadCounts,
-                by: mailboxSortOrder,
-                pinnedIDs: pinnedMessageIDs,
-                effectiveDateOverrides: dateOverrides
-            ),
-            threadCounts,
-            dateOverrides
+        let collapsedRows = UnifiedInboxThreadGrouping.sortedParents(
+            from: sorted,
+            counts: threadCounts,
+            by: mailboxSortOrder,
+            pinnedIDs: pinnedMessageIDs,
+            effectiveDateOverrides: dateOverrides
         )
+        return (collapsedRows.items, threadCounts, dateOverrides, collapsedRows.dateOverrides)
     }
 
     // MARK: - Date grouping

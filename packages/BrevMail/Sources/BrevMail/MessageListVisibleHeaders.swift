@@ -172,6 +172,33 @@ struct MessageListPresentationSnapshot {
 }
 
 enum MessageListVisibleHeaders {
+    static func sortedRows(
+        from visibleHeaders: [MessageHeader],
+        by order: MailboxSortOrder,
+        groupByThread: Bool,
+        pinnedIDs: Set<MessageHeader.ID>,
+        effectiveDateOverrides: [MessageHeader.ID: Date]
+    ) -> (headers: [MessageHeader], dateOverrides: [MessageHeader.ID: Date]) {
+        let parents = headers(from: visibleHeaders, groupByThread: groupByThread, pinnedIDs: pinnedIDs)
+        let rowDateOverrides = MessageListRowDatePolicy.overrides(
+            for: parents,
+            from: visibleHeaders,
+            groupKey: { groupByThread ? $0.threadID : nil },
+            itemID: \.id,
+            date: \.date,
+            effectiveDateOverrides: effectiveDateOverrides
+        )
+        return (
+            MessageListSortPolicy.sorted(
+                parents,
+                by: order,
+                pinnedIDs: pinnedIDs,
+                dateOverrides: rowDateOverrides
+            ),
+            rowDateOverrides
+        )
+    }
+
     static func headers(
         from headers: [MessageHeader],
         groupByThread: Bool,

@@ -189,6 +189,8 @@ struct UnifiedInboxPresentationSnapshotTests {
     func collapsedThreadWakePriorityIsAggregatedOnlyForDisplayedRows() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let wakeAt = now.addingTimeInterval(-1800)
+        let newerWakeAt = now.addingTimeInterval(-300)
+        let singletonWakeAt = now.addingTimeInterval(-900)
         let folder = Folder(id: "inbox", name: "Inbox", role: .inbox)
         let sourceA = MailSourceID(accountID: "personal", mailboxID: "primary")
         let sourceB = MailSourceID(accountID: "work", mailboxID: "primary")
@@ -238,6 +240,27 @@ struct UnifiedInboxPresentationSnapshotTests {
             threadID: "provider-thread",
             date: now.addingTimeInterval(-2400)
         )
+        let newerWakeRepresentative = item(
+            sourceID: sourceA,
+            id: "newer-wake-representative",
+            rfcID: "newer-wake-representative@example.org",
+            threadID: "newer-wake-thread",
+            date: now.addingTimeInterval(-100_000)
+        )
+        let newerWakeMember = item(
+            sourceID: sourceA,
+            id: "newer-wake-member",
+            rfcID: "newer-wake-member@example.org",
+            threadID: "newer-wake-thread",
+            date: now.addingTimeInterval(-200_000)
+        )
+        let singleton = item(
+            sourceID: sourceA,
+            id: "singleton",
+            rfcID: "singleton@example.org",
+            threadID: "singleton-thread",
+            date: now.addingTimeInterval(-300_000)
+        )
         let ordinary = item(
             sourceID: sourceA,
             id: "ordinary",
@@ -252,7 +275,10 @@ struct UnifiedInboxPresentationSnapshotTests {
             threadID: "pinned-thread",
             date: now.addingTimeInterval(-100_000)
         )
-        let allVisibleItems = [representative, wakeMember, sourceCollision, ordinary, pinned]
+        let allVisibleItems = [
+            representative, wakeMember, sourceCollision, ordinary, pinned,
+            newerWakeRepresentative, newerWakeMember, singleton,
+        ]
         let wakeMemberID = SourceMessageID(sourceID: sourceA, messageID: wakeMember.header.id)
         let representativeID = SourceMessageID(sourceID: sourceA, messageID: representative.header.id)
         let sourceCollisionID = SourceMessageID(sourceID: sourceB, messageID: sourceCollision.header.id)
@@ -270,6 +296,16 @@ struct UnifiedInboxPresentationSnapshotTests {
                     messageID: wakeMemberID,
                     wakeAt: wakeAt,
                     conversationMetadata: .init(rfcIdentifiers: ["wake-member@example.org"])
+                ),
+                LocalMessageSnooze(
+                    messageID: SourceMessageID(sourceID: sourceA, messageID: newerWakeMember.header.id),
+                    wakeAt: newerWakeAt,
+                    conversationMetadata: .init(rfcIdentifiers: ["newer-wake-member@example.org"])
+                ),
+                LocalMessageSnooze(
+                    messageID: SourceMessageID(sourceID: sourceA, messageID: singleton.header.id),
+                    wakeAt: singletonWakeAt,
+                    conversationMetadata: .init(rfcIdentifiers: ["singleton@example.org"])
                 )
             ],
             now: now
@@ -282,7 +318,7 @@ struct UnifiedInboxPresentationSnapshotTests {
             dateOverrides: individualWakeDates
         )
         let threadCounts = UnifiedInboxThreadGrouping.counts(for: sortedItems) { _ in true }
-        let collapsedParents = UnifiedInboxThreadGrouping.sortedParents(
+        let collapsedRows = UnifiedInboxThreadGrouping.sortedParents(
             from: sortedItems,
             counts: threadCounts,
             by: .newestFirst,
@@ -290,22 +326,25 @@ struct UnifiedInboxPresentationSnapshotTests {
             effectiveDateOverrides: individualWakeDates
         )
         let snapshot = UnifiedInboxPresentationSnapshot(
-            visibleItems: collapsedParents,
+            visibleItems: collapsedRows.items,
             pinnedMessageIDs: pinnedIDs,
-            groupByDate: false,
+            groupByDate: true,
             collapsedDateSectionIDs: [],
             referenceDate: now,
             threadCounts: threadCounts,
             sourceItems: allVisibleItems,
-            effectiveDateOverrides: individualWakeDates
+            effectiveDateOverrides: individualWakeDates,
+            displayDateOverrides: collapsedRows.dateOverrides
         )
         let representativeThreadKey = UnifiedInboxThreadGrouping.key(for: representative)
         let sourceCollisionThreadKey = UnifiedInboxThreadGrouping.key(for: sourceCollision)
 
         #expect(snapshot.visibleItems.map(\.id) == [
             pinned.id,
-            ordinary.id,
+            newerWakeMember.id,
             representative.id,
+            singleton.id,
+            ordinary.id,
             sourceCollision.id,
         ])
         #expect(individualWakeDates[wakeMemberID] == wakeAt)
@@ -316,6 +355,8 @@ struct UnifiedInboxPresentationSnapshotTests {
             representative.id,
         ])
         #expect(snapshot.itemsByThreadKey[sourceCollisionThreadKey]?.map(\.id) == [sourceCollision.id])
+        #expect(individualWakeDates[SourceMessageID(sourceID: sourceA, messageID: newerWakeRepresentative.header.id)] == nil)
+        #expect(individualWakeDates[SourceMessageID(sourceID: sourceA, messageID: newerWakeMember.header.id)] == newerWakeAt)
 
         let senderSorted = MessageListSortPolicy.sortedItems(
             allVisibleItems,
@@ -329,7 +370,7 @@ struct UnifiedInboxPresentationSnapshotTests {
             by: .sender,
             pinnedIDs: pinnedIDs,
             effectiveDateOverrides: individualWakeDates
-        ).map(\.id) == UnifiedInboxThreadGrouping.parents(from: senderSorted, counts: senderCounts).map(\.id))
+        ).items.map(\.id) == UnifiedInboxThreadGrouping.parents(from: senderSorted, counts: senderCounts).map(\.id))
     }
 
     @Test("unread and pinned tallies are derived over the source items")

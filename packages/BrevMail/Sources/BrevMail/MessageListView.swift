@@ -2360,14 +2360,15 @@ public struct MessageListView: View {
             defer { MailUIPerformanceDiagnostics.endInterval(interval) }
             let workflowHeaders = workflowVisibleHeaders(from: headers, now: now, calendar: calendar)
             let dateOverrides = snoozeWakeDateOverrides(for: headers, now: now)
-            let presentationHeaders = MessageListSortPolicy.sorted(
-                visibleHeaders(for: workflowHeaders),
+            let listed = MessageListVisibleHeaders.sortedRows(
+                from: workflowHeaders,
                 by: mailboxSortOrder,
+                groupByThread: groupByThread && backend.groupsMessagesIntoThreads,
                 pinnedIDs: pinnedMessageIDs,
-                dateOverrides: dateOverrides
+                effectiveDateOverrides: dateOverrides
             )
             return MessageListPresentationSnapshot(
-                headers: presentationHeaders,
+                headers: listed.headers,
                 pinnedMessageIDs: pinnedMessageIDs,
                 groupByDate: groupByDate,
                 collapsedDateSectionIDs: collapsedDateSectionIDs,
@@ -2382,7 +2383,7 @@ public struct MessageListView: View {
                 ),
                 sourceID: sourceID,
                 groupsThreads: groupByThread && backend.groupsMessagesIntoThreads,
-                dateOverrides: dateOverrides
+                dateOverrides: listed.dateOverrides
             )
         }
     }

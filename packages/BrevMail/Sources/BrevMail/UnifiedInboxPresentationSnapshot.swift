@@ -102,7 +102,8 @@ struct UnifiedInboxPresentationSnapshot {
         calendar: Calendar = .current,
         threadCounts: [String: Int] = [:],
         sourceItems: [UnifiedInboxItem]? = nil,
-        effectiveDateOverrides: [SourceMessageID: Date] = [:]
+        effectiveDateOverrides: [SourceMessageID: Date] = [:],
+        displayDateOverrides: [SourceMessageID: Date]? = nil
     ) {
         self.init(
             visibleItems: visibleItems,
@@ -113,7 +114,8 @@ struct UnifiedInboxPresentationSnapshot {
             calendar: calendar,
             threadCounts: threadCounts,
             sourceItems: sourceItems,
-            effectiveDateOverrides: effectiveDateOverrides
+            effectiveDateOverrides: effectiveDateOverrides,
+            displayDateOverrides: displayDateOverrides
         )
     }
 
@@ -126,7 +128,8 @@ struct UnifiedInboxPresentationSnapshot {
         calendar: Calendar = .current,
         threadCounts: [String: Int] = [:],
         sourceItems: [UnifiedInboxItem]? = nil,
-        effectiveDateOverrides: [SourceMessageID: Date] = [:]
+        effectiveDateOverrides: [SourceMessageID: Date] = [:],
+        displayDateOverrides: [SourceMessageID: Date]? = nil
     ) {
         self.visibleItems = visibleItems
         self.pinnedMessageIDs = pinnedMessageIDs
@@ -152,7 +155,7 @@ struct UnifiedInboxPresentationSnapshot {
                 collapsedDateSectionIDs: collapsedDateSectionIDs,
                 referenceDate: referenceDate,
                 calendar: calendar,
-                effectiveDateOverrides: effectiveDateOverrides
+                effectiveDateOverrides: displayDateOverrides ?? effectiveDateOverrides
             )
             : []
         selectionProjection = MessageListSelectionProjection(

@@ -66,32 +66,27 @@ enum UnifiedInboxThreadGrouping {
         by order: MailboxSortOrder,
         pinnedIDs: Set<MessageHeader.ID>,
         effectiveDateOverrides: [SourceMessageID: Date]
-    ) -> [UnifiedInboxItem] {
+    ) -> (items: [UnifiedInboxItem], dateOverrides: [SourceMessageID: Date]) {
         let parents = parents(from: items, counts: counts)
-        guard order == .newestFirst else { return parents }
-
-        var wakeDatesByThread: [String: Date] = [:]
-        for item in items {
-            let threadKey = key(for: item)
-            guard counts[threadKey, default: 1] > 1,
-                  let wakeDate = effectiveDateOverrides[
-                      SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
-                  ] else { continue }
-            wakeDatesByThread[threadKey] = max(wakeDatesByThread[threadKey] ?? .distantPast, wakeDate)
-        }
-
-        var parentDateOverrides: [SourceMessageID: Date] = [:]
-        for parent in parents {
-            let threadKey = key(for: parent)
-            guard let wakeDate = wakeDatesByThread[threadKey] else { continue }
-            parentDateOverrides[SourceMessageID(sourceID: parent.sourceID, messageID: parent.header.id)] = wakeDate
-        }
-        guard !parentDateOverrides.isEmpty else { return parents }
-        return MessageListSortPolicy.sortedItems(
-            parents,
-            by: order,
-            pinnedIDs: pinnedIDs,
-            dateOverrides: parentDateOverrides
+        let rowDateOverrides = MessageListRowDatePolicy.overrides(
+            for: parents,
+            from: items,
+            groupKey: { item in
+                let threadKey = key(for: item)
+                return counts[threadKey] == nil ? nil : threadKey
+            },
+            itemID: { SourceMessageID(sourceID: $0.sourceID, messageID: $0.header.id) },
+            date: { $0.header.date },
+            effectiveDateOverrides: effectiveDateOverrides
+        )
+        return (
+            MessageListSortPolicy.sortedItems(
+                parents,
+                by: order,
+                pinnedIDs: pinnedIDs,
+                dateOverrides: rowDateOverrides
+            ),
+            rowDateOverrides
         )
     }
 
