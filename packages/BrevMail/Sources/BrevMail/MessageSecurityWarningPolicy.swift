@@ -19,6 +19,14 @@ struct MessageSecurityAnalysis: Equatable, Sendable {
 
     static let empty = MessageSecurityAnalysis(warnings: [], linkWarnings: [])
 
+    /// The sender banner owns name/domain mismatches. Preserve independent reply-to and link checks.
+    var withoutDisplayNameWarning: Self {
+        Self(warnings: warnings.filter {
+            if case .displayNameDomainMismatch = $0.kind { return false }
+            return true
+        }, linkWarnings: linkWarnings)
+    }
+
     var hasWarnings: Bool {
         !warnings.isEmpty || !linkWarnings.isEmpty
     }
@@ -148,7 +156,7 @@ enum MessageSecurityWarningPolicy {
         return MessageSecurityAnalysis(warnings: warnings, linkWarnings: linkWarningResults)
     }
 
-    private static func displayNameDomainWarning(for sender: Correspondent) -> MessageSecurityWarning? {
+    static func displayNameDomainWarning(for sender: Correspondent) -> MessageSecurityWarning? {
         guard let senderDomain = domain(fromEmail: sender.email),
               let displayName = sender.name?.trimmingCharacters(in: .whitespacesAndNewlines),
               !displayName.isEmpty

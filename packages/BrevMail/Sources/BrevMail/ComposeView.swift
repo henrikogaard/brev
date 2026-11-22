@@ -3660,7 +3660,7 @@ public struct ComposeView: View {
             let result = try await send(draft, using: backend, sourceID: sourceID)
             await onAcceptedSend?(draft, result, sourceID, backend)
             guard canApplyComposeOperationResponse(request) else { return }
-            recordRecentRecipients(from: draft)
+            recordRecentRecipients(from: draft, wasSent: result.scheduledFor == nil && !result.warnings.contains(.queuedForRetry))
             await onCompletion(.sentMessage(
                 draft: draft,
                 result: result,
@@ -4259,14 +4259,14 @@ public struct ComposeView: View {
         return try await backend.send(draft: draft)
     }
 
-    private func recordRecentRecipients(from draft: Draft) {
+    private func recordRecentRecipients(from draft: Draft, wasSent: Bool) {
         let recipients = draft.to + draft.cc + draft.bcc
         let observations = recipients.map { recipient in
             RecentRecipientObservation(
                 accountID: selectedComposeBackend.account.id,
                 displayName: recipient.name,
                 email: recipient.email,
-                date: Date()
+                date: Date(), wasSentTo: wasSent
             )
         }
         RecentRecipientStore().record(observations)

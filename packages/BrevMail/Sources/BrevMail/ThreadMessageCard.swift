@@ -425,6 +425,7 @@ struct ThreadMessageCard: View {
     private var cardBody: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.md) {
             securitySummary
+            SenderWarningBanner(header: header, authenticationResults: renderedBody?.authenticationResults)
             inviteContent
             bodyContent
             attachmentsContent

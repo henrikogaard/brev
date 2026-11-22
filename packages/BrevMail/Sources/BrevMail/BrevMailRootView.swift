@@ -2200,6 +2200,10 @@ public struct BrevMailRootView: View {
                 }
             }
         }
+        .modifier(SenderWarningHistoryModifier(
+            backend: selectedBackend, sourceID: navigation.selectedSourceID,
+            folders: selectedSourceSection?.folders ?? folders, mailboxEmail: selectedSourceSection?.mailbox.email
+        ))
         // The compact iPhone reader is a sibling of the background workspace,
         // so install the owner here as well as on the root command context.
         .environment(\.localMessageWorkflowReaderState, localMessageWorkflowStateBinding.wrappedValue)

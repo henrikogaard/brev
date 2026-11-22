@@ -28,17 +28,21 @@ public struct RenderedBody: Sendable {
     public let attachments: [Attachment]
     /// Message signing/decryption status for trust UI.
     public let securityState: MessageSecurityState
+    /// Original transport authentication header for the reader's local sender checks.
+    public let authenticationResults: String?
 
     public init(
         html: String?,
         plainText: String?,
         attachments: [Attachment],
-        securityState: MessageSecurityState = .none
+        securityState: MessageSecurityState = .none,
+        authenticationResults: String? = nil
     ) {
         self.html = html
         self.plainText = plainText
         self.attachments = attachments
         self.securityState = securityState
+        self.authenticationResults = authenticationResults
     }
 }
 
@@ -67,7 +71,8 @@ public actor BodyRenderer {
             html: processed.body.html,
             plainText: processed.body.plainText,
             attachments: processed.body.attachments,
-            securityState: processed.securityState
+            securityState: processed.securityState,
+            authenticationResults: body.authenticationResults
         )
         MailUIPerformanceDiagnostics.logBodyRenderFinished(
             hasHTML: rendered.html != nil,

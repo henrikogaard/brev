@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — #301 local sender warnings
+
+- Added a shared sender warning and details disclosure to the single reader, detached windows and expanded conversation cards. Domain checks use a small bundled brand list, look-alike spellings and outgoing correspondence; receiving a message does not make an address familiar.
+- Confirmed immediate sends mark an existing local recent-recipient record. Cached Sent contributes only recipients of the user's outgoing messages. A familiar address suppresses name/domain heuristics, while a reported DMARC failure and independent link warnings remain visible.
+- Verification: detector red before implementation; focused Foundation harness for detector, correspondence, catalog and existing link checks. SwiftUI layout, macOS/iOS builds and full package tests require macOS CI. The warning snapshot needs recording on macOS 26. No network call, protected-package change or snapshot PNG.
+
+
 ## 2026-11-23 — Agent — PR #328 (#300 command palette rebase, workspace destinations, and macOS snapshots)
 
 - Goal: rebase PR #328 onto `origin/main`, surface newly merged `Assistant`, `Triage`, and `Subscriptions` workspace destinations in the ⌘K palette, and record macOS 26+ palette snapshots.

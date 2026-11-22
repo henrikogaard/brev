@@ -850,7 +850,11 @@ provider's own synchronization settings apply.
 - **Recent recipients.** Brev keeps a separate, local-only list of addresses
   learned from already-cached correspondence and successful sends. It is never
   added to Apple Contacts, never uploaded, and can be removed individually or
-  cleared from Settings → Compose.
+  cleared from Settings → Compose. Successful immediate sends mark the recipient
+  as written to. For sender warnings, Brev compares addresses with these
+  records and the recipients of your own messages in locally cached Sent
+  folders. It compares domains on device; there is no reputation lookup.
+  An incoming message alone does not mark its sender as written to.
 - **Gmail search.** Cached-only queries remain on this device, including when
   disconnected. Auto search previews one local page before sending the query to
   Gmail. Online results arrive in bounded pages and may use full-message reads

@@ -23,6 +23,8 @@ public enum SenderAuthWarning: Equatable, Sendable {
     case dmarcFail
     /// Both DMARC failed and the display name is mismatched.
     case dmarcFailAndDisplayNameMismatch
+    /// The address resembles this familiar domain or claims its brand name.
+    case lookAlikeDomain(String)
 }
 
 // MARK: - MessageHeaderAnalyzer
@@ -39,16 +41,27 @@ public enum MessageHeaderAnalyzer {
     /// Returns a warning if the message exhibits spoofing signals, or `nil` if clean.
     public static func warning(
         for header: MessageHeader,
-        authenticationResults: String?
+        authenticationResults: String?,
+        writtenAddresses: Set<String> = [],
+        knownDomains: Set<String> = []
     ) -> SenderAuthWarning? {
-        let nameSpoof = hasDisplayNameMismatch(from: header.from)
+        let email = header.from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let dmarcFail = hasDMARCFail(in: authenticationResults)
+        // An unauthenticated From address is not proof that this is the
+        // correspondent we wrote to. Keep explicit failures visible.
+        guard !writtenAddresses.contains(email) else { return dmarcFail ? .dmarcFail : nil }
+        let nameSpoof = hasDisplayNameMismatch(from: header.from)
 
         switch (nameSpoof, dmarcFail) {
         case (true, true): return .dmarcFailAndDisplayNameMismatch
         case (false, true): return .dmarcFail
         case (true, false): return .displayNameMismatch
-        case (false, false): return nil
+        case (false, false):
+            guard let at = email.lastIndex(of: "@"),
+                  let domain = SenderDomainComparison.claimedDomain(
+                      name: header.from.name, domain: String(email[email.index(after: at)...]), knownDomains: knownDomains
+                  ) else { return nil }
+            return .lookAlikeDomain(domain)
         }
     }
 
@@ -59,31 +72,7 @@ public enum MessageHeaderAnalyzer {
     /// of "Security Notice <attacker@phish.example>" where the display name impersonates
     /// a trusted domain.
     static func hasDisplayNameMismatch(from correspondent: Correspondent) -> Bool {
-        guard let rawName = correspondent.name else { return false }
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let email = correspondent.email.lowercased()
-
-        guard let atIndex = email.lastIndex(of: "@") else { return false }
-        let senderDomain = String(email[email.index(after: atIndex)...])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !senderDomain.isEmpty else { return false }
-
-        // Look for a domain-like token in the display name (contains a dot, no spaces).
-        let domainPattern = #"(?<!\w)([\w-]+\.[\w.-]{2,})(?!\w)"#
-        guard let regex = try? NSRegularExpression(pattern: domainPattern) else { return false }
-        let range = NSRange(name.startIndex..., in: name)
-        let matches = regex.matches(in: name.lowercased(), range: range)
-        for match in matches {
-            guard let r = Range(match.range, in: name) else { continue }
-            let candidate = String(name[r]).lowercased()
-            // If the candidate domain appears in the display name but the actual sender
-            // is on a completely different domain, flag it.
-            if candidate != senderDomain, !senderDomain.hasSuffix(".\(candidate)"),
-               !candidate.hasSuffix(".\(senderDomain)") {
-                return true
-            }
-        }
-        return false
+        MessageSecurityWarningPolicy.displayNameDomainWarning(for: correspondent) != nil
     }
 
     // MARK: Authentication-Results parsing

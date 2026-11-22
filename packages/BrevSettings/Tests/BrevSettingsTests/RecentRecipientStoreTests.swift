@@ -17,6 +17,21 @@ import Testing
 
 @Suite("RecentRecipientStore")
 struct RecentRecipientStoreTests {
+    @Test("only confirmed outgoing recipients in this account quiet sender warnings")
+    func writtenRecipients() throws {
+        let store = try RecentRecipientStore(defaults: makeDefaults())
+        func observe(_ account: String, _ email: String, sent: Bool) {
+            store.record([.init(accountID: account, displayName: nil, email: email, date: .now, wasSentTo: sent)])
+        }
+        observe("home", "sender@example.org", sent: false)
+        observe("work", "SENDER@example.org", sent: true)
+        observe("work", "sender@example.org", sent: false)
+        #expect(store.writtenAddresses(accountID: "home").isEmpty)
+        #expect(store.writtenAddresses(accountID: "work") == ["sender@example.org"])
+        store.remove(email: "sender@example.org")
+        #expect(store.writtenAddresses(accountID: "work").isEmpty)
+    }
+
     @Test("keeps recent recipients separate and scoped to their account")
     func keepsRecentRecipientsSeparateAndScopedToTheirAccount() throws {
         let defaults = try makeDefaults()
