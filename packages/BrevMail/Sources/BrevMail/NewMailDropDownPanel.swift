@@ -49,9 +49,9 @@ public struct NewMailPanelPayload: Equatable, Sendable {
 /// macOS new-mail drop-down panel (#307, ADR-0088).
 public enum NewMailPanelPolicy {
     /// Maximum age of an arriving message eligible for the drop-down alert.
-    /// Prevents cached backfill or older paged messages from popping a
-    /// "new mail" panel (#307).
-    public static let maxFreshnessAge: TimeInterval = 900
+    /// Prevents historical cached backfill from popping a "new mail" panel
+    /// while tolerating ordinary SMTP/Gmail transit delays (#307).
+    public static let maxFreshnessAge: TimeInterval = 3600
 
     /// Returns a payload when the opt-in drop-down panel is enabled, the
     /// account is not muted or in quiet hours, the message is a fresh arrival,
@@ -112,20 +112,20 @@ public enum NewMailPanelPolicy {
     }
 
     private static func containsSignInCandidate(subject: String, snippet: String) -> Bool {
-        // Strip URLs before checking `SignInCodeDetector`: the detector
-        // intentionally rejects link-bearing mail for auto-presenting sign-in
-        // panels, whereas preview suppression must fail closed even when a
-        // verification-code email also includes a support or help URL (#307).
+        // First check the unstripped subject, snippet, and combined text so
+        // sign-in links whose wording is in the subject and URL is in the
+        // snippet are caught and suppressed. Then also check URL-stripped text
+        // so verification codes alongside a support URL fail closed (#307).
+        if SignInCodeDetector.detect(in: subject) != nil { return true }
+        if SignInCodeDetector.detect(in: snippet) != nil { return true }
+        if !subject.isEmpty, !snippet.isEmpty,
+           SignInCodeDetector.detect(in: "\(subject)\n\(snippet)") != nil {
+            return true
+        }
         let sanitizedSubject = strippingURLs(from: subject)
         let sanitizedSnippet = strippingURLs(from: snippet)
-        if SignInCodeDetector.detect(in: subject) != nil
-            || SignInCodeDetector.detect(in: sanitizedSubject) != nil {
-            return true
-        }
-        if SignInCodeDetector.detect(in: snippet) != nil
-            || SignInCodeDetector.detect(in: sanitizedSnippet) != nil {
-            return true
-        }
+        if SignInCodeDetector.detect(in: sanitizedSubject) != nil { return true }
+        if SignInCodeDetector.detect(in: sanitizedSnippet) != nil { return true }
         if !sanitizedSubject.isEmpty, !sanitizedSnippet.isEmpty,
            SignInCodeDetector.detect(in: "\(sanitizedSubject)\n\(sanitizedSnippet)") != nil {
             return true

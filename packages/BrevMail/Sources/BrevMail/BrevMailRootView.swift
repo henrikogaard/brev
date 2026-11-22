@@ -888,9 +888,21 @@ public struct BrevMailRootView: View {
                 updateUnreadBadge()
             }
             .onReceive(NotificationCenter.default.publisher(for: AppSession.didRequestPanelReplyNotification)) { note in
-                guard let route = note.object as? NotificationMailRoute else { return }
+                let route = AppSession.takePendingPanelReplyRoute() ?? (note.object as? NotificationMailRoute)
+                guard let route else { return }
                 Task { @MainActor in
                     await openReplyComposer(for: route, cachedHeader: nil, fallbackSourceID: route.sourceID)
+                }
+            }
+            .onAppear {
+                if let pendingRoute = AppSession.takePendingPanelReplyRoute() {
+                    Task { @MainActor in
+                        await openReplyComposer(
+                            for: pendingRoute,
+                            cachedHeader: nil,
+                            fallbackSourceID: pendingRoute.sourceID
+                        )
+                    }
                 }
             }
             .onChange(of: navigation.selectedSourceID) {

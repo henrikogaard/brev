@@ -79,10 +79,23 @@ public final class AppSession {
     #if os(macOS)
     /// Session-owned presenter for the opt-in macOS new-mail drop-down panel (#307).
     public let newMailPanelController = NewMailDropDownPanelController()
-    private var backgroundPanelSubscriptionTasks: [BrevAccount.ID: Task<Void, Never>] = [:]
+    private var backgroundPanelSubscriptionTasks: [BrevAccount.ID: (identity: ObjectIdentifier, task: Task<Void, Never>)] = [:]
+    private var panelSettingsObserver: NSObjectProtocol?
     #endif
+    /// Pending Reply route triggered from a macOS drop-down panel when no mail
+    /// window was mounted; consumed once the main window opens (#307).
+    public static var pendingPanelReplyRoute: NotificationMailRoute?
+    /// Callback installed by the macOS app shell to open/reveal the main window
+    /// when a windowless panel's Reply action fires (#307).
+    public var openMainWindowForPanelReply: (@MainActor () -> Void)?
+    /// Returns and clears any pending windowless panel Reply route.
+    public static func takePendingPanelReplyRoute() -> NotificationMailRoute? {
+        defer { pendingPanelReplyRoute = nil }
+        return pendingPanelReplyRoute
+    }
+
     /// Posted when the user clicks Reply on a session-presented drop-down panel
-    /// so the active mail window opens a reply composer for the targeted route (#307).
+    /// so the app shell reveals a mail window and opens a reply composer (#307).
     public static let didRequestPanelReplyNotification = Notification.Name(
         "eu.brevmail.notifications.panelReplyRequested"
     )
@@ -440,11 +453,11 @@ public final class AppSession {
     /// concurrent callers (for example a scene-less cold iOS notification
     /// action and the SwiftUI scene startup task) into one restore pass (#307).
     public func ensureAccountsRestored() async {
-        if hasCompletedInitialRestore || !visibleBackends.isEmpty {
-            return
-        }
         if let existing = restoreAccountsTask {
             await existing.value
+            return
+        }
+        if hasCompletedInitialRestore {
             return
         }
         let task = Task { @MainActor [weak self] in
@@ -482,21 +495,49 @@ public final class AppSession {
 
     #if os(macOS)
     /// Keeps session-scoped event subscriptions aligned with connected backends
-    /// so fresh incoming mail can present the opt-in drop-down panel even when
-    /// all main mailbox windows are closed (#307, ADR-0075).
+    /// strictly while BOTH background mail checking and the opt-in drop-down
+    /// panel are enabled (#307, ADR-0075). Tracks backend object identity so
+    /// reauthentication replaces the watcher cleanly, and cancels all watchers
+    /// immediately when either preference is off.
     public func syncBackgroundPanelSubscriptions() {
-        let activeIDs = Set(visibleBackends.map(\.account.id))
-        for (id, task) in backgroundPanelSubscriptionTasks where !activeIDs.contains(id) {
-            task.cancel()
+        if panelSettingsObserver == nil {
+            panelSettingsObserver = NotificationCenter.default.addObserver(
+                forName: .brevNotificationSettingsDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.syncBackgroundPanelSubscriptions()
+                }
+            }
+        }
+        let settings = NotificationSettings.load()
+        guard settings.backgroundMailEnabled, settings.newMailPanelEnabled else {
+            for (_, entry) in backgroundPanelSubscriptionTasks {
+                entry.task.cancel()
+            }
+            backgroundPanelSubscriptionTasks.removeAll()
+            return
+        }
+        let activeByID = Dictionary(
+            uniqueKeysWithValues: visibleBackends.map { ($0.account.id, ObjectIdentifier($0)) }
+        )
+        for (id, entry) in backgroundPanelSubscriptionTasks
+            where activeByID[id] != entry.identity {
+            entry.task.cancel()
             backgroundPanelSubscriptionTasks.removeValue(forKey: id)
         }
-        for backend in visibleBackends where backgroundPanelSubscriptionTasks[backend.account.id] == nil {
+        for backend in visibleBackends {
             let accountID = backend.account.id
-            backgroundPanelSubscriptionTasks[accountID] = Task { @MainActor [weak self] in
+            let identity = ObjectIdentifier(backend)
+            if backgroundPanelSubscriptionTasks[accountID]?.identity == identity {
+                continue
+            }
+            let task = Task { @MainActor [weak self] in
                 for await event in backend.subscribeToChanges() {
                     guard !Task.isCancelled, let self else { break }
                     if case .messagesAdded(let folderID, let messageIDs) = event {
-                        await self.presentDropDownPanelIfEligible(
+                        await presentDropDownPanelIfEligible(
                             folderID: folderID,
                             messageIDs: messageIDs,
                             backend: backend
@@ -504,6 +545,7 @@ public final class AppSession {
                     }
                 }
             }
+            backgroundPanelSubscriptionTasks[accountID] = (identity: identity, task: task)
         }
     }
 
@@ -553,8 +595,10 @@ public final class AppSession {
             onMarkRead: {
                 Task { _ = await executor.markRead(route: route) }
             },
-            onReply: {
+            onReply: { [weak self] in
+                Self.pendingPanelReplyRoute = route
                 NSApplication.shared.activate()
+                self?.openMainWindowForPanelReply?()
                 NotificationCenter.default.post(
                     name: Self.didRequestPanelReplyNotification,
                     object: route
@@ -1405,6 +1449,9 @@ public final class AppSession {
             await accountStore.add(result.account)
         }
         backends[result.account.id] = result.backend
+        #if os(macOS)
+        syncBackgroundPanelSubscriptions()
+        #endif
         if let aiBackend = result.aiBackend {
             builtInAIBackends[result.account.id] = aiBackend
         } else {

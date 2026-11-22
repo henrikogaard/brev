@@ -184,7 +184,26 @@ struct NewMailDropDownPanelTests {
             correspondent: Correspondent(name: "Maya", email: "maya@example.org"),
             subject: "Last month's notes",
             snippet: "Here is the summary",
-            receivedAt: now.addingTimeInterval(-3600),
+            receivedAt: now.addingTimeInterval(-7200),
+            now: now
+        )
+        #expect(payload == nil)
+    }
+
+    @Test("Sign-in link split across subject wording and snippet URL is suppressed from drop-down previews")
+    func suppressesSplitSubjectAndSnippetSignInLink() {
+        var settings = NotificationSettings.defaults
+        settings.newMailPanelEnabled = true
+        settings.showPreviews = true
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let route = NotificationMailRoute(accountID: "acct-1", folderID: "inbox", messageID: "msg-link")
+        let payload = NewMailPanelPolicy.payload(
+            settings: settings,
+            route: route,
+            correspondent: Correspondent(name: "Example Cloud", email: "noreply@example.com"),
+            subject: "Your magic sign-in link",
+            snippet: "https://auth.example.com/verify?token=secret-abc-123",
+            receivedAt: now.addingTimeInterval(-10),
             now: now
         )
         #expect(payload == nil)

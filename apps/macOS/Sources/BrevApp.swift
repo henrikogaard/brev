@@ -233,6 +233,9 @@ struct BrevApp: App {
                 sessionRestoreAttempted = true
                 session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
                 session.startReconnectMutationReplay(monitor: networkMonitor)
+                session.openMainWindowForPanelReply = {
+                    openWindow(id: BrevWindowID.main)
+                }
                 session.syncBackgroundPanelSubscriptions()
                 BrevMacOSAppDelegate.currentSession = session
                 if !session.accountRestoreErrors.isEmpty,

@@ -663,8 +663,14 @@ enum BrevBackgroundRefreshCoordinator {
         scheduleNextRefresh()
 
         let work = Task {
-            let backends = await MainActor.run {
+            var backends = await MainActor.run {
                 BrevIOSAppDelegate.currentBackends
+            }
+            if backends.isEmpty {
+                await BrevIOSAppDelegate.sharedSession.ensureAccountsRestored()
+                backends = await MainActor.run {
+                    BrevIOSAppDelegate.sharedSession.visibleBackends
+                }
             }
             guard !backends.isEmpty else {
                 completion.complete(success: true)
