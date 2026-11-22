@@ -339,4 +339,3 @@ mirrors, never logged or persisted), and clipboard copies use
 `org.nspasteboard.ConcealedType` with change-count-guarded clearing. No
 production mail provider advertises `.trustedSignInAssessment` until live
 provider trust evidence (E1–E5) is recorded.
-

@@ -228,7 +228,6 @@ struct BrevApp: App {
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
                         notificationActionExecutor: session.notificationActionExecutor,
-                        signInCodeArrivalController: session.signInCodeArrivalController,
                         pimSyncScheduler: session.pimSyncScheduler,
                         localBackend: session.localBackend,
                         onLocalFoldersChanged: { session.refreshLocalFolders() },

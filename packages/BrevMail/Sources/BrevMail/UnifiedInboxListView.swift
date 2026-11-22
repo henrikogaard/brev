@@ -1284,6 +1284,12 @@ struct UnifiedInboxListView: View {
                 for: item.header.id,
                 source: item.sourceID
             ),
+            signInCode: SignInCodeSurfacePolicy.headerCode(
+                for: item.header,
+                sourceID: item.sourceID,
+                accountID: item.sourceID.accountID,
+                settings: SignInCodeSettings.load(from: .standard)
+            )?.code,
             isBlockedSender: false,
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,

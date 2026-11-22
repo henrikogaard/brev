@@ -105,6 +105,9 @@ public final class AppSession {
     public let signInCodePanelController: SignInCodePanelController
     /// Session-owned arrival controller for opted-in, trust-assessed accounts (#239, ADR-0088).
     public let signInCodeArrivalController: SignInCodeArrivalController
+    #if os(macOS)
+    private var signInCodeSubscriptionTasks: [BrevAccount.ID: Task<Void, Never>] = [:]
+    #endif
     /// Session-owned periodic sync loop for PIM sources the user opted into
     /// sync (`PIMSource.syncEnabled`). Inert until a view or the app target
     /// calls `start(interval:)` with the configured fetch interval.
@@ -1196,8 +1199,36 @@ public final class AppSession {
         if removeConsent {
             var consent = SignInCodeSettings.load(from: .standard)
             consent.removeAccountOverride(accountID: accountID, from: .standard)
+            #if os(macOS)
+            signInCodeSubscriptionTasks.removeValue(forKey: accountID)?.cancel()
+            #endif
         }
     }
+
+    #if os(macOS)
+    /// Keeps session-scoped `subscribeToChanges()` tasks aligned with
+    /// connected backends so eligible sign-in codes continue arriving even when
+    /// all main mailbox windows are closed (ADR-0088 decision 10, ADR-0075).
+    /// macOS-only until the Proposed ADR-0088 iOS amendment is accepted.
+    public func syncSignInCodeArrivalSubscriptions() {
+        let activeIDs = Set(visibleBackends.map(\.account.id))
+        for (id, task) in signInCodeSubscriptionTasks where !activeIDs.contains(id) {
+            task.cancel()
+            signInCodeSubscriptionTasks.removeValue(forKey: id)
+        }
+        for backend in visibleBackends where signInCodeSubscriptionTasks[backend.account.id] == nil {
+            let accountID = backend.account.id
+            signInCodeSubscriptionTasks[accountID] = Task { @MainActor [weak self] in
+                for await event in backend.subscribeToChanges() {
+                    guard !Task.isCancelled, let self else { break }
+                    if case .messagesAdded = event {
+                        self.signInCodeArrivalController.handle(event, from: backend)
+                    }
+                }
+            }
+        }
+    }
+    #endif
 
     /// Removes the account and every PIM source linked to it (ADR-0072).
     ///

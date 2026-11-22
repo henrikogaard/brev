@@ -1083,6 +1083,12 @@ public struct MessageListView: View {
             showsAbsoluteArrivalTime: showAbsoluteArrivalTime,
             sourceContext: nil,
             matchedAttachmentName: matchedAttachmentName(for: header.id),
+            signInCode: SignInCodeSurfacePolicy.headerCode(
+                for: header,
+                sourceID: sourceID,
+                accountID: backend.account.id,
+                settings: SignInCodeSettings.load(from: .standard)
+            )?.code,
             isBlockedSender: blockedSenderEmailSet.contains(header.from.email.lowercased()),
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,
@@ -4070,6 +4076,9 @@ struct MessageListRow: View {
     /// Attachment name when this row's search hit came from attachment
     /// content only (ADR-0078 §5); nil renders no badge.
     let matchedAttachmentName: String?
+    /// Ephemeral sign-in code for opted-in accounts (#239, ADR-0088 §7); nil
+    /// renders nothing and leaves default row geometry unchanged.
+    let signInCode: String?
     let isBlockedSender: Bool
     let hasFollowUp: Bool
     let followUpDue: Bool
@@ -4195,6 +4204,7 @@ struct MessageListRow: View {
         sourceContext: String?,
         accountDotColor: Color? = nil,
         matchedAttachmentName: String? = nil,
+        signInCode: String? = nil,
         isBlockedSender: Bool,
         hasFollowUp: Bool,
         followUpDue: Bool = false,
@@ -4220,6 +4230,7 @@ struct MessageListRow: View {
         self.sourceContext = sourceContext
         self.accountDotColor = accountDotColor
         self.matchedAttachmentName = matchedAttachmentName
+        self.signInCode = signInCode
         self.isBlockedSender = isBlockedSender
         self.hasFollowUp = hasFollowUp
         self.followUpDue = followUpDue
@@ -4293,6 +4304,9 @@ struct MessageListRow: View {
                     if contentPresentation.showsStatusIcons {
                         rowStatusIcons
                     }
+                }
+                if let signInCode {
+                    SignInCodeListChip(code: signInCode)
                 }
                 if let matchedAttachmentName {
                     HStack(spacing: BrevSpacing.xxs) {

@@ -129,5 +129,48 @@ struct SignInCodePanelSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    @Test("Today page renders active sign-in code card alongside digest", arguments: ["light", "dark"])
+    func todayPageWithActiveSignInCode(_ mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: 9, minute: 30))!
+        let activeCode = SignInCodeSurfaceMatch(
+            code: "482913",
+            sender: "Example Cloud",
+            sentAt: now.addingTimeInterval(-90),
+            messageID: "msg-code",
+            folderID: "inbox",
+            sourceID: nil
+        )
+        var digest = TodayDigest()
+        digest.waitingOnYouCount = 1
+        let view = TodayPageView(
+            displayName: "Alex Chen",
+            refreshKey: 0,
+            load: { digest },
+            onOpen: { _ in },
+            onAsk: nil,
+            activeSignInCode: activeCode,
+            now: now,
+            preloaded: digest
+        )
+        .frame(width: 560, height: 340)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .environment(\.locale, Locale(identifier: "en_US"))
+        .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
+
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 560, height: 340)),
+            named: "today-active-signin-code-" + mode,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
 }
 #endif

@@ -247,6 +247,7 @@ struct BrevApp: App {
                     NSApp.activate()
                 }
                 session.syncBackgroundPanelSubscriptions()
+                session.syncSignInCodeArrivalSubscriptions()
                 BrevMacOSAppDelegate.currentSession = session
                 if !session.accountRestoreErrors.isEmpty,
                    !session.visibleBackends.isEmpty {
@@ -256,6 +257,7 @@ struct BrevApp: App {
             .onChange(of: session.visibleBackends.map(\.account.id)) { _, _ in
                 BrevMacOSAppDelegate.currentSession = session
                 session.syncBackgroundPanelSubscriptions()
+                session.syncSignInCodeArrivalSubscriptions()
             }
             .onReceive(
                 NotificationCenter.default.publisher(for: .brevDidReceiveMailtoURL)

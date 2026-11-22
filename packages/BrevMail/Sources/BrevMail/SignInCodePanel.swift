@@ -280,14 +280,15 @@ struct SignInCodePanelView: View {
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
-        .background(
+        // Shares `BrevToast`'s floating-pill surface tokens (`bgTertiary`, `BrevRadius.lg`,
+        // 1 pt `border`) while hosting the ADR-0088 grouped monospace code / destination host
+        // layout that `BrevToast`'s single-string API does not carry.
+        .background(theme.bgTertiary.color)
+        .overlay {
             RoundedRectangle(cornerRadius: BrevRadius.lg)
-                .fill(theme.bgSecondary.color)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: BrevRadius.lg)
-                .strokeBorder(theme.border.color, lineWidth: 0.75)
-        )
+                .stroke(theme.border.color, lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.lg))
     }
 
     @ViewBuilder

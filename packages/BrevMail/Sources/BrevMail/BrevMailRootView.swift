@@ -457,6 +457,7 @@ public struct BrevMailRootView: View {
     private let notificationActionExecutor: NotificationActionExecutor?
     private let newMailPanelController: NewMailDropDownPanelController?
     private let signInCodeArrivalController: SignInCodeArrivalController?
+    @State private var todayActiveSignInCode: SignInCodeSurfaceMatch?
     /// Session-owned periodic sync for PIM sources the user enabled sync on.
     /// The root view hands it the fetch interval so its cadence tracks the
     /// mail schedule; once started it keeps ticking while the session lives.
@@ -2196,11 +2197,12 @@ public struct BrevMailRootView: View {
     /// The empty reader shows what needs you instead of a placeholder (#292).
     private var todayPage: some View {
         let sections = sidebarSourceSections
+        let refreshKey = Self.todayRefreshKey(sections)
         return TodayPageView(
             displayName: backends.first.map { account in
                 account.account.displayName
             },
-            refreshKey: Self.todayRefreshKey(sections),
+            refreshKey: refreshKey,
             load: { await loadTodayDigest(sections) },
             onOpen: { row in
                 navigation.selectFolder(row.header.folderID, in: row.sourceID)
@@ -2214,8 +2216,38 @@ public struct BrevMailRootView: View {
             },
             onStartTriage: navigation.inlineReply != nil ? nil : {
                 Task { await startTriage() }
-            }
+            },
+            activeSignInCode: todayActiveSignInCode
         )
+        .task(id: refreshKey) {
+            todayActiveSignInCode = await loadTodayActiveSignInCode(sections)
+        }
+    }
+
+    /// Scans cached Inbox headers of opted-in accounts for the newest active
+    /// sign-in code with zero network calls (#239, ADR-0088). Returns `nil`
+    /// immediately when no account has `codesEnabled`.
+    private func loadTodayActiveSignInCode(_ sections: [MailSourceSection]) async -> SignInCodeSurfaceMatch? {
+        let settings = SignInCodeSettings.load(from: .standard)
+        var newest: SignInCodeSurfaceMatch?
+        for section in sections where settings.accountOverride(for: section.account.id).codesEnabled {
+            guard !Task.isCancelled else { return nil }
+            let owner = backend(for: section.id)
+            guard let inbox = section.folders.first(where: { $0.role == .inbox }),
+                  let headers = try? await owner.cachedMessageHeaders(in: inbox, sourceID: section.id)
+            else { continue }
+            if let candidate = SignInCodeSurfacePolicy.newestActiveCode(
+                headers: headers,
+                sourceID: section.id,
+                accountID: section.account.id,
+                settings: settings
+            ) {
+                if newest == nil || candidate.sentAt > newest!.sentAt {
+                    newest = candidate
+                }
+            }
+        }
+        return newest
     }
 
     /// Changes when any Inbox or Sent folder's counts change, so the Today
@@ -8448,9 +8480,6 @@ public struct BrevMailRootView: View {
             guard ObjectIdentifier(backend) == ObjectIdentifier(selectedBackend) else { return }
             await refreshOutboxCount()
         case .folderRefreshed, .messagesAdded, .messagesRemoved, .messagesUpdated:
-            if case .messagesAdded = event {
-                signInCodeArrivalController?.handle(event, from: backend)
-            }
             let effects = MailRootAccountEventPolicy.mailboxEventEffects(
                 for: event,
                 eventAccountID: backend.account.id,
