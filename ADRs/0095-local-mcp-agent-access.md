@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Date:** 2026-11-22
 - **Deciders:** Henrik
-- **Relates to:** [ADR-0006](0006-telemetry-and-privacy.md) (telemetry and privacy), [ADR-0026](0026-ai-mailbox-action-agent.md) (supervised mailbox action agent), [ADR-0028](0028-mail-provider-architecture.md) (mail provider architecture), [ADR-0058](0058-string-catalog-localization.md) (string catalogs), [ADR-0075](0075-macos-background-mail-presence.md) (macOS background mail presence), [ADR-0076](0076-settings-backup-and-export.md) (settings backup), [ADR-0088](0088-sign-in-code-and-link-panel.md) (sign-in code privacy boundary)
+- **Relates to:** [ADR-0006](0006-telemetry-and-privacy.md) (telemetry and privacy), [ADR-0026](0026-supervised-mailbox-action-agent.md) (supervised mailbox action agent), [ADR-0028](0028-mail-provider-architecture.md) (mail provider architecture), [ADR-0058](0058-localization-via-string-catalogs.md) (string catalogs), [ADR-0075](0075-macos-background-mail-presence.md) (macOS background mail presence), [ADR-0076](0076-settings-and-account-backup.md) (settings backup), [ADR-0088](0088-sign-in-code-and-link-panel.md) (sign-in code privacy boundary)
 - **Issue:** #305
 
 ## Context
@@ -23,7 +23,7 @@ Introduce a macOS-only, local-only Model Context Protocol (MCP) surface built on
 
 ### 1. Transport — stdio and user-private Unix domain socket only (zero network ports)
 
-- Brev never binds TCP, UDP, `127.0.0.1`, or `0.0.0.0`.
+- The MCP server never binds TCP, UDP, `127.0.0.1`, or `0.0.0.0` (existing ephemeral OAuth loopback listeners such as `GoogleOAuthLoopbackReceiver` are unaffected and out of scope for MCP).
 - When enabled, the running Brev app listens on a single user-private Unix domain socket inside its local Application Support / App Group directory with `0600` file permissions and verifies peer credentials (`LOCAL_PEERCRED` / `LOCAL_PEERPID`) so only processes owned by the same macOS UID can connect.
 - A tiny bundled stdio bridge helper (`brev-mcp`, speaking MCP JSON-RPC 2.0 over stdin/stdout) forwards requests to the local socket so standard MCP clients (Claude, Codex, Cursor) configure it as a normal `stdio` command without any network port or API token.
 - If Brev is not running or Agent access is turned off, the bridge fails closed with a clear structured MCP error and never opens Realm/SQLite stores directly.
@@ -61,13 +61,14 @@ Introduce a macOS-only, local-only Model Context Protocol (MCP) surface built on
 
 ### 4. Local audit log visible in Settings
 
-- Every MCP request — allowed, approved, denied, or blocked — records one structured audit entry locally:
+- Every MCP request received by the running Brev broker — allowed, approved, denied, or blocked (`blocked_disabled`, `blocked_account`) — records one structured audit entry locally:
   - timestamp (UTC)
   - client identifier (process name + PID, and MCP `clientInfo.name` when provided)
   - tool name
   - opted-in account ID (or `none` when blocked before account resolution)
   - bounded parameter summary (e.g. query length or message count / IDs — **never** message bodies, snippets, or sign-in codes)
   - outcome (`allowed`, `approved`, `denied`, `timed_out`, `blocked_disabled`, `blocked_account`)
+- When Brev is not running or the Unix socket is closed (Agent access off), `brev-mcp` fails closed without writing to Brev's store; those offline connection refusals are outside the in-app audit log because no mail process or broker accepted the request.
 - Stored in a bounded local ring buffer (e.g. last 1,000 entries in Application Support, excluded from backups, iCloud sync, and diagnostic exports).
 - Displayed directly in **Settings → Agent access** with filtering and a one-click **Clear log** button.
 
@@ -97,10 +98,11 @@ Introduce a macOS-only, local-only Model Context Protocol (MCP) surface built on
 ## References
 
 - [ADR-0006: Telemetry and privacy](0006-telemetry-and-privacy.md)
-- [ADR-0026: AI mailbox action agent](0026-ai-mailbox-action-agent.md)
+- [ADR-0026: Supervised mailbox action agent](0026-supervised-mailbox-action-agent.md)
 - [ADR-0028: Mail provider architecture](0028-mail-provider-architecture.md)
+- [ADR-0058: Localization via string catalogs](0058-localization-via-string-catalogs.md)
 - [ADR-0075: macOS background mail presence](0075-macos-background-mail-presence.md)
-- [ADR-0076: Settings backup and export](0076-settings-backup-and-export.md)
+- [ADR-0076: Settings and account backup](0076-settings-and-account-backup.md)
 - [ADR-0088: Show sign-in codes and links on screen](0088-sign-in-code-and-link-panel.md)
 - Model Context Protocol specification: https://modelcontextprotocol.io/specification
 - Issue #305
