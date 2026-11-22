@@ -434,23 +434,7 @@ public actor InMemoryGmailAccountStore: GmailAccountStore {
     }
 
     private static func attachmentIDs(_ message: GmailMessage) -> [String] {
-        var result: [String] = []
-        collectAttachmentIDs(message.payload, messageID: message.id, into: &result)
-        return result
-    }
-
-    private static func collectAttachmentIDs(
-        _ part: GmailMessagePart?,
-        messageID: String,
-        into result: inout [String]
-    ) {
-        guard let part else { return }
-        if let filename = part.filename, !filename.isEmpty {
-            result.append("gmail-attachment:\(messageID):\(part.partID ?? filename)")
-        }
-        for child in part.parts {
-            collectAttachmentIDs(child, messageID: messageID, into: &result)
-        }
+        message.payload?.cachedAttachmentIDs(messageID: message.id) ?? []
     }
 
     private func cacheKey(accountID: String, value: String) -> String {

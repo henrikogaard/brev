@@ -316,6 +316,27 @@ public struct GmailMessageHeader: Codable, Sendable, Equatable {
     }
 }
 
+extension GmailMessagePart {
+    /// Gmail can identify a PDF solely by its media type, without a filename.
+    var attachmentFilename: String? {
+        if let filename, !filename.isEmpty { return filename }
+        return mimeType?.caseInsensitiveCompare("application/pdf") == .orderedSame ? "attachment.pdf" : nil
+    }
+
+    func attachmentKey(at path: String) -> String? {
+        guard attachmentFilename != nil else { return nil }
+        return partID ?? filename.flatMap { $0.isEmpty ? nil : $0 } ?? body?.attachmentID ?? path
+    }
+
+    func cachedAttachmentIDs(messageID: String, path: String = "mime:0") -> [String] {
+        var ids = attachmentKey(at: path).map { ["gmail-attachment:\(messageID):\($0)"] } ?? []
+        for (index, child) in parts.enumerated() {
+            ids += child.cachedAttachmentIDs(messageID: messageID, path: "\(path).\(index)")
+        }
+        return ids
+    }
+}
+
 /// A Gmail MIME body, including base64url-encoded inline data when present.
 public struct GmailMessageBody: Codable, Sendable, Equatable {
     public let size: Int?

@@ -59,6 +59,27 @@ struct GmailAPIBackendTests {
         #expect(await transport.networkCalls == 0)
     }
 
+    @Test("cached Gmail PDF MIME parts without names retain their independent attachment IDs")
+    func unnamedPDFParts() async throws {
+        let parts = [
+            GmailMessagePart(partID: "1", mimeType: "application/pdf", filename: "", body: .init(attachmentID: "att")),
+            GmailMessagePart(mimeType: "APPLICATION/PDF", body: .init(attachmentID: "second")),
+            GmailMessagePart(mimeType: "text/plain"),
+        ]
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "report", threadID: "t", labels: ["INBOX"], payload: GmailMessagePart(parts: parts)),
+        ]))
+        let transport = StubGmailTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let rows = await backend.cachedAttachmentMessages(in: [Folder(id: "INBOX", name: "Inbox", role: .inbox)])
+        let row = try #require(rows.first)
+        #expect(row.header.hasAttachments)
+        #expect(row.body.attachments.map(\.id) == ["gmail-attachment:report:1", "gmail-attachment:report:second"])
+        #expect(row.body.attachments.map(\.resource) == ["report|att", "report|second"])
+        #expect(await transport.networkCalls == 0)
+    }
+
     @Test("cached header point lookup respects label membership without network access")
     func cachedHeaderPointLookup() async throws {
         let store = InMemoryGmailAccountStore()

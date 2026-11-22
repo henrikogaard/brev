@@ -2638,11 +2638,18 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         messageID: String,
         plain: inout String?,
         html: inout String?,
-        attachments: inout [Attachment]
+        attachments: inout [Attachment],
+        path: String = "mime:0"
     ) {
-        for child in part
-            .parts {
-            collectParts(child, messageID: messageID, plain: &plain, html: &html, attachments: &attachments)
+        for (index, child) in part.parts.enumerated() {
+            collectParts(
+                child,
+                messageID: messageID,
+                plain: &plain,
+                html: &html,
+                attachments: &attachments,
+                path: "\(path).\(index)"
+            )
         }
         let mimeType = part.mimeType?.lowercased() ?? ""
         if mimeType == "text/plain", let data = part.body?.data.flatMap(decodeBase64URL) {
@@ -2650,14 +2657,14 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         } else if mimeType == "text/html", let data = part.body?.data.flatMap(decodeBase64URL) {
             html = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
         }
-        if let filename = part.filename, !filename.isEmpty {
+        if let filename = part.attachmentFilename, let key = part.attachmentKey(at: path) {
             let headers = headerMap(part.headers)
             let contentID = headers["content-id"]
             let disposition = headers["content-disposition"]?.components(separatedBy: ";").first?
                 .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let providerAttachmentID = part.body?.attachmentID ?? part.partID ?? filename
+            let providerAttachmentID = part.body?.attachmentID ?? key
             attachments.append(Attachment(
-                id: "gmail-attachment:\(messageID):\(part.partID ?? filename)",
+                id: "gmail-attachment:\(messageID):\(key)",
                 name: filename,
                 mimeType: part.mimeType ?? "application/octet-stream",
                 sizeBytes: part.body?.size ?? 0,
@@ -2670,14 +2677,14 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     private static func hasAttachments(_ part: GmailMessagePart?) -> Bool {
         guard let part else { return false }
-        return (part.filename?.isEmpty == false) || part.parts.contains(where: hasAttachments)
+        return part.attachmentFilename != nil || part.parts.contains(where: hasAttachments)
     }
 
-    private static func part(in root: GmailMessagePart?, id: String) -> GmailMessagePart? {
+    private static func part(in root: GmailMessagePart?, id: String, path: String = "mime:0") -> GmailMessagePart? {
         guard let root else { return nil }
-        if root.partID == id || root.body?.attachmentID == id { return root }
-        for child in root.parts where Self.part(in: child, id: id) != nil {
-            return Self.part(in: child, id: id)
+        if root.partID == id || root.body?.attachmentID == id || root.attachmentKey(at: path) == id { return root }
+        for (index, child) in root.parts.enumerated() {
+            if let match = Self.part(in: child, id: id, path: "\(path).\(index)") { return match }
         }
         return nil
     }

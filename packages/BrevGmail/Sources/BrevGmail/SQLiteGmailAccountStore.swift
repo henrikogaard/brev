@@ -1551,22 +1551,6 @@ private extension GmailMessage {
 
 private extension SQLiteGmailAccountStore {
     static func attachmentIDs(_ message: GmailMessage) -> [String] {
-        var result: [String] = []
-        collectAttachmentIDs(message.payload, messageID: message.id, into: &result)
-        return result
-    }
-
-    static func collectAttachmentIDs(
-        _ part: GmailMessagePart?,
-        messageID: String,
-        into result: inout [String]
-    ) {
-        guard let part else { return }
-        if let filename = part.filename, !filename.isEmpty {
-            result.append("gmail-attachment:\(messageID):\(part.partID ?? filename)")
-        }
-        for child in part.parts {
-            collectAttachmentIDs(child, messageID: messageID, into: &result)
-        }
+        message.payload?.cachedAttachmentIDs(messageID: message.id) ?? []
     }
 }
