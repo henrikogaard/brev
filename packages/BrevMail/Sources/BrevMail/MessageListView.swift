@@ -846,9 +846,7 @@ public struct MessageListView: View {
         return UpdatesSenderBundler.selectableHeaders(
             from: presentation.filteredUngroupedHeaders,
             sourceID: sourceID,
-            expandedBundleIDs: expandedUpdateBundleIDs,
-            headersByThreadID: presentation.headersByThreadID,
-            expandedThreadIDs: groupByThread && backend.groupsMessagesIntoThreads ? expandedThreadIDs : []
+            expandedBundleIDs: expandedUpdateBundleIDs
         )
     }
 
@@ -890,7 +888,10 @@ public struct MessageListView: View {
                                 for: childHeader,
                                 visibleIndex: presentation.visibleIndex(for: childHeader.id) ?? 0,
                                 visibleCount: presentation.headers.count,
-                                threadChildrenByID: presentation.headersByThreadID,
+                                // Sender bundles already group related Updates messages;
+                                // keep each Updates row flat so messages are never
+                                // duplicated inline or mixed with People thread siblings.
+                                threadChildrenByID: [:],
                                 selectedRowID: selectedRowID
                             )
                         }
@@ -901,7 +902,7 @@ public struct MessageListView: View {
                         for: singleHeader,
                         visibleIndex: presentation.visibleIndex(for: singleHeader.id) ?? 0,
                         visibleCount: presentation.headers.count,
-                        threadChildrenByID: presentation.headersByThreadID,
+                        threadChildrenByID: [:],
                         selectedRowID: selectedRowID
                     )
                 }

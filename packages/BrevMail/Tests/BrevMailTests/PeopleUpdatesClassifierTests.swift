@@ -444,37 +444,13 @@ struct PeopleUpdatesClassifierTests {
         )
         #expect(collapsed.map(\.id) == ["u3"])
 
-        // Expanding Linear's bundle exposes both u1 and u2 so Select/Deselect All covers all rendered rows.
+        // Expanding Linear's bundle exposes both u1 and u2 in exact rendered order (newest first, no duplicates).
         let expanded = UpdatesSenderBundler.selectableHeaders(
             from: headers,
             sourceID: Self.source,
             expandedBundleIDs: ["notifications@linear.app"]
         )
-        #expect(Set(expanded.map(\.id)) == ["u1", "u2", "u3"])
-
-        // When u1 shares a thread with u3 and that thread is expanded under u3,
-        // u1 remains selectable even while Linear's bundle is collapsed.
-        let sharedThreadSingle = MessageHeader(
-            id: "u3-shared",
-            threadID: "shared-thread",
-            folderID: "inbox",
-            from: Correspondent(name: "GitHub", email: "notifications@github.com"),
-            to: [],
-            subject: "Re: Issue #1",
-            snippet: "Linked PR",
-            date: Date().addingTimeInterval(-30),
-            isRead: false,
-            isFlagged: false,
-            hasAttachments: false
-        )
-        let withExpandedReply = UpdatesSenderBundler.selectableHeaders(
-            from: [m1, m2, sharedThreadSingle],
-            sourceID: Self.source,
-            expandedBundleIDs: [],
-            headersByThreadID: ["shared-thread": [m2, m1, sharedThreadSingle]],
-            expandedThreadIDs: ["shared-thread"]
-        )
-        #expect(Set(withExpandedReply.map(\.id)) == ["u1", "u2", "u3-shared"])
+        #expect(expanded.map(\.id) == ["u1", "u2", "u3"])
     }
 
     @Test("HTTPS unsubscribe confirmation states browser opening accurately even when one-click is advertised")
