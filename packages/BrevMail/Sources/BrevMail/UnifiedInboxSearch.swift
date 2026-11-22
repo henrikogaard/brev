@@ -21,11 +21,8 @@ struct UnifiedInboxSearchSource: Equatable, Sendable {
     let archiveFolder: Folder?
     private let foldersByID: [Folder.ID: Folder]
 
-    init?(section: MailSourceSection, capabilities: BackendCapabilities, execution: SearchExecution) {
+    init?(section: MailSourceSection) {
         guard let inbox = section.folders.first(where: { $0.role == .inbox }) else {
-            return nil
-        }
-        if execution == .serverOnly, !capabilities.contains(.serverSideSearch) {
             return nil
         }
         sourceID = section.id
@@ -156,11 +153,8 @@ enum UnifiedInboxSearchPolicy {
         capabilities: (MailSourceID) -> BackendCapabilities
     ) -> [UnifiedInboxSearchSource] {
         sourceSections.compactMap { section in
-            UnifiedInboxSearchSource(
-                section: section,
-                capabilities: capabilities(section.id),
-                execution: execution
-            )
+            guard execution != .serverOnly || capabilities(section.id).contains(.serverSideSearch) else { return nil }
+            return UnifiedInboxSearchSource(section: section)
         }
     }
 
@@ -171,20 +165,26 @@ enum UnifiedInboxSearchPolicy {
         capabilities: (MailSourceID) -> BackendCapabilities,
         now: Date = Date(),
         calendar: Calendar = .current
-    ) -> [UnifiedInboxSearchPlan] {
-        sourceSections.compactMap { section in
+    ) -> (plans: [UnifiedInboxSearchPlan], unavailableServerCount: Int) {
+        var plans: [UnifiedInboxSearchPlan] = []
+        var unavailableServerCount = 0
+        for section in sourceSections {
+            guard let source = UnifiedInboxSearchSource(section: section) else { continue }
             let supported = capabilities(section.id)
-            guard let source = UnifiedInboxSearchSource(section: section, capabilities: supported, execution: execution)
-            else { return nil }
             let sourceExecution = execution == .cacheThenServer
                 && !supported.contains(.serverSideSearch)
                 ? SearchExecution.cacheOnly
                 : execution
             let plan = searchPlan(text: text, inboxFolderID: source.inbox.id, execution: sourceExecution,
                                   now: now, calendar: calendar)
-            guard let query = plan.resolvedQuery(in: section.folders) else { return nil }
-            return UnifiedInboxSearchPlan(source: source, query: query)
+            guard let query = plan.resolvedQuery(in: section.folders) else { continue }
+            if execution == .serverOnly, !supported.contains(.serverSideSearch) {
+                unavailableServerCount += 1
+            } else {
+                plans.append(UnifiedInboxSearchPlan(source: source, query: query))
+            }
         }
+        return (plans, unavailableServerCount)
     }
 
     static func items(

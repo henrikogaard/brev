@@ -5,6 +5,7 @@
 - Recognize English and Norwegian phrases for Inbox, Sent, Drafts, Archive, Trash and Spam. Resolve the role within each source; skip sources missing the role and keep navigation anchored to the original list. Reuse the existing localized folder label.
 - Red: “receipt in Sent unread” kept “in Sent” as keywords and produced no folder chip. The focused Linux harness now covers chip removal, submission, result filtering, and two account-specific Sent IDs. No provider or storage changes.
 - Native app builds and the real MockBackend test need macOS CI. Verify saved-search label membership and the folder chip in both platform search fields; snapshot needs recording on macOS 26.
+- Review: searching Sent in a mailbox with no Sent folder showed a spurious server warning even in local mode. Count only in-scope mailboxes missing a requested server capability. Regression covers local, automatic and server-only searches.
 
 ## 2026-11-22 — Agent — #296 bilingual sender and date chips
 

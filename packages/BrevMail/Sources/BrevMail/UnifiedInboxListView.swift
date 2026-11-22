@@ -2800,7 +2800,7 @@ struct UnifiedInboxListView: View {
         let interval = MailUIPerformanceDiagnostics.beginInterval("Unified Inbox Search")
         defer { MailUIPerformanceDiagnostics.endInterval(interval) }
 
-        let searchPlans = UnifiedInboxSearchPolicy.searchPlans(
+        let (searchPlans, unavailableServerCount) = UnifiedInboxSearchPolicy.searchPlans(
             text: query,
             from: sourceSections,
             execution: navigation.searchExecution,
@@ -2902,10 +2902,10 @@ struct UnifiedInboxListView: View {
                 skippedSourceCount: skippedCount,
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
-        } else if skippedCount > 0 {
+        } else if unavailableServerCount > 0 {
             partialLoadErrorStatus = MessageListFooterStatus(
                 message: String(
-                    localized: "\(skippedCount) mailboxes skipped because server search is unavailable.",
+                    localized: "\(unavailableServerCount) mailboxes skipped because server search is unavailable.",
                     bundle: .module
                 ),
                 actionTitle: String(localized: "Refresh", bundle: .module)

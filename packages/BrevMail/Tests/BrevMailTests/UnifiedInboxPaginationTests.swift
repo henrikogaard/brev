@@ -370,10 +370,23 @@ struct UnifiedInboxPaginationTests {
                 from: [a, b, c],
                 execution: .cacheOnly,
                 capabilities: { _ in [] }
-            )
+            ).plans
             #expect(plans.map(\.source.sourceID) == [a.id, b.id])
             #expect(plans.map(\.query.folderID) == ["SENT", "Utsendt"])
             #expect(plans.map(\.query.text) == ["receipt", "receipt"])
+        }
+    }
+
+    @Test("missing folder roles do not cause server-unavailable warnings")
+    func serverOnlyWarningCountsOnlyEligibleSources() {
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let sent = Folder(id: "sent", name: "Sent", role: .sent)
+        let eligible = Self.section(account: "work", mailbox: "1", folders: [inbox, sent])
+        let other = Self.section(account: "home", mailbox: "2", folders: [inbox])
+        for execution in [SearchExecution.cacheOnly, .cacheThenServer, .serverOnly] {
+            let result = UnifiedInboxSearchPolicy.searchPlans(text: "in Sent", from: [eligible, other],
+                                                              execution: execution, capabilities: { _ in [] })
+            #expect(result.unavailableServerCount == (execution == .serverOnly ? 1 : 0))
         }
     }
 
@@ -390,7 +403,7 @@ struct UnifiedInboxPaginationTests {
             capabilities: { sourceID in
                 sourceID == capable.id ? .serverSideSearch : []
             }
-        )
+        ).plans
 
         #expect(plans.map(\.source.sourceID) == [capable.id, unsupported.id])
         #expect(plans.map(\.query.execution) == [.cacheThenServer, .cacheOnly])
@@ -409,13 +422,13 @@ struct UnifiedInboxPaginationTests {
             capabilities: { sourceID in
                 sourceID == capable.id ? .serverSideSearch : []
             }
-        )
+        ).plans
         let cachePlans = UnifiedInboxSearchPolicy.searchPlans(
             text: "with attachments",
             from: [capable, unsupported],
             execution: .cacheOnly,
             capabilities: { _ in .serverSideSearch }
-        )
+        ).plans
 
         #expect(autoPlans.allSatisfy { $0.query.hasAttachments == true })
         #expect(
@@ -445,7 +458,7 @@ struct UnifiedInboxPaginationTests {
             capabilities: { sourceID in
                 sourceID == capable.id ? .serverSideSearch : []
             }
-        )
+        ).plans
 
         let plan = try #require(plans.first)
         #expect(plans.count == 1)
