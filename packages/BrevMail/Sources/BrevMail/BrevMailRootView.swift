@@ -2537,33 +2537,51 @@ public struct BrevMailRootView: View {
         }
     }
 
+    private static func subscriptionsRefreshKey(_ sections: [MailSourceSection]) -> Int {
+        var hasher = Hasher()
+        for section in sections {
+            hasher.combine(section.id)
+            for folder in section.folders where folder.role == .inbox {
+                hasher.combine(folder.id)
+                hasher.combine(folder.unreadCount)
+                hasher.combine(folder.totalCount)
+            }
+        }
+        return hasher.finalize()
+    }
+
+    @ViewBuilder
+    private var subscriptionsPane: some View {
+        SubscriptionsView(
+            refreshKey: Self.subscriptionsRefreshKey(sidebarSourceSections),
+            load: { await loadSubscriptionsCatalog(sidebarSourceSections) },
+            canArchive: { group in
+                sidebarSourceSections
+                    .first { $0.id == group.sourceID }?
+                    .folders.contains { $0.role == .archive } == true
+            },
+            onArchiveAll: { group in
+                await archiveAllSubscriptionMessages(in: group)
+            },
+            onConfirmedUnsubscribe: { _, method in
+                switch method {
+                case .https(let url, _), .mailto(let url):
+                    openURL(url)
+                }
+            },
+            onSelectMessage: { sourceID, header in
+                navigation.selectFolder(header.folderID, in: sourceID)
+                navigation.selectedMessageID = header.id
+                navigation.endSelection()
+            }
+        )
+    }
+
     @ViewBuilder
     private var messageListPane: some View {
         Group {
             if navigation.isSubscriptionsSelected {
-                SubscriptionsView(
-                    refreshKey: Self.todayRefreshKey(sidebarSourceSections),
-                    load: { await loadSubscriptionsCatalog(sidebarSourceSections) },
-                    canArchive: { group in
-                        sidebarSourceSections
-                            .first { $0.id == group.sourceID }?
-                            .folders.contains { $0.role == .archive } == true
-                    },
-                    onArchiveAll: { group in
-                        await archiveAllSubscriptionMessages(in: group)
-                    },
-                    onConfirmedUnsubscribe: { _, method in
-                        switch method {
-                        case .https(let url, _), .mailto(let url):
-                            openURL(url)
-                        }
-                    },
-                    onSelectMessage: { sourceID, header in
-                        navigation.selectFolder(header.folderID, in: sourceID)
-                        navigation.selectedMessageID = header.id
-                        navigation.endSelection()
-                    }
-                )
+                subscriptionsPane
             } else if navigation.isAllAttachmentsSelected {
                 AllAttachmentsView(
                     provider: CachedAttachmentSearchRecordProvider(
