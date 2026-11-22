@@ -1451,6 +1451,15 @@ public struct ComposeView: View {
         #endif
     }
 
+    private var noReplyFollowUpToggle: some View {
+        Toggle(
+            String(localized: "Remind me if no reply in 3 days", bundle: .module),
+            isOn: $remindIfNoReply
+        )
+        .disabled(isBusy)
+        .accessibilityIdentifier("brev-compose-no-reply-follow-up")
+    }
+
     /// One overflow menu for the desktop compose actions that do not need
     /// permanent toolbar space.
     private var composeSecondaryActionsMenu: some View {
@@ -1471,11 +1480,7 @@ public struct ComposeView: View {
 
             receiptOptionsMenuContent
 
-            Toggle(
-                String(localized: "Remind me if no reply in 3 days", bundle: .module),
-                isOn: $remindIfNoReply
-            )
-            .disabled(isBusy)
+            noReplyFollowUpToggle
 
             if composeSecurityDefaults.isFeatureEnabled {
                 Menu(ComposeToolbarAction.security.accessibilityLabel) {
@@ -1597,6 +1602,7 @@ public struct ComposeView: View {
             }
 
             receiptOptionsMenuContent
+            noReplyFollowUpToggle
 
             if composeBodyFormat == .richTextHTML {
                 Divider()

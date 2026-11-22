@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — PR #326 compact no-reply control
+
+- Goal: make the three-day no-reply option available on iPhone and iPad, including when reopening an opted-in Draft.
+- Changes: reuse the existing localized, busy-gated toggle in compact and desktop compose menus; add a mounted compact-menu control regression. The existing String Catalog entry is retained and no snapshot assets changed.
+- Verification: pinned SwiftFormat lint, Swift parse and the existing English/Norwegian catalog-key check passed. The mounted UIKit test was not run locally because this host is Linux without Xcode/UIKit/SwiftUI.
+- Handoff: this correction is for the existing draft PR targeting `main`; commit locally only, with no push for this review round. Project-board tools were unavailable; intended status after verification is In review.
+
 ## 2026-11-22 — Agent — PR #326 CI follow-up
 
 - Goal: settle PR #326 CI failures on `feature/no-reply-follow-ups` without changing PR metadata, branch, versions, or snapshot baselines.
