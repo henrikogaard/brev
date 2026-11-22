@@ -73,6 +73,10 @@ extension MailSingleKeyShortcut {
         }
         if let menuAction { return perform(menuAction, header) }
         guard let navigation else { return false }
+        if navigation.isUnifiedInboxSelected || navigation.isSmartViewSelected || navigation.selectedSavedSearchID != nil {
+            navigation.unifiedReaderStep.send(self == .next)
+            return true
+        }
         if self == .previous { navigation.selectPreviousHeader() } else { navigation.selectNextHeader() }
         return true
     }

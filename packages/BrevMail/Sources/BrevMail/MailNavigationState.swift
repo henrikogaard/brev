@@ -14,6 +14,9 @@ import BrevBackend
 import BrevSettings
 import Foundation
 import Observation
+#if os(macOS)
+import Combine
+#endif
 
 /// Top-level mutable navigation state shared by the mail UI.
 ///
@@ -298,6 +301,11 @@ public final class MailNavigationState {
     /// "N messages selected" buttons. Not observed: the list refreshes it
     /// whenever the selection changes, which is also when the pane renders.
     @ObservationIgnored var bulkSelectionActions: MailBulkSelectionActions?
+
+    #if os(macOS)
+    /// A reader key asks this scene's mounted merged list to step in its live display order.
+    let unifiedReaderStep = PassthroughSubject<Bool, Never>()
+    #endif
 
     /// Incremented when a command or toolbar action asks the current
     /// message list to reload its visible folder.
