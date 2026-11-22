@@ -16963,6 +16963,17 @@
           }
         }
       }
+    },
+    "Search, like “from Maya last week”": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søk, for eksempel «fra Maya forrige uke»"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

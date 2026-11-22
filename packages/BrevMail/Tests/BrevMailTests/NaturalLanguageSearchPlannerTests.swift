@@ -173,6 +173,56 @@ struct NaturalLanguageSearchPlannerTests {
         ) == "unread invoices from alice@example.com last month")
     }
 
+    @Test("sender, date and attachment chips filter mock messages and can be removed independently", arguments: [
+        "offer from Maya with attachments last week",
+        "offer fra Maya med vedlegg forrige uke"
+    ])
+    func editableBilingualQuery(text: String) async throws {
+        let now = try date(year: 2026, month: 6, day: 15)
+        let prior = try date(year: 2026, month: 6, day: 10)
+        func plan(_ text: String) -> NaturalLanguageSearchPlan {
+            NaturalLanguageSearchPlanner.plan(for: text, folderID: "inbox", execution: .cacheOnly,
+                                              now: now, calendar: calendar)
+        }
+        func header(_ id: String, _ name: String, _ date: Date, attached: Bool = true) -> MessageHeader {
+            MessageHeader(id: id, threadID: id, folderID: "inbox", from: .init(name: name, email: "\(id)@example.test"),
+                          subject: "offer", snippet: "", date: date, hasAttachments: attached)
+        }
+        let headers = [header("match", "Maya", prior), header("other", "Ola", prior), header("late", "Maya", now),
+                       header("no-file", "Maya", prior, attached: false)]
+        let backend = MockBackend(messagesByFolder: ["inbox": headers])
+        let parsed = plan(text)
+        #expect(parsed.query.text == "offer")
+        #expect(parsed.query.from?.lowercased() == "maya")
+        #expect(parsed.query.hasAttachments == true)
+        #expect(parsed.query.dateRange?.contains(prior) == true)
+        #expect(try await backend.search(parsed.query).map(\.id) == ["match"])
+        for (kind, newMatch) in [(NaturalLanguageSearchChip.Kind.sender, "other"), (.date, "late"), (.attachment, "no-file")] {
+            let chip = try #require(parsed.chips.first { $0.kind == kind })
+            let edited = plan(NaturalLanguageSearchChipEditing.removing(chip, from: text))
+            #expect(try await Set(backend.search(edited.query).map(\.id)) == ["match", newMatch])
+        }
+        let input = MailSearchTokens.extract(from: text, now: now, calendar: calendar)
+        #expect(plan(MailSearchTokens.composedText(freeText: input.remainingText, tokens: input.tokens)).query == parsed.query)
+    }
+
+    @Test("search field shows the Norwegian version of its example")
+    func localizedPrompt() throws {
+        let catalog = try LocalizationCatalogTestSupport.loadCatalogStrings()
+        let row = try #require(catalog["Search, like “from Maya last week”"] as? [String: Any])
+        let nb = (row["localizations"] as? [String: Any])?["nb"] as? [String: Any]
+        #expect((nb?["stringUnit"] as? [String: Any])?["value"] as? String == "Søk, for eksempel «fra Maya forrige uke»")
+    }
+
+    @Test("date prepositions do not become senders and chip removal preserves ordinary words")
+    func datePrepositions() throws {
+        let plan = NaturalLanguageSearchPlanner.plan(for: "fra forrige måned salg", execution: .cacheOnly)
+        #expect(plan.query.from == nil)
+        #expect(plan.query.text == "salg")
+        let dateChip = try #require(plan.chips.first)
+        #expect(NaturalLanguageSearchChipEditing.removing(dateChip, from: plan.originalText) == "salg")
+    }
+
     private func date(
         year: Int,
         month: Int,

@@ -40,6 +40,14 @@ struct NaturalLanguageSearchPlan: Equatable, Sendable {
 
 enum NaturalLanguageSearchPlanner {
     private static let emailPattern = #"[A-Z0-9._%+\-']+@[A-Z0-9.\-]+\.[A-Z]{2,}"#
+    fileprivate static let senderPrefix = #"\b(?:from|fra)(?:\s*:\s*|\s+)"#
+    fileprivate static let unreadPattern = #"\b(is unread|unread|uleste?)\b"#
+    fileprivate static let attachmentPattern = #"\b((?:with|has) attachments?|(?:med|har) vedlegg)\b"#
+    fileprivate static let flaggedPattern = #"\b(is flagged|flagged|starred|flagget|stjernemerket)\b"#
+
+    fileprivate static func datePattern(_ phrase: String) -> String {
+        #"\b(?:(?:from|fra)\s+)?"# + NSRegularExpression.escapedPattern(for: phrase) + #"\b"#
+    }
 
     static func plan(
         for text: String,
@@ -55,30 +63,27 @@ enum NaturalLanguageSearchPlanner {
 
         if let dateParse = dateRange(in: workingText, now: now, calendar: calendar) {
             query.dateRange = dateParse.range
-            workingText = removing(dateParse.matchedText, from: workingText)
+            workingText = removingPattern(datePattern(dateParse.matchedText), from: workingText)
             parsedChips.append(.init(
                 kind: .date,
-                label: String(format: String(localized: "Date: %@", bundle: .module), dateParse.label),
-                value: dateParse.label
+                label: String(format: String(localized: "Date: %@", bundle: .module), dateParse.matchedText),
+                value: dateParse.matchedText
             ))
         }
 
         if let senderParse = sender(in: workingText) {
-            query.from = senderParse.email
+            query.from = senderParse.value
             workingText = senderParse.remainingText
             parsedChips.append(.init(
                 kind: .sender,
-                label: String(format: String(localized: "From: %@", bundle: .module), senderParse.email),
-                value: senderParse.email
+                label: String(format: String(localized: "From: %@", bundle: .module), senderParse.value),
+                value: senderParse.value
             ))
         }
 
-        if containsPhrase(in: workingText, patterns: [
-            #"\bis unread\b"#,
-            #"\bunread\b"#,
-        ]) {
+        if workingText.range(of: unreadPattern, options: [.regularExpression, .caseInsensitive]) != nil {
             query.isUnread = true
-            workingText = removingPattern(#"\b(is unread|unread)\b"#, from: workingText)
+            workingText = removingPattern(unreadPattern, from: workingText)
             parsedChips.append(.init(
                 kind: .unread,
                 label: String(localized: "Unread", bundle: .module),
@@ -86,12 +91,9 @@ enum NaturalLanguageSearchPlanner {
             ))
         }
 
-        if containsPhrase(in: workingText, patterns: [
-            #"\bwith attachments?\b"#,
-            #"\bhas attachments?\b"#,
-        ]) {
+        if workingText.range(of: attachmentPattern, options: [.regularExpression, .caseInsensitive]) != nil {
             query.hasAttachments = true
-            workingText = removingPattern(#"\b(with|has) attachments?\b"#, from: workingText)
+            workingText = removingPattern(attachmentPattern, from: workingText)
             parsedChips.append(.init(
                 kind: .attachment,
                 label: String(localized: "Has attachments", bundle: .module),
@@ -99,13 +101,9 @@ enum NaturalLanguageSearchPlanner {
             ))
         }
 
-        if containsPhrase(in: workingText, patterns: [
-            #"\bis flagged\b"#,
-            #"\bflagged\b"#,
-            #"\bstarred\b"#,
-        ]) {
+        if workingText.range(of: flaggedPattern, options: [.regularExpression, .caseInsensitive]) != nil {
             query.isFlagged = true
-            workingText = removingPattern(#"\b(is flagged|flagged|starred)\b"#, from: workingText)
+            workingText = removingPattern(flaggedPattern, from: workingText)
             parsedChips.append(.init(
                 kind: .flagged,
                 label: String(localized: "Flagged", bundle: .module),
@@ -139,60 +137,23 @@ enum NaturalLanguageSearchPlanner {
         in text: String,
         now: Date,
         calendar: Calendar
-    ) -> (range: ClosedRange<Date>, matchedText: String, label: String)? {
-        let normalized = text.lowercased()
-        if normalized.range(of: #"\blast month\b"#, options: .regularExpression) != nil,
-           let currentMonth = calendar.dateInterval(of: .month, for: now),
-           let previousMonthStart = calendar.date(byAdding: .month, value: -1, to: currentMonth.start),
-           let previousMonth = calendar.dateInterval(of: .month, for: previousMonthStart) {
-            return (
-                previousMonth.start ... previousMonth.end.addingTimeInterval(-0.001),
-                "last month",
-                "last month"
-            )
-        }
-        if normalized.range(of: #"\bthis month\b"#, options: .regularExpression) != nil,
-           let currentMonth = calendar.dateInterval(of: .month, for: now) {
-            return (
-                currentMonth.start ... currentMonth.end.addingTimeInterval(-0.001),
-                "this month",
-                "this month"
-            )
-        }
-        if normalized.range(of: #"\btoday\b"#, options: .regularExpression) != nil,
-           let today = calendar.dateInterval(of: .day, for: now) {
-            return (
-                today.start ... today.end.addingTimeInterval(-0.001),
-                "today",
-                "today"
-            )
-        }
-        if normalized.range(of: #"\byesterday\b"#, options: .regularExpression) != nil,
-           let today = calendar.dateInterval(of: .day, for: now),
-           let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: today.start),
-           let yesterday = calendar.dateInterval(of: .day, for: yesterdayStart) {
-            return (
-                yesterday.start ... yesterday.end.addingTimeInterval(-0.001),
-                "yesterday",
-                "yesterday"
-            )
-        }
-        if normalized.range(of: #"\blast week\b"#, options: .regularExpression) != nil,
-           let currentWeek = calendar.dateInterval(of: .weekOfYear, for: now),
-           let previousWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: currentWeek.start),
-           let previousWeek = calendar.dateInterval(of: .weekOfYear, for: previousWeekStart) {
-            return (
-                previousWeek.start ... previousWeek.end.addingTimeInterval(-0.001),
-                "last week",
-                "last week"
-            )
+    ) -> (range: ClosedRange<Date>, matchedText: String)? {
+        for preset in MailSearchDatePreset.allCases {
+            for phrase in preset.phrases where text.range(
+                of: datePattern(phrase),
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil {
+                if let interval = preset.interval(at: now, calendar: calendar) {
+                    return (interval.start ... interval.end.addingTimeInterval(-0.001), phrase)
+                }
+            }
         }
         return nil
     }
 
-    private static func sender(in text: String) -> (email: String, remainingText: String)? {
+    private static func sender(in text: String) -> (value: String, remainingText: String)? {
         guard let expression = try? NSRegularExpression(
-            pattern: #"\bfrom(?:\s*:\s*|\s+)("# + emailPattern + #")\b"#,
+            pattern: senderPrefix + "(" + emailPattern + #"|[\p{L}][\p{L}\p{M}'’-]*)(?=\s|$)"#,
             options: [.caseInsensitive]
         ) else {
             return nil
@@ -200,19 +161,15 @@ enum NaturalLanguageSearchPlanner {
         let range = NSRange(text.startIndex ..< text.endIndex, in: text)
         guard let match = expression.firstMatch(in: text, range: range),
               match.numberOfRanges > 1,
-              let emailRange = Range(match.range(at: 1), in: text),
+              let valueRange = Range(match.range(at: 1), in: text),
               let fullRange = Range(match.range(at: 0), in: text)
         else {
             return nil
         }
-        let email = String(text[emailRange]).lowercased()
+        let value = String(text[valueRange])
         var remaining = text
         remaining.removeSubrange(fullRange)
-        return (email, cleanedKeywordText(remaining))
-    }
-
-    private static func removing(_ phrase: String, from text: String) -> String {
-        removingPattern(#"\b"# + NSRegularExpression.escapedPattern(for: phrase) + #"\b"#, from: text)
+        return (value.contains("@") ? value.lowercased() : value, cleanedKeywordText(remaining))
     }
 
     private static func removingPattern(_ pattern: String, from text: String) -> String {
@@ -225,12 +182,6 @@ enum NaturalLanguageSearchPlanner {
             range: range,
             withTemplate: " "
         )
-    }
-
-    private static func containsPhrase(in text: String, patterns: [String]) -> Bool {
-        patterns.contains { pattern in
-            text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
-        }
     }
 
     private static func cleanedKeywordText(_ text: String) -> String {
@@ -473,15 +424,18 @@ enum NaturalLanguageSearchChipEditing {
         case .keyword, .subject:
             return removingLiteral(chip.value, from: text)
         case .sender:
-            return removingPattern(#"\bfrom\s+"# + emailPattern(for: chip.value) + #"\b"#, from: text)
+            return removingPattern(
+                NaturalLanguageSearchPlanner.senderPrefix + NSRegularExpression.escapedPattern(for: chip.value) + #"(?=\s|$)"#,
+                from: text
+            )
         case .date:
-            return removingLiteral(chip.value, from: text)
+            return removingPattern(NaturalLanguageSearchPlanner.datePattern(chip.value), from: text)
         case .unread:
-            return removingPattern(#"\b(is unread|unread)\b"#, from: text)
+            return removingPattern(NaturalLanguageSearchPlanner.unreadPattern, from: text)
         case .attachment:
-            return removingPattern(#"\b(with|has) attachments?\b"#, from: text)
+            return removingPattern(NaturalLanguageSearchPlanner.attachmentPattern, from: text)
         case .flagged:
-            return removingPattern(#"\b(is flagged|flagged|starred)\b"#, from: text)
+            return removingPattern(NaturalLanguageSearchPlanner.flaggedPattern, from: text)
         }
     }
 
@@ -503,10 +457,6 @@ enum NaturalLanguageSearchChipEditing {
             withTemplate: " "
         )
         return cleaned(edited)
-    }
-
-    private static func emailPattern(for email: String) -> String {
-        NSRegularExpression.escapedPattern(for: email)
     }
 
     private static func cleaned(_ text: String) -> String {

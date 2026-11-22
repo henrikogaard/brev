@@ -1,5 +1,11 @@
 # Worklog
 
+## 2026-11-22 — Agent — #296 bilingual sender and date chips
+
+- Extended the existing search planner and iOS tokens with sender names and Norwegian date, read, flag and attachment phrases. The toolbar and iOS search field now give an example in the user's language.
+- Tests cover parsing, chip removal, token round trips, Norwegian copy and expected mock mailbox results. The planner regression failed before implementation. The Linux harness exercises the production predicates; native UI, full MockBackend and snapshot verification require macOS CI and QA.
+- Attachment file types, folder phrases and default cross-account scope remain separate work on #296. No change to the search execution policy or network access.
+
 ## 2026-11-23 — Agent — PR #329 (#301 rebase and macOS snapshots)
 
 - Goal: rebase PR #329 onto `origin/main`, prevent headline truncation in narrow readers, and record the missing macOS 26 snapshots for `SenderWarningBanner` (look-alike collapsed/expanded and DMARC failure expanded, light/dark).
