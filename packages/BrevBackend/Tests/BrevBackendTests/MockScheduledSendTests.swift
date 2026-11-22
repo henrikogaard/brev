@@ -122,6 +122,59 @@ struct MockScheduledSendTests {
         #expect(sentHeaders.isEmpty)
     }
 
+    @Test("saving an attachment draft preserves its planned Later date until explicit send")
+    func savedAttachmentDraftRetainsPlannedSchedule() async throws {
+        let backend = Self.backend(persistenceDirectory: nil, now: { Self.now })
+        let scheduler = try #require(backend.extensionService(ScheduledSendEditing.self))
+        let scheduledFor = Self.now.addingTimeInterval(3600)
+        let attachmentID = try await backend.uploadAttachment(
+            draftID: "saved-for-later",
+            data: Data([8, 9, 10]),
+            filename: "later.bin",
+            mimeType: "application/octet-stream",
+            sourceID: Self.sourceA
+        )
+        let saved = try await backend.save(draft: Draft(
+            id: "saved-for-later",
+            htmlBody: "Later body",
+            attachmentIDs: [attachmentID],
+            scheduledFor: scheduledFor
+        ), sourceID: Self.sourceA)
+
+        #expect(saved.scheduledFor == scheduledFor)
+        #expect(scheduler.pendingScheduledSends().isEmpty)
+        let sentFolder = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .sent })
+        let (sentBefore, _) = try await backend.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        #expect(sentBefore.isEmpty)
+
+        let result = try await backend.send(draft: saved, sourceID: Self.sourceA)
+
+        #expect(result.sentMessageID == nil)
+        #expect(result.scheduledFor == scheduledFor)
+        let entry = try #require(scheduler.pendingScheduledSends().first)
+        let queued = try await scheduler.scheduledDraft(id: entry.id)
+        #expect(queued.scheduledFor == scheduledFor)
+        #expect(try await backend.localDraftAttachments(for: queued, sourceID: Self.sourceA).map(\.data) == [Data([8, 9, 10])])
+
+        var canceled = try #require(try await scheduler.cancelScheduledSend(id: entry.id))
+        #expect(canceled.scheduledFor == nil)
+        let replannedDate = scheduledFor.addingTimeInterval(3600)
+        canceled.scheduledFor = replannedDate
+        let savedCanceled = try await backend.save(draft: canceled, sourceID: Self.sourceA)
+        #expect(savedCanceled.scheduledFor == replannedDate)
+        #expect(scheduler.pendingScheduledSends().isEmpty)
+        let requeued = try await backend.send(draft: savedCanceled, sourceID: Self.sourceA)
+        #expect(requeued.sentMessageID == nil)
+        #expect(requeued.scheduledFor == replannedDate)
+        let requeuedEntry = try #require(scheduler.pendingScheduledSends().first)
+        let requeuedDraft = try await scheduler.scheduledDraft(id: requeuedEntry.id)
+        #expect(try await backend.localDraftAttachments(for: requeuedDraft, sourceID: Self.sourceA).map(\.data) == [Data([
+            8,
+            9,
+            10
+        ])])
+    }
+
     @Test("the Mock send handler overrides both local sends and scheduled inputs")
     func sendHandlerOverridesScheduledInput() async throws {
         let backend = Self.backend(persistenceDirectory: nil)
@@ -409,6 +462,101 @@ struct MockScheduledSendTests {
         #expect(headers.filter { $0.date == scheduledFor }.count == 1)
     }
 
+    @Test("journal refresh preserves live Sent mutations")
+    func journalRefreshPreservesSentMutations() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory, now: { Self.now })
+        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        for id in ["flagged-sent", "moved-sent", "deleted-sent"] {
+            _ = try await backend.send(
+                draft: Draft(id: id, subject: id, scheduledFor: Self.now),
+                sourceID: Self.sourceA
+            )
+        }
+        await scheduler.deliverDueScheduledSends()
+
+        let folders = try await backend.folders(in: Self.sourceA)
+        let sentFolder = try #require(folders.first { $0.role == .sent })
+        let archiveFolder = try #require(folders.first { $0.id == "archive-newsletters" })
+        let (sentBefore, _) = try await backend.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let flagged = try #require(sentBefore.first { $0.subject == "flagged-sent" })
+        let moved = try #require(sentBefore.first { $0.subject == "moved-sent" })
+        let deleted = try #require(sentBefore.first { $0.subject == "deleted-sent" })
+        try await backend.setFlagged(true, for: [flagged.id], sourceID: Self.sourceA)
+        try await backend.move(messageIDs: [moved.id], to: archiveFolder, sourceID: Self.sourceA)
+        try await backend.delete(messageIDs: [deleted.id], sourceID: Self.sourceA)
+
+        _ = try await backend.send(
+            draft: Draft(id: "unrelated-queued", scheduledFor: Self.now.addingTimeInterval(3600)),
+            sourceID: Self.sourceA
+        )
+        await scheduler.deliverDueScheduledSends()
+
+        let (sentAfter, _) = try await backend.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        #expect(sentAfter.map(\.id) == [flagged.id])
+        #expect(sentAfter.first?.isFlagged == true)
+        let (archived, _) = try await backend.messages(in: archiveFolder, pageToken: nil, sourceID: Self.sourceA)
+        #expect(archived.contains { $0.id == moved.id })
+        let trashFolder = try #require(try await backend.folders(in: Self.sourceA).first { $0.role == .trash })
+        let (trashed, _) = try await backend.messages(in: trashFolder, pageToken: nil, sourceID: Self.sourceA)
+        #expect(trashed.contains { $0.id == deleted.id })
+        #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["unrelated-queued"])
+    }
+
+    @Test("queued and canceled Draft projection dates remain stable across restart")
+    func draftProjectionDatePersistsAcrossRestart() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory, now: { Self.now })
+        _ = try await backend.send(
+            draft: Draft(id: "projection-date", scheduledFor: Self.now.addingTimeInterval(60)),
+            sourceID: Self.sourceA
+        )
+        let draftsFolder = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .drafts })
+        let (queuedHeaders, _) = try await backend.messages(in: draftsFolder, pageToken: nil, sourceID: Self.sourceA)
+        let queued = try #require(queuedHeaders.first { $0.id == "draft-projection-date" })
+        #expect(queued.date == Self.now)
+
+        let reopened = Self.backend(persistenceDirectory: directory, now: { Self.now.addingTimeInterval(50000) })
+        let editor = try #require(reopened.extensionService(ScheduledSendEditing.self))
+        let reopenedDrafts = try #require(await reopened.folders(in: Self.sourceA).first { $0.role == .drafts })
+        let (restoredQueuedHeaders, _) = try await reopened.messages(
+            in: reopenedDrafts,
+            pageToken: nil,
+            sourceID: Self.sourceA
+        )
+        let restoredQueued = try #require(restoredQueuedHeaders.first { $0.id == queued.id })
+        #expect(restoredQueued.date == Self.now)
+        let scheduleID = try #require(editor.pendingScheduledSends().first?.id)
+        _ = try await editor.cancelScheduledSend(id: scheduleID)
+        let (canceledHeaders, _) = try await reopened.messages(in: reopenedDrafts, pageToken: nil, sourceID: Self.sourceA)
+        let canceled = try #require(canceledHeaders.first { $0.id == queued.id })
+        #expect(canceled.date == Self.now.addingTimeInterval(50000))
+        try await reopened.setFlagged(true, for: [canceled.id], sourceID: Self.sourceA)
+        _ = try await reopened.send(
+            draft: Draft(id: "unrelated-after-cancel", scheduledFor: Self.now.addingTimeInterval(60000)),
+            sourceID: Self.sourceA
+        )
+        await reopened.extensionService(ScheduledSendManaging.self)?.deliverDueScheduledSends()
+        let (mutatedCanceledHeaders, _) = try await reopened.messages(
+            in: reopenedDrafts,
+            pageToken: nil,
+            sourceID: Self.sourceA
+        )
+        #expect(mutatedCanceledHeaders.first { $0.id == canceled.id }?.isFlagged == true)
+        #expect(mutatedCanceledHeaders.first { $0.id == canceled.id }?.date == canceled.date)
+
+        let reopenedAgain = Self.backend(persistenceDirectory: directory, now: { Self.now.addingTimeInterval(100_000) })
+        let finalDrafts = try #require(await reopenedAgain.folders(in: Self.sourceA).first { $0.role == .drafts })
+        let (restoredCanceledHeaders, _) = try await reopenedAgain.messages(
+            in: finalDrafts,
+            pageToken: nil,
+            sourceID: Self.sourceA
+        )
+        #expect(try #require(restoredCanceledHeaders.first { $0.id == queued.id }).date == canceled.date)
+    }
+
     @Test("persistent writes fail closed before accepting a schedule")
     func failedPersistentWriteDoesNotAcceptSchedule() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -583,6 +731,7 @@ struct MockScheduledSendTests {
         _ = try await original.send(draft: canceledDraft, sourceID: Self.sourceA)
         let originalEditor = try #require(original.extensionService(ScheduledSendEditing.self))
         let canceledID = try #require(originalEditor.pendingScheduledSends().first?.id)
+        await second.deliverDueScheduledSends()
         _ = try await originalEditor.cancelScheduledSend(id: canceledID)
 
         await second.deliverDueScheduledSends()

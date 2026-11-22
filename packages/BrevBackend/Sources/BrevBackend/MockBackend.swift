@@ -1844,12 +1844,14 @@ private actor Store {
         self.scheduledSendSnapshot = scheduledSendSnapshot
         if let journal {
             do {
-                journalRecords = try journal.load()
-                self.dataByMailboxID = Self.restoredData(
-                    records: journalRecords,
+                let records = try journal.load()
+                self.dataByMailboxID = Self.projectJournalChanges(
+                    previousRecords: [],
+                    records: records,
                     mailboxes: mailboxes,
-                    initial: dataByMailboxID
+                    current: dataByMailboxID
                 )
+                journalRecords = records
             } catch {
                 journalLoadError = error
                 self.dataByMailboxID = dataByMailboxID
@@ -1965,6 +1967,7 @@ private actor Store {
                 }) {
                     let record = records[index]
                     var updated = record
+                    if updated.draft != canonical { updated.draftProjectionDate = now() }
                     updated.draft = canonical
                     updated.attachments = attachments
                     updated.scheduledFor = scheduledFor
@@ -1979,6 +1982,9 @@ private actor Store {
                 }) {
                     var updated = records[index]
                     updated.scheduleID = UUID().uuidString
+                    if updated.draft != canonical || updated.draftProjectionDate == nil {
+                        updated.draftProjectionDate = now()
+                    }
                     updated.draft = canonical
                     updated.attachments = attachments
                     updated.state = .queued
@@ -2005,7 +2011,8 @@ private actor Store {
                     nextAttemptAt: nil,
                     sender: sender,
                     parentMessageID: parentMessageID,
-                    references: references
+                    references: references,
+                    draftProjectionDate: now()
                 )
                 records.append(record)
                 return (record, true)
@@ -2052,6 +2059,7 @@ private actor Store {
                 throw ScheduledSendEditingError.notFound
             }
             records[index].state = .canceled
+            records[index].draftProjectionDate = now()
             records[index].draft = draft
             records[index].scheduledFor = nil
             records[index].scheduleID = nil
@@ -2093,6 +2101,7 @@ private actor Store {
                 throw ScheduledSendEditingError.notFound
             }
             records[index].draft = draft
+            records[index].draftProjectionDate = now()
             records[index].scheduledFor = date
             records[index].nextAttemptAt = nil
             return ()
@@ -2161,13 +2170,15 @@ private actor Store {
     ) throws -> T {
         if let journal {
             do {
+                let previousRecords = journalRecords
                 let transaction = try journal.transact(operation)
-                journalRecords = transaction.records
-                dataByMailboxID = Self.restoredData(
+                dataByMailboxID = Self.projectJournalChanges(
+                    previousRecords: previousRecords,
                     records: transaction.records,
                     mailboxes: mailboxes,
-                    initial: dataByMailboxID
+                    current: dataByMailboxID
                 )
+                journalRecords = transaction.records
                 journalLoadError = nil
                 refreshScheduledSnapshot()
                 return transaction.value
@@ -2186,12 +2197,14 @@ private actor Store {
     private func reloadJournalRecords() throws {
         guard let journal else { return }
         do {
-            journalRecords = try journal.load()
-            dataByMailboxID = Self.restoredData(
-                records: journalRecords,
+            let records = try journal.load()
+            dataByMailboxID = Self.projectJournalChanges(
+                previousRecords: journalRecords,
+                records: records,
                 mailboxes: mailboxes,
-                initial: dataByMailboxID
+                current: dataByMailboxID
             )
+            journalRecords = records
             journalLoadError = nil
             refreshScheduledSnapshot()
         } catch {
@@ -2281,53 +2294,105 @@ private actor Store {
         )
     }
 
-    private static func restoredData(
+    private static func projectJournalChanges(
+        previousRecords: [MockSendJournalRecord],
         records: [MockSendJournalRecord],
         mailboxes: [Mailbox],
-        initial: [Mailbox.ID: MockMailboxData]
+        current: [Mailbox.ID: MockMailboxData]
     ) -> [Mailbox.ID: MockMailboxData] {
-        var result = initial
+        var result = current
+        let previousByID = Dictionary(uniqueKeysWithValues: previousRecords.map { ($0.recordID, $0) })
+        let recordsByID = Dictionary(uniqueKeysWithValues: records.map { ($0.recordID, $0) })
+        for previous in previousRecords {
+            let changed = recordsByID[previous.recordID].map { !hasSameJournalProjection(previous, $0) } ?? true
+            guard changed else { continue }
+            guard var data = result[previous.sourceID.mailboxID] else { continue }
+            removeJournalProjection(of: previous, keeping: records, in: &data)
+            result[previous.sourceID.mailboxID] = data
+        }
         for record in records {
+            let changed = previousByID[record.recordID].map { !hasSameJournalProjection($0, record) } ?? true
+            guard changed else { continue }
             let mailboxID = record.sourceID.mailboxID
             guard var data = result[mailboxID] else { continue }
-            for attachment in record.attachments {
-                data.attachmentsByID[attachment.metadata.id] = attachment.metadata
-                data.attachmentDataByID[attachment.metadata.id] = attachment.data
-                data.attachmentDraftIDs[attachment.metadata.id] = attachment.draftID
-            }
-            switch record.state {
-            case .queued, .canceled:
-                if let draft = record.draft {
-                    let folderID = ensureDraftsFolderID(in: &data)
-                    let sender = record.sender ?? mailboxes.first(where: { $0.id == mailboxID }).map {
-                        Correspondent(name: $0.displayName, email: $0.email)
-                    } ?? Correspondent(email: "mock@example.test")
-                    projectDraft(draft, folderID: folderID, sender: sender, at: .distantPast, in: &data)
-                } else {
-                    _ = removeDraft(draftID: record.draftID, in: &data)
-                    data.savedDrafts[record.draftID] = nil
-                }
-            case .delivered:
-                _ = removeDraft(draftID: record.draftID, in: &data)
-                data.savedDrafts[record.draftID] = nil
-                if let header = record.sentHeader, let body = record.sentBody {
-                    if !data.folders.contains(where: { $0.id == header.folderID }) {
-                        data.folders.append(Folder(id: header.folderID, name: "Sent", role: .sent))
-                    }
-                    data.messagesByFolder[header.folderID, default: []].removeAll { $0.id == header.id }
-                    data.messagesByFolder[header.folderID, default: []].append(header)
-                    data.messageBodies[header.id] = body
-                    if let replyID = record.draft?.inReplyToMessageID {
-                        updateHeader(id: replyID, in: &data) { $0.isAnswered = true }
-                    }
-                    if let forwardedID = record.draft?.forwardedMessageID {
-                        updateHeader(id: forwardedID, in: &data) { $0.isForwarded = true }
-                    }
-                }
-            }
+            projectJournalRecord(record, mailboxes: mailboxes, in: &data)
             result[mailboxID] = data
         }
         return result
+    }
+
+    private static func hasSameJournalProjection(
+        _ lhs: MockSendJournalRecord,
+        _ rhs: MockSendJournalRecord
+    ) -> Bool {
+        lhs.sourceID == rhs.sourceID && lhs.draftID == rhs.draftID && lhs.draft == rhs.draft
+            && lhs.attachments == rhs.attachments && lhs.state == rhs.state
+            && lhs.draftProjectionDate == rhs.draftProjectionDate && lhs.sentHeader == rhs.sentHeader
+            && lhs.sentBody == rhs.sentBody && lhs.sender == rhs.sender
+            && lhs.parentMessageID == rhs.parentMessageID && lhs.references == rhs.references
+    }
+
+    private static func removeJournalProjection(
+        of record: MockSendJournalRecord,
+        keeping records: [MockSendJournalRecord],
+        in data: inout MockMailboxData
+    ) {
+        if record.state != .delivered {
+            _ = removeDraft(draftID: record.draftID, in: &data)
+            data.savedDrafts[record.draftID] = nil
+        }
+        let retainedAttachmentIDs = Set(records.filter { $0.sourceID == record.sourceID }
+            .flatMap { $0.attachments.map { $0.metadata.id } })
+        for attachment in record.attachments where !retainedAttachmentIDs.contains(attachment.metadata.id) {
+            let id = attachment.metadata.id
+            guard data.attachmentDraftIDs[id] == record.draftID else { continue }
+            data.attachmentsByID[id] = nil
+            data.attachmentDataByID[id] = nil
+            data.attachmentDraftIDs[id] = nil
+        }
+    }
+
+    private static func projectJournalRecord(
+        _ record: MockSendJournalRecord,
+        mailboxes: [Mailbox],
+        in data: inout MockMailboxData
+    ) {
+        let mailboxID = record.sourceID.mailboxID
+        for attachment in record.attachments {
+            data.attachmentsByID[attachment.metadata.id] = attachment.metadata
+            data.attachmentDataByID[attachment.metadata.id] = attachment.data
+            data.attachmentDraftIDs[attachment.metadata.id] = attachment.draftID
+        }
+        switch record.state {
+        case .queued, .canceled:
+            if let draft = record.draft, let projectionDate = record.draftProjectionDate {
+                let folderID = ensureDraftsFolderID(in: &data)
+                let sender = record.sender ?? mailboxes.first(where: { $0.id == mailboxID }).map {
+                    Correspondent(name: $0.displayName, email: $0.email)
+                } ?? Correspondent(email: "mock@example.test")
+                projectDraft(draft, folderID: folderID, sender: sender, at: projectionDate, in: &data)
+            } else {
+                _ = removeDraft(draftID: record.draftID, in: &data)
+                data.savedDrafts[record.draftID] = nil
+            }
+        case .delivered:
+            _ = removeDraft(draftID: record.draftID, in: &data)
+            data.savedDrafts[record.draftID] = nil
+            if let header = record.sentHeader, let body = record.sentBody {
+                if !data.folders.contains(where: { $0.id == header.folderID }) {
+                    data.folders.append(Folder(id: header.folderID, name: "Sent", role: .sent))
+                }
+                data.messagesByFolder[header.folderID, default: []].removeAll { $0.id == header.id }
+                data.messagesByFolder[header.folderID, default: []].append(header)
+                data.messageBodies[header.id] = body
+                if let replyID = record.draft?.inReplyToMessageID {
+                    updateHeader(id: replyID, in: &data) { $0.isAnswered = true }
+                }
+                if let forwardedID = record.draft?.forwardedMessageID {
+                    updateHeader(id: forwardedID, in: &data) { $0.isForwarded = true }
+                }
+            }
+        }
     }
 
     var allMessages: [MessageHeader] {
@@ -3206,7 +3271,6 @@ private actor Store {
         let sender = try sender(mailboxID: mailboxID)
         var saved = draft
         saved.remoteID = saved.remoteID ?? "draft-\(saved.id)"
-        saved.scheduledFor = nil
         if let canceled = journalRecords.last(where: {
             $0.sourceID.mailboxID == mailboxID && $0.draftID == saved.id && $0.state == .canceled
         }) {
@@ -3215,6 +3279,7 @@ private actor Store {
                 guard let index = records.firstIndex(where: { $0.recordID == canceled.recordID }) else {
                     throw ScheduledSendEditingError.notFound
                 }
+                if records[index].draft != saved { records[index].draftProjectionDate = now() }
                 records[index].draft = saved
                 records[index].attachments = attachmentRecords
                 return ()
@@ -3285,6 +3350,7 @@ private actor Store {
                 }
                 records[index].state = .canceled
                 records[index].draft = nil
+                records[index].draftProjectionDate = nil
                 records[index].attachments = []
                 records[index].scheduledFor = nil
                 return ()
@@ -3325,7 +3391,7 @@ private actor Store {
         mailboxID: Mailbox.ID
     ) throws -> String {
         try ensureActive()
-        try updateData(mailboxID: mailboxID) { mailboxData in
+        return try updateData(mailboxID: mailboxID) { mailboxData in
             let attachmentID = "attachment-\(draftID)-\(mailboxData.attachmentsByID.count + 1)"
             mailboxData.attachmentsByID[attachmentID] = Attachment(
                 id: attachmentID,
@@ -3452,6 +3518,7 @@ private actor Store {
                     records[index].sender = from
                     records[index].parentMessageID = parentMessageID
                     records[index].references = references
+                    records[index].draftProjectionDate = nil
                 } else {
                     records.append(MockSendJournalRecord(
                         recordID: UUID().uuidString,

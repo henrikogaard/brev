@@ -40,6 +40,7 @@ struct MockSendJournalRecord: Codable, Sendable, Equatable {
     var sender: Correspondent? = nil
     var parentMessageID: String? = nil
     var references: [String]? = nil
+    var draftProjectionDate: Date? = nil
 }
 
 private struct MockSendJournalFile: Codable {
@@ -173,7 +174,8 @@ struct MockSendJournal: @unchecked Sendable {
                   recordIDs.insert(record.recordID).inserted,
                   identities.insert(SourceDraft(sourceID: record.sourceID, draftID: record.draftID)).inserted,
                   record.scheduleID.map({ !$0.isEmpty && $0 != record.draftID && scheduleIDs.insert($0).inserted }) ?? true,
-                  record.nextAttemptAt?.timeIntervalSince1970.isFinite ?? true else {
+                  record.nextAttemptAt?.timeIntervalSince1970.isFinite ?? true,
+                  record.draftProjectionDate?.timeIntervalSince1970.isFinite ?? true else {
                 throw MockSendJournalError.invalidFile
             }
             let attachmentIDs = record.attachments.map { $0.metadata.id }
@@ -196,6 +198,7 @@ struct MockSendJournal: @unchecked Sendable {
                       draft.scheduledFor == date,
                       record.scheduleID != nil,
                       record.sender != nil,
+                      record.draftProjectionDate != nil,
                       record.sentHeader == nil,
                       record.sentBody == nil else { throw MockSendJournalError.invalidFile }
             case .canceled:
@@ -204,10 +207,13 @@ struct MockSendJournal: @unchecked Sendable {
                       record.sentHeader == nil,
                       record.sentBody == nil else { throw MockSendJournalError.invalidFile }
                 if let draft = record.draft {
-                    guard draft.id == record.draftID, draft.scheduledFor == nil else {
+                    guard draft.id == record.draftID,
+                          draft.scheduledFor?.timeIntervalSince1970.isFinite ?? true,
+                          record.sender != nil,
+                          record.draftProjectionDate != nil else {
                         throw MockSendJournalError.invalidFile
                     }
-                } else if !record.attachments.isEmpty {
+                } else if !record.attachments.isEmpty || record.draftProjectionDate != nil {
                     throw MockSendJournalError.invalidFile
                 }
             case .delivered:
@@ -216,6 +222,7 @@ struct MockSendJournal: @unchecked Sendable {
                 }
                 guard record.scheduledFor == nil,
                       draft.scheduledFor == nil,
+                      record.draftProjectionDate == nil,
                       let header = record.sentHeader,
                       let body = record.sentBody,
                       !header.id.isEmpty,

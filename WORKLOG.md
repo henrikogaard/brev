@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-22 — Agent — Issue #297 / PR #325 journal projection follow-up
+
+- Goal: preserve live Mock mailbox edits across journal refreshes and give scheduled/canceled Draft projections durable timestamps.
+- Changes: refresh only added or projection-relevant changed journal records, leaving unchanged Sent and canceled-Draft projections untouched. Persist the projection date, update it when the canonical Draft changes, and preserve a planned Later date through save/autosave without enqueueing. Canceled retained Drafts can be replanned and explicitly queued; the attachment staging test checks full bytes.
+- Regressions: delivered Sent move/delete/flag survives an unrelated schedule/reload; queued/canceled Draft dates remain stable across restart; a pre-existing second Mock refreshes changed canceled/delivered records with attachment bytes; saving an attachment Draft preserves its Later date until explicit send.
+- Verification: SwiftFormat reported `0/3 files require formatting`; `swiftc -frontend -parse` parsed the two source files and focused test file; `git diff --check` and `scripts/check-adr-required.sh` exited 0. `swift test --package-path packages/BrevBackend --filter MockScheduledSendTests` stopped before test compilation: `AttachmentTextExtractor.swift:14:8: error: no such module 'PDFKit'`.
+- Limits/handoff: Linux cannot run or typecheck the native BrevBackend tests; CI/native checks remain unverified. Local commit only; do not push before review.
+
 ## 2026-06-16 — Agent — Issue #297 / PR #325 Mock scheduling corrections
 
 - Goal: apply the review correction pass to PR #325 on `feature/compose-later-action`; keep PR #324 untouched and do not push.
