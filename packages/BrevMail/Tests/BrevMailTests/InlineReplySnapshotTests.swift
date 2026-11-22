@@ -79,7 +79,7 @@ struct InlineReplySnapshotTests {
         aiPreview: ComposeAIPreviewState? = nil
     ) throws {
         let theme = try #require(Self.theme(named: themeName))
-        let backend = MockBackend()
+        let backend = MockBackend(supportsScheduledSend: false)
         let original = MessageHeader(
             id: "original", threadID: "t", folderID: "inbox",
             from: Correspondent(name: "Maya Okafor", email: "maya@example.com"),

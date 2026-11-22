@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — Issue #297 / PR #325 compose snapshot compatibility
+
+- Goal: keep established unsupported-provider Compose snapshots stable after the Later action was added.
+- Changes: disabled scheduled-send capability in the InlineReply and desktop Compose toolbar snapshot fixtures. Corrected the date on the earlier Mock scheduling-corrections heading. Reviewed README, CHANGELOG, PRIVACY, ADR-0043, and current PR #325 worklog claims; no other wording needed correction because the descriptions match the final behavior.
+- Verification: pinned SwiftFormat, Swift parse, header/catalog, ADR, diff, and test-call-label checks. Native tests and snapshots were not run on this Linux host; hosted macOS/iOS execution remains required.
+- Handoff: local commit only on `feature/compose-later-action`; do not push before review. Hosted CI must provide Mock, account, and Outbox test evidence.
+
 ## 2026-11-22 — Agent — Issue #297 / PR #325 Mock purge and Draft projection corrections
 
 - Goal: make successful Mock purge terminal for its Store and keep canceled-Draft live and restored projection dates consistent.
@@ -37,7 +44,7 @@
 - Verification: SwiftFormat reported `0/3 files require formatting`; `swiftc -frontend -parse` parsed the two source files and focused test file; `git diff --check` and `scripts/check-adr-required.sh` exited 0. `swift test --package-path packages/BrevBackend --filter MockScheduledSendTests` stopped before test compilation: `AttachmentTextExtractor.swift:14:8: error: no such module 'PDFKit'`.
 - Limits/handoff: Linux cannot run or typecheck the native BrevBackend tests; CI/native checks remain unverified. Local commit only; do not push before review.
 
-## 2026-06-16 — Agent — Issue #297 / PR #325 Mock scheduling corrections
+## 2026-11-22 — Agent — Issue #297 / PR #325 Mock scheduling corrections
 
 - Goal: apply the review correction pass to PR #325 on `feature/compose-later-action`; keep PR #324 untouched and do not push.
 - Changes: restored `sendHandler` as a top-level send override and kept due delivery/worker transactions in Store. Hardened the versioned journal with established-file detection, read-back verification, semantic validation, frozen sender/reply context and last-known-good state on storage errors. Added transaction-owned delivery identity, stale-lifetime guards, per-factory Mock cleanup, exact Outbox context ownership, isolated lifecycle/re-login regressions and canceled-Draft autosave wording. Added malformed-record and transient-draft/attachment cleanup coverage. Compose snapshots remain capability-disabled; no PNGs or localization catalogs changed.
