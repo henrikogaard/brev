@@ -2092,6 +2092,7 @@ struct UnifiedInboxListView: View {
             return
         }
         if smartView?.id == MailboxSmartView.waiting.id {
+            searchWork.cancel()
             await reloadWaitingFollowUps()
             return
         }
@@ -2486,11 +2487,40 @@ struct UnifiedInboxListView: View {
         )
     }
 
-    private func reloadWaitingFollowUps() async {
+    private func reloadWaitingFollowUps(query: String? = nil) async {
         guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }
+        let searchText = (query ?? navigation.searchText).trimmingCharacters(in: .whitespacesAndNewlines)
         let request = loadOwnership.begin()
-        defer { if loadOwnership.current == request { isLoading = false } }
-        let contentKey = "waiting:\(reloadKey)"
+        let capturedRevision = sourceSectionsRevision
+        let capturedSections = currentSourceSectionsProvider()
+        let searchRequest = UnifiedInboxSearchRequest(
+            query: searchText,
+            sourceIDs: capturedSections.map(\.id),
+            execution: .cacheOnly
+        )
+        activeSearchRequest = nil
+        activeAttachmentSearchQueries = []
+        searchProgress = MailSearchProgressState()
+        if !searchText.isEmpty { activeSearchRequest = searchRequest }
+        defer {
+            if loadOwnership.current == request { isLoading = false }
+            if loadOwnership.current == request, activeSearchRequest == searchRequest { activeSearchRequest = nil }
+        }
+
+        func isCurrentRequest() -> Bool {
+            guard loadOwnership.accepts(request),
+                  currentSourceSectionsProvider().map(\.id) == searchRequest.sourceIDs,
+                  navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines) == searchText else { return false }
+            if searchText.isEmpty { return activeSearchRequest == nil }
+            return UnifiedInboxSearchResponsePolicy.canApplySearchResponse(
+                request: searchRequest,
+                activeRequest: activeSearchRequest,
+                currentSearchText: navigation.searchText,
+                currentSourceIDs: currentSourceSectionsProvider().map(\.id)
+            )
+        }
+
+        let contentKey = "waiting:\(reloadKey):\(searchText)"
         if loadedContentKey != contentKey { items = [] }
         loadedContentKey = contentKey
         isLoading = true
@@ -2500,8 +2530,7 @@ struct UnifiedInboxListView: View {
         loadMoreErrorStatus = nil
         pageCursors = [:]
 
-        let capturedRevision = sourceSectionsRevision
-        guard currentSourceSectionsRevisionProvider() == capturedRevision else { return }
+        guard currentSourceSectionsRevisionProvider() == capturedRevision, isCurrentRequest() else { return }
         let reminders = followUpSettingsProvider().reminders.filter {
             $0.isAutomaticNoReply && !$0.isDismissed && !$0.isCompleted
         }
@@ -2512,14 +2541,14 @@ struct UnifiedInboxListView: View {
             return SourceMessageID(sourceID: metadata.sourceID, messageID: identifier)
         })
         var loadedItems = items.filter {
-            guard let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier($0.header.messageID) else {
-                return false
-            }
+            guard $0.folder.role == .sent,
+                  let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier($0.header.messageID)
+            else { return false }
             return activeReminderLocations.contains(SourceMessageID(sourceID: $0.sourceID, messageID: identifier))
         }
         var firstError: String?
-        for section in currentSourceSectionsProvider() {
-            guard loadOwnership.accepts(request), !Task.isCancelled else { return }
+        for section in capturedSections {
+            guard isCurrentRequest() else { return }
             let sectionReminders = reminders.filter { $0.noReplyMetadata?.sourceID == section.id }
             guard !sectionReminders.isEmpty else {
                 loadedItems.removeAll { $0.sourceID == section.id }
@@ -2542,7 +2571,7 @@ struct UnifiedInboxListView: View {
                     failed = true
                     break
                 }
-                guard loadOwnership.accepts(request),
+                guard isCurrentRequest(),
                       currentSourceSectionsRevisionProvider() == capturedRevision,
                       currentSourceSectionsProvider().contains(where: { $0.id == section.id }),
                       let currentBackend = (currentBackendsProvider?() ?? backends).first(where: { $0.account.id == section.id.accountID }),
@@ -2558,7 +2587,7 @@ struct UnifiedInboxListView: View {
                     break
                 }
             }
-            guard loadOwnership.accepts(request), !Task.isCancelled else { return }
+            guard isCurrentRequest() else { return }
             if failed { continue }
 
             let currentReminders = followUpSettingsProvider().reminders.filter {
@@ -2589,8 +2618,7 @@ struct UnifiedInboxListView: View {
             loadedItems.removeAll { $0.sourceID == section.id }
             loadedItems.append(contentsOf: sentItems)
         }
-        guard loadOwnership.accepts(request),
-              currentSourceSectionsRevisionProvider() == capturedRevision else { return }
+        guard isCurrentRequest(), currentSourceSectionsRevisionProvider() == capturedRevision else { return }
         let currentReminders = followUpSettingsProvider().reminders.filter {
             $0.isAutomaticNoReply && !$0.isDismissed && !$0.isCompleted
         }
@@ -2601,11 +2629,14 @@ struct UnifiedInboxListView: View {
             return SourceMessageID(sourceID: metadata.sourceID, messageID: identifier)
         })
         let currentSourceIDs = Set(currentSourceSectionsProvider().map(\.id))
+        let waitingSearchQuery = UnifiedInboxSearchPolicy.waitingSearchQuery(text: searchText)
         items = UnifiedInboxPagination.sortedItems(loadedItems.filter { item in
-            guard currentSourceIDs.contains(item.sourceID),
+            guard item.folder.role == .sent,
+                  currentSourceIDs.contains(item.sourceID),
                   let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier(item.header.messageID)
             else { return false }
             return currentReminderLocations.contains(SourceMessageID(sourceID: item.sourceID, messageID: identifier))
+                && waitingSearchQuery.matches(item.header)
         })
         reconcileNavigationAfterItemsChanged()
         if let firstError {
@@ -2695,6 +2726,10 @@ struct UnifiedInboxListView: View {
             if loadedContentKey != "saved:\(reloadKey)" || loadedSavedQuery != savedSearchQuery {
                 await reloadSavedSearch(savedSearchQuery)
             }
+            return
+        }
+        if smartView?.id == MailboxSmartView.waiting.id {
+            await reloadWaitingFollowUps(query: query)
             return
         }
         guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }

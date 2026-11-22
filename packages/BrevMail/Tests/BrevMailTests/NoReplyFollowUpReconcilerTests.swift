@@ -506,6 +506,84 @@ struct NoReplyFollowUpReconcilerTests {
         #expect(result.map(\.id) == ["sent-id"])
     }
 
+    @Test("Waiting local search filters source-owned Sent membership and clearing restores it")
+    func waitingSearchFiltersOnlyProjectedSentMembership() {
+        let sent = header(
+            "sent-id",
+            folder: "sent",
+            messageID: "<out@example.org>",
+            subject: "Quarterly budget"
+        )
+        let matchingInbox = header(
+            "inbox-match",
+            folder: "inbox",
+            messageID: "<inbox@example.org>",
+            subject: "Quarterly budget"
+        )
+        let otherSent = header(
+            "shared-id",
+            folder: "sent",
+            messageID: "<out@example.org>",
+            subject: "Quarterly budget"
+        )
+        let reminder = FollowUpReminder(
+            id: "waiting",
+            messageID: "sent-id",
+            threadID: "sent-id",
+            accountID: source.accountID,
+            mailboxID: source.mailboxID,
+            folderID: "sent",
+            dueAt: now.addingTimeInterval(86400),
+            noReplyMetadata: NoReplyFollowUpMetadata(
+                sourceID: source, draftID: "draft", expectedMessageID: "<out@example.org>", sentAt: now
+            )
+        )
+        let otherReminder = FollowUpReminder(
+            id: "other-waiting",
+            messageID: "shared-id",
+            threadID: "shared-id",
+            accountID: otherSource.accountID,
+            mailboxID: otherSource.mailboxID,
+            folderID: "sent",
+            dueAt: now.addingTimeInterval(86400),
+            noReplyMetadata: NoReplyFollowUpMetadata(
+                sourceID: otherSource, draftID: "other-draft", expectedMessageID: "<out@example.org>", sentAt: now
+            )
+        )
+        let reminders = [reminder, otherReminder]
+        let waitingHeaders = NoReplyFollowUpWaitingProjection.headers(
+            sourceID: source,
+            sentFolderIDs: ["sent"],
+            cachedHeaders: [sent, matchingInbox],
+            reminders: reminders
+        )
+        let otherWaitingHeaders = NoReplyFollowUpWaitingProjection.headers(
+            sourceID: otherSource,
+            sentFolderIDs: ["sent"],
+            cachedHeaders: [otherSent],
+            reminders: reminders
+        )
+        let foreignReminderCollision = NoReplyFollowUpWaitingProjection.headers(
+            sourceID: source,
+            sentFolderIDs: ["sent"],
+            cachedHeaders: [sent],
+            reminders: [otherReminder]
+        )
+
+        let query = UnifiedInboxSearchPolicy.waitingSearchQuery(text: "quarterly", now: now)
+        let clearedQuery = UnifiedInboxSearchPolicy.waitingSearchQuery(text: " \n", now: now)
+
+        #expect(query.execution == .cacheOnly)
+        #expect(query.folderID == nil)
+        #expect(query.matches(matchingInbox))
+        #expect(query.matches(otherSent))
+        #expect(waitingHeaders.map(\.id) == ["sent-id"])
+        #expect(waitingHeaders.filter { query.matches($0) }.map(\.id) == ["sent-id"])
+        #expect(otherWaitingHeaders.filter { query.matches($0) }.map(\.id) == ["shared-id"])
+        #expect(foreignReminderCollision.isEmpty)
+        #expect(waitingHeaders.filter { clearedQuery.matches($0) }.map(\.id) == waitingHeaders.map(\.id))
+    }
+
     @Test("Waiting projection drops rows when the reminder is dismissed during cache loading")
     func waitingProjectionUsesLatestReminderState() {
         let reminder = FollowUpReminder(

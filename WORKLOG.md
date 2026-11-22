@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-22 — Agent — PR #326 Waiting search
+
+- Goal: keep Waiting searches inside the source-owned follow-up membership instead of dispatching generic Inbox search.
+- Changes: nonempty Waiting queries now reload cached Sent follow-ups and apply the natural-language query locally with no folder scope or backend execution. Empty-query reloads cancel obsolete search work. Search request/progress/attachment-query/cursor state is cleared; load ownership, query/source revision, backend identity and cancellation guards remain. Added Sent-versus-Inbox, query-clear, source-collision and stale/cancelled-request regressions. CHANGELOG notes the corrected Waiting search scope.
+- Verification: a focused Foundation harness compiled production `UnifiedInboxSearchPolicy`, `NaturalLanguageSearchPlanner`, `SearchQuery` model/matcher, response/reload policies and load ownership with minimal SwiftUI-facing shims; five assertions passed. Pinned SwiftFormat lint passed for four changed Swift files; Swift parse passed for all four. ADR-required and diff checks passed after final edits.
+- Skipped: native BrevMail tests could not run on this Linux host because SwiftUI is unavailable; added repository regressions were parsed but not executed. The Gmail mounted test's schedule is still seeded before ComposeView restoration: `scheduledSendDate` and sheet presentation are private state, and the current harness exposes no date-selection seam or ViewInspector usage, so no test-only setter was added.
+- Handoff: commit separately and do not push yet. Project-board access was unavailable; intended #326 status is **In progress** during work and **In review** after local verification. No #325 or #324 files were changed.
+
 ## 2026-11-22 — Agent — PR #326 persistence regression review
 
 - Goal: make the mounted regression prove the existing remote draft and scheduled intent survive initial mock persistence and are present before Send.

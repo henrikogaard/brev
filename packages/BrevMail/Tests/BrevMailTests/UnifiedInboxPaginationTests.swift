@@ -492,6 +492,45 @@ struct UnifiedInboxPaginationTests {
         ))
     }
 
+    @MainActor
+    @Test("Waiting local search rejects cleared, changed-source, and cancelled requests")
+    func waitingLocalSearchRejectsStaleAndCancelledRequests() async {
+        let source = Self.sourceID(account: "account-a", mailbox: "mailbox-a")
+        let otherSource = Self.sourceID(account: "account-b", mailbox: "mailbox-b")
+        let request = UnifiedInboxSearchRequest(
+            query: "quarterly",
+            sourceIDs: [source],
+            execution: .cacheOnly
+        )
+
+        #expect(UnifiedInboxSearchResponsePolicy.canApplySearchResponse(
+            request: request,
+            activeRequest: request,
+            currentSearchText: " quarterly ",
+            currentSourceIDs: [source]
+        ))
+        #expect(!UnifiedInboxSearchResponsePolicy.canApplySearchResponse(
+            request: request,
+            activeRequest: nil,
+            currentSearchText: "",
+            currentSourceIDs: [source]
+        ))
+        #expect(!UnifiedInboxSearchResponsePolicy.canApplySearchResponse(
+            request: request,
+            activeRequest: request,
+            currentSearchText: "quarterly",
+            currentSourceIDs: [otherSource]
+        ))
+
+        let ownership = MailListLoadOwnership()
+        let loadRequest = ownership.begin()
+        let cancelled = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return ownership.accepts(loadRequest)
+        }
+        #expect(await cancelled.value == false)
+    }
+
     private static func sourceID(account: String, mailbox: String) -> MailSourceID {
         MailSourceID(accountID: account, mailboxID: mailbox)
     }

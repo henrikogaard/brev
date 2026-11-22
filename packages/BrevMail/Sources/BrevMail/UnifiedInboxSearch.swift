@@ -136,6 +136,20 @@ enum UnifiedInboxSearchPolicy {
         ).query
     }
 
+    static func waitingSearchQuery(
+        text: String,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> SearchQuery {
+        NaturalLanguageSearchPlanner.plan(
+            for: text,
+            folderID: nil,
+            execution: .cacheOnly,
+            now: now,
+            calendar: calendar
+        ).query
+    }
+
     static func searchableSources(
         from sourceSections: [MailSourceSection],
         execution: SearchExecution = .cacheThenServer,

@@ -296,6 +296,7 @@ All notable changes to Brev are documented here.
   invalidated session.
 
 ### Added
+- Waiting searches filter only source-owned cached Sent messages that belong in
 - An opted-in existing server draft is saved before sending so the canonical
 - Compose, including inline reply, can optionally add a three-day no-reply
 - Compose can optionally add a three-day no-reply follow-up. Sent copies and
