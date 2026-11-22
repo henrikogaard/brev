@@ -204,25 +204,134 @@ struct AssistantDestinationTests {
         #expect(!navigation.isAssistantSelected)
     }
 
-    @Test("AI availability gate blocks disabled or unconsented Assistant requests")
+    @Test("Assistant prompt submission gate blocks disabled, unconsented, and missing-backend prompts")
     func availabilityGateBlocksDisabledOrUnconsented() {
         let disabled = MailboxChatAvailabilityState(
             settings: AIWriterSettings(isEnabled: false, consentGiven: false),
             hasProviderBackend: true
         )
-        #expect(MailboxChatAvailability.disabledReason(in: disabled) == .notEnabled)
+        #expect(
+            AssistantPromptSubmissionGate.evaluate(
+                prompt: "What needs me today?",
+                isSending: false,
+                disabledReason: MailboxChatAvailability.disabledReason(in: disabled)
+            ) == .requestConsent
+        )
 
         let unconsented = MailboxChatAvailabilityState(
             settings: AIWriterSettings(isEnabled: true, consentGiven: false),
             hasProviderBackend: true
         )
-        #expect(MailboxChatAvailability.disabledReason(in: unconsented) == .consentRequired)
+        #expect(
+            AssistantPromptSubmissionGate.evaluate(
+                prompt: "What needs me today?",
+                isSending: false,
+                disabledReason: MailboxChatAvailability.disabledReason(in: unconsented)
+            ) == .requestConsent
+        )
+
+        let missingBackend = MailboxChatAvailabilityState(
+            settings: AIWriterSettings(isEnabled: true, consentGiven: true),
+            hasProviderBackend: false
+        )
+        #expect(
+            AssistantPromptSubmissionGate.evaluate(
+                prompt: "What needs me today?",
+                isSending: false,
+                disabledReason: MailboxChatAvailability.disabledReason(in: missingBackend)
+            ) == .openSettings
+        )
 
         let ready = MailboxChatAvailabilityState(
             settings: AIWriterSettings(isEnabled: true, consentGiven: true),
             hasProviderBackend: true
         )
-        #expect(MailboxChatAvailability.disabledReason(in: ready) == nil)
+        #expect(
+            AssistantPromptSubmissionGate.evaluate(
+                prompt: "  What needs me today?  ",
+                isSending: false,
+                disabledReason: MailboxChatAvailability.disabledReason(in: ready)
+            ) == .send("What needs me today?")
+        )
+    }
+
+    @Test("Archive all stages deterministic typed-confirmation plan for exact cards and supports Gmail All Mail")
+    func archiveAllStagesDeterministicReviewedPlan() async {
+        let now = Date()
+        let c1 = MailboxChatCitation(
+            id: "m1",
+            folderID: "INBOX",
+            sourceID: Self.source,
+            subject: "Weekly newsletter",
+            date: now,
+            senderName: "Digest",
+            senderEmail: "newsletter@example.org",
+            snippet: "Top stories",
+            isRead: false,
+            isFlagged: false,
+            isAnswered: false
+        )
+        let card1 = AssistantConversationCard(
+            messageID: "m1",
+            folderID: "INBOX",
+            sourceID: Self.source,
+            senderName: "Digest",
+            senderEmail: "newsletter@example.org",
+            subject: "Weekly newsletter",
+            snippet: "Top stories",
+            date: now,
+            section: .updatesAndNewsletters,
+            tags: [],
+            citation: c1
+        )
+        let gmailFolders = [
+            Folder(id: "INBOX", name: "Inbox", role: .inbox),
+            Folder(id: "ALL_MAIL", name: "All Mail", role: .allMail),
+        ]
+        var executedIDs: [String] = []
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: Self.source,
+            aiBackend: nil,
+            actionFolders: gmailFolders,
+            executeAction: { plan in
+                executedIDs = plan.matchingMessageIDs
+                return "Archived 1 message."
+            },
+            search: { _, _ in [] }
+        )
+
+        controller.stageArchiveCards([card1])
+        guard case .actionReview(let plan, _)? = controller.turns.last else {
+            Issue.record("Expected action review turn")
+            return
+        }
+        #expect(plan.matchingMessageIDs == ["m1"])
+        #expect(plan.operation == .archive(to: gmailFolders[1]))
+
+        // Wrong phrase does not execute
+        await controller.confirmAction(planID: plan.id, phrase: "wrong")
+        #expect(executedIDs.isEmpty)
+
+        // Exact phrase executes strictly the displayed card IDs
+        await controller.confirmAction(planID: plan.id, phrase: plan.confirmationChallenge.requiredPhrase)
+        #expect(executedIDs == ["m1"])
+
+        // Missing archive/allMail folder produces clarification rather than silent skip
+        let noArchiveController = MailboxChatController(
+            scope: .account,
+            sourceID: Self.source,
+            aiBackend: nil,
+            actionFolders: [Folder(id: "INBOX", name: "Inbox", role: .inbox)],
+            executeAction: { _ in "never" },
+            search: { _, _ in [] }
+        )
+        noArchiveController.stageArchiveCards([card1])
+        if case .clarification? = noArchiveController.turns.last {
+            // Expected clarification
+        } else {
+            Issue.record("Expected clarification when no archive destination exists")
+        }
     }
 
     @Test("Assistant destination strings have Norwegian localizations")

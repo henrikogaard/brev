@@ -265,6 +265,33 @@ final class MailboxChatController: ObservableObject {
         isSending = false
     }
 
+    /// Stages a deterministic reviewed archive plan targeting strictly the exact
+    /// displayed Assistant `cards` through the standard ADR-0026/ADR-0047 typed
+    /// confirmation flow (#294).
+    func stageArchiveCards(_ cards: [AssistantConversationCard]) {
+        guard executeAction != nil else {
+            turns.append(.clarification(
+                text: "Mailbox actions aren't available for this mailbox yet.",
+                providerLabel: MailboxChatProviderLabelPolicy.localClarification()
+            ))
+            return
+        }
+        let result = MailboxActionAgentPlanner().planArchive(
+            cards: cards,
+            folders: actionFolders,
+            sourceScope: actionSourceScope
+        )
+        switch result {
+        case .planned(let plan):
+            turns.append(.actionReview(plan, providerLabel: actionProviderLabel))
+        case .clarificationRequired(let clarification):
+            turns.append(.clarification(
+                text: MailboxActionAgentClarificationPresentation.message(for: clarification),
+                providerLabel: MailboxChatProviderLabelPolicy.actionPlanner()
+            ))
+        }
+    }
+
     private func sendAction(message: String) async {
         guard isScopeReadyForActions else {
             turns.append(.clarification(

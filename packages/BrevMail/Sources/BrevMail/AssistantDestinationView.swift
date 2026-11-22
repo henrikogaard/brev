@@ -17,6 +17,34 @@ import BrevDesign
 import BrevThemes
 import SwiftUI
 
+/// Deterministic gate applied by `AssistantDestinationView` before sending any prompt (#294).
+enum AssistantPromptSubmissionGate {
+    enum Outcome: Equatable {
+        case ignore
+        case requestConsent
+        case openSettings
+        case send(String)
+    }
+
+    static func evaluate(
+        prompt: String,
+        isSending: Bool,
+        disabledReason: MailboxChatDisabledReason?
+    ) -> Outcome {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isSending else { return .ignore }
+        if let disabledReason {
+            switch disabledReason {
+            case .notEnabled, .consentRequired:
+                return .requestConsent
+            case .missingBackend:
+                return .openSettings
+            }
+        }
+        return .send(trimmed)
+    }
+}
+
 /// Full-pane Assistant sidebar destination (#294, ADR-0047 amendment): reuses
 /// `MailboxChatController`, renders grounded conversation cards grouped by
 /// priority, and keeps AI invocation strictly user-initiated with visible
@@ -38,14 +66,12 @@ struct AssistantDestinationView: View {
     let search: MailboxChatSearch
     let onOpenCard: (AssistantConversationCard) -> Void
     let onReplyCard: (AssistantConversationCard) -> Void
-    let onArchiveCards: (([AssistantConversationCard]) async -> Void)?
     let onOpenSettings: (() -> Void)?
     let availabilityOverride: MailboxChatAvailabilityState?
 
     @StateObject private var controller: MailboxChatController
     @State private var draftPrompt = ""
     @State private var confirmationPhrases: [UUID: String] = [:]
-    @State private var pendingArchiveCards: [AssistantConversationCard]?
     @State private var showAIConsent = false
 
     private static let suggestedStarters: [String] = [
@@ -63,7 +89,6 @@ struct AssistantDestinationView: View {
         search: @escaping MailboxChatSearch,
         onOpenCard: @escaping (AssistantConversationCard) -> Void,
         onReplyCard: @escaping (AssistantConversationCard) -> Void,
-        onArchiveCards: (([AssistantConversationCard]) async -> Void)? = nil,
         onOpenSettings: (() -> Void)? = nil,
         availabilityOverride: MailboxChatAvailabilityState? = nil,
         preloadedTurns: [MailboxChatTurnKind] = []
@@ -77,7 +102,6 @@ struct AssistantDestinationView: View {
         self.search = search
         self.onOpenCard = onOpenCard
         self.onReplyCard = onReplyCard
-        self.onArchiveCards = onArchiveCards
         self.onOpenSettings = onOpenSettings
         self.availabilityOverride = availabilityOverride
         _controller = StateObject(wrappedValue: MailboxChatController(
@@ -139,49 +163,11 @@ struct AssistantDestinationView: View {
         .onChange(of: sourceID) { _, _ in
             reconfigureController()
         }
-        .alert(
-            String(localized: "Enable AI Assistant", bundle: .module),
-            isPresented: $showAIConsent
-        ) {
-            Button(String(localized: "Enable", bundle: .module)) {
-                aiEnabled = true
-                aiConsentGiven = true
-            }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
-        } message: {
-            Text(
-                String(
-                    localized: "Questions send matching local message summaries to your configured AI provider.",
-                    bundle: .module
-                )
-            )
-        }
-        .confirmationDialog(
-            String(localized: "Archive updates", bundle: .module),
-            isPresented: Binding(
-                get: { pendingArchiveCards != nil },
-                set: { if !$0 { pendingArchiveCards = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            if let cards = pendingArchiveCards {
-                Button(
-                    String(
-                        format: String(localized: "Archive all %lld", bundle: .module),
-                        Int64(cards.count)
-                    ),
-                    role: .destructive
-                ) {
-                    pendingArchiveCards = nil
-                    Task {
-                        await onArchiveCards?(cards)
-                    }
-                }
-            }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                pendingArchiveCards = nil
-            }
-        }
+        .modifier(MailboxChatAIConsentAlert(
+            showAIConsent: $showAIConsent,
+            aiEnabled: $aiEnabled,
+            aiConsentGiven: $aiConsentGiven
+        ))
     }
 
     private func reconfigureController() {
@@ -505,20 +491,22 @@ struct AssistantDestinationView: View {
     }
 
     private func submit(_ prompt: String) {
-        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !controller.isSending else { return }
-        if let disabledReason {
-            switch disabledReason {
-            case .notEnabled, .consentRequired:
-                showAIConsent = true
-            case .missingBackend:
-                onOpenSettings?()
-            }
+        switch AssistantPromptSubmissionGate.evaluate(
+            prompt: prompt,
+            isSending: controller.isSending,
+            disabledReason: disabledReason
+        ) {
+        case .ignore:
             return
-        }
-        draftPrompt = ""
-        Task {
-            await controller.send(userText: trimmed)
+        case .requestConsent:
+            showAIConsent = true
+        case .openSettings:
+            onOpenSettings?()
+        case .send(let trimmed):
+            draftPrompt = ""
+            Task {
+                await controller.send(userText: trimmed)
+            }
         }
     }
 
@@ -530,7 +518,7 @@ struct AssistantDestinationView: View {
             submit(prompt)
         case .archiveUpdates(_, let cards):
             guard !cards.isEmpty else { return }
-            pendingArchiveCards = cards
+            controller.stageArchiveCards(cards)
         }
     }
 }

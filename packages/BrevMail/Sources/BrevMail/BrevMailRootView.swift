@@ -1700,9 +1700,10 @@ public struct BrevMailRootView: View {
         let resolvedSource = navigation.assistantSourceID
             ?? navigation.selectedSourceID
             ?? preferredDefaultSection(in: visibleSourceSections)?.id
+        let resolvedAIBackend = aiBackend(for: backend(for: resolvedSource).account)
         return AssistantDestinationView(
             sourceID: resolvedSource,
-            aiBackend: selectedAIBackend,
+            aiBackend: resolvedAIBackend,
             actionFolders: mailboxActionFolders(for: resolvedSource),
             focusedFolder: selectedFolder,
             actionSourceScope: mailboxActionSourceScope(for: resolvedSource),
@@ -1741,49 +1742,8 @@ public struct BrevMailRootView: View {
                     presentReply(to: header, sourceID: card.sourceID)
                 }
             },
-            onArchiveCards: { cards in
-                await archiveAssistantCards(cards)
-            },
             onOpenSettings: onOpenSettings
         )
-    }
-
-    private func archiveAssistantCards(_ cards: [AssistantConversationCard]) async {
-        let bySource = Dictionary(grouping: cards) {
-            $0.sourceID ?? navigation.assistantSourceID ?? preferredDefaultSection(in: visibleSourceSections)?.id
-        }
-        var receipts: [MailMoveUndo?] = []
-        let lease = undoQueue.beginMutation()
-        defer { undoQueue.endMutation(lease) }
-        for (sourceID, sourceCards) in bySource {
-            guard let sourceID,
-                  let section = sidebarSourceSections.first(where: { $0.id == sourceID }),
-                  let archiveFolder = section.folders.first(where: { $0.role == .archive })
-            else { continue }
-            let owner = backend(for: sourceID)
-            let byFolder = Dictionary(grouping: sourceCards, by: \.folderID)
-            for (folderID, folderCards) in byFolder where folderID != archiveFolder.id {
-                let sourceFolder = section.folders.first { $0.id == folderID }
-                    ?? Folder(id: folderID, name: folderID, role: .custom)
-                if let receipt = try? await owner.moveWithUndo(
-                    messageIDs: folderCards.map(\.messageID),
-                    from: sourceFolder,
-                    to: archiveFolder,
-                    sourceID: sourceID
-                ) {
-                    receipts.append(receipt)
-                }
-            }
-        }
-        if !receipts.isEmpty {
-            undoQueue.registerMoves(
-                receipts,
-                description: String(localized: "Archived", bundle: .module),
-                lease: lease
-            )
-            await loadFolders()
-            navigation.requestReload()
-        }
     }
 
     private var readingPanePresentation: MailRootReadingPanePresentation {

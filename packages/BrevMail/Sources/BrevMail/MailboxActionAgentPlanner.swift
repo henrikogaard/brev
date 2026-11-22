@@ -1198,10 +1198,81 @@ struct MailboxActionAgentPlanner: Sendable {
     private static func archiveTarget(
         in folders: [Folder]
     ) -> ArchiveTargetResolution {
-        guard let archive = folders.first(where: { $0.role == .archive }) else {
-            return .needsClarification(.unknownFolder("Archive"))
+        if let archive = folders.first(where: { $0.role == .archive })
+            ?? folders.first(where: { $0.role == .allMail }) {
+            return .resolved(archive)
         }
-        return .resolved(archive)
+        return .needsClarification(.unknownFolder("Archive"))
+    }
+
+    /// Builds a deterministic reviewed archive plan targeting strictly the exact
+    /// displayed Assistant cards without broadening to other messages from those
+    /// senders (#294, ADR-0026, ADR-0047).
+    func planArchive(
+        cards: [AssistantConversationCard],
+        folders: [Folder],
+        sourceScope: MailboxActionAgentSourceScope = .currentMailbox
+    ) -> MailboxActionAgentPlanningResult {
+        let archiveFolder: Folder
+        switch Self.archiveTarget(in: folders) {
+        case .resolved(let folder):
+            archiveFolder = folder
+        case .needsClarification(let clarification):
+            return .clarificationRequired(clarification)
+        }
+        let eligible = cards.filter { $0.folderID != archiveFolder.id }
+        guard !eligible.isEmpty else {
+            return .clarificationRequired(.unsupportedRequest)
+        }
+        let senderEmail = Self.normalizedEmail(eligible[0].senderEmail)
+        let headers = eligible.map { card in
+            MessageHeader(
+                id: card.messageID,
+                threadID: card.messageID,
+                folderID: card.folderID,
+                from: Correspondent(name: card.senderName, email: card.senderEmail),
+                subject: card.subject,
+                snippet: card.snippet,
+                date: card.date,
+                isRead: card.citation.isRead,
+                isFlagged: card.citation.isFlagged,
+                isAnswered: card.citation.isAnswered
+            )
+        }
+        let messageIDs = headers.map(\.id)
+        let matchedMessageStates = headers.map(MailboxActionAgentMatchedMessageState.init(header:))
+        let matchedFolderNames = Self.matchedFolderNames(for: headers, folders: folders)
+        let sampleMessages = headers
+            .prefix(Self.maxSampleMessageCount)
+            .map(MailboxActionAgentMessageSample.init(header:))
+        let id = idGenerator()
+        let operation: MailboxActionAgentOperation = .archive(to: archiveFolder)
+        let challenge = Self.confirmationChallenge(
+            id: id,
+            senderEmail: senderEmail,
+            operation: operation,
+            count: messageIDs.count
+        )
+        return .planned(
+            MailboxActionAgentPlan(
+                id: id,
+                request: "Archive \(messageIDs.count) updates",
+                senderEmail: senderEmail,
+                operation: operation,
+                searchQuery: SearchQuery(execution: .cacheOnly),
+                matchingMessageIDs: messageIDs,
+                matchedMessageStates: matchedMessageStates,
+                matchedFolderNames: matchedFolderNames,
+                sampleMessages: sampleMessages,
+                sourceScope: sourceScope,
+                refinements: MailboxActionAgentRefinements(
+                    folder: nil,
+                    olderThanDays: nil,
+                    olderThanCutoffDate: nil
+                ),
+                confirmationChallenge: challenge
+            )
+        )
     }
 
     private static func refinements(
