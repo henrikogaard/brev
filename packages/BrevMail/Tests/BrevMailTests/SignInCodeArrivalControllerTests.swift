@@ -46,6 +46,8 @@ struct SignInCodeArrivalControllerTests {
         var bodyReads: [String] { bodyReadLock.withLock { recordedBodyReads } }
         private var recordedSubscriptionStarts = 0
         var subscriptionStarts: Int { bodyReadLock.withLock { recordedSubscriptionStarts } }
+        private var recordedSubscriptionStops = 0
+        var subscriptionStops: Int { bodyReadLock.withLock { recordedSubscriptionStops } }
         /// Lets a test flip consent while the assessment is in flight.
         var onAssess: (@Sendable () -> Void)?
         var onHeaders: (@Sendable () -> Void)?
@@ -90,8 +92,10 @@ struct SignInCodeArrivalControllerTests {
         func replyToCalendarInvite(messageID: String, response: AttendeeState) async throws {}
         func subscribeToChanges() -> AsyncStream<MailEvent> {
             bodyReadLock.withLock { recordedSubscriptionStarts += 1 }
-            return AsyncStream { continuation in
-                continuation.onTermination = { _ in }
+            return AsyncStream { [weak self] continuation in
+                continuation.onTermination = { [weak self] _ in
+                    self?.bodyReadLock.withLock { self?.recordedSubscriptionStops += 1 }
+                }
             }
         }
 
@@ -349,8 +353,11 @@ struct SignInCodeArrivalControllerTests {
         await Task.yield()
         #expect(backend.subscriptionStarts == 1)
 
-        // Clean up the active task before exit.
+        // Reopening a mailbox window terminates the session's background stream
+        // so the mailbox view resumes exclusive ownership with zero overlap.
         session.mailboxWindowDidOpen()
+        await Task.yield()
+        #expect(backend.subscriptionStops == 1)
     }
     #endif
 }

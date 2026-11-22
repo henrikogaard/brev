@@ -4082,6 +4082,8 @@ struct MessageListRow: View {
     let isBlockedSender: Bool
     let hasFollowUp: Bool
     let followUpDue: Bool
+    /// Optional fixed clock for deterministic date-label snapshots.
+    let referenceDate: Date?
     let onActivate: () -> Void
     let onToggleCheck: () -> Void
     let onToggleThread: () -> Void
@@ -4208,6 +4210,7 @@ struct MessageListRow: View {
         isBlockedSender: Bool,
         hasFollowUp: Bool,
         followUpDue: Bool = false,
+        referenceDate: Date? = nil,
         onActivate: @escaping () -> Void,
         onToggleCheck: @escaping () -> Void,
         onToggleThread: @escaping () -> Void
@@ -4234,6 +4237,7 @@ struct MessageListRow: View {
         self.isBlockedSender = isBlockedSender
         self.hasFollowUp = hasFollowUp
         self.followUpDue = followUpDue
+        self.referenceDate = referenceDate
         self.onActivate = onActivate
         self.onToggleCheck = onToggleCheck
         self.onToggleThread = onToggleThread
@@ -4553,6 +4557,7 @@ struct MessageListRow: View {
         MessageListDatePresentation.label(
             for: header.date,
             showsAbsoluteArrivalTime: showsAbsoluteArrivalTime,
+            referenceDate: referenceDate ?? Date(),
             calendar: calendar,
             locale: locale,
             timeZone: timeZone
@@ -4564,6 +4569,7 @@ struct MessageListRow: View {
             for: header.date,
             showsAbsoluteArrivalTime: showsAbsoluteArrivalTime,
             relativeStyle: .compact,
+            referenceDate: referenceDate ?? Date(),
             calendar: calendar,
             locale: locale,
             timeZone: timeZone

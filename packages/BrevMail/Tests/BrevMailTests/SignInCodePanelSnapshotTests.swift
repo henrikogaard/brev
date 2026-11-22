@@ -244,6 +244,7 @@ struct SignInCodePanelSnapshotTests {
             signInCode: "482913",
             isBlockedSender: false,
             hasFollowUp: false,
+            referenceDate: now,
             onActivate: {},
             onToggleCheck: {},
             onToggleThread: {}
