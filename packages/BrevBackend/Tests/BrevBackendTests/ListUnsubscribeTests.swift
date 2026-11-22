@@ -132,4 +132,70 @@ struct ListUnsubscribeTests {
         let uncached = await service?.cachedListUnsubscribe(for: "INBOX:999", sourceID: sourceID)
         #expect(uncached == nil)
     }
+
+    @Test("IMAP structuredBody preserves bulk precedence in parsed body cache without raw source")
+    func structuredBodyPreservesBulkPrecedenceWithoutRawSource() async throws {
+        let parser = IMAPMessageBodyParser()
+        let structured = parser.structuredBody(
+            messageID: "INBOX:77",
+            headerBlock: "From: Notice <notice@example.org>\r\nSubject: Monthly notice\r\nPrecedence: bulk\r\n",
+            plainText: "Hello",
+            html: nil,
+            attachments: [],
+            readReceiptNotification: nil
+        )
+        #expect(structured.isBulkPrecedence == true)
+
+        // Verify backward-compatible decoding of legacy cached MessageBody JSON without isBulkPrecedence.
+        let legacyJSON = #"{"messageID":"INBOX:78","plainText":"Legacy","attachments":[]}"#
+        let decodedLegacy = try JSONDecoder().decode(MessageBody.self, from: Data(legacyJSON.utf8))
+        #expect(decodedLegacy.isBulkPrecedence == false)
+
+        let account = BrevAccount(
+            id: "imap-smtp:structured@example.org",
+            displayName: "Structured",
+            emailAddress: "structured@example.org",
+            backendIdentifier: BrevAccount.imapSMTPBackendIdentifier
+        )
+        let configuration = IMAPAccountConfiguration(
+            accountID: account.id,
+            emailAddress: account.emailAddress,
+            displayName: account.displayName,
+            incoming: MailServerSettings(
+                kind: .imap,
+                host: "imap.example.org",
+                port: 993,
+                tlsMode: .implicit,
+                authentication: .password
+            ),
+            outgoing: MailServerSettings(
+                kind: .smtp,
+                host: "smtp.example.org",
+                port: 587,
+                tlsMode: .startTLS,
+                authentication: .password
+            ),
+            credentialID: account.id
+        )
+        let credential = MailAccountCredential(
+            incomingUsername: "structured@example.org",
+            outgoingUsername: "structured@example.org",
+            secret: "secret",
+            authentication: .password
+        )
+        let bodyCache = InMemoryIMAPMessageBodyCache()
+        await bodyCache.setBody(structured, accountID: account.id, messageID: "INBOX:77")
+        let backend = IMAPSMTPBackend(
+            account: account,
+            configuration: configuration,
+            credential: credential,
+            listFolders: { _, _ in Issue.record("Unexpected network call"); return [] },
+            sourceCache: nil,
+            bodyCache: bodyCache
+        )
+        let service = backend.extensionService(CachedListUnsubscribeProviding.self)
+        let sourceID = MailSourceID(accountID: account.id, mailboxID: account.id)
+        let isBulk = await service?.cachedIsBulkPrecedence(for: "INBOX:77", sourceID: sourceID)
+        #expect(isBulk == true)
+    }
 }

@@ -44,17 +44,10 @@ struct SubscriptionSenderGroup: Identifiable, Equatable, Sendable {
     var confirmationSummary: String? {
         guard let action = primaryUnsubscribeAction else { return nil }
         switch action.method {
-        case .https(let url, let supportsOneClick):
+        case .https(let url, _):
             let host = url.host ?? url.absoluteString
-            if supportsOneClick {
-                return String(
-                    format: String(
-                        localized: "Brev will open %@ to send a one-click unsubscribe request. The site may learn your IP address and request time.",
-                        bundle: .module
-                    ),
-                    host
-                )
-            }
+            // Brev opens HTTPS unsubscribe targets in the user's browser rather
+            // than issuing an automatic background POST (ADR-0006).
             return String(
                 format: String(
                     localized: "Brev will open %@ in your browser. The site may learn your IP address and request time.",
@@ -193,12 +186,15 @@ enum SubscriptionsActions {
             }
         }
 
-        if !receipts.isEmpty {
+        let reversibleReceipts = receipts.compactMap { $0 }
+        if !reversibleReceipts.isEmpty {
             undoQueue.registerMoves(
-                receipts,
+                reversibleReceipts.map { Optional($0) },
                 description: String(localized: "Archived", bundle: .module),
                 lease: lease
             )
+        } else if !receipts.isEmpty {
+            undoQueue.discardPendingUndo(lease: lease)
         }
         return allSucceeded
     }

@@ -2572,12 +2572,17 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             listUnsubscribe: headers["list-unsubscribe"],
             listUnsubscribePost: headers["list-unsubscribe-post"]
         )
+        let isBulk = ListUnsubscribeOptions.isBulkPrecedence(
+            precedence: headers["precedence"],
+            autoSubmitted: headers["auto-submitted"]
+        )
         return MessageBody(
             messageID: message.id,
             html: html,
             plainText: plain,
             attachments: attachments,
             listUnsubscribe: parsedUnsubscribe.methods.isEmpty ? nil : parsedUnsubscribe,
+            isBulkPrecedence: isBulk,
             readReceiptRequest: headers["disposition-notification-to"].map(ReadReceiptRequest.init),
             authenticationResults: headers["authentication-results"]
         )
@@ -2917,6 +2922,10 @@ extension GmailAPIBackend: CachedListUnsubscribeProviding {
         for messageID: MessageHeader.ID,
         sourceID _: MailSourceID
     ) async -> Bool {
+        if let body = try? await readCache?.cachedBody(accountID: account.id, messageID: messageID),
+           body.isBulkPrecedence {
+            return true
+        }
         guard let cached = try? await store.message(accountID: account.id, messageID: messageID),
               let payloadHeaders = cached.payload?.headers else {
             return false

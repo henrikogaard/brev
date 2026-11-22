@@ -87,6 +87,9 @@ final class MessageListPresentationSnapshotCache {
 /// Fully derived data needed to render one folder's list.
 struct MessageListPresentationSnapshot {
     let headers: [MessageHeader]
+    /// Ungrouped headers matching the active filter/tab BEFORE thread-context
+    /// expansion adds non-matching conversation siblings (#295).
+    let filteredUngroupedHeaders: [MessageHeader]
     /// Ungrouped filtered reader/navigation context, derived once with the list projection.
     let navigationHeaders: [MessageHeader]
     let dateSections: [MessageListVisibleDateSection]
@@ -112,12 +115,14 @@ struct MessageListPresentationSnapshot {
         referenceDate: Date = Date(),
         calendar: Calendar = .current,
         sourceHeaders: [MessageHeader]? = nil,
+        filteredUngroupedHeaders: [MessageHeader]? = nil,
         navigationHeaders: [MessageHeader]? = nil,
         sourceID: MailSourceID? = nil,
         groupsThreads: Bool = false
     ) {
         self.headers = headers
         self.sourceID = sourceID
+        self.filteredUngroupedHeaders = filteredUngroupedHeaders ?? headers
         self.navigationHeaders = navigationHeaders ?? headers
         let sourceHeaders = sourceHeaders ?? headers
         unreadHeaderCount = sourceHeaders.reduce(into: 0) { count, header in

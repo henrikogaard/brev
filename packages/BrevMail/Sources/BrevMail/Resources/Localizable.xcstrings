@@ -56,17 +56,6 @@
         }
       }
     },
-    "Brev will open %@ to send a one-click unsubscribe request. The site may learn your IP address and request time.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Brev åpner %@ for å sende en ettklikks avmelding. Nettstedet kan se IP-adressen din og tidspunktet for forespørselen."
-          }
-        }
-      }
-    },
     "Brev will open an unsubscribe email draft addressed to %@. Nothing is sent until you press Send.": {
       "extractionState": "manual",
       "localizations": {

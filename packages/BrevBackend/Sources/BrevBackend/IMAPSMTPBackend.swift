@@ -6121,6 +6121,9 @@ extension IMAPSMTPBackend: CachedListUnsubscribeProviding {
         for messageID: MessageHeader.ID,
         sourceID _: MailSourceID
     ) async -> Bool {
+        if await cachedParsedBody(messageID: messageID)?.isBulkPrecedence == true {
+            return true
+        }
         guard let source = await sourceCache?.source(accountID: account.id, messageID: messageID) else {
             return false
         }

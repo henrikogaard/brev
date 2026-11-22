@@ -344,6 +344,75 @@ struct PeopleUpdatesClassifierTests {
         #expect(bundles[0].headers.map(\.id) == ["u1", "u2"])
     }
 
+    @Test("Mixed People and Updates thread keeps People sibling out of Updates bundles")
+    func mixedThreadKeepsPeopleOutOfUpdatesBundles() {
+        let bulkNotice = MessageHeader(
+            id: "u1",
+            threadID: "mixed-thread",
+            folderID: "inbox",
+            from: Correspondent(name: "Alex", email: "alex@example.org"),
+            to: [],
+            subject: "Monthly release digest",
+            snippet: "Changes this month",
+            date: Date().addingTimeInterval(-3600),
+            isRead: false,
+            isFlagged: false,
+            hasAttachments: false
+        )
+        let personalFollowUp = MessageHeader(
+            id: "p1",
+            threadID: "mixed-thread",
+            folderID: "inbox",
+            from: Correspondent(name: "Alex", email: "alex@example.org"),
+            to: [],
+            subject: "Re: Monthly release digest",
+            snippet: "Can we chat at 3pm?",
+            date: Date().addingTimeInterval(-60),
+            isRead: false,
+            isFlagged: false,
+            hasAttachments: false
+        )
+        let allHeaders = [personalFollowUp, bulkNotice]
+        let updatesOnly = [bulkNotice]
+        let navHeaders = MessageListNavigationHeaders.headers(from: updatesOnly, threadContext: allHeaders)
+        // Reader context retains the People reply, but filteredUngroupedHeaders must not.
+        #expect(navHeaders.map(\.id).contains("p1"))
+
+        let snapshot = MessageListPresentationSnapshot(
+            headers: updatesOnly,
+            pinnedMessageIDs: [],
+            groupByDate: false,
+            collapsedDateSectionIDs: [],
+            sourceHeaders: allHeaders,
+            filteredUngroupedHeaders: updatesOnly,
+            navigationHeaders: navHeaders,
+            groupsThreads: true
+        )
+        let bundles = UpdatesSenderBundler.bundle(snapshot.filteredUngroupedHeaders, sourceID: Self.source)
+        #expect(bundles.count == 1)
+        #expect(bundles[0].headers.map(\.id) == ["u1"])
+    }
+
+    @Test("HTTPS unsubscribe confirmation states browser opening accurately even when one-click is advertised")
+    func unsubscribeConfirmationMatchesBrowserBehavior() {
+        let oneClick = ListUnsubscribeOptions.parse(
+            listUnsubscribe: "<https://lists.example.org/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click"
+        )
+        let group = SubscriptionSenderGroup(
+            id: "g1",
+            sourceID: Self.source,
+            senderName: "Digest",
+            senderEmail: "digest@example.org",
+            headers: [],
+            lastReceived: Date(),
+            unsubscribeOptions: oneClick
+        )
+        let summary = group.confirmationSummary ?? ""
+        #expect(summary.contains("in your browser"))
+        #expect(!summary.contains("one-click"))
+    }
+
     @Test("People, Updates, and Subscriptions strings have Norwegian localizations")
     func norwegianCopy() throws {
         let catalog = try LocalizationCatalogTestSupport.loadCatalogStrings()

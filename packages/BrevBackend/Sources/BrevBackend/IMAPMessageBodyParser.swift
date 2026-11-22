@@ -30,12 +30,17 @@ public struct IMAPMessageBodyParser: Sendable {
             listUnsubscribe: part.headers.value(named: "List-Unsubscribe"),
             listUnsubscribePost: part.headers.value(named: "List-Unsubscribe-Post")
         )
+        let isBulk = ListUnsubscribeOptions.isBulkPrecedence(
+            precedence: part.headers.value(named: "Precedence"),
+            autoSubmitted: part.headers.value(named: "Auto-Submitted")
+        )
         return MessageBody(
             messageID: messageID,
             html: collector.html,
             plainText: collector.plainText,
             attachments: collector.attachments,
             listUnsubscribe: parsedUnsubscribe.methods.isEmpty ? nil : parsedUnsubscribe,
+            isBulkPrecedence: isBulk,
             readReceiptRequest: readReceiptRequest,
             readReceiptNotification: collector.readReceiptNotification,
             authenticationResults: authResults
@@ -123,12 +128,17 @@ public struct IMAPMessageBodyParser: Sendable {
             listUnsubscribe: headers.value(named: "List-Unsubscribe"),
             listUnsubscribePost: headers.value(named: "List-Unsubscribe-Post")
         )
+        let isBulk = ListUnsubscribeOptions.isBulkPrecedence(
+            precedence: headers.value(named: "Precedence"),
+            autoSubmitted: headers.value(named: "Auto-Submitted")
+        )
         return MessageBody(
             messageID: messageID,
             html: html,
             plainText: plainText,
             attachments: attachments,
             listUnsubscribe: parsedUnsubscribe.methods.isEmpty ? nil : parsedUnsubscribe,
+            isBulkPrecedence: isBulk,
             readReceiptRequest: headers.value(named: "Disposition-Notification-To").map {
                 ReadReceiptRequest(notificationTo: $0)
             },

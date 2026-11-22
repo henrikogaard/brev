@@ -167,6 +167,8 @@ public struct MessageListView: View {
     @State private var inboxCategoryOverrideStore = InboxCategoryOverrideStore()
     @State private var senderCategoryOverrideStore = InboxSenderCategoryOverrideStore.shared
     @State private var peopleUpdatesSignalsByMessageID: [MessageHeader.ID: PeopleUpdatesHeaderSignals] = [:]
+    @State private var peopleUpdatesScannedScopeKey = ""
+    @State private var peopleUpdatesScannedMessageIDs: Set<MessageHeader.ID> = []
     @State private var peopleUpdatesRepliedSenders: Set<String> = []
     @State private var peopleUpdatesSignalsRevision = 0
     @State private var expandedUpdateBundleIDs: Set<String> = []
@@ -696,29 +698,45 @@ public struct MessageListView: View {
 
     private var peopleUpdatesSignalRefreshKey: String {
         guard showsPeopleUpdatesBar else { return "off" }
-        let ids = headers.map(\.id).joined(separator: ",")
+        let ids = headers.map { $0.isAnswered ? "\($0.id):1" : $0.id }.joined(separator: ",")
         let src = sourceID.map { "\($0.accountID)/\($0.mailboxID)" } ?? ""
-        return "\(src):\(folder?.id ?? ""):\(ids)"
+        let sentCount = allFolders.first(where: { $0.role == .sent })?.totalCount ?? -1
+        return "\(src):\(folder?.id ?? ""):\(navigation.reloadRequestID):\(sentCount):\(ids)"
     }
 
     /// Loads cache-only `List-Unsubscribe`, bulk-precedence, and Sent-recipient
     /// signals for the visible Inbox headers with zero network calls (ADR-0006, #295).
+    /// Scans per-message cache entries incrementally during pagination so older
+    /// pages do not re-parse already-inspected headers.
     private func refreshPeopleUpdatesSignals() async {
         guard showsPeopleUpdatesBar else {
             if !peopleUpdatesSignalsByMessageID.isEmpty || !peopleUpdatesRepliedSenders.isEmpty {
                 peopleUpdatesSignalsByMessageID = [:]
+                peopleUpdatesScannedScopeKey = ""
+                peopleUpdatesScannedMessageIDs = []
                 peopleUpdatesRepliedSenders = []
                 peopleUpdatesSignalsRevision += 1
             }
             return
         }
         let resolvedSourceID = sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
-        var signals: [MessageHeader.ID: PeopleUpdatesHeaderSignals] = [:]
+        let scopeKey = "\(resolvedSourceID.accountID)/\(resolvedSourceID.mailboxID):\(folder?.id ?? ""):\(navigation.reloadRequestID)"
+        let currentIDs = Set(headers.map(\.id))
+        var scannedIDs: Set<MessageHeader.ID>
+        var signals: [MessageHeader.ID: PeopleUpdatesHeaderSignals]
+        if scopeKey == peopleUpdatesScannedScopeKey {
+            scannedIDs = peopleUpdatesScannedMessageIDs.intersection(currentIDs)
+            signals = peopleUpdatesSignalsByMessageID.filter { currentIDs.contains($0.key) }
+        } else {
+            scannedIDs = []
+            signals = [:]
+        }
         if let provider = backend.extensionService(CachedListUnsubscribeProviding.self) {
-            for header in headers {
+            for header in headers where !scannedIDs.contains(header.id) {
                 guard !Task.isCancelled else { return }
                 let options = await provider.cachedListUnsubscribe(for: header.id, sourceID: resolvedSourceID)
                 let isBulk = await provider.cachedIsBulkPrecedence(for: header.id, sourceID: resolvedSourceID)
+                scannedIDs.insert(header.id)
                 let hasUnsubscribe = options?.methods.isEmpty == false
                 if hasUnsubscribe || isBulk {
                     signals[header.id] = PeopleUpdatesHeaderSignals(
@@ -746,10 +764,15 @@ public struct MessageListView: View {
         }
 
         guard !Task.isCancelled else { return }
+        peopleUpdatesScannedScopeKey = scopeKey
+        peopleUpdatesScannedMessageIDs = scannedIDs
         if signals != peopleUpdatesSignalsByMessageID || replied != peopleUpdatesRepliedSenders {
             peopleUpdatesSignalsByMessageID = signals
             peopleUpdatesRepliedSenders = replied
             peopleUpdatesSignalsRevision += 1
+            let visibleIDs = Set(presentationSnapshot.headers.map(\.id))
+            navigation.bulkSelection.formIntersection(visibleIDs)
+            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
         }
     }
 
@@ -816,10 +839,10 @@ public struct MessageListView: View {
         selectedRowID: MessageHeader.ID?
     ) -> some View {
         if activePeopleUpdatesTab == .updates {
-            // Build bundles from all matching ungrouped Updates headers so
-            // multi-message threads from the same sender are counted, expanded,
-            // and archived together (#295).
-            let bundles = UpdatesSenderBundler.bundle(presentation.navigationHeaders, sourceID: sourceID)
+            // Build bundles strictly from filtered ungrouped Updates headers
+            // before thread-context expansion adds non-Updates conversation
+            // siblings, so archiving a bundle never moves People messages (#295).
+            let bundles = UpdatesSenderBundler.bundle(presentation.filteredUngroupedHeaders, sourceID: sourceID)
             ForEach(bundles) { bundle in
                 if bundle.headers.count > 1 {
                     UpdatesBundleRowView(
@@ -873,7 +896,10 @@ public struct MessageListView: View {
                 )
             }
         }
-        if hasMore, !isLoadingMore, loadMoreErrorStatus == nil {
+        if hasMore,
+           !isLoadingMore,
+           loadMoreErrorStatus == nil,
+           navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             HStack {
                 Spacer()
                 Button(String(localized: "Load older messages", bundle: .module)) {
@@ -1133,7 +1159,10 @@ public struct MessageListView: View {
                     navigation.searchText = ""
                     navigation.mailboxFilter.clear()
                 }
-                if showsPeopleUpdatesBar, activePeopleUpdatesTab != .all, hasMore {
+                if showsPeopleUpdatesBar,
+                   activePeopleUpdatesTab != .all,
+                   hasMore,
+                   navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     if isLoadingMore {
                         ProgressView()
                             .padding(.bottom, BrevSpacing.md)
@@ -2259,6 +2288,7 @@ public struct MessageListView: View {
                 referenceDate: now,
                 calendar: calendar,
                 sourceHeaders: headers,
+                filteredUngroupedHeaders: workflowHeaders,
                 navigationHeaders: MessageListNavigationHeaders.headers(
                     from: workflowHeaders,
                     threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
@@ -2798,7 +2828,9 @@ public struct MessageListView: View {
     }
 
     private func loadMore() async {
-        guard let folder, let token = nextPageToken else { return }
+        guard navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let folder,
+              let token = nextPageToken else { return }
         let request = MessageListPageRequest(
             folderID: folder.id,
             sourceID: sourceID,

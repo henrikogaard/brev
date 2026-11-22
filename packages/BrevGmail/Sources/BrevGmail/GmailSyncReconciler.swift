@@ -200,8 +200,20 @@ public final class GmailSyncReconciler: @unchecked Sendable {
         }
         let freshDeliveryIDs = addedIDs.subtracting(deletedIDs)
 
-        let changedIDs = finalActions.compactMap { $0.value ? $0.key : nil }.sorted()
-        let removedIDs = finalActions.compactMap { $0.value ? nil : $0.key }.sorted()
+        let changedIDSet = Set(finalActions.compactMap { $0.value ? $0.key : nil })
+        let removedIDSet = Set(finalActions.compactMap { $0.value ? nil : $0.key })
+        let needsMetadataBackfill = (current.metadataHeadersVersion < GmailAPIClient.metadataHeadersVersion)
+        var backfillIDs: [String] = []
+        if needsMetadataBackfill {
+            let cachedMessages = await (try? store.messages(accountID: accountID)) ?? []
+            backfillIDs = cachedMessages
+                .map(\.id)
+                .filter { !changedIDSet.contains($0) && !removedIDSet.contains($0) }
+                .prefix(configuration.maxInitialMessages)
+                .map { $0 }
+        }
+        let changedIDs = Array(changedIDSet.union(backfillIDs)).sorted()
+        let removedIDs = Array(removedIDSet).sorted()
         let details = try await fetchDetails(for: changedIDs)
         let currentLabels = try await store.labels(accountID: accountID)
         let labels = try await api { try await client.listLabels() }
@@ -217,7 +229,8 @@ public final class GmailSyncReconciler: @unchecked Sendable {
             // server-side, so it is removed locally instead of aborting the delta.
             removedMessageIDs: (removedIDs + details.missingIDs).sorted(),
             historyID: finalHistoryID,
-            lastDeltaSyncAt: Date()
+            lastDeltaSyncAt: Date(),
+            metadataHeadersVersion: needsMetadataBackfill ? GmailAPIClient.metadataHeadersVersion : nil
         )
         do {
             try await store.apply(delta)

@@ -148,6 +148,10 @@ public extension GmailAPIClientProtocol {
 
 /// Typed Gmail REST operations layered over the generic authenticated transport.
 public struct GmailAPIClient: GmailAPIClientProtocol, Sendable {
+    /// Schema version of `requiredMetadataHeaders`. Bump whenever new headers
+    /// are added so opted-in Gmail delta sync backfills older cached rows once.
+    public static let metadataHeadersVersion = 1
+
     /// RFC 5322 headers required to render a useful cached Gmail message.
     public static let requiredMetadataHeaders = [
         "From", "To", "Cc", "Bcc", "Reply-To", "Subject", "Date",
