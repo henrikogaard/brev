@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-22 — Agent — Issue #297 / PR #325 journal health correction
+
+- Goal: fail closed when established Mock send-journal data is missing or unreadable, and surface initial corruption through ordinary mailbox loading.
+- Changes: retain established-state knowledge in the journal owner, distinguish genuine no-such-file results from other path errors, and create the established marker only after the journal data is encoded and atomically written. Folder and message loads now reload the journal and use the existing localized storage error. Updated the Later changelog entry; no new app copy or network behavior.
+- Regressions: whole-directory loss retains the last-known-good queue and recovers after journal restoration; corrupt initial storage fails folder/message loads; a failed first write does not poison first use, non-directory parents fail closed, and successful purge resets established-state knowledge.
+- Verification: targeted SwiftFormat, Swift parse, diff, and ADR checks passed. Native tests were not rerun: this Linux host's prior focused run stopped before test execution with missing `PDFKit`, and the task explicitly says not to repeat it.
+- Handoff: local commit only; do not push before review.
+
 ## 2026-11-22 — Agent — Issue #297 / PR #325 journal projection follow-up
 
 - Goal: preserve live Mock mailbox edits across journal refreshes and give scheduled/canceled Draft projections durable timestamps.

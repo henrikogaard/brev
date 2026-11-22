@@ -613,24 +613,99 @@ struct MockScheduledSendTests {
         #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["invalid-queue"])
     }
 
-    @Test("missing established journal retains the last good queue and fails visibly")
-    func missingEstablishedJournalFailsClosed() async throws {
+    @Test("missing established journal directory retains the last good queue and recovers")
+    func missingEstablishedJournalDirectoryFailsClosed() async throws {
         let directory = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let backend = Self.backend(persistenceDirectory: directory)
+        let backend = Self.backend(persistenceDirectory: directory, now: { Self.now })
         let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
         _ = try await backend.send(
-            draft: Draft(id: "missing-file", scheduledFor: Self.now),
+            draft: Draft(id: "missing-directory", scheduledFor: Self.now.addingTimeInterval(3600)),
             sourceID: Self.sourceA
         )
         let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
-        try FileManager.default.removeItem(at: journal.fileURL)
+        let acceptedJournal = try Data(contentsOf: journal.fileURL)
+        try FileManager.default.removeItem(at: directory)
 
         await scheduler.deliverDueScheduledSends()
 
-        #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["missing-file"])
+        #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["missing-directory"])
         await #expect(throws: (any Error).self) { try await backend.connect() }
-        #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["missing-file"])
+        await #expect(throws: (any Error).self) { try await backend.folders(in: Self.sourceA) }
+        #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["missing-directory"])
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try acceptedJournal.write(to: journal.fileURL, options: .atomic)
+        try await backend.connect()
+        #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["missing-directory"])
+    }
+
+    @Test("corrupt initial journals fail through source folder and message loading")
+    func corruptInitialJournalFailsSourceLoading() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("not-json".utf8).write(to: journal.fileURL)
+        let backend = Self.backend(persistenceDirectory: directory)
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+
+        await #expect(throws: ScheduledSendEditingError.self) { try await backend.folders(in: Self.sourceA) }
+        await #expect(throws: ScheduledSendEditingError.self) {
+            try await backend.messages(in: inbox, sourceID: Self.sourceA, pageToken: nil)
+        }
+    }
+
+    @Test("failed first journal write does not establish a marker and purge resets owner state")
+    func failedFirstJournalWriteAndPurgeRecovery() throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        #expect(try journal.load().isEmpty)
+        let nonDirectoryParent = directory.appendingPathComponent("not-a-directory")
+        try Data([1]).write(to: nonDirectoryParent)
+        let invalidParentJournal = MockSendJournal(
+            directoryURL: nonDirectoryParent.appendingPathComponent("journal", isDirectory: true),
+            accountID: Self.account.id
+        )
+        #expect(throws: (any Error).self) { try invalidParentJournal.load() }
+        let draft = Draft(id: "first-write", scheduledFor: Self.now)
+        let record = MockSendJournalRecord(
+            recordID: "first-record",
+            accountID: Self.account.id,
+            sourceID: Self.sourceA,
+            draftID: draft.id,
+            scheduleID: "opaque-first-write",
+            draft: draft,
+            attachments: [],
+            state: .queued,
+            scheduledFor: Self.now,
+            sentHeader: nil,
+            sentBody: nil,
+            nextAttemptAt: nil,
+            sender: Correspondent(email: "primary@example.test"),
+            parentMessageID: nil,
+            references: nil,
+            draftProjectionDate: Self.now
+        )
+        #expect(throws: (any Error).self) {
+            try journal.transact { records in
+                try FileManager.default.createDirectory(at: journal.fileURL, withIntermediateDirectories: false)
+                records.append(record)
+            }
+        }
+        try FileManager.default.removeItem(at: journal.fileURL)
+        #expect(try journal.load().isEmpty)
+        _ = try journal.transact { $0.append(record) }
+        #expect(try journal.load() == [record])
+
+        try FileManager.default.removeItem(at: directory)
+        #expect(throws: (any Error).self) { try journal.load() }
+        try journal.purge()
+        #expect(try journal.load().isEmpty)
+        _ = try journal.transact { $0.append(record) }
+        #expect(try journal.load() == [record])
     }
 
     @Test("one source and draft identity reuses the exact delivered receipt")

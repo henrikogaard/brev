@@ -48,6 +48,23 @@ private struct MockSendJournalFile: Codable {
     var records: [MockSendJournalRecord]
 }
 
+private final class MockSendJournalLifecycle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isEstablished = false
+
+    var established: Bool {
+        lock.withLock { isEstablished }
+    }
+
+    func markEstablished() {
+        lock.withLock { isEstablished = true }
+    }
+
+    func reset() {
+        lock.withLock { isEstablished = false }
+    }
+}
+
 struct MockSendJournal: @unchecked Sendable {
     private static let transactionLock = NSRecursiveLock()
     private static let version = 2
@@ -55,10 +72,12 @@ struct MockSendJournal: @unchecked Sendable {
     let directoryURL: URL
     let accountID: BrevAccount.ID
     private let fileManager = FileManager.default
+    private let lifecycle: MockSendJournalLifecycle
 
     init(directoryURL: URL, accountID: BrevAccount.ID) {
         self.directoryURL = directoryURL
         self.accountID = accountID
+        lifecycle = MockSendJournalLifecycle()
     }
 
     func load() throws -> [MockSendJournalRecord] {
@@ -88,13 +107,13 @@ struct MockSendJournal: @unchecked Sendable {
     func purge() throws {
         try Self.transactionLock.withLock {
             try validateDirectoryIfPresent()
-            let url = fileURL
-            if fileManager.fileExists(atPath: url.path) {
-                try fileManager.removeItem(at: url)
+            if try itemExists(at: fileURL) {
+                try fileManager.removeItem(at: fileURL)
             }
-            if fileManager.fileExists(atPath: markerURL.path) {
+            if try itemExists(at: markerURL) {
                 try fileManager.removeItem(at: markerURL)
             }
+            lifecycle.reset()
         }
     }
 
@@ -112,49 +131,76 @@ struct MockSendJournal: @unchecked Sendable {
 
     private func loadWithoutLock() throws -> [MockSendJournalRecord] {
         guard directoryURL.isFileURL else { throw MockSendJournalError.invalidDirectory }
-        try validateDirectoryIfPresent()
-        guard fileManager.fileExists(atPath: fileURL.path) else {
-            guard !fileManager.fileExists(atPath: markerURL.path) else { throw MockSendJournalError.invalidFile }
+        guard try itemExists(at: directoryURL) else {
+            guard !lifecycle.established else { throw MockSendJournalError.invalidFile }
             return []
         }
-        try writeEstablishedMarkerIfNeeded()
+        try validateDirectoryIfPresent()
+        let hasFile = try itemExists(at: fileURL)
+        let hasMarker = try itemExists(at: markerURL)
+        if hasMarker { lifecycle.markEstablished() }
+        guard hasFile else {
+            guard !lifecycle.established else { throw MockSendJournalError.invalidFile }
+            return []
+        }
+        lifecycle.markEstablished()
         let data = try Data(contentsOf: fileURL)
         let decoded = try JSONDecoder().decode(MockSendJournalFile.self, from: data)
         guard decoded.version == Self.version else {
             throw MockSendJournalError.invalidFile
         }
         try Self.validate(decoded.records, accountID: accountID)
+        if !hasMarker { try writeEstablishedMarkerIfNeeded() }
         return decoded.records
     }
 
     private func validateDirectoryIfPresent() throws {
         guard directoryURL.isFileURL else { throw MockSendJournalError.invalidDirectory }
-        if fileManager.fileExists(atPath: directoryURL.path) {
-            var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-                throw MockSendJournalError.invalidDirectory
-            }
+        guard try itemExists(at: directoryURL) else { return }
+        let attributes = try fileManager.attributesOfItem(atPath: directoryURL.path)
+        guard attributes[.type] as? FileAttributeType == .typeDirectory else {
+            throw MockSendJournalError.invalidDirectory
         }
     }
 
     private func persistWithoutLock(_ records: [MockSendJournalRecord]) throws {
         guard directoryURL.isFileURL else { throw MockSendJournalError.invalidDirectory }
+        let data = try JSONEncoder().encode(MockSendJournalFile(version: Self.version, records: records))
         try fileManager.createDirectory(
             at: directoryURL,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directoryURL.path)
-        try writeEstablishedMarkerIfNeeded()
-        let data = try JSONEncoder().encode(MockSendJournalFile(version: Self.version, records: records))
         try data.write(to: fileURL, options: .atomic)
+        lifecycle.markEstablished()
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        try writeEstablishedMarkerIfNeeded()
     }
 
     private func writeEstablishedMarkerIfNeeded() throws {
-        guard !fileManager.fileExists(atPath: markerURL.path) else { return }
+        if try itemExists(at: markerURL) {
+            lifecycle.markEstablished()
+            return
+        }
         try Data([1]).write(to: markerURL, options: .atomic)
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: markerURL.path)
+        lifecycle.markEstablished()
+    }
+
+    private func itemExists(at url: URL) throws -> Bool {
+        do {
+            _ = try fileManager.attributesOfItem(atPath: url.path)
+            return true
+        } catch {
+            let nsError = error as NSError
+            let noSuchFile = nsError.domain == NSCocoaErrorDomain
+                && (nsError.code == CocoaError.Code.fileNoSuchFile.rawValue
+                    || nsError.code == CocoaError.Code.fileReadNoSuchFile.rawValue)
+            let missingParent = nsError.domain == NSPOSIXErrorDomain && nsError.code == 2
+            guard noSuchFile || missingParent else { throw error }
+            return false
+        }
     }
 
     private static func validate(_ records: [MockSendJournalRecord], accountID: BrevAccount.ID) throws {

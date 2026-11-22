@@ -62,6 +62,9 @@ All notable changes to Brev are documented here.
   Later opens the existing schedule sheet, which explains that delivery needs
   Brev running and connected. Demo and isolated Mock accounts retain explicitly
   scheduled messages locally across restarts and deliver them after reconnect.
+  Established Mock schedule data that goes missing or corrupt now surfaces the
+  existing local-storage error during folder and message loading instead of
+  appearing as an empty queue.
 
 ### Changed
 

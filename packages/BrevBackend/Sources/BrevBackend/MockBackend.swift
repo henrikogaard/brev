@@ -132,7 +132,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     }
 
     public func folders() async throws -> [Folder] {
-        await store.folderSnapshots()
+        try await store.folderSnapshots()
     }
 
     public func mailboxes() async throws -> [Mailbox] {
@@ -234,7 +234,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
 
     public func messages(in folder: Folder, pageToken: String?) async throws
         -> (headers: [MessageHeader], nextPageToken: String?) {
-        let all = await store.messages(in: folder.id)
+        let all = try await store.messages(in: folder.id)
         return (all, nil)
     }
 
@@ -2467,20 +2467,22 @@ private actor Store {
         emit(.mailboxChanged(mailboxID: id))
     }
 
-    func messages(in folderID: String) -> [MessageHeader] {
-        (try? messages(in: folderID, mailboxID: activeMailboxID)) ?? []
+    func messages(in folderID: String) throws -> [MessageHeader] {
+        try messages(in: folderID, mailboxID: activeMailboxID)
     }
 
     func messages(in folderID: String, mailboxID: Mailbox.ID) throws -> [MessageHeader] {
-        try (data(mailboxID: mailboxID).messagesByFolder[folderID] ?? [])
+        try reloadJournalRecords()
+        return try (data(mailboxID: mailboxID).messagesByFolder[folderID] ?? [])
             .sorted { $0.date > $1.date }
     }
 
-    func folderSnapshots() -> [Folder] {
-        (try? folderSnapshots(mailboxID: activeMailboxID)) ?? []
+    func folderSnapshots() throws -> [Folder] {
+        try folderSnapshots(mailboxID: activeMailboxID)
     }
 
     func folderSnapshots(mailboxID: Mailbox.ID) throws -> [Folder] {
+        try reloadJournalRecords()
         let data = try data(mailboxID: mailboxID)
         return data.folders.map { folder in
             let messages = data.messagesByFolder[folder.id] ?? []
