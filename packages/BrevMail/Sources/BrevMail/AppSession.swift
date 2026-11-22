@@ -172,7 +172,7 @@ public final class AppSession {
     public typealias GooglePIMEnablementCoordinator =
         @MainActor (BrevAccount.ID, PIMSourceKind, _ write: Bool) async throws -> Void
     public typealias RestoreCoordinator = @MainActor (BrevAccount) async throws -> LoginResult?
-    public typealias DemoLoginCoordinator = @MainActor () async -> LoginResult
+    public typealias DemoLoginCoordinator = @MainActor () async throws -> LoginResult
     public typealias CardDAVContactSyncStarter =
         @MainActor (ContactsSyncCoordinator, CardDAVConfiguration, String) -> Void
 
@@ -905,14 +905,25 @@ public final class AppSession {
         signInError = nil
         canRetrySessionRestore = false
 
-        let result = await demoLoginCoordinator()
-        guard canApplySignInResponse(request) else {
-            await discard(result)
+        do {
+            let result = try await demoLoginCoordinator()
+            guard canApplySignInResponse(request) else {
+                await discard(result)
+                restoreContactsAccessIfNoDemoMailboxRemains()
+                return
+            }
+            await install(result)
+            finishSignIn(request)
+        } catch is CancellationError {
+            guard canApplySignInResponse(request) else { return }
             restoreContactsAccessIfNoDemoMailboxRemains()
-            return
+            finishSignIn(request)
+        } catch {
+            guard canApplySignInResponse(request) else { return }
+            signInError = AppSessionPresentation.signInErrorMessage(for: error)
+            restoreContactsAccessIfNoDemoMailboxRemains()
+            finishSignIn(request)
         }
-        await install(result)
-        finishSignIn(request)
     }
 
     public func restoreCurrentAccount() async {

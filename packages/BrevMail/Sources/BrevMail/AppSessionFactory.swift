@@ -59,8 +59,16 @@ private final class PersistentMockBackendRegistry {
     }
 
     func login(_ factory: @MainActor () -> any MailBackend) async throws -> AppSession.LoginResult {
-        let backend = make(factory)
-        try await backend.connect()
+        let backend = factory()
+        do {
+            try await backend.connect()
+        } catch {
+            await backend.disconnect()
+            throw error
+        }
+        if let mock = backend as? MockBackend {
+            backends[mock.account.id] = mock
+        }
         return AppSession.LoginResult(backend: backend, account: backend.account)
     }
 

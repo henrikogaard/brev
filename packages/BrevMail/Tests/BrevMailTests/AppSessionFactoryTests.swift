@@ -108,6 +108,32 @@ struct AppSessionFactoryTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     }
 
+    @Test("demo login reports a Mock connection failure")
+    func demoLoginReportsMockConnectionFailure() async throws {
+        let journalPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AppSessionDemoJournalFile-\(UUID().uuidString)")
+        try Data([1]).write(to: journalPath)
+        defer { try? FileManager.default.removeItem(at: journalPath) }
+        let suiteName = "AppSessionDemoFailureDefaults-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let session = AppSessionFactory.makeIsolatedMock(
+            themeDefaults: defaults,
+            mockPersistenceDirectory: journalPath
+        )
+        let initial = try #require(session.backend as? MockBackend)
+
+        await session.signInWithDemo()
+
+        #expect(session.signInError != nil)
+        #expect(!session.isSigningIn)
+        let active = try #require(session.backend as? MockBackend)
+        #expect(ObjectIdentifier(active) == ObjectIdentifier(initial))
+
+        try FileManager.default.removeItem(at: journalPath)
+        await session.removeAccount(initial.account)
+    }
+
     @Test("same-account demo sessions clean only their own persistence directories")
     func demoCleanupIsPerSession() async throws {
         let firstDirectory = FileManager.default.temporaryDirectory
