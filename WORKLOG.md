@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-22 — Agent — #297 reconciliation/cache correction
+
+- Goal: coalesce Root conversation-cache reconciliation and make the Unified Snoozed cache resilient to concurrent state changes, backend replacement, and partial sources.
+- Changes: added a generation-owned dirty-pass coordinator; Root now takes a fresh state/source snapshot on each pass, skips unavailable/empty/failed sources independently, revalidates each owner, and commits successful source expansions independently against persisted rules. Unified Snoozed now keys reloads by snooze rules and source revision, retains complete per-source cache candidates, preserves prior complete snapshots for failed sources, reprojects from those candidates with fresh state, and filters publication against all current source/backend/folder identities. Fixed the new test transaction tuple labels to `value:`.
+- Tests: added coordinator burst/lifetime tests, source-independent reconciliation and snapshot owner/partial-source tests, and a bridge-candidate reprojection regression. The focused production-source harness passed 52 checks. Its first compile attempt caught a result-inference error in the new candidate filter; fixed and reran successfully.
+- Verification: pinned SwiftFormat via `mise exec` reported `0/4 files require formatting`; `swiftc -frontend -parse` on all 4 changed Swift files exited 0; `git diff --check` exited 0.
+- Limits: native Swift Testing/typechecking was not run on Linux; the repository CI/native lane is the required check for those tests. The harness compiles the production parser/model/projection/mutation/wake sources but does not execute the new native Root/Unified tests. No CI, PR, issue, or visual QA actions were performed.
+- Handoff: commit locally only, no push. Reader source isolation, search-folder validation, bulk copy, injected account cleanup, and final projection-cache reuse remain deferred as requested.
+
 ## 2026-11-22 — Agent — #297 ownership/state correction
 
 - Goal: make asynchronous snooze work validate live backend ownership and commit against freshly persisted workflow state.

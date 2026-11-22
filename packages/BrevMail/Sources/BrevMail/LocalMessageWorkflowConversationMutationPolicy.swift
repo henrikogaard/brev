@@ -24,6 +24,82 @@ struct LocalMessageWorkflowSnoozeTransactionResult<Value> {
     let value: Value
 }
 
+struct LocalMessageWorkflowSnoozeReconciliationCoordinator {
+    private(set) var generation = 0
+    private(set) var isRunning = false
+    private var needsAnotherPass = false
+
+    mutating func request() -> Int? {
+        guard !isRunning else {
+            needsAnotherPass = true
+            return nil
+        }
+        generation += 1
+        isRunning = true
+        return generation
+    }
+
+    mutating func finishPass(generation: Int) -> Bool {
+        guard self.generation == generation, isRunning else { return false }
+        guard needsAnotherPass else {
+            isRunning = false
+            return false
+        }
+        needsAnotherPass = false
+        return true
+    }
+
+    mutating func cancel() {
+        generation += 1
+        isRunning = false
+        needsAnotherPass = false
+    }
+
+    func owns(_ generation: Int) -> Bool {
+        self.generation == generation
+    }
+}
+
+struct LocalMessageWorkflowSnoozedCacheSourceSnapshot {
+    let backendIdentity: ObjectIdentifier
+    let folderIDs: Set<Folder.ID>
+    let candidates: [LocalMessageWorkflowCandidate]
+}
+
+enum LocalMessageWorkflowSnoozedCachePolicy {
+    static func mergingSuccessfulSources(
+        _ successful: [MailSourceID: LocalMessageWorkflowSnoozedCacheSourceSnapshot],
+        into existing: [MailSourceID: LocalMessageWorkflowSnoozedCacheSourceSnapshot],
+        availableSources: Set<MailSourceID>
+    ) -> [MailSourceID: LocalMessageWorkflowSnoozedCacheSourceSnapshot] {
+        var snapshots = existing.filter { availableSources.contains($0.key) }
+        snapshots.merge(successful) { _, new in new }
+        return snapshots
+    }
+
+    static func publishableCandidates(
+        from snapshots: [MailSourceID: LocalMessageWorkflowSnoozedCacheSourceSnapshot],
+        availableSources: Set<MailSourceID>,
+        backendIdentities: [MailSourceID: ObjectIdentifier],
+        folderIDs: [MailSourceID: Set<Folder.ID>]
+    ) -> [LocalMessageWorkflowCandidate] {
+        var candidates: [LocalMessageWorkflowCandidate] = []
+        for sourceID in snapshots.keys.sorted(by: {
+            "\($0.accountID)\u{0}\($0.mailboxID)" < "\($1.accountID)\u{0}\($1.mailboxID)"
+        }) {
+            guard let snapshot = snapshots[sourceID],
+                  availableSources.contains(sourceID),
+                  backendIdentities[sourceID] == snapshot.backendIdentity,
+                  folderIDs[sourceID] == snapshot.folderIDs,
+                  snapshot.candidates.allSatisfy({
+                      $0.sourceID == sourceID && snapshot.folderIDs.contains($0.header.folderID)
+                  }) else { continue }
+            candidates.append(contentsOf: snapshot.candidates)
+        }
+        return candidates
+    }
+}
+
 @MainActor
 enum LocalMessageWorkflowSnoozeTransaction {
     static func applying<Value>(
@@ -97,6 +173,37 @@ enum LocalMessageWorkflowSnoozeTransaction {
 
         let result = mutation(currentState, currentProjection, ruleIDs)
         return .init(previousState: currentState, state: result.state, value: result.value)
+    }
+
+    static func reconcilingSources(
+        candidatesBySource: [MailSourceID: [LocalMessageWorkflowCandidate]],
+        rulesBySource: [MailSourceID: [LocalMessageSnooze]],
+        basedOn baselineState: LocalMessageWorkflowState,
+        latestState: @MainActor () -> LocalMessageWorkflowState,
+        mutation: (
+            LocalMessageWorkflowState,
+            LocalMessageWorkflowConversationProjection,
+            Set<SourceMessageID>
+        ) -> (state: LocalMessageWorkflowState, value: Void)
+    ) -> LocalMessageWorkflowSnoozeTransactionResult<Void>? {
+        let previousState = latestState()
+        var state = previousState
+        let sources = candidatesBySource.keys.filter { rulesBySource[$0]?.isEmpty == false }.sorted {
+            "\($0.accountID)\u{0}\($0.mailboxID)" < "\($1.accountID)\u{0}\($1.mailboxID)"
+        }
+        for sourceID in sources {
+            guard let candidates = candidatesBySource[sourceID],
+                  let rules = rulesBySource[sourceID],
+                  let transaction = reconciling(
+                      candidates: candidates,
+                      rules: rules,
+                      basedOn: baselineState,
+                      latestState: { state },
+                      mutation: mutation
+                  ) else { continue }
+            state = transaction.state
+        }
+        return .init(previousState: previousState, state: state, value: ())
     }
 
     private static func snoozesAreUnchanged(

@@ -485,7 +485,7 @@ struct LocalMessageWorkflowConversationProjectionTests {
             let result = LocalMessageWorkflowConversationMutationPolicy.snoozing(
                 [candidate], until: now.addingTimeInterval(900), now: now, projection: projection, in: state
             )
-            return (state: result.state, result: result)
+            return (state: result.state, value: result)
         }
 
         #expect(staleViewState == LocalMessageWorkflowState(snoozes: [originalSnooze]))
@@ -531,7 +531,7 @@ struct LocalMessageWorkflowConversationProjectionTests {
                 let result = LocalMessageWorkflowConversationMutationPolicy.snoozing(
                     [candidate], until: now.addingTimeInterval(900), now: now, projection: projection, in: state
                 )
-                return (state: result.state, result: result)
+                return (state: result.state, value: result)
             }
 
             #expect(transaction.map { _ in false } ?? true)
@@ -576,7 +576,7 @@ struct LocalMessageWorkflowConversationProjectionTests {
             let reconciled = LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
                 in: state, projection: projection, at: now, only: ruleIDs
             )
-            return (state: reconciled, result: ())
+            return (state: reconciled, value: ())
         }
 
         #expect(transaction?.previousState == latestPersistedState)
@@ -608,7 +608,7 @@ struct LocalMessageWorkflowConversationProjectionTests {
             let reconciled = LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
                 in: state, projection: projection, at: now, only: ruleIDs
             )
-            return (state: reconciled, result: ())
+            return (state: reconciled, value: ())
         }
         #expect(staleReconciliation.map { _ in false } ?? true)
         #expect(LocalMessageWorkflowStateStorage.load(from: defaults) == rescheduledState)
@@ -720,6 +720,154 @@ struct LocalMessageWorkflowConversationProjectionTests {
         #expect(expanded?.createdAt == active.createdAt)
         #expect(expanded?.wakeAt == active.wakeAt)
         #expect(reconciled.snoozes.contains(expired))
+    }
+
+    @Test("reconciliation requests coalesce and lifetime cancellation is generation-owned")
+    func reconciliationCoordinatorCoalescesAndCancelsByGeneration() {
+        var coordinator = LocalMessageWorkflowSnoozeReconciliationCoordinator()
+        let generation = coordinator.request()!
+        var revisions = [1]
+        for _ in 0 ..< 20 {
+            #expect(coordinator.request() == nil)
+        }
+        revisions.append(2)
+        #expect(coordinator.finishPass(generation: generation))
+        #expect(!coordinator.finishPass(generation: generation))
+        #expect(revisions == [1, 2])
+
+        let staleGeneration = coordinator.request()!
+        coordinator.request()
+        coordinator.cancel()
+        let currentGeneration = coordinator.request()!
+        #expect(!coordinator.owns(staleGeneration))
+        #expect(coordinator.owns(currentGeneration))
+        #expect(!coordinator.finishPass(generation: staleGeneration))
+        #expect(coordinator.owns(currentGeneration))
+    }
+
+    @Test("a changed source rule does not block healthy-source reconciliation")
+    func reconciliationSourcesAreIndependent() throws {
+        let anchor = Self.header(id: "source-anchor", folder: "Inbox", rfcID: "seed@example")
+        let arrival = Self.header(
+            id: "healthy-arrival",
+            folder: "Archive",
+            rfcID: "new@example",
+            inReplyTo: "healthy-seed@example"
+        )
+        let sourceRule = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "source-anchor"),
+            wakeAt: now.addingTimeInterval(600),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["seed@example"])
+        )
+        let healthyRule = LocalMessageSnooze(
+            messageID: .init(sourceID: otherSource, messageID: "healthy-anchor"),
+            wakeAt: now.addingTimeInterval(600),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["healthy-seed@example"])
+        )
+        let baseline = LocalMessageWorkflowState(snoozes: [sourceRule, healthyRule])
+        let rescheduled = LocalMessageSnooze(
+            messageID: sourceRule.messageID,
+            wakeAt: sourceRule.wakeAt.addingTimeInterval(30),
+            createdAt: sourceRule.createdAt,
+            conversationMetadata: sourceRule.conversationMetadata
+        )
+        let latest = LocalMessageWorkflowState(snoozes: [rescheduled, healthyRule])
+        let result = try #require(LocalMessageWorkflowSnoozeTransaction.reconcilingSources(
+            candidatesBySource: [
+                source: [.init(sourceID: source, header: anchor)],
+                otherSource: [.init(sourceID: otherSource, header: arrival)],
+            ],
+            rulesBySource: [source: [sourceRule], otherSource: [healthyRule]],
+            basedOn: baseline,
+            latestState: { latest },
+            mutation: { state, projection, ruleIDs in
+                (
+                    state: LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
+                        in: state, projection: projection, only: ruleIDs
+                    ),
+                    value: ()
+                )
+            }
+        ))
+        #expect(result.state.snoozes.contains(rescheduled))
+        #expect(result.state.snoozes.first { $0.messageID.sourceID == otherSource }?.conversationMetadata?.rfcIdentifiers
+            .contains("new@example") == true)
+    }
+
+    @Test("Snoozed cache snapshots preserve failed sources and reject replaced owners")
+    func snoozedCacheSnapshotsMergeAndValidateOwners() {
+        let oldBackend = NSObject()
+        let healthyBackend = NSObject()
+        let replacementBackend = NSObject()
+        let oldCandidate = Self.header(id: "old", folder: "Inbox", rfcID: "old@example")
+        let newCandidate = Self.header(id: "new", folder: "Inbox", rfcID: "new@example")
+        let healthyCandidate = Self.header(id: "healthy", folder: "Inbox", rfcID: "healthy@example")
+        let previous: [MailSourceID: LocalMessageWorkflowSnoozedCacheSourceSnapshot] = [
+            source: .init(
+                backendIdentity: ObjectIdentifier(oldBackend),
+                folderIDs: ["Inbox"],
+                candidates: [.init(sourceID: source, header: oldCandidate)]
+            ),
+            otherSource: .init(
+                backendIdentity: ObjectIdentifier(healthyBackend),
+                folderIDs: ["Inbox"],
+                candidates: [.init(sourceID: otherSource, header: healthyCandidate)]
+            ),
+        ]
+        let refreshed = LocalMessageWorkflowSnoozedCachePolicy.mergingSuccessfulSources(
+            [source: .init(
+                backendIdentity: ObjectIdentifier(oldBackend),
+                folderIDs: ["Inbox"],
+                candidates: [.init(sourceID: source, header: newCandidate)]
+            )],
+            into: previous,
+            availableSources: [source, otherSource]
+        )
+        let candidates = LocalMessageWorkflowSnoozedCachePolicy.publishableCandidates(
+            from: refreshed,
+            availableSources: [source, otherSource],
+            backendIdentities: [source: ObjectIdentifier(replacementBackend), otherSource: ObjectIdentifier(healthyBackend)],
+            folderIDs: [source: ["Inbox"], otherSource: ["Inbox"]]
+        )
+        #expect(Set(candidates.map(\.header.id)) == ["healthy"])
+        let updated = LocalMessageWorkflowSnoozedCachePolicy.mergingSuccessfulSources(
+            [source: .init(
+                backendIdentity: ObjectIdentifier(replacementBackend),
+                folderIDs: ["Inbox"],
+                candidates: [.init(sourceID: source, header: newCandidate)]
+            )],
+            into: refreshed,
+            availableSources: [source, otherSource]
+        )
+        #expect(Set(LocalMessageWorkflowSnoozedCachePolicy.publishableCandidates(
+            from: updated,
+            availableSources: [source, otherSource],
+            backendIdentities: [source: ObjectIdentifier(replacementBackend), otherSource: ObjectIdentifier(healthyBackend)],
+            folderIDs: [source: ["Inbox"], otherSource: ["Inbox"]]
+        ).map(\.header.id)) == ["new", "healthy"])
+    }
+
+    @Test("cached bridge candidates reproject after another-window snooze changes")
+    func snoozedCandidatesReprojectFromCompleteSnapshot() {
+        let parent = Self.header(id: "cached-parent", folder: "Archive", rfcID: "parent@example")
+        let arrival = Self.header(id: "new-arrival", folder: "Inbox", rfcID: "arrival@example", inReplyTo: "parent@example")
+        let candidates = [parent, arrival].map { LocalMessageWorkflowCandidate(sourceID: source, header: $0) }
+        let rule = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "anchor-not-loaded"),
+            wakeAt: now.addingTimeInterval(600),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["parent@example"])
+        )
+        let snoozed = LocalMessageWorkflowConversationProjection(
+            candidates: candidates,
+            state: LocalMessageWorkflowState(snoozes: [rule]),
+            now: now
+        )
+        #expect(snoozed.isSnoozed(.init(sourceID: source, messageID: "new-arrival"), header: arrival, at: now))
+        let unsnoozed = LocalMessageWorkflowConversationProjection(candidates: candidates, state: .defaults, now: now)
+        #expect(!unsnoozed.isSnoozed(.init(sourceID: source, messageID: "new-arrival"), header: arrival, at: now))
     }
 
     private static func state(

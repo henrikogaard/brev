@@ -382,7 +382,8 @@ public struct BrevMailRootView: View {
     @State private var readerSnoozeLookupTask: Task<Void, Never>?
     @State private var readerSnoozeRequestGeneration = 0
     @State private var workflowSnoozeReconciliationTask: Task<Void, Never>?
-    @State private var workflowSnoozeReconciliationGeneration = 0
+    @State private var workflowSnoozeReconciliationCoordinator =
+        LocalMessageWorkflowSnoozeReconciliationCoordinator()
     @State private var pendingReaderBlockSenderTarget: DetachedReaderActionTarget?
     /// Last "open in new window" request — a double-click and a context-menu
     /// invocation can both fire within a fraction of a second; repeats for the
@@ -789,8 +790,9 @@ public struct BrevMailRootView: View {
             .onDisappear {
                 readerSnoozeRequestGeneration += 1
                 readerSnoozeLookupTask?.cancel()
-                workflowSnoozeReconciliationGeneration += 1
+                workflowSnoozeReconciliationCoordinator.cancel()
                 workflowSnoozeReconciliationTask?.cancel()
+                workflowSnoozeReconciliationTask = nil
                 stopImportSyncHealthPolling()
                 sourceLoadTimeoutTask?.cancel()
                 sourceLoadWorkTask?.cancel()
@@ -6531,72 +6533,80 @@ public struct BrevMailRootView: View {
     }
 
     private func scheduleWorkflowSnoozeReconciliation() {
-        workflowSnoozeReconciliationGeneration += 1
-        workflowSnoozeReconciliationTask?.cancel()
-        let generation = workflowSnoozeReconciliationGeneration
-        let sourceRevision = sourceSectionsRevision
-        let initialState = currentLocalMessageWorkflowState()
-        let activeRules = initialState.snoozes.filter {
-            $0.isActive() && $0.conversationMetadata != nil
-        }
-        guard !activeRules.isEmpty else {
-            workflowSnoozeReconciliationTask = nil
-            return
-        }
-        let sourceIDs = Set(activeRules.map(\.messageID.sourceID))
-        var backendsBySource: [MailSourceID: any MailBackend] = [:]
-        var sectionsBySource: [MailSourceID: MailSourceSection] = [:]
-        for sourceID in sourceIDs {
-            guard let section = sourceSections.first(where: { $0.id == sourceID }),
-                  let backend = currentBackendsProvider().first(where: { $0.account.id == sourceID.accountID }) else {
-                workflowSnoozeReconciliationTask = nil
-                return
-            }
-            backendsBySource[sourceID] = backend
-            sectionsBySource[sourceID] = section
-        }
-        let backendIdentities = backendsBySource.mapValues { ObjectIdentifier($0) }
-
+        guard let generation = workflowSnoozeReconciliationCoordinator.request() else { return }
         workflowSnoozeReconciliationTask = Task { @MainActor in
             defer {
-                if workflowSnoozeReconciliationGeneration == generation {
+                if workflowSnoozeReconciliationCoordinator.owns(generation) {
                     workflowSnoozeReconciliationTask = nil
                 }
             }
-            do {
-                var candidates: [LocalMessageWorkflowCandidate] = []
-                let orderedSources = sourceIDs.sorted {
+            while !Task.isCancelled, workflowSnoozeReconciliationCoordinator.owns(generation) {
+                let sourceRevision = sourceSectionsRevision
+                let baselineState = currentLocalMessageWorkflowState()
+                let rulesBySource = Dictionary(grouping: baselineState.snoozes.filter { rule in
+                    rule.isActive() && rule.conversationMetadata?.rfcIdentifiers.isEmpty == false
+                }, by: \.messageID.sourceID)
+                var candidatesBySource: [MailSourceID: [LocalMessageWorkflowCandidate]] = [:]
+                var sourceBackends: [MailSourceID: ObjectIdentifier] = [:]
+                var sourceFolders: [MailSourceID: Set<Folder.ID>] = [:]
+
+                for sourceID in rulesBySource.keys.sorted(by: {
                     "\($0.accountID)\u{0}\($0.mailboxID)" < "\($1.accountID)\u{0}\($1.mailboxID)"
+                }) {
+                    guard let section = sourceSections.first(where: { $0.id == sourceID }),
+                          !section.folders.isEmpty,
+                          let backend = currentBackendsProvider().first(where: { $0.account.id == sourceID.accountID }) else {
+                        continue
+                    }
+                    let identity = ObjectIdentifier(backend)
+                    let folderIDs = Set(section.folders.map(\.id))
+                    do {
+                        let candidates = try await LocalMessageWorkflowConversationCache.candidates(
+                            backend: backend,
+                            sourceID: sourceID,
+                            folders: section.folders,
+                            anchors: [],
+                            isCurrent: {
+                                isCurrentWorkflowSnoozeReconciliation(
+                                    generation: generation,
+                                    sourceID: sourceID,
+                                    backendIdentity: identity,
+                                    folderIDs: folderIDs,
+                                    sourceRevision: sourceRevision
+                                )
+                            }
+                        )
+                        guard isCurrentWorkflowSnoozeReconciliation(
+                            generation: generation,
+                            sourceID: sourceID,
+                            backendIdentity: identity,
+                            folderIDs: folderIDs,
+                            sourceRevision: sourceRevision
+                        ) else { continue }
+                        candidatesBySource[sourceID] = candidates
+                        sourceBackends[sourceID] = identity
+                        sourceFolders[sourceID] = folderIDs
+                    } catch {
+                        if Task.isCancelled || !workflowSnoozeReconciliationCoordinator.owns(generation) { return }
+                    }
                 }
-                for sourceID in orderedSources {
-                    guard let backend = backendsBySource[sourceID],
-                          let section = sectionsBySource[sourceID] else { return }
-                    let sourceCandidates = try await LocalMessageWorkflowConversationCache.candidates(
-                        backend: backend,
+                guard !Task.isCancelled, workflowSnoozeReconciliationCoordinator.owns(generation) else { return }
+                let readySources = candidatesBySource.keys.filter { sourceID in
+                    guard let identity = sourceBackends[sourceID], let folders = sourceFolders[sourceID] else { return false }
+                    return isCurrentWorkflowSnoozeReconciliation(
+                        generation: generation,
                         sourceID: sourceID,
-                        folders: section.folders,
-                        anchors: [],
-                        isCurrent: {
-                            isCurrentWorkflowSnoozeReconciliation(
-                                generation: generation,
-                                sourceIDs: sourceIDs,
-                                backendIdentities: backendIdentities,
-                                sourceRevision: sourceRevision
-                            )
-                        }
+                        backendIdentity: identity,
+                        folderIDs: folders,
+                        sourceRevision: sourceRevision
                     )
-                    candidates.append(contentsOf: sourceCandidates)
                 }
-                guard isCurrentWorkflowSnoozeReconciliation(
-                    generation: generation,
-                    sourceIDs: sourceIDs,
-                    backendIdentities: backendIdentities,
-                    sourceRevision: sourceRevision
-                ) else { return }
-                guard let transaction = LocalMessageWorkflowSnoozeTransaction.reconciling(
-                    candidates: candidates,
-                    rules: activeRules,
-                    basedOn: initialState,
+                let readyCandidates = candidatesBySource.filter { readySources.contains($0.key) }
+                let readyRules = rulesBySource.filter { readySources.contains($0.key) }
+                guard let transaction = LocalMessageWorkflowSnoozeTransaction.reconcilingSources(
+                    candidatesBySource: readyCandidates,
+                    rulesBySource: readyRules,
+                    basedOn: baselineState,
                     latestState: { currentLocalMessageWorkflowState() },
                     mutation: { currentState, projection, ruleIDs in
                         let reconciled = LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
@@ -6606,39 +6616,42 @@ public struct BrevMailRootView: View {
                         )
                         return (state: reconciled, value: ())
                     }
-                ) else { return }
-                guard transaction.state != transaction.previousState,
-                      isCurrentWorkflowSnoozeReconciliation(
-                          generation: generation,
-                          sourceIDs: sourceIDs,
-                          backendIdentities: backendIdentities,
-                          sourceRevision: sourceRevision
-                      ) else { return }
-                localMessageWorkflowStateBinding.wrappedValue = transaction.state
-            } catch {
-                return
+                ) else { continue }
+                let ownersCurrent = readySources.allSatisfy { sourceID in
+                    guard let identity = sourceBackends[sourceID], let folders = sourceFolders[sourceID] else { return false }
+                    return isCurrentWorkflowSnoozeReconciliation(
+                        generation: generation,
+                        sourceID: sourceID,
+                        backendIdentity: identity,
+                        folderIDs: folders,
+                        sourceRevision: sourceRevision
+                    )
+                }
+                if transaction.state != transaction.previousState, ownersCurrent {
+                    localMessageWorkflowStateBinding.wrappedValue = transaction.state
+                }
+                guard workflowSnoozeReconciliationCoordinator.finishPass(generation: generation) else { break }
             }
         }
     }
 
     private func isCurrentWorkflowSnoozeReconciliation(
         generation: Int,
-        sourceIDs: Set<MailSourceID>,
-        backendIdentities: [MailSourceID: ObjectIdentifier],
+        sourceID: MailSourceID,
+        backendIdentity: ObjectIdentifier,
+        folderIDs: Set<Folder.ID>,
         sourceRevision: Int
     ) -> Bool {
         guard !Task.isCancelled,
-              workflowSnoozeReconciliationGeneration == generation,
-              sourceSectionsRevision == sourceRevision else { return false }
-        for sourceID in sourceIDs {
-            guard sourceSections.contains(where: { $0.id == sourceID }),
-                  let expectedIdentity = backendIdentities[sourceID],
-                  LocalMessageWorkflowSnoozeOwnership.isCurrentBackend(
-                      backendIdentity: expectedIdentity,
-                      sourceID: sourceID,
-                      in: currentBackendsProvider()
-                  ) else { return false }
-        }
+              workflowSnoozeReconciliationCoordinator.owns(generation),
+              sourceSectionsRevision == sourceRevision,
+              let section = sourceSections.first(where: { $0.id == sourceID }),
+              Set(section.folders.map(\.id)) == folderIDs,
+              LocalMessageWorkflowSnoozeOwnership.isCurrentBackend(
+                  backendIdentity: backendIdentity,
+                  sourceID: sourceID,
+                  in: currentBackendsProvider()
+              ) else { return false }
         return true
     }
 
