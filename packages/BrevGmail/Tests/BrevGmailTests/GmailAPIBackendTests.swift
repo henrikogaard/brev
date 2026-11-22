@@ -17,6 +17,29 @@ import Testing
 
 @Suite("Gmail API read backend")
 struct GmailAPIBackendTests {
+    @Test("explicit MIME disposition takes precedence over Content-ID for cached PDFs")
+    func pdfDisposition() async throws {
+        let parts = [
+            GmailMessagePart(partID: "1", mimeType: "application/pdf", filename: "inline.pdf",
+                             headers: [.init(name: "content-disposition", value: "Inline; filename=inline.pdf")]),
+            GmailMessagePart(partID: "2", mimeType: "application/pdf", filename: "attached.pdf",
+                             headers: [.init(name: "Content-Disposition", value: "attachment; filename=attached.pdf"),
+                                       .init(name: "Content-ID", value: "<attached>")]),
+        ]
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "report", threadID: "t", labels: ["INBOX"], payload: GmailMessagePart(parts: parts)),
+        ]))
+        let transport = StubGmailTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let rows = await backend.cachedAttachmentMessages(in: [Folder(id: "INBOX", name: "Inbox", role: .inbox)])
+        let attachments = try #require(rows.first?.body.attachments)
+        #expect(attachments.filter(\.isInline).map(\.name) == ["inline.pdf"])
+        #expect(attachments.filter { !$0.isInline }.map(\.name) == ["attached.pdf"])
+        #expect(attachments.last?.contentID == "attached")
+        #expect(await transport.networkCalls == 0)
+    }
+
     @Test("cached attachment enumeration reads only the requested label without fetching bodies")
     func cachedAttachmentsStayLocal() async throws {
         let store = InMemoryGmailAccountStore()

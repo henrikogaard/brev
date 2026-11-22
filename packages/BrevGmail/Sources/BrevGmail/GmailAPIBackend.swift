@@ -2651,14 +2651,17 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             html = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
         }
         if let filename = part.filename, !filename.isEmpty {
-            let contentID = part.headers.first { $0.name.caseInsensitiveCompare("Content-ID") == .orderedSame }?.value
+            let headers = headerMap(part.headers)
+            let contentID = headers["content-id"]
+            let disposition = headers["content-disposition"]?.components(separatedBy: ";").first?
+                .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let providerAttachmentID = part.body?.attachmentID ?? part.partID ?? filename
             attachments.append(Attachment(
                 id: "gmail-attachment:\(messageID):\(part.partID ?? filename)",
                 name: filename,
                 mimeType: part.mimeType ?? "application/octet-stream",
                 sizeBytes: part.body?.size ?? 0,
-                isInline: contentID != nil,
+                isInline: disposition.map { $0 == "inline" } ?? (contentID != nil),
                 contentID: contentID?.trimmingCharacters(in: CharacterSet(charactersIn: "<>")),
                 resource: "\(messageID)|\(providerAttachmentID)"
             ))
