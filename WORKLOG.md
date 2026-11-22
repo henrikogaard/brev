@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — PR #324 unified Inbox fixture CI repair
+
+- Goal: fix the `record-review-images` test-target compile error in the collapsed-row wake regression.
+- Changes: supplied the required `subject` and `snippet` in the `MessageHeader` fixture. Audited 24 `MessageHeader` constructors across 14 changed test files; this was the only missing pair. No release scripts or snapshot assets changed.
+- Verification: pinned SwiftFormat reported 0/1 changed Swift files needing formatting; Swift parse passed for the changed test source. The native target and hosted harness could not be run locally on Linux; no standalone Foundation harness was present to strengthen.
+- Handoff: the failed self-test job could not be rerun while its workflow was active (`gh run rerun` returned `job 137193330711 cannot be rerun`). This narrow push starts a fresh CI run; do not wait for it.
+
 ## 2026-11-22 — Agent — PR #324 unused helper cleanup
 
 - Goal: remove only confirmed-unused helpers introduced during the review round.

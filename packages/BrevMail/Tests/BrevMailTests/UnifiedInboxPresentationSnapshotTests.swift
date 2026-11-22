@@ -210,6 +210,8 @@ struct UnifiedInboxPresentationSnapshotTests {
                     threadID: threadID,
                     folderID: folder.id,
                     from: Correspondent(email: "sender@example.org"),
+                    subject: id,
+                    snippet: "",
                     date: date,
                     messageID: rfcID
                 ),
