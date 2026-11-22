@@ -58,6 +58,33 @@ struct MessageListRefreshMergeTests {
         #expect(merged.first { $0.id == "newest" }?.subject == "Updated newest")
     }
 
+    @Test("wake rows appended during cache loading survive nonempty and empty first pages")
+    func firstPagePublicationPreservesWakeRowsAppendedDuringCacheLoad() {
+        let newest = Self.makeHeader(id: "newest", subject: "Newest", date: Date(timeIntervalSince1970: 300))
+        let older = Self.makeHeader(id: "older", subject: "Older", date: Date(timeIntervalSince1970: 200))
+        let woken = Self.makeHeader(id: "woken", subject: "Woken", date: Date(timeIntervalSince1970: 100))
+        let previousFirstPageIDs: Set<MessageHeader.ID> = ["newest"]
+        let refreshed = MessageListRefreshMerge.headers(
+            refreshedFirstPage: [newest],
+            previousLoadedHeaders: [newest, older],
+            previousFirstPageHeaderIDs: previousFirstPageIDs,
+            isSameFolder: true
+        )
+        let published = MessageListRefreshMerge.preservingConcurrentAppends(
+            refreshedHeaders: refreshed,
+            currentLoadedHeaders: [newest, older, woken],
+            baselineHeaderIDs: Set(["newest", "older"])
+        )
+        let publishedEmptyPage = MessageListRefreshMerge.preservingConcurrentAppends(
+            refreshedHeaders: [],
+            currentLoadedHeaders: [older, woken],
+            baselineHeaderIDs: ["older"]
+        )
+
+        #expect(published.map(\.id) == ["newest", "older", "woken"])
+        #expect(publishedEmptyPage.map(\.id) == ["woken"])
+    }
+
     @Test("refreshed first page drops stale headers from the previous first page")
     func refreshedFirstPageDropsStalePreviousFirstPageHeaders() {
         let previous = [

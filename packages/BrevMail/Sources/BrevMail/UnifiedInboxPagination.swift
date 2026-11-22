@@ -72,6 +72,21 @@ enum UnifiedInboxPagination {
         return sortedItems(merged)
     }
 
+    static func preservingConcurrentItems(
+        _ currentItems: [UnifiedInboxItem],
+        in loadedItems: [UnifiedInboxItem],
+        from sourceIDs: Set<MailSourceID>,
+        baselineItemIDs: Set<String> = []
+    ) -> [UnifiedInboxItem] {
+        let loadedIDs = Set(loadedItems.map(\.id))
+        let concurrentItems = currentItems.filter {
+            sourceIDs.contains($0.sourceID)
+                && !baselineItemIDs.contains($0.id)
+                && !loadedIDs.contains($0.id)
+        }
+        return appendUniquePage(concurrentItems, to: loadedItems)
+    }
+
     static func shouldLoadMore(
         visibleIndex: Int,
         visibleCount: Int,

@@ -94,6 +94,48 @@ struct MessageListSnoozeWakeCandidateTests {
         #expect(candidates.isEmpty)
     }
 
+    @Test("empty, future-only, and other-source snoozes do not read cached headers")
+    @MainActor
+    func noExpiredSourceOwnedSnoozeDoesNotReadCache() async throws {
+        let backend = MockBackend()
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let sourceA = MailSourceID(accountID: backend.account.id, mailboxID: "mailbox-a")
+        let sourceB = MailSourceID(accountID: backend.account.id, mailboxID: "mailbox-b")
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let readCounter = CachedHeaderReadCounter()
+        backend.cachedMessageHeadersHandler = { _, _ in
+            readCounter.recordRead()
+            return []
+        }
+        let scenarios = [
+            [LocalMessageSnooze](),
+            [LocalMessageSnooze(
+                messageID: SourceMessageID(sourceID: sourceA, messageID: "future"),
+                wakeAt: now.addingTimeInterval(60)
+            )],
+            [LocalMessageSnooze(
+                messageID: SourceMessageID(sourceID: sourceB, messageID: "other-source"),
+                wakeAt: now.addingTimeInterval(-60)
+            )],
+        ]
+
+        for snoozes in scenarios {
+            let candidates = try await LocalMessageWorkflowConversationCache.loadExpiredInboxWakeCandidates(
+                backend: backend,
+                sourceID: sourceA,
+                inboxFolder: inbox,
+                folders: [inbox],
+                loadedHeaders: [],
+                snoozes: snoozes,
+                now: now,
+                isEligible: true,
+                isCurrent: { true }
+            )
+            #expect(candidates.isEmpty)
+            #expect(readCounter.readCount == 0)
+        }
+    }
+
     private static func header(
         id: String,
         folderID: String,
@@ -113,5 +155,22 @@ struct MessageListSnoozeWakeCandidateTests {
             messageID: messageID,
             inReplyTo: inReplyTo
         )
+    }
+}
+
+private final class CachedHeaderReadCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var readCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func recordRead() {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
     }
 }

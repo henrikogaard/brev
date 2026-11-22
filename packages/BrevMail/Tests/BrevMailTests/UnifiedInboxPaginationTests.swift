@@ -100,6 +100,48 @@ struct UnifiedInboxPaginationTests {
         ])
     }
 
+    @Test("a concurrent wake append survives first-page publication without changing its cursor")
+    func concurrentWakeAppendPreservesFirstPageCursor() throws {
+        let sourceA = Self.sourceID(account: "account-a", mailbox: "mailbox-a")
+        let sourceB = Self.sourceID(account: "account-b", mailbox: "mailbox-b")
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let section = Self.section(account: "account-a", mailbox: "mailbox-a", folders: [inbox])
+        let cursor = try #require(UnifiedInboxPageCursor(
+            section: section,
+            inbox: inbox,
+            nextPageToken: "next-page"
+        ))
+        let pageItems = cursor.items(from: [Self.header(id: "newest", folderID: inbox.id)])
+        let staleLoaded = Self.item(
+            sourceID: sourceA,
+            folder: inbox,
+            messageID: "stale",
+            date: Date(timeIntervalSince1970: 5)
+        )
+        let woken = Self.item(
+            sourceID: sourceA,
+            folder: inbox,
+            messageID: "woken",
+            date: Date(timeIntervalSince1970: 10)
+        )
+        let collidingOtherSource = Self.item(
+            sourceID: sourceB,
+            folder: inbox,
+            messageID: "woken",
+            date: Date(timeIntervalSince1970: 20)
+        )
+
+        let published = UnifiedInboxPagination.preservingConcurrentItems(
+            [staleLoaded, pageItems[0], woken, collidingOtherSource],
+            in: pageItems,
+            from: [sourceA],
+            baselineItemIDs: [staleLoaded.id]
+        )
+
+        #expect(published.map(\.id) == [pageItems[0].id, woken.id])
+        #expect(cursor.nextPageToken == "next-page")
+    }
+
     @Test("load more starts near the bottom when a source has another page")
     func loadMoreStartsNearBottomWhenSourceHasAnotherPage() {
         let folder = Folder(id: "inbox", name: "Inbox", role: .inbox)

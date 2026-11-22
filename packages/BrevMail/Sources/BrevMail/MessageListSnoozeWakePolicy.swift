@@ -33,6 +33,14 @@ struct MessageListSnoozeWakeEntry: Sendable {
 }
 
 enum MessageListSnoozeWakePolicy {
+    static func hasExpiredSourceOwnedSnooze(
+        in snoozes: [LocalMessageSnooze],
+        sourceID: MailSourceID,
+        now: Date
+    ) -> Bool {
+        snoozes.contains { $0.messageID.sourceID == sourceID && $0.wakeAt <= now }
+    }
+
     static func expiredInboxWakeCandidates(
         from candidates: [LocalMessageWorkflowCandidate],
         sourceID: MailSourceID,

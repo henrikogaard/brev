@@ -931,7 +931,7 @@ struct UnifiedInboxListView: View {
             loadedHeaders: loadedHeaders,
             snoozes: snoozes,
             now: now,
-            isEligible: isEligible && backend.capabilities.contains(.cachedMessageHeaders),
+            isEligible: isEligible && backend.extendedCapabilities.contains(.cachedMessageHeaders),
             isCurrent: isCurrent
         )
     }
@@ -948,6 +948,22 @@ struct UnifiedInboxListView: View {
               snoozeWakeScheduleRevision == revision,
               snoozeWakePromotionEligible else { return false }
         return acceptsSnoozedCacheLoad(
+            request: request,
+            sourceID: sourceID,
+            backendIdentity: backendIdentity,
+            folderIDs: folderIDs,
+            sourceRevision: sourceRevision
+        )
+    }
+
+    private func acceptsInboxPageLoad(
+        request: UUID,
+        sourceID: MailSourceID,
+        backendIdentity: ObjectIdentifier,
+        folderIDs: Set<Folder.ID>,
+        sourceRevision: Int?
+    ) -> Bool {
+        acceptsSnoozedCacheLoad(
             request: request,
             sourceID: sourceID,
             backendIdentity: backendIdentity,
@@ -2055,6 +2071,7 @@ struct UnifiedInboxListView: View {
         let contentKey = "folder:\(reloadKey)"
         if loadedContentKey != contentKey { items = [] }
         loadedContentKey = contentKey
+        let itemIDsAtLoadStart = Set(items.map(\.id))
         isLoading = true
         isLoadingMore = false
         errorMessage = nil
@@ -2100,6 +2117,15 @@ struct UnifiedInboxListView: View {
             guard loadOwnership.accepts(loadRequest) else { return }
             switch result {
             case .page(let section, let inbox, let headers, let nextPageToken):
+                guard !Task.isCancelled,
+                      let backend = backendsByAccountID[section.id.accountID],
+                      acceptsInboxPageLoad(
+                          request: loadRequest,
+                          sourceID: section.id,
+                          backendIdentity: ObjectIdentifier(backend),
+                          folderIDs: Set(section.folders.map(\.id)),
+                          sourceRevision: loadSourceRevision
+                      ) else { return }
                 loadedInboxSourceIDs.insert(section.id)
                 recordRecentRecipients(headers, account: section.account)
                 loadedItems.removeAll { $0.sourceID == section.id }
@@ -2120,6 +2146,12 @@ struct UnifiedInboxListView: View {
                 ) {
                     nextCursors[section.id] = cursor
                 }
+                loadedItems = UnifiedInboxPagination.preservingConcurrentItems(
+                    items,
+                    in: loadedItems,
+                    from: Set(sourceSections.map(\.id)),
+                    baselineItemIDs: itemIDsAtLoadStart
+                )
             case .failure(let message):
                 firstError = firstError ?? MailBackendError.backendSpecific(message: message)
             case .skipped:
@@ -2160,7 +2192,17 @@ struct UnifiedInboxListView: View {
                         )
                     }
                 )
-                guard loadOwnership.accepts(loadRequest) else { return }
+                guard acceptsInboxPageLoad(
+                    request: loadRequest,
+                    sourceID: section.id,
+                    backendIdentity: backendIdentity,
+                    folderIDs: folderIDs,
+                    sourceRevision: loadSourceRevision
+                ) else { return }
+                guard !Task.isCancelled else {
+                    isLoading = false
+                    return
+                }
                 let existingIDs = Set(loadedItems.filter { $0.sourceID == section.id }.map { $0.header.id })
                 loadedItems.append(contentsOf: wakeCandidates.filter { !existingIDs.contains($0.id) }.map {
                     UnifiedInboxItem(
@@ -2173,14 +2215,57 @@ struct UnifiedInboxListView: View {
                     )
                 })
             } catch is CancellationError {
-                guard loadOwnership.accepts(loadRequest) else { return }
+                guard acceptsInboxPageLoad(
+                    request: loadRequest,
+                    sourceID: section.id,
+                    backendIdentity: backendIdentity,
+                    folderIDs: folderIDs,
+                    sourceRevision: loadSourceRevision
+                ) else { return }
+                guard !Task.isCancelled else {
+                    isLoading = false
+                    return
+                }
             } catch {
-                guard loadOwnership.accepts(loadRequest) else { return }
-                firstError = firstError ?? error
+                guard acceptsInboxPageLoad(
+                    request: loadRequest,
+                    sourceID: section.id,
+                    backendIdentity: backendIdentity,
+                    folderIDs: folderIDs,
+                    sourceRevision: loadSourceRevision
+                ) else { return }
+                guard !Task.isCancelled else {
+                    isLoading = false
+                    return
+                }
+                if snoozeWakePromotionEligible {
+                    firstError = firstError ?? error
+                }
             }
         }
 
-        guard loadOwnership.accepts(loadRequest) else { return }
+        guard loadOwnership.accepts(loadRequest),
+              loadedInboxSourceIDs.allSatisfy({ sourceID in
+                  guard let section = sourceSections.first(where: { $0.id == sourceID }),
+                        let backend = backendsByAccountID[sourceID.accountID] else { return false }
+                  return acceptsInboxPageLoad(
+                      request: loadRequest,
+                      sourceID: sourceID,
+                      backendIdentity: ObjectIdentifier(backend),
+                      folderIDs: Set(section.folders.map(\.id)),
+                      sourceRevision: loadSourceRevision
+                  )
+              }) else { return }
+        guard !Task.isCancelled else {
+            isLoading = false
+            return
+        }
+        loadedItems = UnifiedInboxPagination.preservingConcurrentItems(
+            items,
+            in: loadedItems,
+            from: loadedInboxSourceIDs,
+            baselineItemIDs: itemIDsAtLoadStart
+        )
         items = UnifiedInboxPagination.sortedItems(loadedItems)
         reconcileNavigationAfterItemsChanged()
         pageCursors = nextCursors
@@ -2346,16 +2431,20 @@ struct UnifiedInboxListView: View {
         sourceRevision: Int?,
     ) -> Bool {
         guard loadOwnership.accepts(request),
-              sourceSections.contains(where: { section in
-                  section.id == sourceID && Set(section.folders.map(\.id)) == folderIDs
-              }) else { return false }
+              let section = sourceSections.first(where: { $0.id == sourceID }),
+              Set(section.folders.map(\.id)) == folderIDs else { return false }
         if let sourceSectionsRevisionProvider,
            sourceSectionsRevisionProvider() != sourceRevision { return false }
         if let isSourceAvailable, !isSourceAvailable(sourceID) { return false }
         let currentBackends = currentBackendsProvider?() ?? backends
-        guard let currentBackend = currentBackends.first(where: { $0.account.id == sourceID.accountID }),
-              ObjectIdentifier(currentBackend) == backendIdentity else { return false }
-        return true
+        let currentBackendIdentity = currentBackends.first(where: { $0.account.id == sourceID.accountID })
+            .map(ObjectIdentifier.init)
+        return MessageListFolderLoadResponsePolicy.ownsSourceAndBackend(
+            sourceID: sourceID,
+            currentSourceID: section.id,
+            backendIdentity: backendIdentity,
+            currentBackendIdentity: currentBackendIdentity
+        )
     }
 
     private func reloadSavedSearch(_ query: SmartMailbox.SavedQuery) async {

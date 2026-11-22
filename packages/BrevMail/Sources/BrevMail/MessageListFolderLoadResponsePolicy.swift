@@ -15,15 +15,21 @@ import BrevBackend
 struct MessageListFolderLoadRequest: Equatable, Sendable {
     let folderID: String
     let sourceID: MailSourceID?
+    let backendIdentity: ObjectIdentifier?
+    let sourceRevision: Int?
     let reloadRequestID: Int
 
     init(
         folderID: String,
         sourceID: MailSourceID? = nil,
+        backendIdentity: ObjectIdentifier? = nil,
+        sourceRevision: Int? = nil,
         reloadRequestID: Int
     ) {
         self.folderID = folderID
         self.sourceID = sourceID
+        self.backendIdentity = backendIdentity
+        self.sourceRevision = sourceRevision
         self.reloadRequestID = reloadRequestID
     }
 
@@ -53,12 +59,25 @@ enum MessageListFolderLoadResponsePolicy {
         currentSourceID: MailSourceID? = nil,
         currentFolderID: String?,
         currentReloadRequestID: Int,
-        currentSearchText: String
+        currentSearchText: String,
+        currentBackendIdentity: ObjectIdentifier? = nil,
+        currentSourceRevision: Int? = nil
     ) -> Bool {
         activeRequest == request
             && currentSourceID == request.sourceID
             && currentFolderID == request.folderID
             && currentReloadRequestID == request.reloadRequestID
+            && (request.backendIdentity == nil || request.backendIdentity == currentBackendIdentity)
+            && (request.sourceRevision == nil || request.sourceRevision == currentSourceRevision)
             && MessageListReloadPolicy.operation(forSearchText: currentSearchText) == .folder
+    }
+
+    static func ownsSourceAndBackend(
+        sourceID: MailSourceID,
+        currentSourceID: MailSourceID?,
+        backendIdentity: ObjectIdentifier,
+        currentBackendIdentity: ObjectIdentifier?
+    ) -> Bool {
+        sourceID == currentSourceID && backendIdentity == currentBackendIdentity
     }
 }

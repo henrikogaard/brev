@@ -46,7 +46,14 @@ enum LocalMessageWorkflowConversationCache {
         isEligible: Bool,
         isCurrent: @MainActor () -> Bool
     ) async throws -> [MessageHeader] {
-        guard isEligible else { return [] }
+        guard isEligible,
+              MessageListSnoozeWakePolicy.hasExpiredSourceOwnedSnooze(
+                  in: snoozes,
+                  sourceID: sourceID,
+                  now: now
+              ) else {
+            return []
+        }
         let candidates = try await candidates(
             backend: backend,
             sourceID: sourceID,

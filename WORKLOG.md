@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-22 — Agent — PR #324 wake-cache lifecycle correction
+
+- Goal: correct cache wake-scan cost, first-page ownership, and concurrent timer publication.
+- Changes: use the extended cached-header capability; skip cache reads unless the source has an expired snooze; validate captured source/backend/revision on page publication; preserve wake rows appended during first-page loads without changing pagination cursors. No network behavior was added.
+- Regressions: cover no-read snooze cases, source/backend replacement, two-stage first-page merge, and Unified Inbox concurrent wake retention with its cursor.
+- Verification: focused Foundation harness passed 71 tests in 7 suites, including cache no-read, first-page ownership/merge, and cursor cases; pinned SwiftFormat reported 0/12 files requiring formatting; Swift parse passed for 12 changed Swift files; ADR-required and diff checks passed. The harness shims only localized cache-error descriptions for Linux.
+- Limits: the native BrevMail target and its new integration tests were not run because this Linux host lacks SwiftUI; no visual check was performed. The existing Unreleased changelog entries already describe the user-facing wake behavior, so no changelog edit was needed.
+- Handoff: local correction commit only; do not push until the full PR #324 review round is complete. Existing Unreleased changelog entries already describe the user-facing wake behavior.
+
 ## 2026-11-22 — Agent — PR #324 expired Inbox snooze wake candidates
 
 - Goal: resurface expired snoozed Inbox messages that are outside the loaded first page.

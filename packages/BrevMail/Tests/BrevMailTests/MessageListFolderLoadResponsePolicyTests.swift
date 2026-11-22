@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 @testable import BrevMail
 import Testing
 
@@ -100,6 +101,65 @@ struct MessageListFolderLoadResponsePolicyTests {
             currentFolderID: "inbox",
             currentReloadRequestID: 2,
             currentSearchText: "budget"
+        ))
+    }
+
+    @Test("same-source page publication rejects a replaced backend and changed source revision")
+    func sameSourceBackendReplacementRejectsPagePublication() {
+        final class BackendIdentity {}
+        let sourceID = MailSourceID(accountID: "account", mailboxID: "mailbox")
+        let capturedBackend = BackendIdentity()
+        let replacementBackend = BackendIdentity()
+        let request = MessageListFolderLoadRequest(
+            folderID: "inbox",
+            sourceID: sourceID,
+            backendIdentity: ObjectIdentifier(capturedBackend),
+            sourceRevision: 4,
+            reloadRequestID: 2
+        )
+        let canApply: (ObjectIdentifier, Int?) -> Bool = { backendIdentity, sourceRevision in
+            MessageListFolderLoadResponsePolicy.canApplyFolderLoadResponse(
+                request: request,
+                activeRequest: request,
+                currentSourceID: sourceID,
+                currentFolderID: "inbox",
+                currentReloadRequestID: 2,
+                currentSearchText: "",
+                currentBackendIdentity: backendIdentity,
+                currentSourceRevision: sourceRevision
+            )
+        }
+
+        #expect(canApply(ObjectIdentifier(capturedBackend), 4))
+        #expect(!canApply(ObjectIdentifier(replacementBackend), 4))
+        #expect(!canApply(ObjectIdentifier(capturedBackend), 5))
+    }
+
+    @Test("page ownership requires both the captured source and backend")
+    func sourceAndBackendOwnershipAreBothRequired() {
+        final class BackendIdentity {}
+        let sourceID = MailSourceID(accountID: "account", mailboxID: "mailbox")
+        let otherSourceID = MailSourceID(accountID: "account", mailboxID: "other-mailbox")
+        let backend = BackendIdentity()
+        let replacementBackend = BackendIdentity()
+
+        #expect(MessageListFolderLoadResponsePolicy.ownsSourceAndBackend(
+            sourceID: sourceID,
+            currentSourceID: sourceID,
+            backendIdentity: ObjectIdentifier(backend),
+            currentBackendIdentity: ObjectIdentifier(backend)
+        ))
+        #expect(!MessageListFolderLoadResponsePolicy.ownsSourceAndBackend(
+            sourceID: sourceID,
+            currentSourceID: otherSourceID,
+            backendIdentity: ObjectIdentifier(backend),
+            currentBackendIdentity: ObjectIdentifier(backend)
+        ))
+        #expect(!MessageListFolderLoadResponsePolicy.ownsSourceAndBackend(
+            sourceID: sourceID,
+            currentSourceID: sourceID,
+            backendIdentity: ObjectIdentifier(backend),
+            currentBackendIdentity: ObjectIdentifier(replacementBackend)
         ))
     }
 }

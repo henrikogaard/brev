@@ -57,6 +57,44 @@ struct MessageListSnoozeWakePolicyTests {
         ).isEmpty)
     }
 
+    @Test("cache scans require an expired snooze owned by the source")
+    func expiredSourceSnoozeGatesCacheScan() {
+        let otherSource = MailSourceID(accountID: "other-account", mailboxID: "other-mailbox")
+        let expired = LocalMessageSnooze(
+            messageID: SourceMessageID(sourceID: Self.source, messageID: "expired"),
+            wakeAt: Self.now
+        )
+        let future = LocalMessageSnooze(
+            messageID: SourceMessageID(sourceID: Self.source, messageID: "future"),
+            wakeAt: Self.now.addingTimeInterval(60)
+        )
+        let otherSourceExpired = LocalMessageSnooze(
+            messageID: SourceMessageID(sourceID: otherSource, messageID: "other"),
+            wakeAt: Self.now
+        )
+
+        #expect(!MessageListSnoozeWakePolicy.hasExpiredSourceOwnedSnooze(
+            in: [],
+            sourceID: Self.source,
+            now: Self.now
+        ))
+        #expect(!MessageListSnoozeWakePolicy.hasExpiredSourceOwnedSnooze(
+            in: [future],
+            sourceID: Self.source,
+            now: Self.now
+        ))
+        #expect(!MessageListSnoozeWakePolicy.hasExpiredSourceOwnedSnooze(
+            in: [otherSourceExpired],
+            sourceID: Self.source,
+            now: Self.now
+        ))
+        #expect(MessageListSnoozeWakePolicy.hasExpiredSourceOwnedSnooze(
+            in: [expired],
+            sourceID: Self.source,
+            now: Self.now
+        ))
+    }
+
     @Test("a snooze on one source cannot promote a colliding message on another source")
     func sourceScopedPromotion() {
         let otherSource = MailSourceID(accountID: "other-account", mailboxID: "other-mailbox")

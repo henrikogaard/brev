@@ -2844,6 +2844,8 @@ public struct MessageListView: View {
         let request = MessageListFolderLoadRequest(
             folderID: folder.id,
             sourceID: sourceID,
+            backendIdentity: ObjectIdentifier(backend),
+            sourceRevision: sourceSectionsRevisionProvider?(),
             reloadRequestID: navigation.reloadRequestID
         )
         guard canStartFolderLoad(request) else {
@@ -2865,6 +2867,7 @@ public struct MessageListView: View {
         isLoadingMore = false
         activeLoadMoreRequest = nil
         activeMutationRequest = nil
+        let loadedHeaderIDsAtLoadStart = Set(loadedFolderHeaders.map(\.id))
         let interval = MailUIPerformanceDiagnostics.beginInterval("Message List Reload")
         defer { MailUIPerformanceDiagnostics.endInterval(interval) }
         do {
@@ -2890,6 +2893,7 @@ public struct MessageListView: View {
             do {
                 let wakeCandidates = try await loadExpiredInboxWakeCandidates(
                     folder: folder,
+                    sourceID: request.sourceID ?? workflowSourceID,
                     loadedHeaders: mergedHeaders,
                     snoozes: localMessageWorkflowState.snoozes,
                     now: Date(),
@@ -2899,23 +2903,38 @@ public struct MessageListView: View {
                               snoozeWakePromotionEligible else {
                             return false
                         }
-                        let sourceID = workflowSourceID
-                        guard isSourceAvailable?(sourceID) ?? true else { return false }
-                        let currentBackends = currentBackendsProvider?() ?? [backend]
-                        return currentBackends.contains {
-                            $0.account.id == sourceID.accountID
-                                && ObjectIdentifier($0) == ObjectIdentifier(backend)
-                        }
+                        return true
                     }
                 )
                 guard canApplyFolderLoadResponse(request) else { return }
-                mergedHeaders.append(contentsOf: wakeCandidates)
+                guard !Task.isCancelled else {
+                    finishFolderLoad(request)
+                    return
+                }
+                if snoozeWakePromotionEligible {
+                    mergedHeaders.append(contentsOf: wakeCandidates)
+                }
             } catch is CancellationError {
                 guard canApplyFolderLoadResponse(request) else { return }
+                guard !Task.isCancelled else {
+                    finishFolderLoad(request)
+                    return
+                }
             } catch {
-                guard canApplyFolderLoadResponse(request), snoozeWakePromotionEligible else { return }
-                loadMoreErrorStatus = MessageListPresentation.partialLoadErrorStatus(for: error)
+                guard canApplyFolderLoadResponse(request) else { return }
+                guard !Task.isCancelled else {
+                    finishFolderLoad(request)
+                    return
+                }
+                if snoozeWakePromotionEligible {
+                    loadMoreErrorStatus = MessageListPresentation.partialLoadErrorStatus(for: error)
+                }
             }
+            mergedHeaders = MessageListRefreshMerge.preservingConcurrentAppends(
+                refreshedHeaders: mergedHeaders,
+                currentLoadedHeaders: loadedFolderHeaders,
+                baselineHeaderIDs: loadedHeaderIDsAtLoadStart
+            )
             loadedFolderHeaders = mergedHeaders
             headers = mergedHeaders
             // Learn only the refreshed first page. Older loaded rows are
@@ -3069,13 +3088,21 @@ public struct MessageListView: View {
     }
 
     private func canApplyFolderLoadResponse(_ request: MessageListFolderLoadRequest) -> Bool {
-        MessageListFolderLoadResponsePolicy.canApplyFolderLoadResponse(
+        let currentSourceID = navigation.selectedSourceID
+        let currentBackends = currentBackendsProvider?() ?? [backend]
+        let currentBackendIdentity = currentSourceID.flatMap { sourceID in
+            currentBackends.first(where: { $0.account.id == sourceID.accountID }).map(ObjectIdentifier.init)
+        }
+        guard currentSourceID.map({ isSourceAvailable?($0) ?? true }) ?? true else { return false }
+        return MessageListFolderLoadResponsePolicy.canApplyFolderLoadResponse(
             request: request,
             activeRequest: activeFolderLoadRequest,
-            currentSourceID: navigation.selectedSourceID,
+            currentSourceID: currentSourceID,
             currentFolderID: navigation.selectedFolderID,
             currentReloadRequestID: navigation.reloadRequestID,
-            currentSearchText: navigation.searchText
+            currentSearchText: navigation.searchText,
+            currentBackendIdentity: currentBackendIdentity,
+            currentSourceRevision: sourceSectionsRevisionProvider?()
         )
     }
 
@@ -4233,6 +4260,7 @@ public struct MessageListView: View {
 
     private func loadExpiredInboxWakeCandidates(
         folder: Folder,
+        sourceID: MailSourceID,
         loadedHeaders: [MessageHeader],
         snoozes: [LocalMessageSnooze],
         now: Date,
@@ -4241,14 +4269,14 @@ public struct MessageListView: View {
         let folders = allFolders.contains(where: { $0.id == folder.id }) ? allFolders : allFolders + [folder]
         return try await LocalMessageWorkflowConversationCache.loadExpiredInboxWakeCandidates(
             backend: backend,
-            sourceID: workflowSourceID,
+            sourceID: sourceID,
             inboxFolder: folder,
             folders: folders,
             loadedHeaders: loadedHeaders,
             snoozes: snoozes,
             now: now,
             isEligible: snoozeWakePromotionEligible
-                && backend.capabilities.contains(.cachedMessageHeaders),
+                && backend.extendedCapabilities.contains(.cachedMessageHeaders),
             isCurrent: isCurrent
         )
     }
@@ -4284,6 +4312,7 @@ public struct MessageListView: View {
         do {
             let wakeCandidates = try await loadExpiredInboxWakeCandidates(
                 folder: folder,
+                sourceID: sourceID,
                 loadedHeaders: loadedFolderHeaders,
                 snoozes: state.snoozes,
                 now: now,
