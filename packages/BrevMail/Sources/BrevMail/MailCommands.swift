@@ -30,6 +30,7 @@ public struct MailCommands: Commands {
     @FocusedValue(\.mailContextColumnAction) private var mailContextColumnAction
     @FocusedValue(\.mailHelpActions) private var helpActions
     @FocusedValue(\.mailListSelectAll) private var listSelectAll
+    @FocusedValue(\.mailTriageAction) private var triageAction
     @AppStorage("folders.showIcons") private var showSidebarIcons = true
 
     /// Creates the cross-platform command set.
@@ -291,6 +292,14 @@ public struct MailCommands: Commands {
                 navigation?.requestSearchFocus()
             }
             .keyboardShortcut("/")
+
+            Divider()
+
+            Button(triageAction?.title ?? String(localized: "Start Triage", bundle: .module)) {
+                triageAction?.toggle()
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+            .disabled(triageAction?.isAvailable != true)
         }
 
         // MARK: - View menu

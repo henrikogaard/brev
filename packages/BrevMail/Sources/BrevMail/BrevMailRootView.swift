@@ -353,6 +353,7 @@ public struct BrevMailRootView: View {
     @State private var rootWorkProgressTick = 0
     @State private var shouldRefreshAfterSheetDismissal = false
     @State private var undoQueue = UndoQueue()
+    @State private var triageSession: TriageSession?
     @State private var folderExportController = MailFolderExportController()
     @State private var showOfflineBanner = false
     @State private var outboxPendingCount = 0
@@ -1080,6 +1081,7 @@ public struct BrevMailRootView: View {
             .focusedSceneValue(\.mailImportAction, mailImportAction)
             .focusedSceneValue(\.mailFolderExportAction, mailFolderExportAction)
             .focusedSceneValue(\.mailContextColumnAction, mailContextCommandAction)
+            .focusedSceneValue(\.mailTriageAction, mailTriageAction)
             // iPadOS Help menu opens the shortcuts reference as a sheet (#79).
             .focusedSceneValue(\.mailHelpActions, MailHelpActions(
                 keyboardShortcuts: {
@@ -1196,57 +1198,63 @@ public struct BrevMailRootView: View {
                 contactActions: senderContactActions
             ))
         #else
-        mailSplitView
-            .background {
-                nativeToolbarBridge
+        Group {
+            if let triageSession {
+                triageWorkspace(triageSession)
+            } else {
+                mailSplitView
             }
-            .sheet(isPresented: $isMailContextSheetPresented) {
-                // iOS has no trailing column to host the Mail Context; the
-                // mailbox chat half of the shared column presents as a sheet
-                // instead, with the same scope/search wiring the macOS
-                // inspector uses.
-                NavigationStack {
-                    MailboxChatPanel(
-                        scope: MailContextColumnScopePolicy.chatScope(
-                            selectedHeader: navigation.selectedHeader,
-                            focusedFolder: selectedFolder
-                        ),
-                        sourceID: navigation.selectedSourceID,
-                        senderDisplayName: navigation.selectedHeader?.from.name,
-                        aiBackend: selectedAIBackend,
-                        actionFolders: mailboxActionFolders(for: navigation.selectedSourceID),
-                        focusedFolder: selectedFolder,
-                        actionSourceScope: mailboxActionSourceScope(for: navigation.selectedSourceID),
-                        executeAction: { plan in
-                            try await executeMailboxAction(plan: plan)
-                        },
-                        search: { query, sourceID in
-                            if let sourceID {
-                                return try await selectedBackend.search(query, sourceID: sourceID)
-                            }
-                            return try await selectedBackend.search(query)
-                        },
-                        onOpenCitation: { citation in
-                            openMailContextMessage(citation.recentItem)
-                        },
-                        onOpenSettings: onOpenSettings
-                    )
-                    .navigationTitle(Text("Ask AI", bundle: .module))
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button {
-                                isMailContextSheetPresented = false
-                            } label: {
-                                Text("Done", bundle: .module)
-                            }
+        }
+        .background {
+            nativeToolbarBridge
+        }
+        .sheet(isPresented: $isMailContextSheetPresented) {
+            // iOS has no trailing column to host the Mail Context; the
+            // mailbox chat half of the shared column presents as a sheet
+            // instead, with the same scope/search wiring the macOS
+            // inspector uses.
+            NavigationStack {
+                MailboxChatPanel(
+                    scope: MailContextColumnScopePolicy.chatScope(
+                        selectedHeader: navigation.selectedHeader,
+                        focusedFolder: selectedFolder
+                    ),
+                    sourceID: navigation.selectedSourceID,
+                    senderDisplayName: navigation.selectedHeader?.from.name,
+                    aiBackend: selectedAIBackend,
+                    actionFolders: mailboxActionFolders(for: navigation.selectedSourceID),
+                    focusedFolder: selectedFolder,
+                    actionSourceScope: mailboxActionSourceScope(for: navigation.selectedSourceID),
+                    executeAction: { plan in
+                        try await executeMailboxAction(plan: plan)
+                    },
+                    search: { query, sourceID in
+                        if let sourceID {
+                            return try await selectedBackend.search(query, sourceID: sourceID)
+                        }
+                        return try await selectedBackend.search(query)
+                    },
+                    onOpenCitation: { citation in
+                        openMailContextMessage(citation.recentItem)
+                    },
+                    onOpenSettings: onOpenSettings
+                )
+                .navigationTitle(Text("Ask AI", bundle: .module))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button {
+                            isMailContextSheetPresented = false
+                        } label: {
+                            Text("Done", bundle: .module)
                         }
                     }
                 }
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-                .brevSheetAppearance(theme)
             }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .brevSheetAppearance(theme)
+        }
         #endif
     }
 
@@ -1258,6 +1266,236 @@ public struct BrevMailRootView: View {
     private var mailContextCommandAction: MailContextColumnAction {
         MailContextColumnAction(isPresented: isMailContextColumnPresented) {
             isMailContextColumnPresented.toggle()
+        }
+    }
+
+    private var mailTriageAction: MailTriageAction {
+        MailTriageAction(
+            isActive: triageSession != nil,
+            isAvailable: triageSession != nil || (!sidebarSourceSections.isEmpty && !isCommandMutationBlocked),
+            toggle: {
+                if triageSession != nil {
+                    exitTriage()
+                } else {
+                    Task { await startTriage() }
+                }
+            }
+        )
+    }
+
+    private func triageArchiveFolder(for item: TriageItem) -> Folder? {
+        let sourceFolders = sidebarSourceSections.first { $0.id == item.sourceID }?.folders ?? folders
+        return sourceFolders.first { $0.role == .archive }
+    }
+
+    private func triageSourceFolder(for item: TriageItem) -> Folder {
+        let sourceFolders = sidebarSourceSections.first { $0.id == item.sourceID }?.folders ?? folders
+        return sourceFolders.first { $0.id == item.header.folderID }
+            ?? Folder(id: item.header.folderID, name: item.header.folderID, role: .custom)
+    }
+
+    private func triageCanSnooze(_ item: TriageItem?) -> Bool {
+        guard let item else { return false }
+        let role = triageSourceFolder(for: item).role
+        return role != .drafts && role != .trash && role != .spam
+    }
+
+    @ViewBuilder
+    private func triageWorkspace(_ session: TriageSession) -> some View {
+        let current = session.currentItem
+        let currentOwner = current.map { backend(for: $0.sourceID) } ?? selectedBackend
+        let canArchive = current.map { item in
+            guard let archive = triageArchiveFolder(for: item) else { return false }
+            return item.header.folderID != archive.id
+        } ?? false
+        let canReply = current != nil && currentOwner.capabilities.contains(.smtpOAuth)
+        let isKeySuspended = navigation.presentedSheet != nil
+            || isCommandMutationBlocked
+            || pendingReaderSnoozeTarget != nil
+            || pendingReaderBlockSenderTarget != nil
+
+        TriageView(
+            session: session,
+            canArchive: canArchive,
+            canSnooze: triageCanSnooze(current),
+            canReply: canReply,
+            isKeyHandlingSuspended: isKeySuspended,
+            onArchive: {
+                Task { await archiveTriageItem(in: session) }
+            },
+            onSnooze: {
+                snoozeTriageItem(in: session)
+            },
+            onReply: {
+                replyTriageItem(in: session)
+            },
+            onSkip: {
+                session.skipCurrent(registeringUndoIn: undoQueue)
+            },
+            onDone: {
+                exitTriage()
+            },
+            onUndo: {
+                performUndo()
+            },
+            onPreloadNext: {
+                preloadNextTriageItem(in: session)
+            }
+        ) { item, preloadedBody in
+            let owner = backend(for: item.sourceID)
+            let sourceFolders = sidebarSourceSections.first { $0.id == item.sourceID }?.folders ?? folders
+            if owner.groupsMessagesIntoThreads, item.threadHeaders.count > 1 {
+                ThreadConversationView(
+                    threadHeaders: item.threadHeaders,
+                    backend: owner,
+                    sourceID: item.sourceID,
+                    mailboxLabel: sidebarSourceSections.first { $0.id == item.sourceID }?.mailbox.email,
+                    navigation: navigation,
+                    isWorkBlocked: isCommandMutationBlocked || isReaderComposeBlocked,
+                    allFolders: sourceFolders,
+                    canFileLocally: localBackend != nil,
+                    inviteReconciler: inviteReconciler,
+                    readerFooter: nil
+                )
+            } else {
+                MessageDetailView(
+                    backend: owner,
+                    sourceID: item.sourceID,
+                    header: item.header,
+                    navigation: navigation,
+                    allFolders: sourceFolders,
+                    isWorkBlocked: isMessageWorkBlocked || isReaderComposeBlocked,
+                    isMutationWorkBlocked: isCommandMutationBlocked,
+                    canFileLocally: localBackend != nil,
+                    inviteReconciler: inviteReconciler,
+                    contactActions: senderContactActions,
+                    driveFeature: driveFeature,
+                    readerFooter: nil,
+                    preloadedBody: preloadedBody
+                )
+            }
+        }
+    }
+
+    private func startTriage() async {
+        guard triageSession == nil else { return }
+        let returnPosition = TriageReturnPosition(
+            selectedSourceID: navigation.selectedSourceID,
+            selectedFolderID: navigation.selectedFolderID,
+            selectedMessageID: navigation.selectedMessageID,
+            isUnifiedInboxSelected: navigation.isUnifiedInboxSelected,
+            isSmartViewSelected: navigation.isSmartViewSelected
+        )
+
+        var entries: [(MailSourceID, MessageHeader)] = []
+        if !navigation.currentFolderHeaders.isEmpty {
+            let fallbackSource = navigation.selectedSourceID
+                ?? preferredDefaultSection(in: visibleSourceSections)?.id
+                ?? MailSourceID(accountID: selectedBackend.account.id, mailboxID: selectedBackend.account.id)
+            entries = navigation.currentFolderHeaders.map { (fallbackSource, $0) }
+        } else {
+            for section in sidebarSourceSections {
+                let owner = backend(for: section.id)
+                guard let inbox = section.folders.first(where: { $0.role == .inbox }) else { continue }
+                if let cached = try? await owner.cachedMessageHeaders(in: inbox, sourceID: section.id), !cached.isEmpty {
+                    entries.append(contentsOf: cached.map { (section.id, $0) })
+                } else if let page = try? await owner.messages(in: inbox, sourceID: section.id, pageToken: nil) {
+                    entries.append(contentsOf: page.headers.map { (section.id, $0) })
+                }
+            }
+            entries.sort { lhs, rhs in
+                if lhs.1.date != rhs.1.date { return lhs.1.date > rhs.1.date }
+                return lhs.1.id < rhs.1.id
+            }
+        }
+
+        let items = TriageQueueBuilder.build(
+            entries: entries,
+            workflowState: localMessageWorkflowStateBinding.wrappedValue
+        )
+        triageSession = TriageSession(items: items, returnPosition: returnPosition)
+    }
+
+    private func exitTriage() {
+        guard let session = triageSession else { return }
+        session.cancelPreload()
+        let position = session.returnPosition
+        triageSession = nil
+        if position.isUnifiedInboxSelected {
+            navigation.selectUnifiedInbox()
+        } else if !position.isSmartViewSelected,
+                  let folderID = position.selectedFolderID,
+                  let sourceID = position.selectedSourceID {
+            navigation.selectFolder(folderID, in: sourceID)
+        }
+        navigation.selectedMessageID = position.selectedMessageID
+        navigation.requestReload()
+    }
+
+    private func archiveTriageItem(in session: TriageSession) async {
+        guard let item = session.currentItem,
+              let archiveFolder = triageArchiveFolder(for: item),
+              item.header.folderID != archiveFolder.id
+        else { return }
+        let owner = backend(for: item.sourceID)
+        let originalFolder = triageSourceFolder(for: item)
+        let messageIDs = item.threadHeaders.map(\.id)
+
+        let succeeded = await session.archiveCurrent(undoQueue: undoQueue) { _ in
+            let receipt = try await owner.moveWithUndo(
+                messageIDs: messageIDs,
+                from: originalFolder,
+                to: archiveFolder,
+                sourceID: item.sourceID
+            )
+            return {
+                if let receipt {
+                    _ = try await receipt.restore()
+                } else {
+                    try await owner.move(messageIDs: messageIDs, to: originalFolder, sourceID: item.sourceID)
+                }
+            }
+        }
+        if succeeded {
+            navigation.removeHeaders(ids: Set(messageIDs))
+            await loadFolders()
+            preloadNextTriageItem(in: session)
+        }
+    }
+
+    private func snoozeTriageItem(in session: TriageSession) {
+        let didSnooze = session.snoozeCurrentUntilTomorrow(undoQueue: undoQueue) { item, wakeDate in
+            let previousState = localMessageWorkflowStateBinding.wrappedValue
+            var updated = previousState
+            for member in item.threadHeaders {
+                updated = LocalMessageWorkflowStatePolicy.snoozing(
+                    SourceMessageID(sourceID: item.sourceID, messageID: member.id),
+                    until: wakeDate,
+                    in: updated
+                )
+            }
+            localMessageWorkflowStateBinding.wrappedValue = updated
+            return {
+                localMessageWorkflowStateBinding.wrappedValue = previousState
+            }
+        }
+        if didSnooze {
+            preloadNextTriageItem(in: session)
+        }
+    }
+
+    private func replyTriageItem(in session: TriageSession) {
+        guard let item = session.currentItem else { return }
+        presentReply(to: item.header, sourceID: item.sourceID)
+    }
+
+    private func preloadNextTriageItem(in session: TriageSession) {
+        guard let next = session.nextItem else { return }
+        let owner = backend(for: next.sourceID)
+        let messageID = next.header.id
+        let sourceID = next.sourceID
+        session.schedulePreloadNext { _ in
+            try? await owner.body(for: messageID, sourceID: sourceID)
         }
     }
 
@@ -1426,8 +1664,14 @@ public struct BrevMailRootView: View {
         // The scroll edge blur is mounted per pane (see
         // `brevMailPaneScrollEdgeBlur`), not as one overlay here: a full-width
         // band backdrop-sampled the split divider too and blurred away its top.
-        mailSplitView
-            .background(BrevWindowSurfaceBackground(role: .content).ignoresSafeArea())
+        Group {
+            if let triageSession {
+                triageWorkspace(triageSession)
+            } else {
+                mailSplitView
+            }
+        }
+        .background(BrevWindowSurfaceBackground(role: .content).ignoresSafeArea())
     }
 
     private var sidebarPane: some View {
@@ -1860,7 +2104,10 @@ public struct BrevMailRootView: View {
                 navigation.selectedMessageID = row.header.id
                 navigation.endSelection()
             },
-            onAsk: selectedAIBackend == nil ? nil : { isMailContextColumnPresented = true }
+            onAsk: selectedAIBackend == nil ? nil : { isMailContextColumnPresented = true },
+            onStartTriage: {
+                Task { await startTriage() }
+            }
         )
     }
 

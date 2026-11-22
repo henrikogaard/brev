@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-22 — Agent — #293
+
+- Goal: implement Triage mode (one conversation at a time, single-key decisions, Undo, next-body preloading, Today and menu entry, restore list position on Escape/Done).
+- Changes: added `TriageSession`, `TriageQueueBuilder`, `TriageKeyboardPolicy`, `TriagePresentation`, and `TriageView` in `BrevMail`; added optional `preloadedBody` support to `MessageDetailView` so preloaded conversations render without a skeleton flash; added `onStartTriage` button on `TodayPageView` (default `nil` to keep existing `TodayPageSnapshotTests` unchanged); added `Start Triage` / `Exit Triage` (`⇧⌘T`) menu command in `MailCommands` via `FocusedMailTriageActionKey`; wired full-window triage workspace, archive/snooze/reply/skip, `UndoQueue` reversal, next-body preloading, and list-position restore in `BrevMailRootView`; added English and Norwegian (`nb`) String Catalog entries and `TriageViewSnapshotTests` (registered in `.github/workflows/build.yml`).
+- Red/green: `TriageSessionTests` failed to compile before implementation; all 16 tests across `TriageSessionTests`, `TriageViewSnapshotTests`, `TodayPageSnapshotTests`, and `MailStatusCopyLocalizationTests` pass after.
+- Verification: `swift test --package-path packages/BrevMail --filter 'TriageSessionTests|TriageViewSnapshotTests|TodayPageSnapshotTests|MailStatusCopyLocalizationTests'`, `scripts/lint.sh`, `scripts/format.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check`, and `Localizable.xcstrings` JSON validation.
+- Skipped: interactive macOS/iOS app run and live provider acceptance remain for Henrik's native QA.
+- Handoff: draft PR opened targeting `main`; Triage mode works against MockBackend and existing local workflow snooze.
+
 ## 2026-11-21 — Agent — #299 strip tracking pixels (slice 1)
 
 - Goal: remove tracking images even when remote content is allowed, and show the count.

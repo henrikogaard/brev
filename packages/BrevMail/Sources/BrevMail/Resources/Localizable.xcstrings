@@ -1,6 +1,116 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "All caught up": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alt er gjennomgått"
+          }
+        }
+      }
+    },
+    "esc": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "esc"
+          }
+        }
+      }
+    },
+    "Exit Triage": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avslutt sortering"
+          }
+        }
+      }
+    },
+    "Skipped": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hoppet over"
+          }
+        }
+      }
+    },
+    "Snooze until tomorrow": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utsett til i morgen"
+          }
+        }
+      }
+    },
+    "Snoozed until tomorrow": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utsatt til i morgen"
+          }
+        }
+      }
+    },
+    "Start Triage": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start sortering"
+          }
+        }
+      }
+    },
+    "Triage": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sortering"
+          }
+        }
+      }
+    },
+    "Triage, %lld left": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sortering, %lld igjen"
+          }
+        }
+      }
+    },
+    "You reviewed every conversation in this queue.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du har gått gjennom alle samtalene i denne køen."
+          }
+        }
+      }
+    },
     "Blocked 1 tracker": {
       "extractionState": "manual",
       "localizations": {
