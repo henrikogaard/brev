@@ -3541,7 +3541,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             return self as? Service
         case ObjectIdentifier(ProgressiveMailSearching.self):
             return self as? Service
-        case ObjectIdentifier(CachedMessageHeaderProviding.self):
+        case ObjectIdentifier(CachedMessageHeaderProviding.self),
+             ObjectIdentifier(CachedMessageBodyProviding.self):
             return self as? Service
         case ObjectIdentifier(CachedConversationProviding.self):
             guard localSearchIndex is any MailConversationIndex else { return nil }

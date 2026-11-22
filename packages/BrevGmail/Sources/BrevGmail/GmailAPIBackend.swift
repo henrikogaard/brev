@@ -1730,7 +1730,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     public func extensionService<Service>(_ type: Service.Type) -> Service? {
         switch ObjectIdentifier(type) {
-        case ObjectIdentifier(CachedMessageHeaderProviding.self), ObjectIdentifier(CachedConversationProviding.self):
+        case ObjectIdentifier(CachedMessageHeaderProviding.self),
+             ObjectIdentifier(CachedMessageBodyProviding.self),
+             ObjectIdentifier(CachedConversationProviding.self):
             return self as? Service
         case ObjectIdentifier(RelatedConversationLoading.self):
             guard relatedConversationConsent != nil else { return nil }
@@ -2862,5 +2864,20 @@ extension GmailAPIBackend: SignInTrustAssessing {
             return .unavailable(.notFreshDelivery)
         }
         return GmailSignInTrustAssessor.assess(headers: message.payload?.headers ?? [])
+    }
+}
+
+extension GmailAPIBackend: CachedMessageBodyProviding {
+    public func cachedBody(for messageID: MessageHeader.ID, sourceID _: MailSourceID?) async -> MessageBody? {
+        if let cached = try? await readCache?.cachedBody(accountID: account.id, messageID: messageID),
+           Self.hasBodyContent(cached) {
+            return cached
+        }
+        guard let cachedMessage = try? await store.message(accountID: account.id, messageID: messageID),
+              cachedMessage.payload != nil else {
+            return nil
+        }
+        let parsed = Self.body(from: cachedMessage)
+        return Self.hasBodyContent(parsed) ? parsed : nil
     }
 }

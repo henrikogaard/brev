@@ -474,6 +474,8 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
             return self as? Service
         case ObjectIdentifier(SyncConflictManaging.self):
             return self as? Service
+        case ObjectIdentifier(CachedMessageBodyProviding.self):
+            return self as? Service
         case ObjectIdentifier(CachedConversationProviding.self)
             where extendedCapabilities.contains(.cachedConversations):
             return self as? Service
