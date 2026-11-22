@@ -201,11 +201,17 @@ struct ComposeDraftRestorationTests {
         #expect(row.filename == "old.txt")
         #expect(row.statusText == "Ready to send")
         #expect(row.removeAccessibilityLabel.contains("old.txt"))
-        #expect(!ComposeSendDraftPersistencePolicy
-            .shouldPersistDraftBeforeSend(hasPendingAttachments: pending.contains { $0.uploadedAttachmentID == nil }))
+        #expect(!ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
+            hasPendingAttachments: pending.contains { $0.uploadedAttachmentID == nil },
+            hasNoReplyFollowUp: draft.followUpRequest != nil,
+            hasExistingRemoteDraft: draft.remoteID != nil
+        ))
         pending.append(PendingAttachment(filename: "new.txt", mimeType: "text/plain", data: Data([2])))
-        #expect(ComposeSendDraftPersistencePolicy
-            .shouldPersistDraftBeforeSend(hasPendingAttachments: pending.contains { $0.uploadedAttachmentID == nil }))
+        #expect(ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
+            hasPendingAttachments: pending.contains { $0.uploadedAttachmentID == nil },
+            hasNoReplyFollowUp: draft.followUpRequest != nil,
+            hasExistingRemoteDraft: draft.remoteID != nil
+        ))
         let uploads = ComposeAttachmentUploadState.attachmentsNeedingUpload(pending)
         #expect(uploads.map(\.filename) == ["new.txt"])
         let upload = try #require(uploads.first)

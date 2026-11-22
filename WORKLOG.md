@@ -1,5 +1,9 @@
 # Worklog
 
+## 2026-11-22 — Agent — #297 attachment restoration test compatibility
+
+- The hosted selection-profile build caught two restoration-test assertions still calling the old pre-send persistence policy. Both now pass the follow-up and remote-ID state of the restored draft while retaining the upload assertions. Audited all Swift call sites; formatting and parsing checked on Linux, native tests via CI.
+
 ## 2026-11-22 — Agent — #297 scheduled follow-up regression fixture
 
 - The mounted regression now opens an attachment-free remote draft with no local copy, as permitted by ADR-0093. Its backend advertises the scheduling service required to enable Send; the send handler observes the requested date after draft save normalizes the response. This exercises the no-reply persistence branch independently of attachment upload and Mock draft-storage semantics.
