@@ -727,18 +727,23 @@ struct LocalMessageWorkflowConversationProjectionTests {
         var coordinator = LocalMessageWorkflowSnoozeReconciliationCoordinator()
         let generation = coordinator.request()!
         for _ in 0 ..< 20 {
-            #expect(coordinator.request() == nil)
+            let overlappingRequest = coordinator.request()
+            #expect(overlappingRequest == nil)
         }
-        #expect(coordinator.finishPass(generation: generation))
-        #expect(!coordinator.finishPass(generation: generation))
+        let needsFollowUp = coordinator.finishPass(generation: generation)
+        #expect(needsFollowUp)
+        let finished = coordinator.finishPass(generation: generation)
+        #expect(!finished)
 
         let staleGeneration = coordinator.request()!
-        coordinator.request()
+        let canceledFollowUp = coordinator.request()
+        #expect(canceledFollowUp == nil)
         coordinator.cancel()
         let currentGeneration = coordinator.request()!
         #expect(!coordinator.owns(staleGeneration))
         #expect(coordinator.owns(currentGeneration))
-        #expect(!coordinator.finishPass(generation: staleGeneration))
+        let staleCompletion = coordinator.finishPass(generation: staleGeneration)
+        #expect(!staleCompletion)
         #expect(coordinator.owns(currentGeneration))
     }
 
@@ -783,7 +788,7 @@ struct LocalMessageWorkflowConversationProjectionTests {
             mutation: { state, projection, ruleIDs in
                 (
                     state: LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
-                        in: state, projection: projection, only: ruleIDs, at: now
+                        in: state, projection: projection, at: now, only: ruleIDs
                     ),
                     value: ()
                 )
@@ -845,6 +850,18 @@ struct LocalMessageWorkflowConversationProjectionTests {
             backendIdentities: [source: ObjectIdentifier(replacementBackend), otherSource: ObjectIdentifier(healthyBackend)],
             folderIDs: [source: ["Inbox"], otherSource: ["Inbox"]]
         ).map(\.header.id)) == ["new", "healthy"])
+
+        let revokedAfterScan = LocalMessageWorkflowSnoozedCachePolicy.mergingSuccessfulSources(
+            [source: .init(
+                backendIdentity: ObjectIdentifier(replacementBackend),
+                folderIDs: ["Inbox"],
+                candidates: [.init(sourceID: source, header: newCandidate)]
+            )],
+            into: updated,
+            availableSources: [otherSource]
+        )
+        #expect(revokedAfterScan[source] == nil)
+        #expect(Set(revokedAfterScan[otherSource]?.candidates.map(\.header.id) ?? []) == ["healthy"])
     }
 
     @Test("cached bridge candidates reproject after another-window snooze changes")
@@ -894,6 +911,173 @@ struct LocalMessageWorkflowConversationProjectionTests {
         #expect(!LocalMessageWorkflowSnoozeTargetPolicy.areValid(
             [candidate], sourceID: source, knownFolderIDs: ["Inbox"]
         ))
+    }
+
+    @Test("large linked conversation projects every seeded member")
+    func largeLinkedConversationProjectsEverySeededMember() {
+        let count = 512
+        let headers = (0 ..< count).map { index in
+            Self.header(
+                id: "large-\(index)",
+                folder: "Inbox",
+                rfcID: "member-\(index)@example.org",
+                inReplyTo: index == 0 ? nil : "member-\(index - 1)@example.org"
+            )
+        }
+        let rule = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "large-anchor"),
+            wakeAt: now.addingTimeInterval(600),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: (0 ..< count).map { "member-\($0)@example.org" })
+        )
+        let projection = LocalMessageWorkflowConversationProjection(
+            candidates: headers.map { .init(sourceID: source, header: $0) },
+            state: LocalMessageWorkflowState(snoozes: [rule]),
+            now: now
+        )
+
+        for index in [0, count / 2, count - 1] {
+            #expect(projection.isSnoozed(
+                .init(sourceID: source, messageID: headers[index].id),
+                header: headers[index],
+                at: now
+            ))
+        }
+    }
+
+    @Test("cached conversation projection invalidates for state and candidate changes")
+    func conversationProjectionCacheInvalidatesForStateAndCandidates() {
+        let parent = Self.header(id: "cached-parent", folder: "Inbox", rfcID: "parent@example.org")
+        let reply = Self.header(
+            id: "cached-reply",
+            folder: "Inbox",
+            rfcID: "reply@example.org",
+            inReplyTo: "parent@example.org"
+        )
+        let cache = LocalMessageWorkflowConversationProjectionCache()
+        let initialHeaders = [parent]
+        let initial = cache.projection(for: initialHeaders, sourceID: source, state: .defaults, now: now)
+        #expect(!initial.isSnoozed(.init(sourceID: source, messageID: parent.id), header: parent, at: now))
+
+        let rule = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "cache-anchor"),
+            wakeAt: now.addingTimeInterval(600),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["parent@example.org"])
+        )
+        let state = LocalMessageWorkflowState(snoozes: [rule])
+        let updatedState = cache.projection(for: initialHeaders, sourceID: source, state: state, now: now)
+        #expect(updatedState.isSnoozed(.init(sourceID: source, messageID: parent.id), header: parent, at: now))
+
+        let expandedHeaders = [parent, reply]
+        let expanded = cache.projection(for: expandedHeaders, sourceID: source, state: state, now: now)
+        #expect(expanded.isSnoozed(.init(sourceID: source, messageID: reply.id), header: reply, at: now))
+
+        let folder = Folder(id: "Inbox", name: "Inbox", role: .inbox)
+        let parentItem = UnifiedInboxItem(
+            sourceID: source,
+            folder: folder,
+            header: parent,
+            sourceTitle: "Personal",
+            sourceSubtitle: "",
+            archiveFolder: folder
+        )
+        let replyItem = UnifiedInboxItem(
+            sourceID: source,
+            folder: folder,
+            header: reply,
+            sourceTitle: "Personal",
+            sourceSubtitle: "",
+            archiveFolder: folder
+        )
+        let itemCache = LocalMessageWorkflowConversationProjectionCache()
+        let initialItems = [parentItem]
+        let initialItemProjection = itemCache.projection(for: initialItems, state: .defaults, now: now)
+        #expect(!initialItemProjection.isSnoozed(.init(sourceID: source, messageID: parent.id), header: parent, at: now))
+        let updatedItemProjection = itemCache.projection(for: initialItems, state: state, now: now)
+        #expect(updatedItemProjection.isSnoozed(.init(sourceID: source, messageID: parent.id), header: parent, at: now))
+        let expandedItems = [parentItem, replyItem]
+        let expandedItemProjection = itemCache.projection(for: expandedItems, state: state, now: now)
+        #expect(expandedItemProjection.isSnoozed(.init(sourceID: source, messageID: reply.id), header: reply, at: now))
+    }
+
+    @Test("visibility and wake policies reuse a prebuilt complete projection")
+    func visibilityAndWakePoliciesReusePrebuiltProjection() {
+        let parent = Self.header(id: "reuse-parent", folder: "Inbox", rfcID: "reuse-a@example.org")
+        let bridge = Self.header(
+            id: "reuse-bridge",
+            folder: "Inbox",
+            rfcID: "reuse-b@example.org",
+            inReplyTo: "reuse-a@example.org"
+        )
+        let reply = Self.header(
+            id: "reuse-reply",
+            folder: "Inbox",
+            rfcID: "reuse-c@example.org",
+            inReplyTo: "reuse-b@example.org"
+        )
+        let candidates = [parent, bridge, reply].map { LocalMessageWorkflowCandidate(sourceID: source, header: $0) }
+        let activeRule = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "active-reuse-anchor"),
+            wakeAt: now.addingTimeInterval(600),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["reuse-a@example.org"])
+        )
+        let activeProjection = LocalMessageWorkflowConversationProjection(
+            candidates: candidates,
+            state: LocalMessageWorkflowState(snoozes: [activeRule]),
+            now: now
+        )
+        #expect(LocalMessageWorkflowVisibilityPolicy.headers(
+            [reply],
+            candidates: [reply],
+            sourceID: source,
+            mode: .snoozed,
+            state: LocalMessageWorkflowState(snoozes: [activeRule]),
+            now: now,
+            projection: activeProjection
+        ) == [reply])
+        let folder = Folder(id: "Inbox", name: "Inbox", role: .inbox)
+        let replyItem = UnifiedInboxItem(
+            sourceID: source,
+            folder: folder,
+            header: reply,
+            sourceTitle: "Personal",
+            sourceSubtitle: "",
+            archiveFolder: folder
+        )
+        #expect(LocalMessageWorkflowVisibilityPolicy.snoozedCacheItems(
+            [replyItem],
+            state: LocalMessageWorkflowState(snoozes: [activeRule]),
+            now: now,
+            projection: activeProjection
+        ).map(\.header.id) == [reply.id])
+
+        let expiredRule = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "expired-reuse-anchor"),
+            wakeAt: now.addingTimeInterval(-60),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["reuse-a@example.org"])
+        )
+        let expiredProjection = LocalMessageWorkflowConversationProjection(
+            candidates: candidates,
+            state: LocalMessageWorkflowState(snoozes: [expiredRule]),
+            now: now
+        )
+        let replyID = SourceMessageID(sourceID: source, messageID: reply.id)
+        let overrides = MessageListSnoozeWakePolicy.effectiveDateOverrides(
+            for: [.init(sourceMessageID: replyID, headerDate: reply.date, threadID: nil, header: reply)],
+            snoozes: [expiredRule],
+            now: now,
+            projection: expiredProjection
+        )
+        #expect(overrides[replyID] == expiredRule.wakeAt)
+    }
+
+    @Test("invalid and empty canonical seeds are rejected")
+    func canonicalSeedValidationRejectsInvalidAndEmptyMetadata() {
+        #expect(LocalMessageWorkflowConversationProjection.validSeeds(.init(rfcIdentifiers: [])) == nil)
+        #expect(LocalMessageWorkflowConversationProjection.validSeeds(.init(rfcIdentifiers: ["invalid id"])) == nil)
     }
 
     private static func state(

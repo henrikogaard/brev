@@ -340,10 +340,11 @@ enum LocalMessageWorkflowVisibilityPolicy {
         sourceID: MailSourceID,
         mode: LocalMessageWorkflowVisibilityMode,
         state: LocalMessageWorkflowState,
-        now: Date = Date()
+        now: Date = Date(),
+        projection: LocalMessageWorkflowConversationProjection? = nil
     ) -> [MessageHeader] {
         let lookup = LocalMessageWorkflowLookup(state: state)
-        let projection = LocalMessageWorkflowConversationProjection(
+        let workflowProjection = projection ?? LocalMessageWorkflowConversationProjection(
             candidates: (candidates ?? headers).map { .init(sourceID: sourceID, header: $0) },
             state: state,
             now: now
@@ -354,7 +355,7 @@ enum LocalMessageWorkflowVisibilityPolicy {
                 header: header,
                 mode: mode,
                 lookup: lookup,
-                projection: projection,
+                projection: workflowProjection,
                 now: now
             )
         }
@@ -365,10 +366,11 @@ enum LocalMessageWorkflowVisibilityPolicy {
         candidates: [UnifiedInboxItem]? = nil,
         mode: LocalMessageWorkflowVisibilityMode,
         state: LocalMessageWorkflowState,
-        now: Date = Date()
+        now: Date = Date(),
+        projection: LocalMessageWorkflowConversationProjection? = nil
     ) -> [UnifiedInboxItem] {
         let lookup = LocalMessageWorkflowLookup(state: state)
-        let projection = LocalMessageWorkflowConversationProjection(
+        let workflowProjection = projection ?? LocalMessageWorkflowConversationProjection(
             candidates: (candidates ?? items).map { .init(sourceID: $0.sourceID, header: $0.header) },
             state: state,
             now: now
@@ -379,7 +381,7 @@ enum LocalMessageWorkflowVisibilityPolicy {
                 header: item.header,
                 mode: mode,
                 lookup: lookup,
-                projection: projection,
+                projection: workflowProjection,
                 now: now
             )
         }
@@ -388,9 +390,10 @@ enum LocalMessageWorkflowVisibilityPolicy {
     static func snoozedCacheItems(
         _ items: [UnifiedInboxItem],
         state: LocalMessageWorkflowState,
-        now: Date = Date()
+        now: Date = Date(),
+        projection: LocalMessageWorkflowConversationProjection? = nil
     ) -> [UnifiedInboxItem] {
-        let projection = LocalMessageWorkflowConversationProjection(
+        let workflowProjection = projection ?? LocalMessageWorkflowConversationProjection(
             candidates: items.map { .init(sourceID: $0.sourceID, header: $0.header) },
             state: state,
             now: now
@@ -399,7 +402,7 @@ enum LocalMessageWorkflowVisibilityPolicy {
         var seenPhysicalCopies: Set<LocalMessageWorkflowSnoozedPhysicalCopyKey> = []
         return items.filter { item in
             let messageID = SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
-            guard projection.isSnoozed(messageID, header: item.header, at: now),
+            guard workflowProjection.isSnoozed(messageID, header: item.header, at: now),
                   seenIDs.insert(item.id).inserted else { return false }
             guard let key = physicalCopyKey(for: item) else { return true }
             return seenPhysicalCopies.insert(key).inserted

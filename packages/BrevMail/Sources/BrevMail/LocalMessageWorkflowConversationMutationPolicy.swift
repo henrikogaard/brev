@@ -85,7 +85,7 @@ enum LocalMessageWorkflowSnoozedCachePolicy {
         availableSources: Set<MailSourceID>
     ) -> [MailSourceID: LocalMessageWorkflowSnoozedCacheSourceSnapshot] {
         var snapshots = existing.filter { availableSources.contains($0.key) }
-        snapshots.merge(successful) { _, new in new }
+        snapshots.merge(successful.filter { availableSources.contains($0.key) }) { _, new in new }
         return snapshots
     }
 

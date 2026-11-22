@@ -101,6 +101,13 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
         var effectiveSnoozes: [CandidateKey: LocalMessageSnooze] = [:]
         var legacySnoozes: [SourceMessageID: LocalMessageSnooze] = [:]
 
+        var snoozesBySource: [MailSourceID: [LocalMessageSnooze]] = [:]
+        for snooze in state.snoozes {
+            snoozesBySource[snooze.messageID.sourceID, default: []].append(snooze)
+            if snooze.conversationMetadata == nil {
+                legacySnoozes[snooze.messageID] = Self.newest([legacySnoozes[snooze.messageID], snooze].compactMap { $0 })
+            }
+        }
         let candidatesBySource = Dictionary(grouping: candidates, by: \.sourceID)
         for (sourceID, sourceCandidates) in candidatesBySource {
             let uniqueCandidates = Dictionary(
@@ -118,14 +125,20 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
                 fingerprints.count > 1 ? identifier : nil
             })
 
-            let sourceSnoozes = state.snoozes.filter { $0.messageID.sourceID == sourceID }
+            let sourceSnoozes = snoozesBySource[sourceID] ?? []
             var identifierParents: [String: String] = [:]
             func findIdentifier(_ identifier: String) -> String {
                 var current = identifier
                 while let next = identifierParents[current], next != current {
                     current = next
                 }
-                return current
+                let root = current
+                current = identifier
+                while let next = identifierParents[current], next != current {
+                    identifierParents[current] = root
+                    current = next
+                }
+                return root
             }
             func uniteIdentifiers(_ identifiers: Set<String>) {
                 guard let first = identifiers.first else { return }
@@ -140,13 +153,15 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
             for identifiers in links {
                 uniteIdentifiers(identifiers.subtracting(conflicting))
             }
-            let seedSets = sourceSnoozes.compactMap { snooze -> Set<String>? in
+            let conversationRuleSeeds = sourceSnoozes.compactMap { snooze -> (rule: LocalMessageSnooze, seeds: Set<String>)? in
                 guard let metadata = snooze.conversationMetadata,
                       let seeds = Self.validSeeds(metadata) else { return nil }
                 let usable = seeds.subtracting(conflicting)
                 guard !usable.isEmpty else { return nil }
-                uniteIdentifiers(usable)
-                return usable
+                return (snooze, usable)
+            }
+            for entry in conversationRuleSeeds {
+                uniteIdentifiers(entry.seeds)
             }
 
             var parent = Array(entries.indices)
@@ -164,13 +179,14 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
                 if leftRoot != rightRoot { parent[rightRoot] = leftRoot }
             }
 
-            var candidateIndicesByIdentifierRoot: [String: [Int]] = [:]
+            var firstCandidateIndexByIdentifierRoot: [String: Int] = [:]
             for (index, identifiers) in links.enumerated() {
                 for identifier in identifiers where !conflicting.contains(identifier) {
                     let root = findIdentifier(identifier)
-                    candidateIndicesByIdentifierRoot[root, default: []].append(index)
-                    if let firstIndex = candidateIndicesByIdentifierRoot[root]?.first {
+                    if let firstIndex = firstCandidateIndexByIdentifierRoot[root] {
                         unite(index, firstIndex)
+                    } else {
+                        firstCandidateIndexByIdentifierRoot[root] = index
                     }
                 }
             }
@@ -190,13 +206,18 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
                 )
             }
 
-            for seeds in seedSets {
-                let candidateIndices = Set(seeds.flatMap { seed in
-                    candidateIndicesByIdentifierRoot[findIdentifier(seed)] ?? []
-                })
-                guard let candidateIndex = candidateIndices.first else { continue }
+            var conversationRulesByIdentifierRoot: [String: [LocalMessageSnooze]] = [:]
+            for entry in conversationRuleSeeds {
+                if let root = entry.seeds.first.map(findIdentifier) {
+                    conversationRulesByIdentifierRoot[root, default: []].append(entry.rule)
+                }
+            }
+
+            for entry in conversationRuleSeeds {
+                guard let identifierRoot = entry.seeds.first.map(findIdentifier),
+                      let candidateIndex = firstCandidateIndexByIdentifierRoot[identifierRoot] else { continue }
                 let root = find(candidateIndex)
-                components[root, default: Component()].rfcIdentifiers.formUnion(seeds)
+                components[root, default: Component()].rfcIdentifiers.formUnion(entry.seeds)
             }
 
             let sourceComponents = Array(components.values)
@@ -206,15 +227,10 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
                     componentsByCandidateKey[candidateKey] = component
                     candidateKeysByMessageID[candidateKey.sourceMessageID, default: []].insert(candidateKey)
                 }
-                let matchingConversationRules = sourceSnoozes.filter { snooze in
-                    guard let metadata = snooze.conversationMetadata else { return false }
-                    guard let seeds = Self.validSeeds(metadata) else { return false }
-                    return !component.rfcIdentifiers.isDisjoint(with: seeds)
-                }
+                let matchingConversationRules = component.rfcIdentifiers.first
+                    .map { conversationRulesByIdentifierRoot[findIdentifier($0)] ?? [] } ?? []
                 for candidateKey in component.candidateKeys {
-                    let matching = matchingConversationRules + sourceSnoozes.filter {
-                        $0.conversationMetadata == nil && $0.messageID == candidateKey.sourceMessageID
-                    }
+                    let matching = matchingConversationRules + (legacySnoozes[candidateKey.sourceMessageID].map { [$0] } ?? [])
                     if let newest = Self.newest(matching) {
                         effectiveSnoozes[candidateKey] = newest
                     }
@@ -222,9 +238,6 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
             }
         }
 
-        for snooze in state.snoozes where snooze.conversationMetadata == nil {
-            legacySnoozes[snooze.messageID] = Self.newest([legacySnoozes[snooze.messageID], snooze].compactMap { $0 })
-        }
         self.effectiveSnoozes = effectiveSnoozes
         self.legacySnoozes = legacySnoozes
         self.componentsByCandidateKey = componentsByCandidateKey
@@ -373,7 +386,7 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
         return parsed[0]
     }
 
-    private static func validSeeds(_ metadata: LocalMessageSnoozeConversationMetadata) -> Set<String>? {
+    static func validSeeds(_ metadata: LocalMessageSnoozeConversationMetadata) -> Set<String>? {
         let identifiers = metadata.rfcIdentifiers
         guard !identifiers.isEmpty,
               identifiers == Array(Set(identifiers)).sorted(),

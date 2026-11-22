@@ -36,10 +36,11 @@ enum MessageListSnoozeWakePolicy {
     static func effectiveDateOverrides(
         for entries: [MessageListSnoozeWakeEntry],
         snoozes: [LocalMessageSnooze],
-        now: Date
+        now: Date,
+        projection: LocalMessageWorkflowConversationProjection? = nil
     ) -> [SourceMessageID: Date] {
         let state = LocalMessageWorkflowState(snoozes: snoozes)
-        let projection = LocalMessageWorkflowConversationProjection(
+        let workflowProjection = projection ?? LocalMessageWorkflowConversationProjection(
             candidates: entries.compactMap { entry in
                 entry.header.map { .init(sourceID: entry.sourceMessageID.sourceID, header: $0) }
             },
@@ -48,8 +49,8 @@ enum MessageListSnoozeWakePolicy {
         )
         var expiredWakeDates: [SourceMessageID: Date] = [:]
         for entry in entries {
-            let snooze = entry.header.map { projection.snooze(for: entry.sourceMessageID, header: $0) }
-                ?? projection.snooze(for: entry.sourceMessageID)
+            let snooze = entry.header.map { workflowProjection.snooze(for: entry.sourceMessageID, header: $0) }
+                ?? workflowProjection.snooze(for: entry.sourceMessageID)
             guard let snooze, snooze.wakeAt <= now else { continue }
             expiredWakeDates[entry.sourceMessageID] = snooze.wakeAt
         }
@@ -69,8 +70,8 @@ enum MessageListSnoozeWakePolicy {
             if let threadID = entry.threadID {
                 let key = ThreadKey(sourceID: entry.sourceMessageID.sourceID, threadID: threadID)
                 latestLegacyDateByThread[key] = max(latestLegacyDateByThread[key] ?? .distantPast, entry.headerDate)
-                let snooze = entry.header.map { projection.snooze(for: entry.sourceMessageID, header: $0) }
-                    ?? projection.snooze(for: entry.sourceMessageID)
+                let snooze = entry.header.map { workflowProjection.snooze(for: entry.sourceMessageID, header: $0) }
+                    ?? workflowProjection.snooze(for: entry.sourceMessageID)
                 if let wakeAt = expiredWakeDates[entry.sourceMessageID],
                    snooze?.conversationMetadata == nil {
                     latestLegacyDateByThread[key] = max(latestLegacyDateByThread[key] ?? .distantPast, effectiveDate)

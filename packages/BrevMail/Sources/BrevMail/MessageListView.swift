@@ -2402,7 +2402,8 @@ public struct MessageListView: View {
                 )
             },
             snoozes: localMessageWorkflowState.snoozes,
-            now: now
+            now: now,
+            projection: workflowConversationProjection
         )
         return Dictionary(
             uniqueKeysWithValues: sourceScopedOverrides.map { ($0.key.messageID, $0.value) }
@@ -2451,7 +2452,8 @@ public struct MessageListView: View {
             sourceID: workflowSourceID,
             mode: workflowVisibilityMode,
             state: localMessageWorkflowState,
-            now: now
+            now: now,
+            projection: workflowConversationProjection
         )
         let categoryFiltered = InboxClassificationVisibilityPolicy.headers(
             workflowVisible,

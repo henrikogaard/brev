@@ -6545,7 +6545,8 @@ public struct BrevMailRootView: View {
                 let sourceRevision = sourceSectionsRevision
                 let baselineState = currentLocalMessageWorkflowState()
                 let rulesBySource = Dictionary(grouping: baselineState.snoozes.filter { rule in
-                    rule.isActive() && rule.conversationMetadata?.rfcIdentifiers.isEmpty == false
+                    guard rule.isActive(), let metadata = rule.conversationMetadata else { return false }
+                    return LocalMessageWorkflowConversationProjection.validSeeds(metadata) != nil
                 }, by: \.messageID.sourceID)
                 var candidatesBySource: [MailSourceID: [LocalMessageWorkflowCandidate]] = [:]
                 var sourceBackends: [MailSourceID: ObjectIdentifier] = [:]

@@ -767,9 +767,11 @@ struct UnifiedInboxListView: View {
     ) -> (items: [UnifiedInboxItem], threadCounts: [String: Int], dateOverrides: [SourceMessageID: Date]) {
         let workflowVisible = LocalMessageWorkflowVisibilityPolicy.items(
             items,
+            candidates: smartView?.workflowMode == .snoozed ? snoozedCacheCandidates : nil,
             mode: workflowVisibilityMode,
             state: localMessageWorkflowState,
-            now: now
+            now: now,
+            projection: workflowConversationProjection
         )
         let categorized = InboxClassificationVisibilityPolicy.items(
             workflowVisible,
@@ -807,7 +809,8 @@ struct UnifiedInboxListView: View {
                     )
                 },
                 snoozes: localMessageWorkflowState.snoozes,
-                now: now
+                now: now,
+                projection: workflowConversationProjection
             )
             : [:]
         let sorted = MessageListSortPolicy.sortedItems(
@@ -2112,7 +2115,7 @@ struct UnifiedInboxListView: View {
         }
         let candidates = LocalMessageWorkflowSnoozedCachePolicy.publishableCandidates(
             from: snapshots,
-            availableSources: Set(identitiesBySource.keys),
+            availableSources: availableSources,
             backendIdentities: identitiesBySource,
             folderIDs: foldersBySource
         )
@@ -2130,8 +2133,19 @@ struct UnifiedInboxListView: View {
             )
         }
         let currentState = freshWorkflowState()
+        let now = Date()
+        let projection = workflowConversationProjectionCache.projection(
+            for: snoozedCacheCandidates,
+            state: currentState,
+            now: now
+        )
         items = UnifiedInboxPagination.sortedItems(
-            LocalMessageWorkflowVisibilityPolicy.snoozedCacheItems(snoozedCacheCandidates, state: currentState)
+            LocalMessageWorkflowVisibilityPolicy.snoozedCacheItems(
+                snoozedCacheCandidates,
+                state: currentState,
+                now: now,
+                projection: projection
+            )
         )
         pageCursors = [:]
         if let firstError {

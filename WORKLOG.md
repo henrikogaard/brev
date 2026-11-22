@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-22 — Agent — #297 projection performance/final corrections
+
+- Goal: bound existing conversation projection work and reuse it across visibility, wake ordering, and Unified Snoozed consumers; correct the source-revocation merge and test argument-order defects.
+- Changes: kept one representative candidate per canonical RFC root and added identifier path compression; indexed canonical conversation seeds once per source and legacy snoozes once by `SourceMessageID`; exposed canonical seed validation to Root reconciliation. List visibility/wake policies accept the cached projection, while Unified Snoozed uses its complete retained candidate buffer throughout reprojection. Successful snapshot merges and final publication now both filter through live available sources.
+- Tests: added a 512-member linked-component regression, state/buffer cache invalidation coverage, prebuilt-projection visibility/wake coverage, source revocation after a successful scan, and canonical invalid/empty seed validation. Corrected reconciliation argument order. The actual repository projection, visibility, and wake test files ran unmodified in a temporary Linux SwiftPM shim harness using production state/parser/projection/mutation/visibility/wake sources: 49 tests in 3 suites passed. The first compile exposed mutating coordinator calls inside `#expect`; assertions now capture those results before evaluating them.
+- Verification: pinned SwiftFormat reported `0/8 files formatted`; `swiftc -frontend -parse` parsed all 8 changed Swift files. The BrevMail catalog JSON is valid, no catalogs changed and no new nb entries are needed; changed Swift headers match the template; `scripts/check-adr-required.sh` passed; `git diff --check` passed.
+- Limits/handoff: Root/list SwiftUI code is syntax-checked but not natively typechecked; native BrevMail/SwiftUI tests remain CI-only on Linux. No CI, push, PR/issue edits, or visual QA. Keep the commit local for review; after approval publish the accumulated fixes together and run native CI.
+
 ## 2026-11-22 — Agent — #297 reconciliation/cache correction
 
 - Goal: coalesce Root conversation-cache reconciliation and make the Unified Snoozed cache resilient to concurrent state changes, backend replacement, and partial sources.
