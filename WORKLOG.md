@@ -4,9 +4,10 @@
 
 - Goal: ensure discard, Trash moves, and deletion remove durable scheduling intent before succeeding; preserve queued content if persistence fails.
 - Changes: clear schedule IDs on persistent discard; allocate attachment IDs independently of mutable map counts; remove source-owned queued/canceled records before Trash/delete mutations while preserving the live Trash projection. Fixed the hosted `await` compile error and strict optional-initialization lint errors.
-- Regressions: persistent discard and deletion, storage-failure preservation, canceled-draft attachment removal followed by upload, Trash move, permanent deletion, and no draft resurrection after restart.
+- Regressions: persistent discard and deletion, storage-failure preservation, canceled-draft attachment removal followed by upload, Trash move, permanent deletion, source-isolated duplicate Draft IDs, and no draft resurrection after restart.
 - Verification: pinned SwiftFormat (`0/3 files require formatting`), Swift parse, `git diff --check`, and ADR-required check passed. Native tests were not run locally because the known Linux `PDFKit` import failure occurs before test compilation; hosted CI is required for execution evidence.
-- Handoff: after local commits/checks, push normally and verify `MockScheduledSendTests`, factory/isolated-session, and Outbox-policy suites from the hosted logs. No UI or snapshot PNG changes.
+- Hosted CI follow-up: the first pushed deletion build failed before tests because the Store helper referenced `account` instead of its `accountID`; the helper now uses the Store-owned account ID and an explicit record-ID closure. New hosted checks must confirm compilation and native suite execution.
+- Handoff: continue hosted checks for the corrected head and verify `MockScheduledSendTests`, factory/isolated-session, and Outbox-policy suites from the logs. No UI or snapshot PNG changes.
 
 ## 2026-11-22 — Agent — Issue #297 / PR #325 compose snapshot compatibility
 

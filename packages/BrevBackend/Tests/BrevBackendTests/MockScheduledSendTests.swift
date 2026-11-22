@@ -479,16 +479,24 @@ struct MockScheduledSendTests {
             subject: "Move to Trash",
             scheduledFor: Self.now.addingTimeInterval(3600)
         )
+        let sourceBDraft = Draft(
+            id: deletedDraft.id,
+            subject: "Source B copy",
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
         _ = try await backend.send(draft: deletedDraft, sourceID: Self.sourceA)
         _ = try await backend.send(draft: movedDraft, sourceID: Self.sourceA)
+        _ = try await backend.send(draft: sourceBDraft, sourceID: Self.sourceB)
         let deletedID = "draft-\(deletedDraft.id)"
         let movedID = "draft-\(movedDraft.id)"
         let trash = Folder(id: "trash", name: "Trash", role: .trash)
 
         try await backend.delete(messageIDs: [deletedID], sourceID: Self.sourceA)
-        #expect(scheduler.pendingScheduledSends().map(\.draftID) == [movedDraft.id])
+        #expect(scheduler.pendingScheduledSends().count == 2)
+        #expect(scheduler.pendingScheduledSends().contains { $0.sourceID == Self.sourceB && $0.draftID == sourceBDraft.id })
         try await backend.move(messageIDs: [movedID], to: trash, sourceID: Self.sourceA)
-        #expect(scheduler.pendingScheduledSends().isEmpty)
+        #expect(scheduler.pendingScheduledSends().count == 1)
+        #expect(scheduler.pendingScheduledSends().first?.sourceID == Self.sourceB)
         let (trashed, _) = try await backend.messages(in: trash, sourceID: Self.sourceA, pageToken: nil)
         #expect(Set(trashed.map(\.id)) == Set([deletedID, movedID]))
         let trashedBody = try await backend.body(for: deletedID, sourceID: Self.sourceA)
@@ -497,16 +505,23 @@ struct MockScheduledSendTests {
         try await backend.delete(messageIDs: [deletedID], sourceID: Self.sourceA)
         let (afterPermanentDelete, _) = try await backend.messages(in: trash, sourceID: Self.sourceA, pageToken: nil)
         #expect(afterPermanentDelete.map(\.id) == [movedID])
-        #expect(try journal.load().isEmpty)
+        let remainingRecord = try #require(journal.load().first)
+        #expect(remainingRecord.sourceID == Self.sourceB)
+        #expect(remainingRecord.draftID == sourceBDraft.id)
 
         let reopened = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
         let reopenedScheduler = try #require(reopened.extensionService(ScheduledSendManaging.self))
-        #expect(reopenedScheduler.pendingScheduledSends().isEmpty)
+        #expect(reopenedScheduler.pendingScheduledSends().count == 1)
+        #expect(reopenedScheduler.pendingScheduledSends().first?.sourceID == Self.sourceB)
         #expect(try await reopened.draft(for: deletedDraft.id, sourceID: Self.sourceA) == nil)
+        #expect(try await reopened.draft(for: deletedDraft.id, sourceID: Self.sourceB)?.subject == sourceBDraft.subject)
         #expect(try await reopened.draft(for: movedDraft.id, sourceID: Self.sourceA) == nil)
         let drafts = try #require(await reopened.folders(in: Self.sourceA).first { $0.role == .drafts })
         let (restoredDrafts, _) = try await reopened.messages(in: drafts, sourceID: Self.sourceA, pageToken: nil)
         #expect(!restoredDrafts.contains { $0.id == deletedID || $0.id == movedID })
+        let sourceBDrafts = try #require(await reopened.folders(in: Self.sourceB).first { $0.role == .drafts })
+        let (sourceBHeaders, _) = try await reopened.messages(in: sourceBDrafts, sourceID: Self.sourceB, pageToken: nil)
+        #expect(sourceBHeaders.contains { $0.id == deletedID && $0.subject == sourceBDraft.subject })
     }
 
     @Test("delete persistence failure preserves the queued draft and content")

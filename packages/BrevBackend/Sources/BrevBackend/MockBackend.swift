@@ -2140,7 +2140,7 @@ private actor Store {
         try ensureActive()
         try reloadJournalRecords()
         let mailboxData = try data(mailboxID: mailboxID)
-        let sourceID = MailSourceID(accountID: account.id, mailboxID: mailboxID)
+        let sourceID = MailSourceID(accountID: accountID, mailboxID: mailboxID)
         let recordsToRemove = journalRecords.filter { record in
             guard record.sourceID == sourceID, record.state == .queued || record.state == .canceled else {
                 return false
@@ -2159,7 +2159,7 @@ private actor Store {
                 body: mailboxData.messageBodies[messageID]
             )
         }
-        let recordIDs = Set(recordsToRemove.map(\.recordID))
+        let recordIDs = Set(recordsToRemove.map { $0.recordID })
         _ = try transactJournal { records in
             records.removeAll { recordIDs.contains($0.recordID) }
         }
