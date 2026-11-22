@@ -62,9 +62,12 @@ enum LocalMessageWorkflowConversationCache {
             candidates.append(contentsOf: headers.map { .init(sourceID: sourceID, header: $0) })
         }
 
-        let cachedIDs = Set(candidates.map { $0.header.id })
+        let cachedIDs = Set(candidates.map {
+            "\($0.sourceID.accountID)\u{0}\($0.sourceID.mailboxID)\u{0}\($0.header.folderID)\u{0}\($0.header.id)"
+        })
         candidates.append(contentsOf: anchors.compactMap { header in
-            cachedIDs.contains(header.id) ? nil : .init(sourceID: sourceID, header: header)
+            let key = "\(sourceID.accountID)\u{0}\(sourceID.mailboxID)\u{0}\(header.folderID)\u{0}\(header.id)"
+            return cachedIDs.contains(key) ? nil : .init(sourceID: sourceID, header: header)
         })
         guard isCurrent() else { throw CancellationError() }
         return candidates

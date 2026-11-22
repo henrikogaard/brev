@@ -137,6 +137,43 @@ struct MessageListSnoozeWakePolicyTests {
         #expect(overrides[SourceMessageID(sourceID: Self.source, messageID: unrelated.id)] == nil)
     }
 
+    @Test("legacy thread promotion preserves a newer conversation wake without leaking it")
+    func legacyAndConversationWakeDatesStaySeparate() {
+        let legacyWake = Self.now.addingTimeInterval(-3600)
+        let conversationWake = Self.now.addingTimeInterval(-1800)
+        let legacy = Self.header(id: "legacy", rfcID: "legacy@example.org", date: Self.now.addingTimeInterval(-86400))
+        let conversation = Self.header(
+            id: "conversation",
+            rfcID: "conversation@example.org",
+            date: Self.now.addingTimeInterval(-90000)
+        )
+        let unrelated = Self.header(id: "unrelated", rfcID: "unrelated@example.org", date: Self.now.addingTimeInterval(-100_000))
+        let entries = [legacy, conversation, unrelated].map {
+            MessageListSnoozeWakeEntry(
+                sourceMessageID: .init(sourceID: Self.source, messageID: $0.id),
+                headerDate: $0.date, threadID: "shared-thread", header: $0
+            )
+        }
+        let overrides = MessageListSnoozeWakePolicy.effectiveDateOverrides(
+            for: entries,
+            snoozes: [
+                LocalMessageSnooze(
+                    messageID: .init(sourceID: Self.source, messageID: legacy.id), wakeAt: legacyWake
+                ),
+                LocalMessageSnooze(
+                    messageID: .init(sourceID: Self.source, messageID: conversation.id),
+                    wakeAt: conversationWake, createdAt: Self.now.addingTimeInterval(-10),
+                    conversationMetadata: .init(rfcIdentifiers: ["conversation@example.org"])
+                )
+            ],
+            now: Self.now
+        )
+
+        #expect(overrides[.init(sourceID: Self.source, messageID: legacy.id)] == legacyWake)
+        #expect(overrides[.init(sourceID: Self.source, messageID: conversation.id)] == conversationWake)
+        #expect(overrides[.init(sourceID: Self.source, messageID: unrelated.id)] == legacyWake)
+    }
+
     @Test("promotion is limited to unsearched newest-first Inbox lists")
     func eligibilityIsNarrow() {
         #expect(MessageListSnoozeWakePolicy.shouldPromoteInboxWake(

@@ -92,7 +92,7 @@ enum LocalMessageWorkflowConversationMutationPolicy {
     ) -> LocalMessageWorkflowState {
         var snoozes = state.snoozes
         for index in snoozes.indices where snoozes[index].isActive(at: now)
-            && snoozes[index].conversationMetadata != nil {
+            && snoozes[index].conversationMetadata?.rfcIdentifiers.isEmpty == false {
             guard let metadata = projection.expandedMetadata(for: snoozes[index]) else { continue }
             snoozes[index].conversationMetadata = metadata
         }

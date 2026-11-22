@@ -41,6 +41,20 @@ struct LocalMessageWorkflowConversationCacheTests {
         #expect(candidates.allSatisfy { $0.sourceID == source })
     }
 
+    @Test("an uncached anchor with a duplicate provider ID in another folder is retained")
+    func uncachedAnchorUsesFolderAwareIdentity() async throws {
+        let source = MailSourceID(accountID: account.id, mailboxID: "personal")
+        let cached = Self.header(id: "duplicate", folder: inbox.id, rfcID: "cached@example.org")
+        let anchor = Self.header(id: "duplicate", folder: archive.id, rfcID: "anchor@example.org")
+        let backend = makeBackend(source: source, inboxHeaders: [cached], archiveHeaders: [])
+
+        let candidates = try await LocalMessageWorkflowConversationCache.candidates(
+            backend: backend, sourceID: source, folders: [inbox, archive], anchors: [anchor], isCurrent: { true }
+        )
+
+        #expect(Set(candidates.map(\.header.folderID)) == Set([inbox.id, archive.id]))
+    }
+
     @Test("cache scan rejects a failed mailbox read without returning a partial graph")
     func failedCacheReadThrows() async {
         let source = MailSourceID(accountID: account.id, mailboxID: "missing-mailbox")

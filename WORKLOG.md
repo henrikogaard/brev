@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-22 — Agent — #297 projection review correction
+
+- Goal: complete the pure RFC projection, cache-anchor identity, and wake-order corrections from the PR #324 review.
+- Changes: RFC union-find parents are initialized only once, preserving transitive persisted-seed unions regardless of rule/candidate order; legacy thread aggregation now combines original header dates and legacy wake dates, then takes the maximum with each row's own effective date; selected cache anchors use source/folder/provider identity. Added regression tests for overlapping seed chains/order, mixed legacy/conversation wake dates, and duplicate provider IDs across folders.
+- Red/green: the complete production-source conversation harness first failed `overlapping persisted seed chain is order independent`, then (after the graph fix) failed `own conversation wake survives legacy aggregation`; after both fixes it passed 44 checks.
+- Verification: pinned SwiftFormat 0.58.7 formatted the seven changed Swift paths (`3/7 files formatted`); `swiftc -frontend -parse` parsed those seven paths; `git diff --check` passed.
+- Native test attempt: `swift test --filter LocalMessageWorkflowConversation` stopped before tests because Linux lacks SwiftUI (`BrevPluginRegistry.swift:14:8: error: no such module 'SwiftUI'`). No CI or visual QA was run. This is a local-only commit; do not push until the remaining review corrections are completed.
+
 ## 2026-11-22 — Agent — #297
 
 - Goal: extend PR #324 snoozing to cached RFC-linked conversations without guessing from subjects or provider thread IDs.

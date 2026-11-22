@@ -92,6 +92,37 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
                 fingerprints.count > 1 ? identifier : nil
             })
 
+            let sourceSnoozes = state.snoozes.filter { $0.messageID.sourceID == sourceID }
+            var identifierParents: [String: String] = [:]
+            func findIdentifier(_ identifier: String) -> String {
+                var current = identifier
+                while let next = identifierParents[current], next != current {
+                    current = next
+                }
+                return current
+            }
+            func uniteIdentifiers(_ identifiers: Set<String>) {
+                guard let first = identifiers.first else { return }
+                if identifierParents[first] == nil { identifierParents[first] = first }
+                for identifier in identifiers where identifier != first {
+                    if identifierParents[identifier] == nil { identifierParents[identifier] = identifier }
+                    let leftRoot = findIdentifier(first)
+                    let rightRoot = findIdentifier(identifier)
+                    if leftRoot != rightRoot { identifierParents[rightRoot] = leftRoot }
+                }
+            }
+            for identifiers in links {
+                uniteIdentifiers(identifiers.subtracting(conflicting))
+            }
+            let seedSets = sourceSnoozes.compactMap { snooze -> Set<String>? in
+                guard let metadata = snooze.conversationMetadata,
+                      let seeds = Self.validSeeds(metadata) else { return nil }
+                let usable = seeds.subtracting(conflicting)
+                guard !usable.isEmpty else { return nil }
+                uniteIdentifiers(usable)
+                return usable
+            }
+
             var parent = Array(entries.indices)
             func find(_ index: Int) -> Int {
                 var current = index
@@ -107,13 +138,13 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
                 if leftRoot != rightRoot { parent[rightRoot] = leftRoot }
             }
 
-            var firstIndexByIdentifier: [String: Int] = [:]
+            var candidateIndicesByIdentifierRoot: [String: [Int]] = [:]
             for (index, identifiers) in links.enumerated() {
                 for identifier in identifiers where !conflicting.contains(identifier) {
-                    if let firstIndex = firstIndexByIdentifier[identifier] {
+                    let root = findIdentifier(identifier)
+                    candidateIndicesByIdentifierRoot[root, default: []].append(index)
+                    if let firstIndex = candidateIndicesByIdentifierRoot[root]?.first {
                         unite(index, firstIndex)
-                    } else {
-                        firstIndexByIdentifier[identifier] = index
                     }
                 }
             }
@@ -133,9 +164,17 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
                 )
             }
 
+            for seeds in seedSets {
+                let candidateIndices = Set(seeds.flatMap { seed in
+                    candidateIndicesByIdentifierRoot[findIdentifier(seed)] ?? []
+                })
+                guard let candidateIndex = candidateIndices.first else { continue }
+                let root = find(candidateIndex)
+                components[root, default: Component()].rfcIdentifiers.formUnion(seeds)
+            }
+
             let sourceComponents = Array(components.values)
             componentsBySource[sourceID] = sourceComponents
-            let sourceSnoozes = state.snoozes.filter { $0.messageID.sourceID == sourceID }
             for component in sourceComponents {
                 for candidateKey in component.candidateKeys {
                     componentsByCandidateKey[candidateKey] = component
@@ -279,7 +318,7 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
             result.formUnion(component.conflictingIdentifiers)
         }
         let usableSeeds = seeds.subtracting(conflicts)
-        guard !usableSeeds.isEmpty else { return .init(rfcIdentifiers: Array(seeds)) }
+        guard !usableSeeds.isEmpty else { return .init(rfcIdentifiers: []) }
 
         var identifiers = usableSeeds
         for component in sourceComponents where !component.rfcIdentifiers.isDisjoint(with: usableSeeds) {

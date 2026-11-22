@@ -55,8 +55,7 @@ enum MessageListSnoozeWakePolicy {
         }
 
         var effectiveDates: [SourceMessageID: Date] = [:]
-        var latestDateByThread: [ThreadKey: Date] = [:]
-        var latestWakeDateByThread: [ThreadKey: Date] = [:]
+        var latestLegacyDateByThread: [ThreadKey: Date] = [:]
         var legacyThreadWakeDates: [ThreadKey: Date] = [:]
         for entry in entries {
             let effectiveDate = max(
@@ -69,12 +68,12 @@ enum MessageListSnoozeWakePolicy {
             )
             if let threadID = entry.threadID {
                 let key = ThreadKey(sourceID: entry.sourceMessageID.sourceID, threadID: threadID)
-                latestDateByThread[key] = max(latestDateByThread[key] ?? .distantPast, effectiveDate)
+                latestLegacyDateByThread[key] = max(latestLegacyDateByThread[key] ?? .distantPast, entry.headerDate)
                 let snooze = entry.header.map { projection.snooze(for: entry.sourceMessageID, header: $0) }
                     ?? projection.snooze(for: entry.sourceMessageID)
                 if let wakeAt = expiredWakeDates[entry.sourceMessageID],
                    snooze?.conversationMetadata == nil {
-                    latestWakeDateByThread[key] = max(latestWakeDateByThread[key] ?? .distantPast, wakeAt)
+                    latestLegacyDateByThread[key] = max(latestLegacyDateByThread[key] ?? .distantPast, effectiveDate)
                     legacyThreadWakeDates[key] = max(legacyThreadWakeDates[key] ?? .distantPast, wakeAt)
                 }
             }
@@ -85,9 +84,10 @@ enum MessageListSnoozeWakePolicy {
             let effectiveDate: Date
             if let threadID = entry.threadID {
                 let key = ThreadKey(sourceID: entry.sourceMessageID.sourceID, threadID: threadID)
+                let ownEffectiveDate = effectiveDates[entry.sourceMessageID] ?? entry.headerDate
                 effectiveDate = legacyThreadWakeDates[key] == nil
-                    ? effectiveDates[entry.sourceMessageID] ?? entry.headerDate
-                    : latestDateByThread[key] ?? entry.headerDate
+                    ? ownEffectiveDate
+                    : max(ownEffectiveDate, latestLegacyDateByThread[key] ?? entry.headerDate)
             } else {
                 effectiveDate = effectiveDates[entry.sourceMessageID] ?? entry.headerDate
             }

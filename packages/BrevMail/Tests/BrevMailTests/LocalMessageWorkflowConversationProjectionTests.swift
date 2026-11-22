@@ -299,12 +299,11 @@ struct LocalMessageWorkflowConversationProjectionTests {
             rfcID: "reused@example",
             sender: "second@example"
         )
-        let oldSnooze = Self.snooze(
-            anchor: anchor,
-            source: source,
-            metadata: .init(rfcIdentifiers: ["root@example", "reused@example"]),
+        let oldSnooze = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: anchor.id),
             wakeAt: now.addingTimeInterval(60),
-            createdAt: now
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["root@example", "reused@example"])
         )
         let state = LocalMessageWorkflowState(snoozes: [oldSnooze])
         let projection = LocalMessageWorkflowConversationProjection(
@@ -324,6 +323,132 @@ struct LocalMessageWorkflowConversationProjectionTests {
         #expect(result.state.snoozes.first?.conversationMetadata?.rfcIdentifiers == [
             "reply@example", "root@example"
         ])
+    }
+
+    @Test("persisted seed sets connect evicted bridge candidates")
+    func persistedSeedsConnectEvictedBridges() {
+        let left = Self.header(id: "left", folder: "Inbox", rfcID: "a@example")
+        let right = Self.header(id: "right", folder: "Sent", rfcID: "c@example")
+        let older = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "old-rule"),
+            wakeAt: now.addingTimeInterval(900), createdAt: now.addingTimeInterval(-20),
+            conversationMetadata: .init(rfcIdentifiers: ["a@example", "b@example"])
+        )
+        let newer = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "new-rule"),
+            wakeAt: now.addingTimeInterval(300), createdAt: now.addingTimeInterval(-10),
+            conversationMetadata: .init(rfcIdentifiers: ["b@example", "c@example"])
+        )
+        let state = LocalMessageWorkflowState(snoozes: [older, newer])
+        let candidates = [left, right].map { LocalMessageWorkflowCandidate(sourceID: source, header: $0) }
+        let projection = LocalMessageWorkflowConversationProjection(candidates: candidates, state: state, now: now)
+        let leftID = SourceMessageID(sourceID: source, messageID: left.id)
+
+        #expect(projection.snooze(for: leftID, header: left) == newer)
+        #expect(projection.snooze(for: .init(sourceID: source, messageID: right.id), header: right) == newer)
+        #expect(projection.overlappingSnoozes(for: leftID, header: left, in: state).count == 2)
+        let rescheduled = LocalMessageWorkflowConversationMutationPolicy.snoozing(
+            [.init(sourceID: source, header: left)],
+            until: now.addingTimeInterval(1200), now: now, projection: projection, in: state
+        )
+        #expect(rescheduled.state.snoozes.count == 1)
+        #expect(rescheduled.state.snoozes[0].conversationMetadata?.rfcIdentifiers == [
+            "a@example", "b@example", "c@example"
+        ])
+        #expect(LocalMessageWorkflowConversationMutationPolicy.clearingSnooze(
+            [.init(sourceID: source, header: right)], projection: projection, in: state
+        ).snoozes.isEmpty)
+    }
+
+    @Test("a new cached reply bridges independently snoozed persisted branches")
+    func cachedReplyBridgesPersistedRules() {
+        let reply = Self.header(id: "bridge", folder: "Archive", rfcID: "reply@example", references: ["b@example", "c@example"])
+        let older = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "old-rule"),
+            wakeAt: now.addingTimeInterval(900), createdAt: now.addingTimeInterval(-20),
+            conversationMetadata: .init(rfcIdentifiers: ["a@example", "b@example"])
+        )
+        let newer = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "new-rule"),
+            wakeAt: now.addingTimeInterval(300), createdAt: now.addingTimeInterval(-10),
+            conversationMetadata: .init(rfcIdentifiers: ["c@example", "d@example"])
+        )
+        let state = LocalMessageWorkflowState(snoozes: [older, newer])
+        let projection = LocalMessageWorkflowConversationProjection(
+            candidates: [.init(sourceID: source, header: reply)], state: state, now: now
+        )
+
+        #expect(projection.snooze(for: .init(sourceID: source, messageID: reply.id), header: reply) == newer)
+        #expect(projection.overlappingSnoozes(
+            for: .init(sourceID: source, messageID: reply.id), header: reply, in: state
+        ).count == 2)
+    }
+
+    @Test("overlapping persisted seed chains are order independent with multiple cached links")
+    func overlappingPersistedSeedChainsAreOrderIndependent() {
+        let left = Self.header(id: "left", folder: "Inbox", rfcID: "a@example")
+        let bridge = Self.header(id: "bridge", folder: "Archive", rfcID: "x@example", references: ["b@example", "c@example"])
+        let arrival = Self.header(id: "arrival", folder: "Sent", rfcID: "y@example", inReplyTo: "x@example")
+        let right = Self.header(id: "right", folder: "Inbox", rfcID: "d@example")
+        let rules = [
+            LocalMessageSnooze(
+                messageID: .init(sourceID: source, messageID: "ab"),
+                wakeAt: now,
+                createdAt: now.addingTimeInterval(-30),
+                conversationMetadata: .init(rfcIdentifiers: ["a@example", "b@example"])
+            ),
+            LocalMessageSnooze(
+                messageID: .init(sourceID: source, messageID: "cd"),
+                wakeAt: now,
+                createdAt: now.addingTimeInterval(-20),
+                conversationMetadata: .init(rfcIdentifiers: ["c@example", "d@example"])
+            ),
+            LocalMessageSnooze(
+                messageID: .init(sourceID: source, messageID: "bc"),
+                wakeAt: now,
+                createdAt: now.addingTimeInterval(-10),
+                conversationMetadata: .init(rfcIdentifiers: ["b@example", "c@example"])
+            )
+        ]
+        let headers = [left, bridge, arrival, right]
+        let newest = rules[2]
+        let first = LocalMessageWorkflowConversationProjection(
+            candidates: headers.map { .init(sourceID: source, header: $0) },
+            state: .init(snoozes: rules), now: now
+        )
+        let reversed = LocalMessageWorkflowConversationProjection(
+            candidates: headers.reversed().map { .init(sourceID: source, header: $0) },
+            state: .init(snoozes: rules.reversed()), now: now
+        )
+
+        for header in headers {
+            let id = SourceMessageID(sourceID: source, messageID: header.id)
+            #expect(first.snooze(for: id, header: header) == newest)
+            #expect(reversed.snooze(for: id, header: header) == newest)
+        }
+    }
+
+    @Test("reconciliation revokes all known-conflicting persisted seeds")
+    func reconciliationRevokesFullyConflictingSeeds() {
+        let first = Self.header(id: "first", folder: "Inbox", rfcID: "shared@example", sender: "first@example")
+        let second = Self.header(id: "second", folder: "Archive", rfcID: "shared@example", sender: "second@example")
+        let snooze = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "evicted-anchor"),
+            wakeAt: now.addingTimeInterval(600), createdAt: now.addingTimeInterval(-5),
+            conversationMetadata: .init(rfcIdentifiers: ["shared@example"])
+        )
+        let state = LocalMessageWorkflowState(snoozes: [snooze])
+        let projection = LocalMessageWorkflowConversationProjection(
+            candidates: [first, second].map { .init(sourceID: source, header: $0) }, state: state, now: now
+        )
+        let reconciled = LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
+            in: state, projection: projection, at: now
+        )
+        #expect(reconciled.snoozes[0].conversationMetadata?.rfcIdentifiers == [])
+        let loneCopy = LocalMessageWorkflowConversationProjection(
+            candidates: [.init(sourceID: source, header: first)], state: reconciled, now: now
+        )
+        #expect(!loneCopy.isSnoozed(.init(sourceID: source, messageID: first.id), header: first))
     }
 
     @Test("unsnoozing a derived member clears older overlaps without resurrection")
