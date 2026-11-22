@@ -3270,6 +3270,7 @@ private actor Store {
                     throw ScheduledSendEditingError.notFound
                 }
                 records[index].state = .canceled
+                records[index].scheduleID = nil
                 records[index].draft = nil
                 records[index].draftProjectionDate = nil
                 records[index].attachments = []
