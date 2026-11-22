@@ -1718,6 +1718,12 @@ private struct MockAttachmentSeed {
     let attachmentDataByID: [String: Data]
 }
 
+private struct MockScheduledDraftProjectionSnapshot {
+    let record: MockSendJournalRecord
+    let header: MessageHeader?
+    let body: MessageBody?
+}
+
 private actor Store {
     var mailboxes: [Mailbox]
     var activeMailboxID: Mailbox.ID
@@ -2124,6 +2130,59 @@ private actor Store {
         } catch {
             journalLoadError = error
             throw Self.storageError
+        }
+    }
+
+    private func removeScheduledDrafts(
+        matching messageIDs: Set<String>,
+        mailboxID: Mailbox.ID
+    ) throws -> [MockScheduledDraftProjectionSnapshot] {
+        try ensureActive()
+        try reloadJournalRecords()
+        let mailboxData = try data(mailboxID: mailboxID)
+        let sourceID = MailSourceID(accountID: account.id, mailboxID: mailboxID)
+        let recordsToRemove = journalRecords.filter { record in
+            guard record.sourceID == sourceID, record.state == .queued || record.state == .canceled else {
+                return false
+            }
+            let messageID = record.draft?.remoteID ?? "draft-\(record.draftID)"
+            return messageIDs.contains(messageID)
+        }
+        guard !recordsToRemove.isEmpty else { return [] }
+
+        let snapshots = recordsToRemove.map { record in
+            let messageID = record.draft?.remoteID ?? "draft-\(record.draftID)"
+            let header = mailboxData.messagesByFolder.values.flatMap(\.self).first { $0.id == messageID }
+            return MockScheduledDraftProjectionSnapshot(
+                record: record,
+                header: header,
+                body: mailboxData.messageBodies[messageID]
+            )
+        }
+        let recordIDs = Set(recordsToRemove.map(\.recordID))
+        _ = try transactJournal { records in
+            records.removeAll { recordIDs.contains($0.recordID) }
+        }
+        emit(.outboxChanged)
+        return snapshots
+    }
+
+    private static func restoreScheduledDraftProjections(
+        _ snapshots: [MockScheduledDraftProjectionSnapshot],
+        in data: inout MockMailboxData
+    ) {
+        for snapshot in snapshots {
+            guard let header = snapshot.header else { continue }
+            if !data.messagesByFolder.values.flatMap(\.self).contains(where: { $0.id == header.id }) {
+                data.messagesByFolder[header.folderID, default: []].append(header)
+            }
+            if let body = snapshot.body { data.messageBodies[header.id] = body }
+            for attachment in snapshot.record.attachments {
+                let id = attachment.metadata.id
+                data.attachmentsByID[id] = attachment.metadata
+                data.attachmentDataByID[id] = attachment.data
+                data.attachmentDraftIDs[id] = attachment.draftID
+            }
         }
     }
 
@@ -2819,7 +2878,14 @@ private actor Store {
 
     func move(ids: [String], to destinationFolderID: String, mailboxID: Mailbox.ID) throws {
         let idSet = Set(ids)
+        let mailboxFolders = try data(mailboxID: mailboxID).folders
+        let movesToTrash = destinationFolderID == "trash"
+            || mailboxFolders.first { $0.id == destinationFolderID }?.role == .trash
+        let scheduledDrafts = movesToTrash
+            ? try removeScheduledDrafts(matching: idSet, mailboxID: mailboxID)
+            : []
         let events = try updateData(mailboxID: mailboxID) { data in
+            Self.restoreScheduledDraftProjections(scheduledDrafts, in: &data)
             var events: [MailEvent] = []
             var moved: [MessageHeader] = []
             for key in data.messagesByFolder.keys {
@@ -2881,10 +2947,19 @@ private actor Store {
 
     func delete(ids: [String], mailboxID: Mailbox.ID) throws {
         let idSet = Set(ids)
+        let scheduledDrafts = try removeScheduledDrafts(matching: idSet, mailboxID: mailboxID)
         let events = try updateData(mailboxID: mailboxID) { data in
             var events: [MailEvent] = []
             let trashFolderID = Self.ensureTrashFolderID(in: &data)
             let originalTrashMessages = data.messagesByFolder[trashFolderID] ?? []
+            let originalTrashIDs = Set(originalTrashMessages.map(\.id))
+            Self.restoreScheduledDraftProjections(
+                scheduledDrafts.filter { snapshot in
+                    guard let header = snapshot.header else { return false }
+                    return !originalTrashIDs.contains(header.id)
+                },
+                in: &data
+            )
             let sourceFolderIDs = Array(data.messagesByFolder.keys)
             for key in sourceFolderIDs where key != trashFolderID {
                 let existing = data.messagesByFolder[key] ?? []
