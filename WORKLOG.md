@@ -7609,7 +7609,7 @@ buttons, and package-aware localization.
 - Verification: `swift test --package-path packages/BrevMail --filter 'SignInCode|MailStatusCopyLocalizationTests|TodayPageSnapshotTests'` (all unit, localization, and snapshot suites passed), `swift test --package-path packages/BrevSettings --filter 'SignInCodeSettingsTests'`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check`, and `Localizable.xcstrings` JSON check.
 - Skipped: Gmail E1–E5 live trust evidence (blocked on disposable Gmail fixture and per-send maintainer approval), live multi-app focus/Escape runtime QA, and iOS notification implementation (blocked until Proposed ADR-0088 iOS amendment is accepted).
 
-## 2026-11-22 — Issue #304 / ADR-0094 (Proposed)
+## 2026-11-22 — Agent — Issue #304 / ADR-0094 (Proposed)
 
 - Goal: draft Proposed ADR-0094 covering on-device AI via Apple Intelligence (`FoundationModels`, macOS 26+) and the opt-in downloaded local model path, with zero implementation code until accepted.
 - Changes: added `ADRs/0094-on-device-ai-apple-intelligence-and-local-models.md` (`Status: Proposed`) and updated `ADRs/README.md`. Documentation-only PR, so TDD does not apply.

@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Date:** 2026-11-22
 - **Deciders:** Henrik
-- **Relates to:** [ADR-0006](0006-telemetry-and-privacy.md) (telemetry and privacy), [ADR-0008](0008-ai-writer-architecture.md) (AI Writer), [ADR-0026](0026-ai-mailbox-action-agent.md) (supervised mailbox actions), [ADR-0028](0028-mail-provider-architecture.md) (mail provider architecture), [ADR-0047](0047-mailbox-chat-q-and-a-ai.md) (mailbox chat Q&A), [ADR-0051](0051-user-controlled-ai-providers.md) (user-controlled AI providers), [ADR-0058](0058-string-catalog-localization.md) (string catalogs)
+- **Relates to:** [ADR-0006](0006-telemetry-and-privacy.md) (telemetry and privacy), [ADR-0008](0008-ai-writer.md) (AI Writer), [ADR-0026](0026-supervised-mailbox-action-agent.md) (supervised mailbox actions), [ADR-0028](0028-mail-provider-architecture.md) (mail provider architecture), [ADR-0047](0047-mailbox-chat-q-and-a-ai.md) (mailbox chat Q&A), [ADR-0051](0051-user-controlled-ai-providers.md) (user-controlled AI providers), [ADR-0058](0058-localization-via-string-catalogs.md) (string catalogs)
 - **Issue:** #304
 
 ## Context
@@ -44,12 +44,13 @@ Extend ADR-0051's provider model with two first-class on-device `AIBackend` impl
 
 ### 3. Shared AI settings & UI contract
 
-- Settings → AI presents three clear choices alongside turning AI off:
+- On **macOS**, Settings → AI presents three clear choices alongside turning AI off:
   1. **On this Mac (Apple Intelligence)**
-  2. **On this Mac (download a model)**
-  3. **Existing configured providers** (Ollama / LM Studio / OpenAI-compatible / Anthropic per ADR-0051)
-- AI remains **off by default** on fresh installs and upgrades; upgrading to macOS 26 does not silently enable Apple Intelligence in Brev.
-- Every AI output surface (AI Writer preview, thread summary, Assistant sidebar, mailbox chat) displays the backend's `transparencyLabel` (`"On this Mac"` for both on-device backends).
+  2. **On this Mac (download a model)** (Slice 2, macOS first)
+  3. **Existing ADR-0051 OpenAI-compatible providers** (Ollama / LM Studio / user-configured OpenAI Chat Completions endpoints)
+- On **iOS**, Settings → AI presents **On this iPhone / On this iPad (Apple Intelligence)** (Slice 1) alongside existing ADR-0051 OpenAI-compatible providers; the macOS-first weight-download option is omitted on iOS until a dedicated mobile memory/storage slice is proposed.
+- AI remains **off by default** on fresh installs, and upgrading to macOS 26 / iOS 26 never silently turns AI on for users who left it off. Existing saved `AIWriterSettings` enablement, provider profiles, and consent choices are preserved unchanged across upgrades.
+- Every AI output surface (AI Writer preview, thread summary, Assistant sidebar, mailbox chat) displays the backend's `transparencyLabel` (`"On this Mac"` on macOS, `"On this iPhone"` / `"On this iPad"` on iOS).
 
 ## Rationale
 
@@ -76,9 +77,10 @@ Extend ADR-0051's provider model with two first-class on-device `AIBackend` impl
 ## References
 
 - [ADR-0006: Telemetry and privacy](0006-telemetry-and-privacy.md)
-- [ADR-0008: AI Writer architecture](0008-ai-writer-architecture.md)
-- [ADR-0026: AI mailbox action agent](0026-ai-mailbox-action-agent.md)
+- [ADR-0008: AI Writer](0008-ai-writer.md)
+- [ADR-0026: Supervised mailbox action agent](0026-supervised-mailbox-action-agent.md)
 - [ADR-0047: Mailbox chat Q&A](0047-mailbox-chat-q-and-a-ai.md)
 - [ADR-0051: User-controlled AI providers](0051-user-controlled-ai-providers.md)
+- [ADR-0058: Localization via string catalogs](0058-localization-via-string-catalogs.md)
 - Issue #304
 - Affected paths (upon acceptance): `packages/BrevAI/`, `packages/BrevSettings/`, `packages/BrevMail/`, `PRIVACY.md`, `ADRs/0006-telemetry-and-privacy.md`
