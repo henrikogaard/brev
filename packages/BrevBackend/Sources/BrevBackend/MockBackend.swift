@@ -437,7 +437,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     public func send(draft: Draft, sourceID: MailSourceID) async throws -> SendResult {
         try await store.ensureActive()
         if let sendHandler { return try await sendHandler(draft, sourceID) }
-        let owner = try mailboxID(for: sourceID)
+        let owner = try await mailboxID(for: sourceID)
         if let scheduledFor = draft.scheduledFor {
             let result = try await store.schedule(draft: draft, scheduledFor: scheduledFor, mailboxID: owner)
             await store.startWorkerIfNeeded(restart: true)

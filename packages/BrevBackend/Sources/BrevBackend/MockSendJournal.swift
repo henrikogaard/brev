@@ -37,10 +37,10 @@ struct MockSendJournalRecord: Codable, Sendable, Equatable {
     var sentHeader: MessageHeader?
     var sentBody: MessageBody?
     var nextAttemptAt: Date?
-    var sender: Correspondent? = nil
-    var parentMessageID: String? = nil
-    var references: [String]? = nil
-    var draftProjectionDate: Date? = nil
+    var sender: Correspondent?
+    var parentMessageID: String?
+    var references: [String]?
+    var draftProjectionDate: Date?
 }
 
 private struct MockSendJournalFile: Codable {
