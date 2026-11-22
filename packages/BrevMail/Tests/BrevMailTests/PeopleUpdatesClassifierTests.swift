@@ -451,6 +451,30 @@ struct PeopleUpdatesClassifierTests {
             expandedBundleIDs: ["notifications@linear.app"]
         )
         #expect(Set(expanded.map(\.id)) == ["u1", "u2", "u3"])
+
+        // When u1 shares a thread with u3 and that thread is expanded under u3,
+        // u1 remains selectable even while Linear's bundle is collapsed.
+        let sharedThreadSingle = MessageHeader(
+            id: "u3-shared",
+            threadID: "shared-thread",
+            folderID: "inbox",
+            from: Correspondent(name: "GitHub", email: "notifications@github.com"),
+            to: [],
+            subject: "Re: Issue #1",
+            snippet: "Linked PR",
+            date: Date().addingTimeInterval(-30),
+            isRead: false,
+            isFlagged: false,
+            hasAttachments: false
+        )
+        let withExpandedReply = UpdatesSenderBundler.selectableHeaders(
+            from: [m1, m2, sharedThreadSingle],
+            sourceID: Self.source,
+            expandedBundleIDs: [],
+            headersByThreadID: ["shared-thread": [m2, m1, sharedThreadSingle]],
+            expandedThreadIDs: ["shared-thread"]
+        )
+        #expect(Set(withExpandedReply.map(\.id)) == ["u1", "u2", "u3-shared"])
     }
 
     @Test("HTTPS unsubscribe confirmation states browser opening accurately even when one-click is advertised")

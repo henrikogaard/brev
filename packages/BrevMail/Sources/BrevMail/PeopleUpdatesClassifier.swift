@@ -363,19 +363,35 @@ enum UpdatesSenderBundler {
     }
 
     /// Returns strictly the individual message headers currently rendered as
-    /// selectable rows in the Updates tab: single-message bundles and the
-    /// children of expanded multi-message bundles (never hidden messages inside
-    /// collapsed bundles) (#295).
+    /// selectable rows in the Updates tab: single-message bundles, children of
+    /// expanded multi-message bundles, and any conversation replies rendered
+    /// inline under an expanded thread, deduplicated by message ID (#295).
     static func selectableHeaders(
         from headers: [MessageHeader],
         sourceID: MailSourceID?,
-        expandedBundleIDs: Set<String>
+        expandedBundleIDs: Set<String>,
+        headersByThreadID: [String: [MessageHeader]] = [:],
+        expandedThreadIDs: Set<String> = []
     ) -> [MessageHeader] {
         let bundles = bundle(headers, sourceID: sourceID)
         var result: [MessageHeader] = []
-        for entry in bundles {
-            if entry.headers.count == 1 || expandedBundleIDs.contains(entry.id) {
-                result.append(contentsOf: entry.headers)
+        var seen = Set<MessageHeader.ID>()
+
+        func appendIfNew(_ header: MessageHeader) {
+            if seen.insert(header.id).inserted {
+                result.append(header)
+            }
+        }
+
+        for entry in bundles where entry.headers.count == 1 || expandedBundleIDs.contains(entry.id) {
+            for row in entry.headers {
+                appendIfNew(row)
+                if expandedThreadIDs.contains(row.threadID),
+                   let siblings = headersByThreadID[row.threadID] {
+                    for sibling in siblings {
+                        appendIfNew(sibling)
+                    }
+                }
             }
         }
         return result

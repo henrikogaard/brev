@@ -449,7 +449,7 @@ public struct MessageListView: View {
             LegacyPinNotice()
             #if os(macOS)
             if !navigation.bulkSelection.isEmpty {
-                bulkActionBar(visibleHeaders: presentation.headers)
+                bulkActionBar(visibleHeaders: renderedSelectableHeaders(in: presentation))
             }
             #endif
             if let mutationErrorStatus {
@@ -846,7 +846,9 @@ public struct MessageListView: View {
         return UpdatesSenderBundler.selectableHeaders(
             from: presentation.filteredUngroupedHeaders,
             sourceID: sourceID,
-            expandedBundleIDs: expandedUpdateBundleIDs
+            expandedBundleIDs: expandedUpdateBundleIDs,
+            headersByThreadID: presentation.headersByThreadID,
+            expandedThreadIDs: groupByThread && backend.groupsMessagesIntoThreads ? expandedThreadIDs : []
         )
     }
 
@@ -869,7 +871,8 @@ public struct MessageListView: View {
                         onToggleExpanded: {
                             if expandedUpdateBundleIDs.contains(bundle.id) {
                                 expandedUpdateBundleIDs.remove(bundle.id)
-                                navigation.bulkSelection.subtract(bundle.headers.map(\.id))
+                                let selectable = renderedSelectableHeaders(in: presentation)
+                                navigation.bulkSelection.formIntersection(Set(selectable.map(\.id)))
                             } else {
                                 expandedUpdateBundleIDs.insert(bundle.id)
                             }
@@ -951,6 +954,7 @@ public struct MessageListView: View {
             MailSelectionToolbar(
                 selectionCount: navigation.bulkSelection.count,
                 allSelected: !allVisible.isEmpty && allVisible.isSubset(of: navigation.bulkSelection),
+                canSelectAll: !allVisible.isEmpty,
                 isDisabled: isMutationActionBlocked,
                 showsArchive: archiveFolder != nil,
                 isArchiveEnabled: true,
@@ -2498,6 +2502,9 @@ public struct MessageListView: View {
     /// sections; the order Shift ranges and Select All work in.
     private var visibleRowIDs: [MessageHeader.ID] {
         let snapshot = presentationSnapshot
+        if showsPeopleUpdatesBar && activePeopleUpdatesTab == .updates {
+            return renderedSelectableHeaders(in: snapshot).map(\.id)
+        }
         return groupByDate
             ? snapshot.dateSections.flatMap(\.visibleHeaders).map(\.id)
             : snapshot.headers.map(\.id)

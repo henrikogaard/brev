@@ -82,6 +82,7 @@ struct BulkActionIconButton: View {
 struct MailSelectionToolbar<MarkMenu: View>: ToolbarContent {
     let selectionCount: Int
     let allSelected: Bool
+    var canSelectAll = true
     let isDisabled: Bool
     /// When false the Archive button is omitted (a folder mailbox with no archive folder).
     let showsArchive: Bool
@@ -105,7 +106,7 @@ struct MailSelectionToolbar<MarkMenu: View>: ToolbarContent {
                     : String(localized: "Select All", bundle: .module),
                 action: onToggleSelectAll
             )
-            .disabled(isDisabled)
+            .disabled(isDisabled || (!allSelected && !canSelectAll))
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button(String(localized: "Cancel", bundle: .module), action: onCancel)
