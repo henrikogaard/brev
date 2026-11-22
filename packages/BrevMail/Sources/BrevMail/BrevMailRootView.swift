@@ -1432,6 +1432,7 @@ public struct BrevMailRootView: View {
         // `navigation` away from Unified Inbox or the original folder during Triage.
         if ret.isUnifiedInboxSelected, !navigation.isUnifiedInboxSelected {
             navigation.selectUnifiedInbox()
+            navigation.selectedSourceID = ret.selectedSourceID
             navigation.selectedMessageID = ret.selectedMessageID
         } else if !ret.isUnifiedInboxSelected, !ret.isSmartViewSelected,
                   navigation.selectedFolderID != ret.selectedFolderID || navigation.selectedSourceID != ret.selectedSourceID {
