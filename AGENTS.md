@@ -278,7 +278,8 @@ columns: `Backlog`, `Ready`, `In progress`, `In review`, and `Done`.
   is `main`; feature branches start from `main` and normal PRs target `main`.
 - Before starting implementation, record the current branch/worktree and
   whether the branch already has an open PR.
-- Implementation is not complete until all of these are true:
+- An issue's implementation is not complete until all of these are true (a
+  slice is done once it is committed and pushed to the issue's branch):
   - relevant tests/checks have run, or skipped checks are explicitly justified
   - changes are committed on a named branch
   - the branch is pushed
@@ -322,8 +323,15 @@ unchanged code is not new evidence.
 - One PR should deliver one coherent outcome. Before creating a branch or PR,
   inspect open PRs and branch ancestry for the same outcome; continue the
   existing branch and PR instead of creating a sibling.
-- Independent outcomes target `main`. Dependent, reviewable slices may use a
-  linear stack where each child PR targets its immediate parent branch. Link
+- One issue gets one branch and one PR. Slices, phases, checklist steps and
+  review fixes are commits on that branch, not PRs of their own. Push work in
+  progress without opening a PR, and open the PR once, when the acceptance
+  criteria are met and local checks pass. Batch review fixes into one push per
+  round; every push reruns CI.
+- Independent outcomes target `main`. Use a linear stack (each child PR
+  targets its immediate parent branch) only when Henrik asks for one, or when
+  one PR would exceed about 1,500 changed lines outside tests and generated
+  files. Say so before splitting, keep at most one child per layer, link
   adjacent PRs and keep the stack order explicit in each description.
 - If `main` or a parent branch moves, update the owned stack with a cascading
   rebase and push each affected layer. This is the explicit stack-maintenance
