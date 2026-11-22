@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-22 — Agent — PR #324 row-date aggregation scope
+
+- Goal: avoid changing unrelated collapsed rows when no wake override applies to their visible group.
+- Changes: aggregate visible-member dates only for groups containing an individual effective-date override; preserve per-row fallback dates for untouched groups. Singleton overrides and maximum-original-date no-demotion remain covered. Corrected the new row-date policy and test headers to match `file-header-template.txt`.
+- Red/green: direct helper tests failed before the fix for empty overrides and an untouched group beside a woken group; after the fix, all three direct tests passed, including singleton retention and no-demotion.
+- Verification: focused Foundation harness passed 78 tests in 9 suites; SwiftFormat reported 0/2 files needing formatting; Swift parse passed for 2 changed Swift files; production header matched the template; `git diff --check` and `scripts/check-adr-required.sh origin/feature/snooze-wake-order` exited successfully.
+- Limits: native SwiftUI tests were not run because this Linux host lacks SwiftUI; no visual render was performed. Existing Unreleased notes already cover Inbox wake ordering; this correction only removes an unrelated side effect.
+- Handoff: separate local correction commit only; do not push until requested.
+
 ## 2026-11-22 — Agent — PR #324 nil-source folder-load ownership
 
 - Goal: let unscoped `MessageListView` first-page responses publish while retaining stale-backend rejection.
