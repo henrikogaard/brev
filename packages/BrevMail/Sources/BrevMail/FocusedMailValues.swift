@@ -498,14 +498,37 @@ struct MailListSelectAllAction {
     let perform: @MainActor () -> Void
 }
 
+/// Triage mode toggle published by `BrevMailRootView` so the Message menu can
+/// start or exit Triage mode (#293).
+struct MailTriageAction {
+    let isActive: Bool
+    let isAvailable: Bool
+    let toggle: @MainActor () -> Void
+
+    var title: String {
+        isActive
+            ? String(localized: "Exit Triage", bundle: .module)
+            : String(localized: "Start Triage", bundle: .module)
+    }
+}
+
 struct FocusedListSelectAllKey: FocusedValueKey {
     typealias Value = MailListSelectAllAction
+}
+
+struct FocusedMailTriageActionKey: FocusedValueKey {
+    typealias Value = MailTriageAction
 }
 
 extension FocusedValues {
     var mailListSelectAll: MailListSelectAllAction? {
         get { self[FocusedListSelectAllKey.self] }
         set { self[FocusedListSelectAllKey.self] = newValue }
+    }
+
+    var mailTriageAction: MailTriageAction? {
+        get { self[FocusedMailTriageActionKey.self] }
+        set { self[FocusedMailTriageActionKey.self] = newValue }
     }
 }
 

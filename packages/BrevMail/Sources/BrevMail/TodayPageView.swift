@@ -33,6 +33,8 @@ struct TodayPageView: View {
     let onOpen: (TodayDigest.Row) -> Void
     /// Opens the assistant; nil hides the button (no AI configured).
     let onAsk: (() -> Void)?
+    /// Starts sequential triage mode (#293); nil hides the button.
+    let onStartTriage: (() -> Void)?
     /// The moment the page describes; fixed in snapshot tests.
     let now: Date
 
@@ -46,6 +48,7 @@ struct TodayPageView: View {
         load: @escaping () async -> TodayDigest?,
         onOpen: @escaping (TodayDigest.Row) -> Void,
         onAsk: (() -> Void)?,
+        onStartTriage: (() -> Void)? = nil,
         now: Date = .now,
         preloaded: TodayDigest? = nil
     ) {
@@ -54,6 +57,7 @@ struct TodayPageView: View {
         self.load = load
         self.onOpen = onOpen
         self.onAsk = onAsk
+        self.onStartTriage = onStartTriage
         self.now = now
         _digest = State(initialValue: preloaded)
     }
@@ -110,17 +114,34 @@ struct TodayPageView: View {
                     .foregroundStyle(theme.textSecondary.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if let onAsk {
-                Button(action: onAsk) {
-                    Label {
-                        Text("Ask about my mail", bundle: .module)
-                    } icon: {
-                        Image(systemName: "sparkles")
+            if onAsk != nil || onStartTriage != nil {
+                HStack(spacing: BrevSpacing.sm) {
+                    if let onStartTriage {
+                        Button(action: onStartTriage) {
+                            Label {
+                                Text("Start Triage", bundle: .module)
+                            } icon: {
+                                Image(systemName: "tray.full")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .tint(theme.accent.color)
+                        .accessibilityIdentifier("today.startTriage")
+                    }
+                    if let onAsk {
+                        Button(action: onAsk) {
+                            Label {
+                                Text("Ask about my mail", bundle: .module)
+                            } icon: {
+                                Image(systemName: "sparkles")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .tint(theme.accent.color)
                     }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .tint(theme.accent.color)
                 .padding(.top, BrevSpacing.sm)
             }
         }

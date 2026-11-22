@@ -4,6 +4,11 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Triage mode (#293): start sequential, full-window conversation triage from the
+  Today page or Message → Start Triage (`⇧⌘T`). Process one conversation at a
+  time with single-key shortcuts (`E` archive, `H` snooze until tomorrow, `R`
+  reply, `J` skip, `Esc` done), next-body preloading, `⌘Z` undo, and exact list
+  position restoration on exit.
 - Tracking pixels are removed before a message renders, even when remote
   images are allowed, so senders can't tell when you opened their mail. The
   reader shows a quiet "Blocked 2 trackers" note (#299).

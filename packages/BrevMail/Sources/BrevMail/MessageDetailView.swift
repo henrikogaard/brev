@@ -73,6 +73,7 @@ public struct MessageDetailView: View {
     /// Save-to-Drive attachment action.
     private let driveFeature: GoogleDriveFeature?
     private let readerFooter: AnyView?
+    private let preloadedBody: MessageBody?
     private let readReceiptNotificationStore = MessageReadReceiptNotificationStore.shared
     private let bodyRenderer = BodyRenderer()
 
@@ -181,7 +182,8 @@ public struct MessageDetailView: View {
         inviteReconciler: CalendarInviteReconciler? = nil,
         contactActions: MailSenderContactActions? = nil,
         driveFeature: GoogleDriveFeature? = nil,
-        readerFooter: AnyView? = nil
+        readerFooter: AnyView? = nil,
+        preloadedBody: MessageBody? = nil
     ) {
         self.backend = backend
         self.sourceID = sourceID
@@ -196,6 +198,10 @@ public struct MessageDetailView: View {
         self.contactActions = contactActions
         self.driveFeature = driveFeature
         self.readerFooter = readerFooter
+        self.preloadedBody = preloadedBody
+        if let preloadedBody, let header, preloadedBody.messageID == header.id {
+            _messageBody = State(initialValue: preloadedBody)
+        }
     }
 
     public var body: some View {
@@ -2332,14 +2338,21 @@ public struct MessageDetailView: View {
         attachmentController.cancelActiveDownload()
         activeInviteResponseRequest = nil
         beginMessageOpenTiming(messageID: header.id)
-        resetState(for: .messageLoadStarted)
-        htmlBodyPainted = false
-        if let previewText = MessageDetailPresentation.previewFallbackPlainText(header.snippet) {
-            messageBody = MessageBody(messageID: header.id, plainText: previewText)
+        let matchingPreload = preloadedBody?.messageID == header.id ? preloadedBody : nil
+        if matchingPreload == nil {
+            resetState(for: .messageLoadStarted)
+            htmlBodyPainted = false
+            if let previewText = MessageDetailPresentation.previewFallbackPlainText(header.snippet) {
+                messageBody = MessageBody(messageID: header.id, plainText: previewText)
+            }
+            isLoading = true
         }
-        isLoading = true
         do {
-            let loaded = try await bodyWithReaderTimeout(for: header.id)
+            let loaded: MessageBody = if let matchingPreload {
+                matchingPreload
+            } else {
+                try await bodyWithReaderTimeout(for: header.id)
+            }
             recordReadReceiptNotificationIfNeeded(loaded, header: header)
             let rendered = await bodyRenderer.render(loaded)
             guard canApplyOrFinishLoad(request) else { return }

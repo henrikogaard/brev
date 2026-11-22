@@ -474,6 +474,8 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
             return self as? Service
         case ObjectIdentifier(SyncConflictManaging.self):
             return self as? Service
+        case ObjectIdentifier(CachedMessageBodyProviding.self):
+            return self as? Service
         case ObjectIdentifier(CachedConversationProviding.self)
             where extendedCapabilities.contains(.cachedConversations):
             return self as? Service
@@ -2781,5 +2783,14 @@ private actor Store {
         for c in continuations.values {
             c.yield(event)
         }
+    }
+}
+
+extension MockBackend: CachedMessageBodyProviding {
+    public func cachedBody(for messageID: MessageHeader.ID, sourceID: MailSourceID?) async -> MessageBody? {
+        if let sourceID {
+            return try? await body(for: messageID, sourceID: sourceID)
+        }
+        return try? await body(for: messageID)
     }
 }

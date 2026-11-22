@@ -3541,7 +3541,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             return self as? Service
         case ObjectIdentifier(ProgressiveMailSearching.self):
             return self as? Service
-        case ObjectIdentifier(CachedMessageHeaderProviding.self):
+        case ObjectIdentifier(CachedMessageHeaderProviding.self),
+             ObjectIdentifier(CachedMessageBodyProviding.self):
             return self as? Service
         case ObjectIdentifier(CachedConversationProviding.self):
             guard localSearchIndex is any MailConversationIndex else { return nil }
@@ -6090,5 +6091,11 @@ private actor IMAPOAuthCredentialRefreshCoordinator {
         inFlight = task
         defer { inFlight = nil }
         return try await task.value
+    }
+}
+
+extension IMAPSMTPBackend: CachedMessageBodyProviding {
+    public func cachedBody(for messageID: MessageHeader.ID, sourceID: MailSourceID?) async -> MessageBody? {
+        await cachedParsedBody(messageID: messageID)
     }
 }

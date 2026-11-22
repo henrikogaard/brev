@@ -406,6 +406,28 @@ public final class MailNavigationState {
         mailboxFilter = .none
     }
 
+    /// Restores Unified Inbox (All Inboxes) along with any source-owned reader
+    /// selection captured before entering a full-pane mode such as Triage (#293).
+    ///
+    /// Preserves `selectedCollectionFolderID` whenever a source-owned message
+    /// was open so `browsingFolderID` continues to resolve to All Inboxes rather
+    /// than falling through to a physical folder.
+    public func restoreUnifiedInbox(
+        sourceID: MailSourceID?,
+        folderID: Folder.ID?,
+        messageID: MessageHeader.ID?
+    ) {
+        selectUnifiedInbox()
+        guard let sourceID else {
+            selectedMessageID = messageID
+            return
+        }
+        selectedCollectionFolderID = Self.unifiedInboxFolderID
+        selectedSourceID = sourceID
+        selectedFolderID = folderID ?? Self.unifiedInboxFolderID
+        selectedMessageID = messageID
+    }
+
     public func selectFlaggedSmartView() {
         selectSmartView(folderID: Self.flaggedSmartViewFolderID)
     }

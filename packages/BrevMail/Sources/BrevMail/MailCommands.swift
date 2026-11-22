@@ -30,6 +30,7 @@ public struct MailCommands: Commands {
     @FocusedValue(\.mailContextColumnAction) private var mailContextColumnAction
     @FocusedValue(\.mailHelpActions) private var helpActions
     @FocusedValue(\.mailListSelectAll) private var listSelectAll
+    @FocusedValue(\.mailTriageAction) private var triageAction
     @AppStorage("folders.showIcons") private var showSidebarIcons = true
 
     /// Creates the cross-platform command set.
@@ -110,7 +111,7 @@ public struct MailCommands: Commands {
             Button(String(localized: "Reply", bundle: .module)) {
                 guard isComposePresentationAvailable,
                       let header = navigation?.selectedHeader else { return }
-                composeActions?.reply(header)
+                composeActions?.reply(header, sourceID: navigation?.selectedSourceID)
             }
             .keyboardShortcut("r")
             .disabled(!messageCommandState.canReply)
@@ -118,7 +119,7 @@ public struct MailCommands: Commands {
             Button(String(localized: "Reply All", bundle: .module)) {
                 guard isComposePresentationAvailable,
                       let header = navigation?.selectedHeader else { return }
-                composeActions?.replyAll(header)
+                composeActions?.replyAll(header, sourceID: navigation?.selectedSourceID)
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .disabled(!messageCommandState.canReplyAll)
@@ -126,7 +127,7 @@ public struct MailCommands: Commands {
             Button(String(localized: "Forward", bundle: .module)) {
                 guard isComposePresentationAvailable,
                       let header = navigation?.selectedHeader else { return }
-                composeActions?.forward(header)
+                composeActions?.forward(header, sourceID: navigation?.selectedSourceID)
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
             .disabled(!messageCommandState.canForward)
@@ -291,6 +292,14 @@ public struct MailCommands: Commands {
                 navigation?.requestSearchFocus()
             }
             .keyboardShortcut("/")
+
+            Divider()
+
+            Button(triageAction?.title ?? String(localized: "Start Triage", bundle: .module)) {
+                triageAction?.toggle()
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+            .disabled(triageAction?.isAvailable != true)
         }
 
         // MARK: - View menu
