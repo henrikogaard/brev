@@ -438,7 +438,7 @@ public struct FolderSidebar: View {
         Button(action: action) {
             sidebarActionRow(
                 title: String(localized: "Assistant", bundle: .module),
-                isSelected: false,
+                isSelected: navigation.isAssistantSelected,
                 leading: {
                     Image(systemName: "sparkles")
                         .foregroundStyle(theme.accent.color)

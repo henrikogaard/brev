@@ -4,6 +4,12 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Assistant sidebar destination (#294): clicking Assistant in the sidebar or
+  "Ask about my mail" on Today now opens a full Assistant view beside the
+  sidebar with grounded conversation cards grouped into Needs you, Worth a
+  look, and Updates & newsletters, summary chips, and one-click reply/follow-up
+  chips linked directly to local messages. AI remains off by default and only
+  runs on explicit send.
 - Actionable notifications & optional macOS drop-down panel (#307): Mark as
   Read and Archive notification actions now run in the background without
   foregrounding the app, buffer during cold launch, route through the offline

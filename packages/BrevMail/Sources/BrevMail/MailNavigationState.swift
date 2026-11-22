@@ -33,6 +33,7 @@ public final class MailNavigationState {
     public nonisolated static let doneSmartViewFolderID = "__brev_smart_done"
     public nonisolated static let vipSmartViewFolderID = "__brev_smart_vip"
     public nonisolated static let allAttachmentsSmartViewFolderID = "__brev_smart_all_attachments"
+    public nonisolated static let assistantDestinationFolderID = "__brev_assistant"
     private static let savedSearchFolderIDPrefix = "__brev_saved_search_"
 
     public enum Sheet: Hashable, Sendable {
@@ -376,6 +377,11 @@ public final class MailNavigationState {
         browsingFolderID == Self.allAttachmentsSmartViewFolderID
     }
 
+    /// True when the full-pane Assistant sidebar destination is selected (#294).
+    public var isAssistantSelected: Bool {
+        browsingFolderID == Self.assistantDestinationFolderID
+    }
+
     public var selectedSavedSearchID: SmartMailbox.ID? {
         guard let folderID = browsingFolderID,
               folderID.hasPrefix(Self.savedSearchFolderIDPrefix)
@@ -452,6 +458,11 @@ public final class MailNavigationState {
 
     public func selectAllAttachmentsSmartView() {
         selectSmartView(folderID: Self.allAttachmentsSmartViewFolderID)
+    }
+
+    /// Selects the full-pane Assistant destination in the sidebar (#294).
+    public func selectAssistantDestination() {
+        selectSmartView(folderID: Self.assistantDestinationFolderID)
     }
 
     public func selectSavedSearch(id: SmartMailbox.ID) {

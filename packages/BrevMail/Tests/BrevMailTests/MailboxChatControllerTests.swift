@@ -147,14 +147,20 @@ struct MailboxChatControllerTests {
                     folderID: "inbox",
                     sourceID: sourceID,
                     subject: "Invoice paid",
-                    date: Self.sampleDate
+                    date: Self.sampleDate,
+                    senderName: "Ada",
+                    senderEmail: "ada@example.com",
+                    snippet: "Paid on Tuesday."
                 ),
                 MailboxChatCitation(
                     id: "message-2",
                     folderID: "inbox",
                     sourceID: sourceID,
                     subject: "Receipt",
-                    date: Self.sampleDate
+                    date: Self.sampleDate,
+                    senderName: "Ada",
+                    senderEmail: "ada@example.com",
+                    snippet: "Thanks for the payment."
                 )
             ],
             providerLabel: "Sent to: Test AI"

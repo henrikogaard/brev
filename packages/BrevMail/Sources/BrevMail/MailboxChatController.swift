@@ -429,7 +429,13 @@ private struct MailboxChatAnswerContext {
                 folderID: $0.folderID,
                 sourceID: sourceID,
                 subject: $0.subject,
-                date: $0.date
+                date: $0.date,
+                senderName: $0.from.name,
+                senderEmail: $0.from.email,
+                snippet: $0.snippet,
+                isRead: $0.isRead,
+                isFlagged: $0.isFlagged,
+                isAnswered: $0.isAnswered
             )
         }
 

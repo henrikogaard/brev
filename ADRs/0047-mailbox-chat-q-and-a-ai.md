@@ -140,3 +140,31 @@ retrieval/posture, and future risks clearer.
 - ADR-0027: Manual thread summary AI
 - `docs/specs/2026-07-25-mail-context-column-design.md`
 - `packages/BrevMail/Sources/BrevMail/MailboxChatController.swift`
+- Issue #294: Assistant as a sidebar destination with answer cards
+
+## Amendment (2026-11-22): Sidebar Assistant destination with structured answer cards
+
+Issue #294 elevates mailbox chat from the trailing Mail Context column into a
+dedicated sidebar destination right under the account switcher, above Inbox,
+opening a full-pane chat surface with structured conversation answer cards.
+
+1. **Capability-driven sidebar placement.** The sidebar "Assistant" row and its
+   full-pane destination (`AssistantDestinationView`) are shown only when an AI
+   backend is configured and enabled for the active session. When no AI backend
+   is available, the row is hidden and the destination falls back cleanly.
+2. **Reuses `MailboxChatController` and all existing boundaries.** The full-pane
+   destination uses the same `MailboxChatController`, cache-only retrieval
+   (`maxMessages = 12`, `maxBytes = 48 KiB`), manual-send-only trigger (opening
+   Assistant never calls AI), and per-turn destination transparency badge
+   (ADR-0051).
+3. **Structured answer cards are strictly grounded in local search.** Each
+   assistant turn transforms its real cited headers (`MailboxChatCitation`) into
+   conversation cards grouped into **Needs you**, **Worth a look**, and
+   **Updates & newsletters**, with deterministic local tags (`Urgent`, `Reply`,
+   `Read`), summary chips, and suggested follow-up/action chips. Cards always
+   carry exact `(sourceID, folderID, messageID)` identity from local search and
+   open the real conversation in the reader; no card is invented from free-form
+   model output.
+4. **Card actions follow ADR-0026.** Reply chips open the normal compose/reply
+   surface; bulk archive chips route through the confirmed `MailboxChatController`
+   action-review path and never mutate mail without explicit user confirmation.

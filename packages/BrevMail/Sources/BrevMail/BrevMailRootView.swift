@@ -1661,28 +1661,76 @@ public struct BrevMailRootView: View {
 
     @ViewBuilder
     private var mailSplitView: some View {
-        switch readingPanePresentation {
-        case .splitDetailColumn:
+        if navigation.isAssistantSelected, selectedAIBackend != nil {
             NavigationSplitView(
                 columnVisibility: $splitViewVisibility,
                 preferredCompactColumn: $preferredCompactColumn
             ) {
                 sidebarPane
-            } content: {
-                messageListPane
             } detail: {
-                splitDetailPane
+                assistantDestinationPane
             }
-        case .bottomStack:
-            NavigationSplitView(
-                columnVisibility: $splitViewVisibility,
-                preferredCompactColumn: $preferredCompactColumn
-            ) {
-                sidebarPane
-            } detail: {
-                bottomReadingPane
+        } else {
+            switch readingPanePresentation {
+            case .splitDetailColumn:
+                NavigationSplitView(
+                    columnVisibility: $splitViewVisibility,
+                    preferredCompactColumn: $preferredCompactColumn
+                ) {
+                    sidebarPane
+                } content: {
+                    messageListPane
+                } detail: {
+                    splitDetailPane
+                }
+            case .bottomStack:
+                NavigationSplitView(
+                    columnVisibility: $splitViewVisibility,
+                    preferredCompactColumn: $preferredCompactColumn
+                ) {
+                    sidebarPane
+                } detail: {
+                    bottomReadingPane
+                }
             }
         }
+    }
+
+    private var assistantDestinationPane: some View {
+        AssistantDestinationView(
+            sourceID: navigation.selectedSourceID,
+            aiBackend: selectedAIBackend,
+            actionFolders: mailboxActionFolders(for: navigation.selectedSourceID),
+            focusedFolder: selectedFolder,
+            actionSourceScope: mailboxActionSourceScope(for: navigation.selectedSourceID),
+            executeAction: { plan in
+                try await executeMailboxAction(plan: plan)
+            },
+            search: { query, sourceID in
+                if let sourceID {
+                    return try await backend(for: sourceID).search(query, sourceID: sourceID)
+                }
+                return try await selectedBackend.search(query)
+            },
+            onOpenCard: { card in
+                openMailContextMessage(card.citation.recentItem)
+            },
+            onReplyCard: { card in
+                let header = MessageHeader(
+                    id: card.messageID,
+                    threadID: card.messageID,
+                    folderID: card.folderID,
+                    from: Correspondent(name: card.senderName, email: card.senderEmail),
+                    subject: card.subject,
+                    snippet: card.snippet,
+                    date: card.date,
+                    isRead: card.citation.isRead,
+                    isFlagged: card.citation.isFlagged,
+                    isAnswered: card.citation.isAnswered
+                )
+                presentReply(to: header, sourceID: card.sourceID)
+            }
+        )
     }
 
     private var readingPanePresentation: MailRootReadingPanePresentation {
@@ -1817,9 +1865,7 @@ public struct BrevMailRootView: View {
         #if os(macOS)
         .sidebarChrome(
             onOpenAssistant: selectedAIBackend == nil ? nil : {
-                // The assistant lives in the Mail Context column today; the
-                // sidebar row is its fixed entry point (#306, #294).
-                isMailContextColumnPresented = true
+                navigation.selectAssistantDestination()
             },
             onAddAccount: onAddAccount,
             footer: FolderSidebarFooter(
@@ -2139,7 +2185,7 @@ public struct BrevMailRootView: View {
                 navigation.selectedMessageID = row.header.id
                 navigation.endSelection()
             },
-            onAsk: selectedAIBackend == nil ? nil : { isMailContextColumnPresented = true },
+            onAsk: selectedAIBackend == nil ? nil : { navigation.selectAssistantDestination() },
             onStartTriage: navigation.inlineReply != nil ? nil : {
                 Task { await startTriage() }
             }
