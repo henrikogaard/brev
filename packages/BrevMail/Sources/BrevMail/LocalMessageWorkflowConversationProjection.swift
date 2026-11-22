@@ -265,36 +265,12 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
         snooze(for: messageID, header: header)?.isActive(at: date ?? now) == true
     }
 
-    func conversationMetadata(for messageID: SourceMessageID) -> LocalMessageSnoozeConversationMetadata? {
-        guard let candidateKeys = candidateKeysByMessageID[messageID], candidateKeys.count == 1,
-              let candidateKey = candidateKeys.first else { return nil }
-        return conversationMetadata(for: candidateKey)
-    }
-
-    func conversationMetadata(for messageID: SourceMessageID, header: MessageHeader) -> LocalMessageSnoozeConversationMetadata? {
-        conversationMetadata(for: CandidateKey(sourceID: messageID.sourceID, header: header))
-    }
-
-    func overlappingSnoozes(for messageID: SourceMessageID, in state: LocalMessageWorkflowState) -> [LocalMessageSnooze] {
-        guard let candidateKeys = candidateKeysByMessageID[messageID], candidateKeys.count == 1,
-              let candidateKey = candidateKeys.first else {
-            return state.snoozes.filter { $0.messageID == messageID && $0.conversationMetadata == nil }
-        }
-        return overlappingSnoozes(for: candidateKey, in: state)
-    }
-
     func overlappingSnoozes(
         for messageID: SourceMessageID,
         header: MessageHeader,
         in state: LocalMessageWorkflowState
     ) -> [LocalMessageSnooze] {
         overlappingSnoozes(for: CandidateKey(sourceID: messageID.sourceID, header: header), in: state)
-    }
-
-    private func conversationMetadata(for candidateKey: CandidateKey) -> LocalMessageSnoozeConversationMetadata? {
-        guard let identifiers = componentsByCandidateKey[candidateKey]?.rfcIdentifiers,
-              !identifiers.isEmpty else { return nil }
-        return LocalMessageSnoozeConversationMetadata(rfcIdentifiers: Array(identifiers))
     }
 
     private func overlappingSnoozes(
@@ -313,15 +289,6 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
             guard let seeds = Self.validSeeds(metadata) else { return false }
             return !component.rfcIdentifiers.isDisjoint(with: seeds)
         }
-    }
-
-    func metadataForReschedule(
-        from messageID: SourceMessageID,
-        state: LocalMessageWorkflowState
-    ) -> LocalMessageSnoozeConversationMetadata? {
-        guard let candidateKeys = candidateKeysByMessageID[messageID], candidateKeys.count == 1,
-              let candidateKey = candidateKeys.first else { return nil }
-        return metadataForReschedule(from: candidateKey, state: state)
     }
 
     func metadataForReschedule(

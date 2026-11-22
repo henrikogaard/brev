@@ -4350,14 +4350,6 @@ public struct MessageListView: View {
         )
     }
 
-    private func visibleHeaders(for headers: [MessageHeader]) -> [MessageHeader] {
-        MessageListVisibleHeaders.headers(
-            from: headers,
-            groupByThread: groupByThread,
-            pinnedIDs: pinnedMessageIDs
-        )
-    }
-
     private func notifyMutationUpdated(messageIDs: [MessageHeader.ID]) async {
         if let event = MessageListMutationRefreshPolicy.updated(messageIDs: messageIDs, in: folder) {
             await onMutation(event)

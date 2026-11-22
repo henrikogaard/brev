@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — PR #324 unused helper cleanup
+
+- Goal: remove only confirmed-unused helpers introduced during the review round.
+- Changes: removed the unused `conversationMetadata` projection helpers, headerless `overlappingSnoozes` and `metadataForReschedule` overloads, and the uncalled `MessageListView.visibleHeaders(for:)` wrapper. Kept the called header-aware overlap/reschedule paths.
+- Verification: repository `rg` confirmed the wrapper had no callsites and the header-aware methods remain called; the focused Foundation harness passed 80 tests in 9 suites; SwiftFormat reported 0/2 files needing formatting; Swift parse passed for 2 changed Swift files; all 3 new Swift files across the review round match `file-header-template.txt`; diff and ADR-required checks passed.
+- Handoff: separate local cleanup commit only; no push. Ready for the full-round push when authorized.
+
 ## 2026-11-22 — Agent — PR #324 Snoozed cache scan scope
 
 - Goal: avoid reading cached folders for visible sources without an active future snooze.
