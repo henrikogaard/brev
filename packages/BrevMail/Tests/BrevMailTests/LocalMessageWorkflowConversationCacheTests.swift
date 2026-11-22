@@ -119,6 +119,101 @@ struct LocalMessageWorkflowConversationCacheTests {
         #expect(failed)
     }
 
+    @Test("empty, expired, and unrelated Snoozed state performs no cached-header reads")
+    func inactiveSnoozesDoNotReadCache() async throws {
+        let source = MailSourceID(accountID: account.id, mailboxID: "personal")
+        let otherSource = MailSourceID(accountID: account.id, mailboxID: "work")
+        let invisibleSource = MailSourceID(accountID: "acct-2", mailboxID: "hidden")
+        let now = Date(timeIntervalSince1970: 10000)
+        let backend = makeBackend(source: source, inboxHeaders: [], archiveHeaders: [])
+        let readCounter = SnoozedCacheReadCounter()
+        backend.cachedMessageHeadersHandler = { _, sourceID in
+            readCounter.record(sourceID)
+            return []
+        }
+        let states = [
+            LocalMessageWorkflowState(),
+            LocalMessageWorkflowState(snoozes: [LocalMessageSnooze(
+                messageID: SourceMessageID(sourceID: source, messageID: "expired"),
+                wakeAt: now
+            )]),
+            LocalMessageWorkflowState(snoozes: [LocalMessageSnooze(
+                messageID: SourceMessageID(sourceID: invisibleSource, messageID: "hidden"),
+                wakeAt: now.addingTimeInterval(60)
+            )]),
+        ]
+
+        for state in states {
+            let sourceIDs = LocalMessageWorkflowSnoozedCachePolicy.sourceIDsToLoad(
+                visibleSourceIDs: [source, otherSource],
+                state: state,
+                now: now
+            )
+            for sourceID in [source, otherSource] where sourceIDs.contains(sourceID) {
+                _ = try await LocalMessageWorkflowConversationCache.candidates(
+                    backend: backend,
+                    sourceID: sourceID,
+                    folders: [inbox, archive],
+                    anchors: [],
+                    isCurrent: { true }
+                )
+            }
+            #expect(sourceIDs.isEmpty)
+            #expect(readCounter.total == 0)
+            #expect(LocalMessageWorkflowVisibilityPolicy.snoozedCacheItems([], state: state, now: now).isEmpty)
+        }
+    }
+
+    @Test("active Snoozed cache reads only its source and retains cross-folder conversation members")
+    func activeSnoozeReadsRelevantSourceOnly() async throws {
+        let source = MailSourceID(accountID: account.id, mailboxID: "personal")
+        let otherSource = MailSourceID(accountID: account.id, mailboxID: "work")
+        let now = Date(timeIntervalSince1970: 10000)
+        let parent = Self.header(id: "archive-parent", folder: archive.id, rfcID: "parent@example.org")
+        let reply = Self.header(
+            id: "inbox-reply",
+            folder: inbox.id,
+            rfcID: "reply@example.org",
+            inReplyTo: "parent@example.org"
+        )
+        let backend = makeBackend(source: source, inboxHeaders: [], archiveHeaders: [])
+        let readCounter = SnoozedCacheReadCounter()
+        let inboxID = inbox.id
+        backend.cachedMessageHeadersHandler = { folder, sourceID in
+            readCounter.record(sourceID)
+            return folder.id == inboxID ? [reply] : [parent]
+        }
+        let state = LocalMessageWorkflowState(snoozes: [LocalMessageSnooze(
+            messageID: SourceMessageID(sourceID: source, messageID: parent.id),
+            wakeAt: now.addingTimeInterval(60),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["parent@example.org"])
+        )])
+        let sourceIDs = LocalMessageWorkflowSnoozedCachePolicy.sourceIDsToLoad(
+            visibleSourceIDs: [source, otherSource],
+            state: state,
+            now: now
+        )
+        var candidates: [LocalMessageWorkflowCandidate] = []
+        for sourceID in [source, otherSource] where sourceIDs.contains(sourceID) {
+            let loadedCandidates = try await LocalMessageWorkflowConversationCache.candidates(
+                backend: backend,
+                sourceID: sourceID,
+                folders: [inbox, archive],
+                anchors: [],
+                isCurrent: { true }
+            )
+            candidates.append(contentsOf: loadedCandidates)
+        }
+        let projection = LocalMessageWorkflowConversationProjection(candidates: candidates, state: state, now: now)
+
+        #expect(sourceIDs == [source])
+        #expect(readCounter.count(for: source) == 2)
+        #expect(readCounter.count(for: otherSource) == 0)
+        #expect(projection.isSnoozed(.init(sourceID: source, messageID: parent.id), header: parent, at: now))
+        #expect(projection.isSnoozed(.init(sourceID: source, messageID: reply.id), header: reply, at: now))
+    }
+
     @Test("a source lifetime change after a cache await rejects the response")
     func staleCacheResponseIsRejected() async {
         let source = MailSourceID(accountID: account.id, mailboxID: "personal")
@@ -202,7 +297,12 @@ struct LocalMessageWorkflowConversationCacheTests {
         )
     }
 
-    private static func header(id: String, folder: String, rfcID: String) -> MessageHeader {
+    private static func header(
+        id: String,
+        folder: String,
+        rfcID: String,
+        inReplyTo: String? = nil
+    ) -> MessageHeader {
         MessageHeader(
             id: id,
             threadID: "same-provider-thread",
@@ -211,8 +311,32 @@ struct LocalMessageWorkflowConversationCacheTests {
             subject: "Same subject",
             snippet: "",
             date: Date(timeIntervalSince1970: 100),
-            messageID: rfcID
+            messageID: rfcID,
+            inReplyTo: inReplyTo
         )
+    }
+}
+
+private final class SnoozedCacheReadCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var reads: [MailSourceID: Int] = [:]
+
+    var total: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return reads.values.reduce(0, +)
+    }
+
+    func count(for sourceID: MailSourceID) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return reads[sourceID, default: 0]
+    }
+
+    func record(_ sourceID: MailSourceID) {
+        lock.lock()
+        defer { lock.unlock() }
+        reads[sourceID, default: 0] += 1
     }
 }
 

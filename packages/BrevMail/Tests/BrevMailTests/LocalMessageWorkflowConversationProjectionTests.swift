@@ -928,6 +928,61 @@ struct LocalMessageWorkflowConversationProjectionTests {
         #expect(Set(revokedAfterScan[otherSource]?.candidates.map(\.header.id) ?? []) == ["healthy"])
     }
 
+    @Test("empty, expired, and invisible Snoozed rules select no cache sources")
+    func inactiveSnoozesSelectNoCacheSources() {
+        let invisibleSource = MailSourceID(accountID: "acct-2", mailboxID: "hidden")
+        let states = [
+            LocalMessageWorkflowState(),
+            LocalMessageWorkflowState(snoozes: [LocalMessageSnooze(
+                messageID: SourceMessageID(sourceID: source, messageID: "expired"),
+                wakeAt: now
+            )]),
+            LocalMessageWorkflowState(snoozes: [LocalMessageSnooze(
+                messageID: SourceMessageID(sourceID: invisibleSource, messageID: "hidden"),
+                wakeAt: now.addingTimeInterval(60)
+            )]),
+        ]
+
+        for state in states {
+            let sourceIDs = LocalMessageWorkflowSnoozedCachePolicy.sourceIDsToLoad(
+                visibleSourceIDs: [source, otherSource],
+                state: state,
+                now: now
+            )
+            #expect(sourceIDs.isEmpty)
+            #expect(LocalMessageWorkflowVisibilityPolicy.snoozedCacheItems([], state: state, now: now).isEmpty)
+        }
+    }
+
+    @Test("active Snoozed cache loading selects one visible source and keeps cross-folder conversation members")
+    func activeSnoozeSelectsRelevantSourceAndConversation() {
+        let parent = Self.header(id: "archive-parent", folder: "Archive", rfcID: "parent@example")
+        let reply = Self.header(
+            id: "inbox-reply",
+            folder: "Inbox",
+            rfcID: "reply@example",
+            inReplyTo: "parent@example"
+        )
+        let state = Self.state(
+            anchor: parent,
+            source: source,
+            metadata: .init(rfcIdentifiers: ["parent@example"]),
+            wakeAt: now.addingTimeInterval(60)
+        )
+        let sourceIDs = LocalMessageWorkflowSnoozedCachePolicy.sourceIDsToLoad(
+            visibleSourceIDs: [source, otherSource],
+            state: state,
+            now: now
+        )
+        let candidates = [parent, reply].map { LocalMessageWorkflowCandidate(sourceID: source, header: $0) }
+        let projection = LocalMessageWorkflowConversationProjection(candidates: candidates, state: state, now: now)
+
+        #expect(sourceIDs == [source])
+        #expect(projection.isSnoozed(.init(sourceID: source, messageID: parent.id), header: parent, at: now))
+        #expect(projection.isSnoozed(.init(sourceID: source, messageID: reply.id), header: reply, at: now))
+        #expect(!projection.isSnoozed(.init(sourceID: otherSource, messageID: parent.id), header: parent, at: now))
+    }
+
     @Test("cached bridge candidates reproject after another-window snooze changes")
     func snoozedCandidatesReprojectFromCompleteSnapshot() {
         let parent = Self.header(id: "cached-parent", folder: "Archive", rfcID: "parent@example")

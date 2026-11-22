@@ -79,6 +79,15 @@ struct LocalMessageWorkflowSnoozedCacheSourceSnapshot {
 }
 
 enum LocalMessageWorkflowSnoozedCachePolicy {
+    static func sourceIDsToLoad(
+        visibleSourceIDs: [MailSourceID],
+        state: LocalMessageWorkflowState,
+        now: Date
+    ) -> Set<MailSourceID> {
+        let activeSourceIDs = Set(state.snoozes.lazy.filter { $0.isActive(at: now) }.map { $0.messageID.sourceID })
+        return Set(visibleSourceIDs).intersection(activeSourceIDs)
+    }
+
     static func mergingSuccessfulSources(
         _ successful: [MailSourceID: LocalMessageWorkflowSnoozedCacheSourceSnapshot],
         into existing: [MailSourceID: LocalMessageWorkflowSnoozedCacheSourceSnapshot],

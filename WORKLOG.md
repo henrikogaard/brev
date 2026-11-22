@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-22 — Agent — PR #324 Snoozed cache scan scope
+
+- Goal: avoid reading cached folders for visible sources without an active future snooze.
+- Changes: capture fresh workflow state before scanning folders and restrict the Snoozed cache loop to visible source IDs with `wakeAt > now`. Relevant sources still scan all their folders and retain source/backend/request validation and partial-load handling.
+- Regressions: cover empty, expired, and invisible-source states selecting no reads and producing no Snoozed results; verify per-source read counts and RFC conversation expansion across Inbox and Archive.
+- Red/green: the Foundation harness failed source selection for inactive states and selected unrelated visible sources before the policy fix; after the fix it passed 80 tests in 9 suites.
+- Verification: focused Foundation harness passed 80 tests in 9 suites; SwiftFormat reported 0/4 files needing formatting; Swift parse passed for 4 changed Swift files; staged diff and ADR-required checks passed. Native cache-read tests were not run because this Linux host lacks SwiftUI.
+- Handoff: separate local correction commit only; do not push until requested. The remaining unused projection helper cleanup is deferred.
+
 ## 2026-11-22 — Agent — PR #324 row-date aggregation scope
 
 - Goal: avoid changing unrelated collapsed rows when no wake override applies to their visible group.

@@ -2311,13 +2311,19 @@ struct UnifiedInboxListView: View {
 
     private func reloadCachedSnoozedItems(request: UUID) async {
         let sourceRevision = sourceSectionsRevisionProvider?()
+        let workflowStateAtLoad = freshWorkflowState()
+        let sourceIDsToLoad = LocalMessageWorkflowSnoozedCachePolicy.sourceIDsToLoad(
+            visibleSourceIDs: sourceSections.map(\.id),
+            state: workflowStateAtLoad,
+            now: Date()
+        )
         let currentBackends = currentBackendsProvider?() ?? backends
         let backendsByAccountID = currentBackends.reduce(into: [BrevAccount.ID: any MailBackend]()) {
             $0[$1.account.id] = $1
         }
         var successful: [MailSourceID: LocalMessageWorkflowSnoozedCacheSourceSnapshot] = [:]
         var firstError: (any Error)?
-        for section in sourceSections {
+        for section in sourceSections where sourceIDsToLoad.contains(section.id) {
             guard let backend = backendsByAccountID[section.account.id],
                   backend.account.id == section.id.accountID else {
                 firstError = firstError ?? LocalMessageWorkflowConversationCacheError.sourceUnavailable
