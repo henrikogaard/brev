@@ -165,7 +165,7 @@ struct MessageListPresentationSnapshotTests {
         #expect(listed.headers.map(\.id) == [singleton.id, representative.id, ordinary.id])
         #expect(listed.dateOverrides[representative.id] == wakeAt)
         #expect(listed.dateOverrides[singleton.id] == singletonWakeAt)
-        #expect(snapshot.dateSections.first(where: { $0.title == todayTitle })?.headers.map(\.id) == [
+        #expect(snapshot.dateSections.first(where: { $0.title == todayTitle })?.visibleHeaders.map(\.id) == [
             singleton.id,
             representative.id,
         ])

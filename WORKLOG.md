@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-22 — Sidekick — #324 date-section compile correction
+
+- Goal: fix the second native test-target compile failure in the collapsed-row wake regression and audit the added presentation/cache test APIs.
+- Changes: changed the single-folder snapshot assertion to use `MessageListVisibleDateSection.visibleHeaders`, the actual section property. No production code or PNGs changed.
+- Audit: confirmed the unified section API uses `visibleItems`; the cache tests call the actual `LocalMessageWorkflowConversationCache.candidates` signature; and `MessageHeader` requires `subject` and `snippet`, present in all 24 audited constructors across 14 changed test files. The two CI logs show only the `.headers` error and its consequent key-path inference error in `MessageListPresentationSnapshotTests.swift`.
+- Verification: pinned SwiftFormat reported 0/1 changed Swift files needing formatting; Swift parse passed. Native tests are Apple/CI-only on this Linux host. Diff and ADR-required checks are run for this correction.
+- Handoff: separate correction commit and normal push authorized; do not wait for CI.
+
 ## 2026-11-22 — Agent — PR #324 unified Inbox fixture CI repair
 
 - Goal: fix the `record-review-images` test-target compile error in the collapsed-row wake regression.
