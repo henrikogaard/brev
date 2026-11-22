@@ -69,7 +69,7 @@ Constraints from earlier ADRs:
 
    | Key | What it holds |
    |---|---|
-   | `message.workflowState.v1` | snoozes, done markers, and local notes keyed by account/mailbox/message ID |
+   | `message.workflowState.v1` | snoozes (including normalized RFC identifier seeds for conversation matching), done markers, and local notes keyed by source-owned message ID |
    | `vip.senders` | VIP sender list |
    | `list.inboxCategoryOverrides` | manual inbox category overrides |
    | `list.pinnedMessageIDs` | retained legacy unscoped pin IDs |

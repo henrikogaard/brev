@@ -91,6 +91,52 @@ struct MessageListSnoozeWakePolicyTests {
         #expect(overrides[member] == wakeAt)
     }
 
+    @Test("conversation-derived members share wake order without thread-ID matching")
+    func conversationMembersShareWakeOrderWithoutThreadFallback() {
+        let wakeAt = Self.now
+        let anchor = Self.header(id: "anchor", rfcID: "root@example.org", date: wakeAt.addingTimeInterval(-86400))
+        let parent = Self.header(
+            id: "parent",
+            rfcID: "parent@example.org",
+            date: wakeAt.addingTimeInterval(-172_800),
+            references: ["root@example.org"]
+        )
+        let arrival = Self.header(
+            id: "arrival",
+            rfcID: "arrival@example.org",
+            date: wakeAt.addingTimeInterval(-3600),
+            inReplyTo: "parent@example.org"
+        )
+        let unrelated = Self.header(
+            id: "unrelated",
+            rfcID: "unrelated@example.org",
+            date: wakeAt.addingTimeInterval(-5000)
+        )
+        let anchorID = SourceMessageID(sourceID: Self.source, messageID: anchor.id)
+        let metadata = LocalMessageSnoozeConversationMetadata(rfcIdentifiers: ["root@example.org"])
+        let overrides = MessageListSnoozeWakePolicy.effectiveDateOverrides(
+            for: [anchor, parent, arrival, unrelated].map {
+                MessageListSnoozeWakeEntry(
+                    sourceMessageID: SourceMessageID(sourceID: Self.source, messageID: $0.id),
+                    headerDate: $0.date,
+                    threadID: "same-thread",
+                    header: $0
+                )
+            },
+            snoozes: [LocalMessageSnooze(
+                messageID: anchorID,
+                wakeAt: wakeAt,
+                createdAt: wakeAt.addingTimeInterval(-600),
+                conversationMetadata: metadata
+            )],
+            now: wakeAt
+        )
+
+        #expect(overrides[SourceMessageID(sourceID: Self.source, messageID: parent.id)] == wakeAt)
+        #expect(overrides[SourceMessageID(sourceID: Self.source, messageID: arrival.id)] == wakeAt)
+        #expect(overrides[SourceMessageID(sourceID: Self.source, messageID: unrelated.id)] == nil)
+    }
+
     @Test("promotion is limited to unsearched newest-first Inbox lists")
     func eligibilityIsNarrow() {
         #expect(MessageListSnoozeWakePolicy.shouldPromoteInboxWake(
@@ -202,5 +248,27 @@ struct MessageListSnoozeWakePolicyTests {
         threadID: String? = nil
     ) -> MessageListSnoozeWakeEntry {
         MessageListSnoozeWakeEntry(sourceMessageID: messageID, headerDate: date, threadID: threadID)
+    }
+
+    private static func header(
+        id: String,
+        rfcID: String,
+        date: Date,
+        inReplyTo: String? = nil,
+        references: [String]? = nil
+    ) -> MessageHeader {
+        MessageHeader(
+            id: id,
+            threadID: "same-thread",
+            folderID: "Inbox",
+            from: Correspondent(email: "ada@example.org"),
+            to: [],
+            subject: "Wake order",
+            snippet: "",
+            date: date,
+            messageID: rfcID,
+            inReplyTo: inReplyTo,
+            references: references
+        )
     }
 }

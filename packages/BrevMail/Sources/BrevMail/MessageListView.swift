@@ -54,6 +54,9 @@ public struct MessageListView: View {
     @Bindable private var navigation: MailNavigationState
     @Binding private var localMessageWorkflowState: LocalMessageWorkflowState
     private let backend: any MailBackend
+    private let currentBackendsProvider: (() -> [any MailBackend])?
+    private let sourceSectionsRevisionProvider: (() -> Int)?
+    private let isSourceAvailable: ((MailSourceID) -> Bool)?
     private let sourceID: MailSourceID?
     /// Whether Copy/Move to Local Folder may be offered (ADR-0077, macOS).
     private let canFileLocally: Bool
@@ -196,6 +199,9 @@ public struct MessageListView: View {
     /// Materializes workflow-state membership once per state change instead
     /// of per row.
     @State private var workflowLookupCache = LocalMessageWorkflowLookupCache()
+    @State private var workflowConversationProjectionCache = LocalMessageWorkflowConversationProjectionCache()
+    @State private var workflowSnoozeLookupTask: Task<Void, Never>?
+    @State private var workflowSnoozeRequestGeneration = 0
     /// Memoizes search-chip detection per (text, folder, execution, scope).
     @State private var searchChipsCache = MessageListSearchChipsCache()
     // Debounce handle for `rebuildThreadCounts`. Rapid `headers` changes (sync
@@ -224,7 +230,10 @@ public struct MessageListView: View {
         onMutation: @escaping (MailEvent) async -> Void = { _ in },
         onUnreadCountChanged: @escaping (Folder.ID, Int) -> Void = { _, _ in },
         onOpenInNewWindow: ((MessageHeader) -> Void)? = nil,
-        onRefresh: (() async -> Bool?)? = nil
+        onRefresh: (() async -> Bool?)? = nil,
+        currentBackendsProvider: (() -> [any MailBackend])? = nil,
+        sourceSectionsRevisionProvider: (() -> Int)? = nil,
+        isSourceAvailable: ((MailSourceID) -> Bool)? = nil
     ) {
         self.navigation = navigation
         _localMessageWorkflowState = localMessageWorkflowState
@@ -246,6 +255,9 @@ public struct MessageListView: View {
         self.onUnreadCountChanged = onUnreadCountChanged
         self.onOpenInNewWindow = onOpenInNewWindow
         self.onRefresh = onRefresh
+        self.currentBackendsProvider = currentBackendsProvider
+        self.sourceSectionsRevisionProvider = sourceSectionsRevisionProvider
+        self.isSourceAvailable = isSourceAvailable
         if !navigation.hasUserSelectedSearchExecution {
             navigation.searchExecution = MessageListSearchExecutionPolicy.defaultExecution(
                 capabilities: backend.capabilities
@@ -256,12 +268,15 @@ public struct MessageListView: View {
     public var body: some View {
         workflowObservedContent
             .onChange(of: localMessageWorkflowState) {
+                invalidatePendingSnoozeLookup()
                 snoozeWakeScheduleRevision += 1
                 reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
             }
             .onChange(of: workflowSourceID) { _, _ in
+                invalidatePendingSnoozeLookup()
                 snoozeWakeScheduleRevision += 1
             }
+            .onChange(of: folder?.id) { _, _ in invalidatePendingSnoozeLookup() }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 snoozeWakeScheduleRevision += 1
@@ -351,7 +366,10 @@ public struct MessageListView: View {
                 refreshPinnedMessageIDSet()
                 scheduleDebouncedThreadCountsRebuild()
             }
-            .onDisappear { searchWork.cancel() }
+            .onDisappear {
+                searchWork.cancel()
+                invalidatePendingSnoozeLookup()
+            }
             .onChange(of: groupByThread) {
                 activeMutationRequest = nil
                 // Cancel any pending debounced rebuild so a stale capture cannot
@@ -2377,7 +2395,8 @@ public struct MessageListView: View {
                 MessageListSnoozeWakeEntry(
                     sourceMessageID: SourceMessageID(sourceID: workflowSourceID, messageID: $0.id),
                     headerDate: $0.date,
-                    threadID: groupByThread && backend.groupsMessagesIntoThreads ? $0.threadID : nil
+                    threadID: groupByThread && backend.groupsMessagesIntoThreads ? $0.threadID : nil,
+                    header: $0
                 )
             },
             snoozes: localMessageWorkflowState.snoozes,
@@ -2426,6 +2445,7 @@ public struct MessageListView: View {
         )
         let workflowVisible = LocalMessageWorkflowVisibilityPolicy.headers(
             filtered,
+            candidates: headers,
             sourceID: workflowSourceID,
             mode: workflowVisibilityMode,
             state: localMessageWorkflowState,
@@ -3801,31 +3821,135 @@ public struct MessageListView: View {
 
     private func snooze(headers targetHeaders: [MessageHeader], until wakeAt: Date) {
         guard !targetHeaders.isEmpty else { return }
-        let previousState = localMessageWorkflowState
-        let sourceMessageIDs = sourceMessageIDs(for: targetHeaders)
-        var nextState = localMessageWorkflowState
-        for sourceMessageID in sourceMessageIDs {
-            nextState = LocalMessageWorkflowStatePolicy.snoozing(
-                sourceMessageID,
-                until: wakeAt,
-                in: nextState
+        guard let folder else { return }
+        let sourceID = workflowSourceID
+        let targetIDs = sourceMessageIDs(for: targetHeaders)
+        let targetCandidates = targetHeaders.map { LocalMessageWorkflowCandidate(sourceID: sourceID, header: $0) }
+        guard targetIDs.allSatisfy({ $0.sourceID == sourceID && allFolders.contains { $0.id == folder.id } }),
+              targetHeaders.allSatisfy({ $0.folderID == folder.id }) else {
+            mutationErrorStatus = MessageListPresentation.mutationErrorStatus(
+                for: LocalMessageWorkflowConversationCacheError.incompleteCache
             )
+            return
         }
-        saveLocalMessageWorkflowState(nextState)
-        navigation.bulkSelection.subtract(Set(targetHeaders.map(\.id)))
-        reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        pushLocalWorkflowUndo(
-            description: targetHeaders.count == 1 ? "Snoozed" : "Snoozed \(targetHeaders.count) messages",
-            previousState: previousState
-        )
+
+        workflowSnoozeLookupTask?.cancel()
+        workflowSnoozeRequestGeneration += 1
+        let generation = workflowSnoozeRequestGeneration
+        let expectedState = localMessageWorkflowState
+        let expectedBackendIdentity = ObjectIdentifier(backend)
+        let expectedFolderID = folder.id
+        let expectedSourceRevision = sourceSectionsRevisionProvider?()
+        mutationErrorStatus = nil
+
+        workflowSnoozeLookupTask = Task { @MainActor in
+            do {
+                let candidates = try await LocalMessageWorkflowConversationCache.candidates(
+                    backend: backend,
+                    sourceID: sourceID,
+                    folders: allFolders,
+                    anchors: targetHeaders,
+                    isCurrent: {
+                        isCurrentWorkflowSnoozeLookup(
+                            generation: generation,
+                            sourceID: sourceID,
+                            backendIdentity: expectedBackendIdentity,
+                            folderID: expectedFolderID,
+                            sourceRevision: expectedSourceRevision
+                        )
+                    }
+                )
+                guard isCurrentWorkflowSnoozeLookup(
+                    generation: generation,
+                    sourceID: sourceID,
+                    backendIdentity: expectedBackendIdentity,
+                    folderID: expectedFolderID,
+                    sourceRevision: expectedSourceRevision
+                ) else { return }
+
+                let currentState = localMessageWorkflowState
+                let baselineProjection = LocalMessageWorkflowConversationProjection(
+                    candidates: candidates,
+                    state: expectedState
+                )
+                let currentProjection = LocalMessageWorkflowConversationProjection(
+                    candidates: candidates,
+                    state: currentState
+                )
+                let affectedRulesChanged = targetCandidates.contains { candidate in
+                    let messageID = SourceMessageID(sourceID: candidate.sourceID, messageID: candidate.header.id)
+                    return baselineProjection.overlappingSnoozes(
+                        for: messageID,
+                        header: candidate.header,
+                        in: expectedState
+                    ) != currentProjection.overlappingSnoozes(
+                        for: messageID,
+                        header: candidate.header,
+                        in: currentState
+                    )
+                }
+                guard !affectedRulesChanged else {
+                    workflowSnoozeLookupTask = nil
+                    mutationErrorStatus = MessageListPresentation.mutationErrorStatus(
+                        for: LocalMessageWorkflowConversationCacheError.workflowChanged
+                    )
+                    return
+                }
+                guard isCurrentWorkflowSnoozeLookup(
+                    generation: generation,
+                    sourceID: sourceID,
+                    backendIdentity: expectedBackendIdentity,
+                    folderID: expectedFolderID,
+                    sourceRevision: expectedSourceRevision
+                ), localMessageWorkflowState == currentState else { return }
+
+                let result = LocalMessageWorkflowConversationMutationPolicy.snoozing(
+                    targetCandidates,
+                    until: wakeAt,
+                    projection: currentProjection,
+                    in: currentState
+                )
+                workflowSnoozeLookupTask = nil
+                saveLocalMessageWorkflowState(result.state)
+                navigation.bulkSelection.subtract(Set(targetHeaders.map(\.id)))
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+                pushLocalWorkflowUndo(
+                    description: targetHeaders.count == 1 ? "Snoozed" : "Snoozed \(targetHeaders.count) messages",
+                    previousState: currentState
+                )
+                if !result.limitedMessageIDs.isEmpty {
+                    mutationErrorStatus = MessageListFooterStatus(
+                        message: String(
+                            localized: "Only this message was snoozed because it has no usable reply identifiers.",
+                            bundle: .module
+                        ),
+                        actionTitle: String(localized: "Refresh", bundle: .module)
+                    )
+                }
+            } catch {
+                guard isCurrentWorkflowSnoozeLookup(
+                    generation: generation,
+                    sourceID: sourceID,
+                    backendIdentity: expectedBackendIdentity,
+                    folderID: expectedFolderID,
+                    sourceRevision: expectedSourceRevision
+                ) else { return }
+                workflowSnoozeLookupTask = nil
+                if !(error is CancellationError) {
+                    mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)
+                }
+            }
+        }
     }
 
     private func clearSnooze(headers targetHeaders: [MessageHeader]) {
         guard !targetHeaders.isEmpty else { return }
         let previousState = localMessageWorkflowState
-        let nextState = LocalMessageWorkflowStatePolicy.clearingSnooze(
-            sourceMessageIDs(for: targetHeaders),
-            in: localMessageWorkflowState
+        let candidates = targetHeaders.map { LocalMessageWorkflowCandidate(sourceID: workflowSourceID, header: $0) }
+        let nextState = LocalMessageWorkflowConversationMutationPolicy.clearingSnooze(
+            candidates,
+            projection: workflowConversationProjection,
+            in: previousState
         )
         saveLocalMessageWorkflowState(nextState)
         navigation.bulkSelection.subtract(Set(targetHeaders.map(\.id)))
@@ -3882,9 +4006,49 @@ public struct MessageListView: View {
         workflowLookupCache.lookup(for: localMessageWorkflowState)
     }
 
+    private var workflowConversationProjection: LocalMessageWorkflowConversationProjection {
+        workflowConversationProjectionCache.projection(
+            for: headers,
+            sourceID: workflowSourceID,
+            state: localMessageWorkflowState
+        )
+    }
+
+    private func invalidatePendingSnoozeLookup() {
+        workflowSnoozeRequestGeneration += 1
+        workflowSnoozeLookupTask?.cancel()
+        workflowSnoozeLookupTask = nil
+    }
+
+    private func isCurrentWorkflowSnoozeLookup(
+        generation: Int,
+        sourceID: MailSourceID,
+        backendIdentity: ObjectIdentifier,
+        folderID: Folder.ID,
+        sourceRevision: Int?
+    ) -> Bool {
+        guard !Task.isCancelled,
+              workflowSnoozeRequestGeneration == generation,
+              workflowSourceID == sourceID,
+              folder?.id == folderID else { return false }
+        if let sourceSectionsRevisionProvider,
+           sourceSectionsRevisionProvider() != sourceRevision { return false }
+        if let isSourceAvailable, !isSourceAvailable(sourceID) { return false }
+        if let currentBackendsProvider {
+            guard let currentBackend = currentBackendsProvider().first(where: {
+                $0.account.id == sourceID.accountID
+            }), ObjectIdentifier(currentBackend) == backendIdentity else { return false }
+        } else if ObjectIdentifier(backend) != backendIdentity {
+            return false
+        }
+        return true
+    }
+
     private func isSnoozed(_ header: MessageHeader) -> Bool {
-        workflowLookup.isSnoozed(
-            SourceMessageID(sourceID: workflowSourceID, messageID: header.id)
+        workflowConversationProjection.isSnoozed(
+            SourceMessageID(sourceID: workflowSourceID, messageID: header.id),
+            header: header,
+            at: Date()
         )
     }
 
@@ -3922,7 +4086,6 @@ public struct MessageListView: View {
 
     private func saveLocalMessageWorkflowState(_ state: LocalMessageWorkflowState) {
         localMessageWorkflowState = state
-        LocalMessageWorkflowStateStorage.save(state)
     }
 
     private func pushLocalWorkflowUndo(
@@ -3932,7 +4095,6 @@ public struct MessageListView: View {
         undoQueue?.push(UndoableMutation(description: description) {
             await MainActor.run {
                 localMessageWorkflowState = previousState
-                LocalMessageWorkflowStateStorage.save(previousState)
                 reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
             }
         })

@@ -12,6 +12,32 @@
 
 import Foundation
 
+/// RFC-only conversation links persisted with a local snooze rule.
+public struct LocalMessageSnoozeConversationMetadata: Codable, Equatable, Sendable {
+    public let rfcIdentifiers: [String]
+
+    /// Creates deterministic, deduplicated seeds from valid RFC identifier tokens.
+    public init(rfcIdentifiers: [String]) {
+        self.rfcIdentifiers = Array(Set(rfcIdentifiers.flatMap {
+            (try? ConversationMembershipResolver.identifiers(in: $0)) ?? []
+        })).sorted()
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case rfcIdentifiers
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rfcIdentifiers = try container.decode([String].self, forKey: .rfcIdentifiers)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(rfcIdentifiers, forKey: .rfcIdentifiers)
+    }
+}
+
 /// Local, provider-neutral snooze state for one message.
 ///
 /// Snoozes are keyed by `SourceMessageID` so identical provider message
@@ -20,15 +46,18 @@ public struct LocalMessageSnooze: Codable, Equatable, Identifiable, Sendable {
     public let messageID: SourceMessageID
     public var wakeAt: Date
     public let createdAt: Date
+    public var conversationMetadata: LocalMessageSnoozeConversationMetadata?
 
     public init(
         messageID: SourceMessageID,
         wakeAt: Date,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        conversationMetadata: LocalMessageSnoozeConversationMetadata? = nil
     ) {
         self.messageID = messageID
         self.wakeAt = wakeAt
         self.createdAt = createdAt
+        self.conversationMetadata = conversationMetadata
     }
 
     public var id: SourceMessageID { messageID }
@@ -192,13 +221,15 @@ public enum LocalMessageWorkflowStatePolicy {
         _ messageID: SourceMessageID,
         until wakeAt: Date,
         now: Date = Date(),
+        conversationMetadata: LocalMessageSnoozeConversationMetadata? = nil,
         in state: LocalMessageWorkflowState
     ) -> LocalMessageWorkflowState {
         var snoozes = state.snoozes.filter { $0.messageID != messageID }
         snoozes.append(LocalMessageSnooze(
             messageID: messageID,
             wakeAt: wakeAt,
-            createdAt: now
+            createdAt: now,
+            conversationMetadata: conversationMetadata
         ))
         return LocalMessageWorkflowState(
             snoozes: snoozes,

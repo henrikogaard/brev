@@ -19,6 +19,18 @@ import BrevThemes
 import Foundation
 import SwiftUI
 import UserNotifications
+
+private struct LocalMessageWorkflowReaderStateKey: EnvironmentKey {
+    static let defaultValue: LocalMessageWorkflowState? = nil
+}
+
+extension EnvironmentValues {
+    var localMessageWorkflowReaderState: LocalMessageWorkflowState? {
+        get { self[LocalMessageWorkflowReaderStateKey.self] }
+        set { self[LocalMessageWorkflowReaderStateKey.self] = newValue }
+    }
+}
+
 #if os(macOS)
 import AppKit
 #endif
@@ -367,6 +379,10 @@ public struct BrevMailRootView: View {
     /// confirmation alert. Both are handled on the root view so detached
     /// reader windows can drive them through the owning command handler.
     @State private var pendingReaderSnoozeTarget: DetachedReaderActionTarget?
+    @State private var readerSnoozeLookupTask: Task<Void, Never>?
+    @State private var readerSnoozeRequestGeneration = 0
+    @State private var workflowSnoozeReconciliationTask: Task<Void, Never>?
+    @State private var workflowSnoozeReconciliationGeneration = 0
     @State private var pendingReaderBlockSenderTarget: DetachedReaderActionTarget?
     /// Last "open in new window" request — a double-click and a context-menu
     /// invocation can both fire within a fraction of a second; repeats for the
@@ -384,7 +400,7 @@ public struct BrevMailRootView: View {
     @AppStorage(MailboxSourcePreferencesStorage.storageKey) private var mailboxSourcePreferencesData = Data()
     @AppStorage(FolderVisibilityPreferencesStorage.storageKey) private var folderVisibilityPreferencesData = Data()
     @AppStorage(FolderAliasPreferencesStorage.storageKey) private var folderAliasPreferencesData = Data()
-    @AppStorage(LocalMessageWorkflowStateStorage.storageKey) private var localMessageWorkflowStateData = Data()
+    @State private var localMessageWorkflowStateData = Data()
     @AppStorage(SmartMailboxSettings.storageKey) private var smartMailboxData = Data()
     @AppStorage(VIPSenderSettings.Key.senders) private var vipSenderData = Data()
     /// Decoded once per persisted-data change. These values are read by many
@@ -393,7 +409,7 @@ public struct BrevMailRootView: View {
     @State private var cachedMailboxSourcePreferences = MailboxSourcePreferencesStorage.load()
     @State private var cachedFolderVisibilityPreferences = FolderVisibilityPreferencesStorage.load()
     @State private var cachedFolderAliasPreferences = FolderAliasPreferencesStorage.load()
-    @State private var cachedLocalMessageWorkflowState = LocalMessageWorkflowStateStorage.load()
+    @State private var cachedLocalMessageWorkflowState = LocalMessageWorkflowState.defaults
     /// Same decode-once contract as the caches above: the VIP email set feeds
     /// smart-view resolution and the custom profile list feeds sidebar/profile
     /// derivation, so both must not hit UserDefaults/JSONDecoder per body pass.
@@ -621,6 +637,11 @@ public struct BrevMailRootView: View {
             self.aiBackends = aiBackends
         }
         self.settingsStore = settingsStore
+        let workflowStateData = settingsStore.data(forKey: LocalMessageWorkflowStateStorage.storageKey) ?? Data()
+        _localMessageWorkflowStateData = State(initialValue: workflowStateData)
+        _cachedLocalMessageWorkflowState = State(
+            initialValue: LocalMessageWorkflowStateStorage.decode(workflowStateData) ?? .defaults
+        )
         self.onSignOut = onSignOut
         self.onChangeTheme = onChangeTheme
         self.onOpenSettings = onOpenSettings
@@ -762,6 +783,10 @@ public struct BrevMailRootView: View {
                 await loadSelectedSearchSyntax()
             }
             .onDisappear {
+                readerSnoozeRequestGeneration += 1
+                readerSnoozeLookupTask?.cancel()
+                workflowSnoozeReconciliationGeneration += 1
+                workflowSnoozeReconciliationTask?.cancel()
                 stopImportSyncHealthPolling()
                 sourceLoadTimeoutTask?.cancel()
                 sourceLoadWorkTask?.cancel()
@@ -783,6 +808,11 @@ public struct BrevMailRootView: View {
             }
             .onChange(of: localMessageWorkflowStateData) { _, data in
                 cachedLocalMessageWorkflowState = LocalMessageWorkflowStateStorage.decode(data) ?? .defaults
+                scheduleWorkflowSnoozeReconciliation()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+                let data = settingsStore.data(forKey: LocalMessageWorkflowStateStorage.storageKey) ?? Data()
+                if data != localMessageWorkflowStateData { localMessageWorkflowStateData = data }
             }
             .onChange(of: customProfileStorage) { _, rawValue in
                 cachedCustomProfiles = MailProfileStorage.decode(rawValue)
@@ -796,8 +826,16 @@ public struct BrevMailRootView: View {
 
     private var mailRootLoadingContent: some View {
         MailRootRenderStage { mailRootCacheContent }
-            .task { monitor.start() }
+            .task {
+                monitor.start()
+                scheduleWorkflowSnoozeReconciliation()
+            }
             .onChange(of: backendSessionIDs) { previous, _ in handleBackendSessionChange(previousIDs: previous) }
+            .onChange(of: sourceSectionsRevision) { _, _ in scheduleWorkflowSnoozeReconciliation() }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                scheduleWorkflowSnoozeReconciliation()
+            }
             .task(id: backendSessionIDs) { await loadWorkspace(supersedingActiveLoads: true) }
             .task(id: fetchIntervalRaw) { await runPeriodicFetchScheduler() }
             .task(id: rootWorkBlockSnapshot) {
@@ -2085,11 +2123,12 @@ public struct BrevMailRootView: View {
         }
         // The compact iPhone reader is a sibling of the background workspace,
         // so install the owner here as well as on the root command context.
+        .environment(\.localMessageWorkflowReaderState, localMessageWorkflowStateBinding.wrappedValue)
+        .environment(\.relatedConversationController, relatedConversation)
         .readerCommandHandler(handleDetachedMessageCommand)
         #if os(iOS)
             // The phone reader has no coverage bar: its overflow menu carries the
             // related-mail actions and a footnote reports loading/failure.
-            .environment(\.relatedConversationController, relatedConversation)
             .environment(\.readerAskAIAction, ReaderAskAIAction { isMailContextSheetPresented = true })
         #endif
             .onChange(of: conversationAnchorKey(fallbackHeader: fallbackHeader), initial: true) { _, _ in
@@ -2530,10 +2569,14 @@ public struct BrevMailRootView: View {
                 },
                 onOpenInNewWindow: canDetachReaderWindow ? { item in
                     openMessageInNewWindow(item.header, sourceID: item.sourceID)
-                } : nil
-            ) { event in
-                await handleMessageListMutation(event)
-            }
+                } : nil,
+                onMutation: { event in
+                    await handleMessageListMutation(event)
+                },
+                currentBackendsProvider: { backends },
+                sourceSectionsRevisionProvider: { sourceSectionsRevision },
+                isSourceAvailable: { sourceID in sourceSections.contains { $0.id == sourceID } }
+            )
         }
     }
 
@@ -2620,7 +2663,10 @@ public struct BrevMailRootView: View {
                     onMutation: { event in
                         await handleMessageListMutation(event)
                     },
-                    onRefresh: listPullToRefresh
+                    onRefresh: listPullToRefresh,
+                    currentBackendsProvider: { backends },
+                    sourceSectionsRevisionProvider: { sourceSectionsRevision },
+                    isSourceAvailable: { sourceID in sourceSections.contains { $0.id == sourceID } }
                 )
             } else {
                 Group {
@@ -2655,7 +2701,10 @@ public struct BrevMailRootView: View {
                         onOpenInNewWindow: canDetachReaderWindow ? { header in
                             openMessageInNewWindow(header, sourceID: navigation.selectedSourceID)
                         } : nil,
-                        onRefresh: listPullToRefresh
+                        onRefresh: listPullToRefresh,
+                        currentBackendsProvider: { backends },
+                        sourceSectionsRevisionProvider: { sourceSectionsRevision },
+                        isSourceAvailable: { sourceID in sourceSections.contains { $0.id == sourceID } }
                     )
                 }
             }
@@ -3981,7 +4030,9 @@ public struct BrevMailRootView: View {
             get: { cachedLocalMessageWorkflowState },
             set: { state in
                 cachedLocalMessageWorkflowState = state
-                localMessageWorkflowStateData = LocalMessageWorkflowStateStorage.encode(state) ?? Data()
+                let data = LocalMessageWorkflowStateStorage.encode(state) ?? Data()
+                settingsStore.saveData(data, forKey: LocalMessageWorkflowStateStorage.storageKey)
+                localMessageWorkflowStateData = data
             }
         )
     }
@@ -6448,11 +6499,151 @@ public struct BrevMailRootView: View {
         LocalMessageWorkflowLookup(state: localMessageWorkflowStateBinding.wrappedValue)
     }
 
+    private func readerConversationProjection(
+        for header: MessageHeader,
+        sourceID: MailSourceID?
+    ) -> LocalMessageWorkflowConversationProjection {
+        let source = readerWorkflowSourceID(for: sourceID)
+        var candidates = relatedConversation.mergedThreadHeaders(
+            loaded: threadHeadersForSelection(fallbackHeader: header)
+        )
+        if !candidates.contains(where: { $0.id == header.id }) {
+            candidates.append(header)
+        }
+        return LocalMessageWorkflowConversationProjection(
+            candidates: candidates.map { .init(sourceID: source, header: $0) },
+            state: localMessageWorkflowStateBinding.wrappedValue
+        )
+    }
+
+    private func scheduleWorkflowSnoozeReconciliation() {
+        workflowSnoozeReconciliationGeneration += 1
+        workflowSnoozeReconciliationTask?.cancel()
+        let generation = workflowSnoozeReconciliationGeneration
+        let sourceRevision = sourceSectionsRevision
+        let initialState = localMessageWorkflowStateBinding.wrappedValue
+        let activeRules = initialState.snoozes.filter {
+            $0.isActive() && $0.conversationMetadata != nil
+        }
+        guard !activeRules.isEmpty else {
+            workflowSnoozeReconciliationTask = nil
+            return
+        }
+        let sourceIDs = Set(activeRules.map(\.messageID.sourceID))
+        var backendsBySource: [MailSourceID: any MailBackend] = [:]
+        var sectionsBySource: [MailSourceID: MailSourceSection] = [:]
+        for sourceID in sourceIDs {
+            guard let section = sourceSections.first(where: { $0.id == sourceID }),
+                  let backend = backends.first(where: { $0.account.id == sourceID.accountID }) else {
+                workflowSnoozeReconciliationTask = nil
+                return
+            }
+            backendsBySource[sourceID] = backend
+            sectionsBySource[sourceID] = section
+        }
+        let backendIdentities = backendsBySource.mapValues { ObjectIdentifier($0) }
+
+        workflowSnoozeReconciliationTask = Task { @MainActor in
+            defer {
+                if workflowSnoozeReconciliationGeneration == generation {
+                    workflowSnoozeReconciliationTask = nil
+                }
+            }
+            do {
+                var candidates: [LocalMessageWorkflowCandidate] = []
+                let orderedSources = sourceIDs.sorted {
+                    "\($0.accountID)\u{0}\($0.mailboxID)" < "\($1.accountID)\u{0}\($1.mailboxID)"
+                }
+                for sourceID in orderedSources {
+                    guard let backend = backendsBySource[sourceID],
+                          let section = sectionsBySource[sourceID] else { return }
+                    let sourceCandidates = try await LocalMessageWorkflowConversationCache.candidates(
+                        backend: backend,
+                        sourceID: sourceID,
+                        folders: section.folders,
+                        anchors: [],
+                        isCurrent: {
+                            isCurrentWorkflowSnoozeReconciliation(
+                                generation: generation,
+                                sourceIDs: sourceIDs,
+                                backendIdentities: backendIdentities,
+                                sourceRevision: sourceRevision
+                            )
+                        }
+                    )
+                    candidates.append(contentsOf: sourceCandidates)
+                }
+                guard isCurrentWorkflowSnoozeReconciliation(
+                    generation: generation,
+                    sourceIDs: sourceIDs,
+                    backendIdentities: backendIdentities,
+                    sourceRevision: sourceRevision
+                ), localMessageWorkflowStateBinding.wrappedValue == initialState else { return }
+
+                let projection = LocalMessageWorkflowConversationProjection(
+                    candidates: candidates,
+                    state: initialState
+                )
+                let reconciled = LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
+                    in: initialState,
+                    projection: projection
+                )
+                guard reconciled != initialState,
+                      isCurrentWorkflowSnoozeReconciliation(
+                          generation: generation,
+                          sourceIDs: sourceIDs,
+                          backendIdentities: backendIdentities,
+                          sourceRevision: sourceRevision
+                      ), localMessageWorkflowStateBinding.wrappedValue == initialState else { return }
+                localMessageWorkflowStateBinding.wrappedValue = reconciled
+            } catch {
+                return
+            }
+        }
+    }
+
+    private func isCurrentWorkflowSnoozeReconciliation(
+        generation: Int,
+        sourceIDs: Set<MailSourceID>,
+        backendIdentities: [MailSourceID: ObjectIdentifier],
+        sourceRevision: Int
+    ) -> Bool {
+        guard !Task.isCancelled,
+              workflowSnoozeReconciliationGeneration == generation,
+              sourceSectionsRevision == sourceRevision else { return false }
+        for sourceID in sourceIDs {
+            guard sourceSections.contains(where: { $0.id == sourceID }),
+                  let backend = backends.first(where: { $0.account.id == sourceID.accountID }),
+                  ObjectIdentifier(backend) == backendIdentities[sourceID] else { return false }
+        }
+        return true
+    }
+
+    private func isCurrentReaderSnoozeLookup(
+        generation: Int,
+        sourceID: MailSourceID,
+        backendIdentity: ObjectIdentifier,
+        folderID: Folder.ID,
+        sourceRevision: Int
+    ) -> Bool {
+        guard !Task.isCancelled,
+              readerSnoozeRequestGeneration == generation,
+              sourceSectionsRevision == sourceRevision,
+              let section = sourceSections.first(where: { $0.id == sourceID }),
+              section.folders.contains(where: { $0.id == folderID }),
+              let currentBackend = backends.first(where: { $0.account.id == sourceID.accountID }),
+              ObjectIdentifier(currentBackend) == backendIdentity else { return false }
+        return true
+    }
+
     private func isReaderSnoozed(_ header: MessageHeader) -> Bool {
-        readerWorkflowLookup().isSnoozed(SourceMessageID(
-            sourceID: readerWorkflowSourceID(for: navigation.selectedSourceID),
-            messageID: header.id
-        ))
+        readerConversationProjection(for: header, sourceID: navigation.selectedSourceID).isSnoozed(
+            SourceMessageID(
+                sourceID: readerWorkflowSourceID(for: navigation.selectedSourceID),
+                messageID: header.id
+            ),
+            header: header
+        )
     }
 
     private func snoozeMenuTitle(for header: MessageHeader) -> String {
@@ -6470,10 +6661,16 @@ public struct BrevMailRootView: View {
             sourceID: readerWorkflowSourceID(for: sourceID),
             messageID: header.id
         )
-        if readerWorkflowLookup().isSnoozed(messageID) {
+        let candidate = LocalMessageWorkflowCandidate(sourceID: messageID.sourceID, header: header)
+        let projection = readerConversationProjection(for: header, sourceID: sourceID)
+        if projection.isSnoozed(messageID, header: header) {
             let previousState = localMessageWorkflowStateBinding.wrappedValue
             localMessageWorkflowStateBinding.wrappedValue =
-                LocalMessageWorkflowStatePolicy.clearingSnooze([messageID], in: previousState)
+                LocalMessageWorkflowConversationMutationPolicy.clearingSnooze(
+                    [candidate],
+                    projection: projection,
+                    in: previousState
+                )
             pushReaderWorkflowUndo(
                 description: String(localized: "Unsnoozed", bundle: .module),
                 previousState: previousState
@@ -6484,17 +6681,117 @@ public struct BrevMailRootView: View {
     }
 
     private func readerSnooze(header: MessageHeader, sourceID: MailSourceID?, until wakeAt: Date) {
-        let previousState = localMessageWorkflowStateBinding.wrappedValue
-        let messageID = SourceMessageID(
-            sourceID: readerWorkflowSourceID(for: sourceID),
-            messageID: header.id
-        )
-        localMessageWorkflowStateBinding.wrappedValue =
-            LocalMessageWorkflowStatePolicy.snoozing(messageID, until: wakeAt, in: previousState)
-        pushReaderWorkflowUndo(
-            description: String(localized: "Snoozed", bundle: .module),
-            previousState: previousState
-        )
+        let resolvedSourceID = readerWorkflowSourceID(for: sourceID)
+        guard let section = sourceSections.first(where: { $0.id == resolvedSourceID }),
+              let backend = backends.first(where: { $0.account.id == resolvedSourceID.accountID }),
+              section.folders.contains(where: { $0.id == header.folderID }) else {
+            rootStatus = MailRootStatus(
+                message: LocalMessageWorkflowConversationCacheError.sourceUnavailable.errorDescription ?? ""
+            )
+            return
+        }
+
+        readerSnoozeLookupTask?.cancel()
+        readerSnoozeRequestGeneration += 1
+        let generation = readerSnoozeRequestGeneration
+        let expectedRevision = sourceSectionsRevision
+        let expectedBackendIdentity = ObjectIdentifier(backend)
+        let expectedState = localMessageWorkflowStateBinding.wrappedValue
+        let messageID = SourceMessageID(sourceID: resolvedSourceID, messageID: header.id)
+        let candidate = LocalMessageWorkflowCandidate(sourceID: resolvedSourceID, header: header)
+        readerSnoozeLookupTask = Task { @MainActor in
+            do {
+                let candidates = try await LocalMessageWorkflowConversationCache.candidates(
+                    backend: backend,
+                    sourceID: resolvedSourceID,
+                    folders: section.folders,
+                    anchors: [header],
+                    isCurrent: {
+                        isCurrentReaderSnoozeLookup(
+                            generation: generation,
+                            sourceID: resolvedSourceID,
+                            backendIdentity: expectedBackendIdentity,
+                            folderID: header.folderID,
+                            sourceRevision: expectedRevision
+                        )
+                    }
+                )
+                guard isCurrentReaderSnoozeLookup(
+                    generation: generation,
+                    sourceID: resolvedSourceID,
+                    backendIdentity: expectedBackendIdentity,
+                    folderID: header.folderID,
+                    sourceRevision: expectedRevision
+                ) else { return }
+
+                let currentState = localMessageWorkflowStateBinding.wrappedValue
+                let baselineProjection = LocalMessageWorkflowConversationProjection(
+                    candidates: candidates,
+                    state: expectedState
+                )
+                let currentProjection = LocalMessageWorkflowConversationProjection(
+                    candidates: candidates,
+                    state: currentState
+                )
+                guard baselineProjection.overlappingSnoozes(
+                    for: messageID,
+                    header: header,
+                    in: expectedState
+                ) == currentProjection.overlappingSnoozes(
+                    for: messageID,
+                    header: header,
+                    in: currentState
+                ) else {
+                    readerSnoozeLookupTask = nil
+                    rootStatus = MailRootStatus(
+                        message: LocalMessageWorkflowConversationCacheError.workflowChanged.errorDescription ?? "",
+                        tone: .warning
+                    )
+                    return
+                }
+                guard isCurrentReaderSnoozeLookup(
+                    generation: generation,
+                    sourceID: resolvedSourceID,
+                    backendIdentity: expectedBackendIdentity,
+                    folderID: header.folderID,
+                    sourceRevision: expectedRevision
+                ), localMessageWorkflowStateBinding.wrappedValue == currentState else { return }
+
+                let result = LocalMessageWorkflowConversationMutationPolicy.snoozing(
+                    [candidate],
+                    until: wakeAt,
+                    projection: currentProjection,
+                    in: currentState
+                )
+                readerSnoozeLookupTask = nil
+                localMessageWorkflowStateBinding.wrappedValue = result.state
+                pushReaderWorkflowUndo(
+                    description: String(localized: "Snoozed", bundle: .module),
+                    previousState: currentState
+                )
+                if !result.limitedMessageIDs.isEmpty {
+                    rootStatus = MailRootStatus(
+                        message: String(
+                            localized: "Only this message was snoozed because it has no usable reply identifiers.",
+                            bundle: .module
+                        ),
+                        tone: .info
+                    )
+                }
+            } catch {
+                guard isCurrentReaderSnoozeLookup(
+                    generation: generation,
+                    sourceID: resolvedSourceID,
+                    backendIdentity: expectedBackendIdentity,
+                    folderID: header.folderID,
+                    sourceRevision: expectedRevision
+                ) else { return }
+                readerSnoozeLookupTask = nil
+                if !(error is CancellationError) {
+                    rootStatus = MailRootStatus(message: error.localizedDescription, tone: .warning)
+                }
+            }
+        }
     }
 
     private func readerToggleDone(header: MessageHeader, sourceID: MailSourceID?) {
@@ -7655,6 +7952,7 @@ public struct BrevMailRootView: View {
                 || navigation.selectedSourceID == nil
         )
         scheduleBackendEventRefreshIfNeeded()
+        scheduleWorkflowSnoozeReconciliation()
     }
 
     private func handleDroppedMessages(

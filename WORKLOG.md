@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — #297
+
+- Goal: extend PR #324 snoozing to cached RFC-linked conversations without guessing from subjects or provider thread IDs.
+- Changes: added optional normalized RFC seed metadata, an indexed source-scoped conversation projection and mutation policy, cache-only folder scans for snooze actions, stale-work guards, root reconciliation, derived wake ordering, and cached cross-folder Snoozed loading. Preferences remain on the existing workflow-state key and iCloud opt-in; no mail content or network requests were added.
+- Verification: the actual-source Linux conversation harness passed 33 checks; pinned SwiftFormat required no changes across 19 Swift files; `swiftc -frontend -parse` parsed 19 changed Swift files; all 6 added catalog keys have `nb` entries; all 5 new Swift files match the exact header template; ADR-required and diff checks passed.
+- Skipped: native BrevMail tests/typechecking and visual QA require macOS. The earlier Linux package-test attempt stopped at `BrevPluginRegistry.swift:14:8: error: no such module 'SwiftUI'`. No hosted CI, PR, or issue edits were made.
+
 ## 2026-11-21 — Agent — #297 snooze-wake review corrections
 
 - Goal: address the pre-PR review findings without broadening the message-scoped wake slice.

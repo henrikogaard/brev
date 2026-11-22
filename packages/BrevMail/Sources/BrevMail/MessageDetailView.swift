@@ -46,6 +46,7 @@ public struct MessageDetailView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.relatedConversationController) private var relatedConversation
+    @Environment(\.localMessageWorkflowReaderState) private var injectedWorkflowState
     @Environment(\.readerAskAIAction) private var askAIAction
     @Environment(\.messageReaderReferenceDate) private var referenceDate
     private let backend: any MailBackend
@@ -827,9 +828,12 @@ public struct MessageDetailView: View {
             sourceID: readerWorkflowSourceID,
             messageID: header.id
         )
-        let lookup = LocalMessageWorkflowLookup(
-            state: LocalMessageWorkflowStateStorage.decode(localWorkflowStateData) ?? .defaults
-        )
+        let state = injectedWorkflowState ?? LocalMessageWorkflowStateStorage.decode(localWorkflowStateData) ?? .defaults
+        let lookup = LocalMessageWorkflowLookup(state: state)
+        let candidates = (relatedConversation?.mergedThreadHeaders(loaded: [header]) ?? [header]).map {
+            LocalMessageWorkflowCandidate(sourceID: readerWorkflowSourceID, header: $0)
+        }
+        let projection = LocalMessageWorkflowConversationProjection(candidates: candidates, state: state)
         let moveCandidates = MessageCommandPresentation.moveFolderCandidates(
             from: allFolders,
             currentFolderID: header.folderID
@@ -839,7 +843,7 @@ public struct MessageDetailView: View {
         let canPresentSheets = closeWindow != nil || navigation?.presentedSheet == nil
         return MessageCommandPresentation.readerMenu(
             for: header,
-            isSnoozed: lookup.isSnoozed(workflowID),
+            isSnoozed: projection.isSnoozed(workflowID, header: header),
             isDone: lookup.isDone(workflowID),
             isKeptOffline: MessageOfflineRetentionOverrideStore().isKeptOffline(workflowID),
             hasNote: lookup.note(for: workflowID) != nil,

@@ -17,6 +17,19 @@ struct MessageListSnoozeWakeEntry: Sendable {
     let sourceMessageID: SourceMessageID
     let headerDate: Date
     let threadID: String?
+    let header: MessageHeader?
+
+    init(
+        sourceMessageID: SourceMessageID,
+        headerDate: Date,
+        threadID: String?,
+        header: MessageHeader? = nil
+    ) {
+        self.sourceMessageID = sourceMessageID
+        self.headerDate = headerDate
+        self.threadID = threadID
+        self.header = header
+    }
 }
 
 enum MessageListSnoozeWakePolicy {
@@ -25,17 +38,26 @@ enum MessageListSnoozeWakePolicy {
         snoozes: [LocalMessageSnooze],
         now: Date
     ) -> [SourceMessageID: Date] {
+        let state = LocalMessageWorkflowState(snoozes: snoozes)
+        let projection = LocalMessageWorkflowConversationProjection(
+            candidates: entries.compactMap { entry in
+                entry.header.map { .init(sourceID: entry.sourceMessageID.sourceID, header: $0) }
+            },
+            state: state,
+            now: now
+        )
         var expiredWakeDates: [SourceMessageID: Date] = [:]
-        for snooze in snoozes where snooze.wakeAt <= now {
-            expiredWakeDates[snooze.messageID] = max(
-                expiredWakeDates[snooze.messageID] ?? .distantPast,
-                snooze.wakeAt
-            )
+        for entry in entries {
+            let snooze = entry.header.map { projection.snooze(for: entry.sourceMessageID, header: $0) }
+                ?? projection.snooze(for: entry.sourceMessageID)
+            guard let snooze, snooze.wakeAt <= now else { continue }
+            expiredWakeDates[entry.sourceMessageID] = snooze.wakeAt
         }
 
         var effectiveDates: [SourceMessageID: Date] = [:]
         var latestDateByThread: [ThreadKey: Date] = [:]
         var latestWakeDateByThread: [ThreadKey: Date] = [:]
+        var legacyThreadWakeDates: [ThreadKey: Date] = [:]
         for entry in entries {
             let effectiveDate = max(
                 entry.headerDate,
@@ -48,8 +70,12 @@ enum MessageListSnoozeWakePolicy {
             if let threadID = entry.threadID {
                 let key = ThreadKey(sourceID: entry.sourceMessageID.sourceID, threadID: threadID)
                 latestDateByThread[key] = max(latestDateByThread[key] ?? .distantPast, effectiveDate)
-                if let wakeAt = expiredWakeDates[entry.sourceMessageID] {
+                let snooze = entry.header.map { projection.snooze(for: entry.sourceMessageID, header: $0) }
+                    ?? projection.snooze(for: entry.sourceMessageID)
+                if let wakeAt = expiredWakeDates[entry.sourceMessageID],
+                   snooze?.conversationMetadata == nil {
                     latestWakeDateByThread[key] = max(latestWakeDateByThread[key] ?? .distantPast, wakeAt)
+                    legacyThreadWakeDates[key] = max(legacyThreadWakeDates[key] ?? .distantPast, wakeAt)
                 }
             }
         }
@@ -59,7 +85,7 @@ enum MessageListSnoozeWakePolicy {
             let effectiveDate: Date
             if let threadID = entry.threadID {
                 let key = ThreadKey(sourceID: entry.sourceMessageID.sourceID, threadID: threadID)
-                effectiveDate = latestWakeDateByThread[key] == nil
+                effectiveDate = legacyThreadWakeDates[key] == nil
                     ? effectiveDates[entry.sourceMessageID] ?? entry.headerDate
                     : latestDateByThread[key] ?? entry.headerDate
             } else {

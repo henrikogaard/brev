@@ -4,6 +4,9 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Snoozing a message now covers its RFC-linked conversation using cached mail,
+  including newly discovered replies; unrelated messages are not grouped by
+  subject or provider thread identifiers (#297).
 - Snoozed messages return to newest-first Inbox ordering when they wake;
   message timestamps and provider data remain unchanged (#297).
 - Assistant sidebar destination (#294): clicking Assistant in the sidebar or

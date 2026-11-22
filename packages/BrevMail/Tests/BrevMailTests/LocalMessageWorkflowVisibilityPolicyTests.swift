@@ -131,6 +131,89 @@ struct LocalMessageWorkflowVisibilityPolicyTests {
         ).map(\.id) == [done.id])
     }
 
+    @Test("conversation projection uses unfiltered candidates when a parent is hidden")
+    func conversationProjectionUsesUnfilteredCandidates() {
+        let now = Date(timeIntervalSince1970: 3500)
+        let anchor = MessageHeader(
+            id: "anchor", threadID: "thread", folderID: "Archive",
+            from: Correspondent(email: "ada@example.org"), subject: "Subject", snippet: "",
+            date: now, messageID: "root@example.org"
+        )
+        let reply = MessageHeader(
+            id: "reply", threadID: "thread", folderID: "Inbox",
+            from: Correspondent(email: "ada@example.org"), subject: "Subject", snippet: "",
+            date: now.addingTimeInterval(60), messageID: "reply@example.org", inReplyTo: "root@example.org"
+        )
+        let state = LocalMessageWorkflowState(snoozes: [LocalMessageSnooze(
+            messageID: SourceMessageID(sourceID: source, messageID: anchor.id),
+            wakeAt: now.addingTimeInterval(3600),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["root@example.org"])
+        )])
+
+        let visible = LocalMessageWorkflowVisibilityPolicy.headers(
+            [reply],
+            candidates: [anchor, reply],
+            sourceID: source,
+            mode: .active,
+            state: state,
+            now: now
+        )
+
+        #expect(visible.isEmpty)
+    }
+
+    @Test("snoozed cache keeps RFC-linked arrivals, drops reused-ID unrelated mail and deduplicates copies")
+    func snoozedCacheUsesRFCIdentityAndDeduplicatesPhysicalCopies() {
+        let now = Date(timeIntervalSince1970: 3500)
+        let inbox = Folder(id: "Inbox", name: "Inbox", role: .inbox)
+        let archive = Folder(id: "Archive", name: "Archive", role: .archive)
+        let sent = Folder(id: "Sent", name: "Sent", role: .sent)
+        let anchor = MessageHeader(
+            id: "reused-id", threadID: "same-thread", folderID: inbox.id,
+            from: Correspondent(email: "ada@example.org"), subject: "Subject", snippet: "",
+            date: now, messageID: "root@example.org"
+        )
+        let physicalCopy = MessageHeader(
+            id: "copy-id", threadID: "same-thread", folderID: archive.id,
+            from: Correspondent(email: "ada@example.org"), subject: "Subject", snippet: "",
+            date: now, messageID: "<root@example.org>"
+        )
+        let reusedUnrelated = MessageHeader(
+            id: anchor.id, threadID: anchor.threadID, folderID: sent.id,
+            from: Correspondent(email: "other@example.org"), subject: "Subject", snippet: "",
+            date: now, messageID: "unrelated@example.org"
+        )
+        let reply = MessageHeader(
+            id: "reply-id", threadID: "same-thread", folderID: sent.id,
+            from: Correspondent(email: "ada@example.org"), subject: "Subject", snippet: "",
+            date: now.addingTimeInterval(30), messageID: "reply@example.org", inReplyTo: "root@example.org"
+        )
+        let items = [
+            (anchor, inbox), (physicalCopy, archive), (reusedUnrelated, sent), (reply, sent)
+        ].map { header, folder in
+            UnifiedInboxItem(
+                sourceID: source,
+                folder: folder,
+                header: header,
+                sourceTitle: "Personal",
+                sourceSubtitle: "ada@example.org",
+                archiveFolder: archive
+            )
+        }
+        let state = LocalMessageWorkflowState(snoozes: [LocalMessageSnooze(
+            messageID: SourceMessageID(sourceID: source, messageID: anchor.id),
+            wakeAt: now.addingTimeInterval(3600),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["root@example.org"])
+        )])
+
+        let visible = LocalMessageWorkflowVisibilityPolicy.snoozedCacheItems(items, state: state, now: now)
+
+        #expect(visible.map(\.header.id) == [anchor.id, reply.id])
+        #expect(LocalMessageWorkflowVisibilityPolicy.snoozedCacheItems(items, state: .defaults, now: now).isEmpty)
+    }
+
     @Test("unified inbox filtering uses each item's source identity")
     func unifiedInboxFilteringUsesEachItemsSourceIdentity() {
         let now = Date(timeIntervalSince1970: 4000)

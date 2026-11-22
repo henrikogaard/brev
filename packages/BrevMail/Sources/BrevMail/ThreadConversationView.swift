@@ -92,6 +92,7 @@ public struct ThreadConversationView: View {
     private var threadMessageOrderRaw = MailboxThreadOrder.oldestFirst.rawValue
     @AppStorage(LocalMessageWorkflowStateStorage.storageKey)
     private var localWorkflowStateData = Data()
+    @Environment(\.localMessageWorkflowReaderState) private var injectedWorkflowState
 
     /// Creates a conversation reader with per-message actions owned by its mailbox.
     /// - Parameters:
@@ -403,8 +404,13 @@ public struct ThreadConversationView: View {
             mailboxID: backend.account.id
         )
         let workflowID = SourceMessageID(sourceID: workflowSourceID, messageID: header.id)
-        let lookup = LocalMessageWorkflowLookup(
-            state: LocalMessageWorkflowStateStorage.decode(localWorkflowStateData) ?? .defaults
+        let state = injectedWorkflowState ?? LocalMessageWorkflowStateStorage.decode(localWorkflowStateData) ?? .defaults
+        let lookup = LocalMessageWorkflowLookup(state: state)
+        let projection = LocalMessageWorkflowConversationProjection(
+            candidates: (threadHeaders + [header]).map {
+                LocalMessageWorkflowCandidate(sourceID: workflowSourceID, header: $0)
+            },
+            state: state
         )
         let moveCandidates = MessageCommandPresentation.moveFolderCandidates(
             from: allFolders,
@@ -414,7 +420,7 @@ public struct ThreadConversationView: View {
         let canPresentSheets = navigation.presentedSheet == nil
         return MessageCommandPresentation.readerMenu(
             for: header,
-            isSnoozed: lookup.isSnoozed(workflowID),
+            isSnoozed: projection.isSnoozed(workflowID, header: header),
             isDone: lookup.isDone(workflowID),
             isKeptOffline: MessageOfflineRetentionOverrideStore().isKeptOffline(workflowID),
             hasNote: lookup.note(for: workflowID) != nil,

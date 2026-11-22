@@ -29,6 +29,20 @@ public struct SettingsPersistenceStore: Equatable {
         self.defaults = defaults
     }
 
+    /// Reads opaque preference data from this store's defaults suite.
+    public func data(forKey key: String) -> Data? {
+        defaults.data(forKey: key)
+    }
+
+    /// Writes opaque preference data to this store's defaults suite.
+    public func saveData(_ data: Data?, forKey key: String) {
+        if let data {
+            defaults.set(data, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
     public static func == (
         lhs: SettingsPersistenceStore,
         rhs: SettingsPersistenceStore

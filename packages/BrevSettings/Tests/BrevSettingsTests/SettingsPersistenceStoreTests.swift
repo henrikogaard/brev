@@ -102,6 +102,22 @@ struct SettingsPersistenceStoreTests {
         #expect(SettingsPersistenceStore.standard == SettingsPersistenceStore(defaults: .standard))
     }
 
+    @Test("opaque data stays in the injected defaults suite")
+    func opaqueDataUsesInjectedDefaults() throws {
+        let defaults = try Self.makeDefaults()
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let key = "settings-store-data-\(UUID().uuidString)"
+        let value = Data([1, 2, 3])
+
+        store.saveData(value, forKey: key)
+
+        #expect(store.data(forKey: key) == value)
+        #expect(UserDefaults.standard.data(forKey: key) == nil)
+
+        store.saveData(nil, forKey: key)
+        #expect(store.data(forKey: key) == nil)
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "SettingsPersistenceStoreTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
