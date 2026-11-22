@@ -247,18 +247,26 @@ struct ComposeOperationResponsePolicyTests {
         ))
     }
 
-    @Test("plain sends do not require remote draft persistence before SMTP")
-    func plainSendsDoNotRequireRemoteDraftPersistenceBeforeSMTP() {
-        #expect(!ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
-            hasPendingAttachments: false
-        ))
-    }
+    @Test("pre-send draft persistence policy truth table")
+    func preSendDraftPersistencePolicyTruthTable() {
+        let cases: [(Bool, Bool, Bool, Bool)] = [
+            (false, false, false, false),
+            (false, false, true, false),
+            (false, true, false, false),
+            (false, true, true, true),
+            (true, false, false, true),
+            (true, false, true, true),
+            (true, true, false, true),
+            (true, true, true, true)
+        ]
 
-    @Test("attachment sends still persist first so attachment bytes are staged")
-    func attachmentSendsStillPersistFirstSoAttachmentBytesAreStaged() {
-        #expect(ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
-            hasPendingAttachments: true
-        ))
+        for (hasPendingAttachments, hasNoReplyFollowUp, hasExistingRemoteDraft, expected) in cases {
+            #expect(ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
+                hasPendingAttachments: hasPendingAttachments,
+                hasNoReplyFollowUp: hasNoReplyFollowUp,
+                hasExistingRemoteDraft: hasExistingRemoteDraft
+            ) == expected)
+        }
     }
 
     private static func snapshot(

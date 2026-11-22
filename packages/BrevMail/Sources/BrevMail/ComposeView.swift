@@ -3942,12 +3942,18 @@ public struct ComposeView: View {
         // before building or persisting the draft so the attachment IDs are
         // available in `currentDraft()`.
         try await stageInlineImages()
+        let requestedDraft = currentDraft()
         guard ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
-            hasPendingAttachments: pendingAttachments.contains { restoredDraft == nil || $0.uploadedAttachmentID == nil }
+            hasPendingAttachments: pendingAttachments.contains { restoredDraft == nil || $0.uploadedAttachmentID == nil },
+            hasNoReplyFollowUp: requestedDraft.followUpRequest != nil,
+            hasExistingRemoteDraft: requestedDraft.remoteID != nil
         ) else {
-            return currentDraft()
+            return requestedDraft
         }
-        return try await persistDraft(for: request)
+        var saved = try await persistDraft(for: request)
+        saved.scheduledFor = requestedDraft.scheduledFor
+        saved.followUpRequest = requestedDraft.followUpRequest
+        return saved
     }
 
     /// Reconciles the inline-image registry against the serialised HTML body,

@@ -510,6 +510,37 @@ struct GmailAPIDraftBackendTests {
         #expect(await transport.deletedDraftIDs() == ["remote-draft-1"])
     }
 
+    @Test("saving an opted-in existing Gmail draft writes its canonical RFC Message-ID")
+    func optedInExistingDraftSaveWritesCanonicalMessageID() async throws {
+        let transport = DraftBackendTransport()
+        let backend = Self.backend(transport: transport)
+        try await backend.connect()
+        let draftID = "canonical-follow-up"
+        let expectedMessageID = MIMEMessageBuilder.messageIDHeaderValue(
+            draftID: draftID,
+            fromEmail: "primary@example.com"
+        )
+        let followUpRequest = DraftNoReplyFollowUpRequest(expectedMessageID: expectedMessageID)
+        let draft = Draft(
+            id: draftID,
+            remoteID: "existing-remote-draft",
+            to: [Correspondent(email: "to@example.com")],
+            subject: "No-reply draft",
+            htmlBody: "<p>Preserved Gmail content</p>",
+            scheduledFor: Date(timeIntervalSince1970: 2_000_000_000),
+            followUpRequest: followUpRequest
+        )
+
+        let saved = try await backend.save(draft: draft)
+
+        let rawMIME = try #require(await transport.createdRawMIME())
+        #expect(await transport.updatedDraftID() == "existing-remote-draft")
+        #expect(rawMIME.contains("Message-ID: \(expectedMessageID)"))
+        #expect(saved.followUpRequest == followUpRequest)
+        #expect(saved.scheduledFor == draft.scheduledFor)
+        #expect(saved.htmlBody == draft.htmlBody)
+    }
+
     @Test("preserves the provider-neutral thread ID across draft writes and raw sends")
     func preservesThreadIDAcrossWritesAndSends() async throws {
         let transport = DraftBackendTransport()

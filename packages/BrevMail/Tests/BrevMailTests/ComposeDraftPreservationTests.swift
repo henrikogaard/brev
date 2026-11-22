@@ -106,6 +106,106 @@ struct ComposeDraftPreservationTests {
         #expect(persisted.followUpRequest == original.followUpRequest)
     }
 
+    @Test("opted-in server drafts save before Send and retain scheduled content")
+    @MainActor
+    func optedInServerDraftSavesBeforeSendAndRetainsIntent() async throws {
+        let backing = MockBackend()
+        let mailbox = try #require(await backing.mailboxes().first)
+        let sourceID = backing.sourceID(for: mailbox)
+        let draftID = "server-sourced-follow-up"
+        let scheduledFor = Date(timeIntervalSince1970: 2_000_000_000)
+        let attachmentID = try await backing.uploadAttachment(
+            draftID: draftID,
+            data: Data([7, 8, 9]),
+            filename: "retained.bin",
+            mimeType: "application/octet-stream",
+            sourceID: sourceID
+        )
+        let original = try await backing.save(draft: Draft(
+            id: draftID,
+            remoteID: "server-draft-follow-up",
+            to: [Correspondent(email: "recipient@example.invalid")],
+            subject: "Server draft",
+            htmlBody: "<p>Preserved body</p>",
+            attachmentIDs: [attachmentID],
+            scheduledFor: scheduledFor
+        ), sourceID: sourceID)
+        let attachments = try await backing.localDraftAttachments(for: original, sourceID: sourceID)
+        let backend = NormalizingDraftSaveBackend(backing: backing, behavior: .stripIntentFromResponse)
+        let probe = ComposeDraftSendProbe(backend: backing)
+        backing.sendHandler = { draft, sendSourceID in
+            await probe.record(draft: draft, sourceID: sendSourceID)
+            return SendResult(sentMessageID: "accepted")
+        }
+        let harness = try Harness(
+            backend: backend,
+            original: original,
+            sourceID: sourceID,
+            attachments: attachments,
+            isServerSourced: true
+        )
+        defer { harness.dispose() }
+        try await harness.prepare()
+
+        harness.mounted?.setNoReplyFollowUpEnabled(true)
+        await harness.mounted?.send(bypassingSendGuard: true)
+
+        let observation = await probe.snapshot()
+        let sentDraft = try #require(observation.sentDraft)
+        let persistedDraft = try #require(observation.persistedDraft)
+        let expectedMessageID = MIMEMessageBuilder.messageIDHeaderValue(
+            draftID: original.id,
+            fromEmail: "sender@example.invalid"
+        )
+        let expectedRequest = DraftNoReplyFollowUpRequest(expectedMessageID: expectedMessageID)
+        #expect(observation.sourceID == sourceID)
+        #expect(sentDraft.scheduledFor == scheduledFor)
+        #expect(sentDraft.followUpRequest == expectedRequest)
+        #expect(persistedDraft.scheduledFor == scheduledFor)
+        #expect(persistedDraft.followUpRequest == expectedRequest)
+        #expect(sentDraft.htmlBody == original.htmlBody)
+        #expect(sentDraft.attachmentIDs == original.attachmentIDs)
+        #expect(persistedDraft.htmlBody == original.htmlBody)
+        #expect(persistedDraft.attachmentIDs == original.attachmentIDs)
+        #expect(harness.acceptedSends.count == 1)
+    }
+
+    @Test("failed opted-in server-draft save prevents Send and acceptance")
+    @MainActor
+    func failedOptedInServerDraftSavePreventsSendAndAcceptance() async throws {
+        let backing = MockBackend()
+        let mailbox = try #require(await backing.mailboxes().first)
+        let sourceID = backing.sourceID(for: mailbox)
+        let original = try await backing.save(draft: Draft(
+            id: "failed-server-draft-save",
+            remoteID: "failed-server-draft-save-remote",
+            to: [Correspondent(email: "recipient@example.invalid")],
+            subject: "Save must succeed first",
+            htmlBody: "<p>Draft content</p>"
+        ), sourceID: sourceID)
+        let backend = NormalizingDraftSaveBackend(backing: backing, behavior: .fail)
+        let sendAttempts = ComposeSendAttemptCounter()
+        backing.sendHandler = { _, _ in
+            await sendAttempts.record()
+            return SendResult(sentMessageID: "unexpected")
+        }
+        let harness = try Harness(
+            backend: backend,
+            original: original,
+            sourceID: sourceID,
+            isServerSourced: true
+        )
+        defer { harness.dispose() }
+        try await harness.prepare()
+
+        harness.mounted?.setNoReplyFollowUpEnabled(true)
+        await harness.mounted?.send(bypassingSendGuard: true)
+
+        let sendAttemptCount = await sendAttempts.count()
+        #expect(sendAttemptCount == 0)
+        #expect(harness.acceptedSends.isEmpty)
+    }
+
     @Test("mounted accepted Send invokes the captured callback exactly once")
     @MainActor
     func acceptedSendInvokesCallbackOnce() async throws {
@@ -658,6 +758,147 @@ struct ComposeDraftPreservationTests {
         await harness.render { harness.storedRecovery == nil }
         #expect(harness.storedRecovery == nil)
         #expect(try await backend.draft(for: original.remoteID ?? original.id) == original)
+    }
+
+    private enum DraftSaveFailure: Error {
+        case failed
+    }
+
+    private final class NormalizingDraftSaveBackend: MailBackend, LocalDraftAttachmentProviding, @unchecked Sendable {
+        enum Behavior: Equatable {
+            case stripIntentFromResponse
+            case fail
+        }
+
+        private let backing: MockBackend
+        private let behavior: Behavior
+
+        var account: BrevAccount { backing.account }
+        var capabilities: BackendCapabilities { backing.capabilities }
+        var extendedCapabilities: BackendExtendedCapabilities { backing.extendedCapabilities }
+
+        init(backing: MockBackend, behavior: Behavior) {
+            self.backing = backing
+            self.behavior = behavior
+        }
+
+        func connect() async throws { try await backing.connect() }
+        func disconnect() async { await backing.disconnect() }
+        func folders() async throws -> [Folder] { try await backing.folders() }
+        func refresh(folder: Folder) async throws { try await backing.refresh(folder: folder) }
+        func messages(in folder: Folder, pageToken: String?) async throws -> (
+            headers: [MessageHeader],
+            nextPageToken: String?
+        ) {
+            try await backing.messages(in: folder, pageToken: pageToken)
+        }
+
+        func body(for messageID: String) async throws -> MessageBody {
+            try await backing.body(for: messageID)
+        }
+
+        func setRead(_ isRead: Bool, for messageIDs: [String]) async throws {
+            try await backing.setRead(isRead, for: messageIDs)
+        }
+
+        func setFlagged(_ isFlagged: Bool, for messageIDs: [String]) async throws {
+            try await backing.setFlagged(isFlagged, for: messageIDs)
+        }
+
+        func move(messageIDs: [String], to folder: Folder) async throws {
+            try await backing.move(messageIDs: messageIDs, to: folder)
+        }
+
+        func delete(messageIDs: [String]) async throws { try await backing.delete(messageIDs: messageIDs) }
+
+        func save(draft: Draft) async throws -> Draft {
+            try await normalizedSave(draft) { try await backing.save(draft: $0) }
+        }
+
+        func draft(for messageID: String) async throws -> Draft? {
+            try await backing.draft(for: messageID)
+        }
+
+        func uploadAttachment(draftID: String, data: Data, filename: String, mimeType: String) async throws -> String {
+            try await backing.uploadAttachment(draftID: draftID, data: data, filename: filename, mimeType: mimeType)
+        }
+
+        func discard(draftID: String) async throws { try await backing.discard(draftID: draftID) }
+
+        func send(draft: Draft) async throws -> SendResult { try await backing.send(draft: draft) }
+
+        func search(_ query: SearchQuery) async throws -> [MessageHeader] { try await backing.search(query) }
+
+        func calendarEvent(from attachmentID: String) async throws -> CalendarEvent {
+            try await backing.calendarEvent(from: attachmentID)
+        }
+
+        func replyToCalendarInvite(messageID: String, response: AttendeeState) async throws {
+            try await backing.replyToCalendarInvite(messageID: messageID, response: response)
+        }
+
+        func subscribeToChanges() -> AsyncStream<MailEvent> { backing.subscribeToChanges() }
+
+        func save(draft: Draft, sourceID: MailSourceID) async throws -> Draft {
+            try await normalizedSave(draft) { try await backing.save(draft: $0, sourceID: sourceID) }
+        }
+
+        func draft(for messageID: String, sourceID: MailSourceID) async throws -> Draft? {
+            try await backing.draft(for: messageID, sourceID: sourceID)
+        }
+
+        func send(draft: Draft, sourceID: MailSourceID) async throws -> SendResult {
+            try await backing.send(draft: draft, sourceID: sourceID)
+        }
+
+        func localDraftAttachments(for draft: Draft) async throws -> [MIMEMessageAttachment] {
+            try await backing.localDraftAttachments(for: draft)
+        }
+
+        func localDraftAttachments(for draft: Draft, sourceID: MailSourceID) async throws -> [MIMEMessageAttachment] {
+            try await backing.localDraftAttachments(for: draft, sourceID: sourceID)
+        }
+
+        func extensionService<Service>(_ type: Service.Type) -> Service? {
+            if ObjectIdentifier(type) == ObjectIdentifier(LocalDraftAttachmentProviding.self) { return self as? Service }
+            return backing.extensionService(type)
+        }
+
+        private func normalizedSave(
+            _ draft: Draft,
+            save: (Draft) async throws -> Draft
+        ) async throws -> Draft {
+            guard behavior != .fail else { throw DraftSaveFailure.failed }
+            var saved = try await save(draft)
+            if behavior == .stripIntentFromResponse {
+                saved.scheduledFor = nil
+                saved.followUpRequest = nil
+            }
+            return saved
+        }
+    }
+
+    private actor ComposeDraftSendProbe {
+        private let backing: MockBackend
+        private var sentDraft: Draft?
+        private var persistedDraft: Draft?
+        private var sourceID: MailSourceID?
+
+        init(backend: MockBackend) { backing = backend }
+
+        func record(draft: Draft, sourceID: MailSourceID?) async {
+            sentDraft = draft
+            self.sourceID = sourceID
+            if let sourceID {
+                persistedDraft = try? await backing.draft(for: draft.remoteID ?? draft.id, sourceID: sourceID)
+            } else {
+                persistedDraft = try? await backing.draft(for: draft.remoteID ?? draft.id)
+            }
+        }
+
+        func snapshot() -> (sentDraft: Draft?, persistedDraft: Draft?, sourceID: MailSourceID?) {
+            (sentDraft, persistedDraft, sourceID)
+        }
     }
 
     @MainActor

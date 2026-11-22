@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Sidekick — PR #326 Gmail canonical identity
+
+- Goal: persist an opted-in existing server draft before Send so its canonical RFC Message-ID matches the no-reply request without losing Send Later intent.
+- Changes: added provider-neutral persistence for pending attachments or opted-in drafts with an existing remote ID. Compose reuses `persistDraft` and restores requested `scheduledFor` and `followUpRequest` on the saved response. Added policy truth-table, mounted server-draft save/failure and intent-preservation regressions, plus Gmail stub-transport MIME identity coverage. Updated `PRIVACY.md`, ADR-0006, and `CHANGELOG.md`; Gmail provider code and the no-reply reconciler are unchanged.
+- Verification: SwiftFormat lint passed for 5 changed Swift files; Swift parse and policy-source typecheck passed; `scripts/privacy-audit.sh` passed. Focused BrevMail/BrevGmail test builds were attempted before implementation but could not compile on this Linux host (`SwiftUI` unavailable for BrevMail; `PDFKit` unavailable for BrevGmail), so native test red/green execution remains unverified.
+- Handoff: commit locally only; do not push #326 until the Waiting-search fix is complete.
+
 ## 2026-11-22 — Agent — PR #326 compact no-reply control
 
 - Goal: make the three-day no-reply option available on iPhone and iPad, including when reopening an opted-in Draft.
