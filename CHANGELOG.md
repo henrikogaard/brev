@@ -60,7 +60,8 @@ All notable changes to Brev are documented here.
   body rendering and read-only attachment picking; strict and shipping permissions stay unchanged.
 - Full compose now has a localized Later action beside Send on macOS and iOS.
   Later opens the existing schedule sheet, which explains that delivery needs
-  Brev running and connected.
+  Brev running and connected. Demo and isolated Mock accounts retain explicitly
+  scheduled messages locally across restarts and deliver them after reconnect.
 
 ### Changed
 

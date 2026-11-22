@@ -263,8 +263,9 @@ using the same shortcut model as iPhone with compact, keyboard-navigable rows.
   provider errors behind the same `MailBackend` interface.
 - `MockBackend`: two preview mailboxes with distinct folder/message
   stores, mailbox-change events, draft persistence with attachment
-  bytes, demo calendar invite, useful Trash/Sent semantics. Used by
-  `BREV_USE_MOCK=1` on both platforms.
+  bytes, demo calendar invite, useful Trash/Sent semantics. App demo and
+  isolated Mock sessions also persist explicitly scheduled sends locally.
+  Used by `BREV_USE_MOCK=1` on both platforms.
 
 ### Distribution & updates
 

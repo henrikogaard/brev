@@ -112,11 +112,16 @@ public struct MIMEMessageBuilder: Sendable {
     /// instead of showing two copies (the at-least-once send hazard). RFC 5322
     /// §3.6.4 also recommends every message carry one; previously outgoing mail
     /// had none, which hurts deliverability and threading.
-    func messageIDHeaderValue() -> String {
-        let domainSource = from.email.split(separator: "@", maxSplits: 1).last.map(String.init) ?? ""
+    /// Returns the stable wire Message-ID shared by sending and draft identity projection.
+    static func messageIDHeaderValue(draftID: String, fromEmail: String) -> String {
+        let domainSource = fromEmail.split(separator: "@", maxSplits: 1).last.map(String.init) ?? ""
         let domain = Self.sanitizedMessageIDComponent(domainSource, fallback: "localhost")
-        let localPart = "brev-" + Self.sanitizedMessageIDComponent(draft.id, fallback: "draft")
+        let localPart = "brev-" + Self.sanitizedMessageIDComponent(draftID, fallback: "draft")
         return "<\(localPart)@\(domain)>"
+    }
+
+    func messageIDHeaderValue() -> String {
+        Self.messageIDHeaderValue(draftID: draft.id, fromEmail: from.email)
     }
 
     /// Reduces an arbitrary string to RFC 5322 dot-atom-safe characters so it

@@ -47,5 +47,45 @@ struct IsolatedMockSessionTests {
         #expect(session.backend?.account.id == backend.account.id)
         #expect(session.visibleBackends.count == 1)
     }
+
+    @Test("account removal purges its isolated Mock scheduled-send journal")
+    func removalPurgesMockJournal() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("IsolatedMockJournal-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = AppSessionFactory.makeIsolatedMock(mockPersistenceDirectory: directory)
+        let backend = try #require(session.backend)
+        let mailbox = try await backend.currentMailbox()
+        let sourceID = backend.sourceID(for: mailbox)
+        _ = try await backend.send(
+            draft: Draft(id: "remove-me", scheduledFor: Date(timeIntervalSince1970: 2_000_000_000)),
+            sourceID: sourceID
+        )
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+
+        await session.removeAccount(backend.account)
+
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+        #expect(await session.accountStore.current == nil)
+        try await backend.connect()
+        await backend.deliverDueScheduledSends()
+        #expect(backend.pendingScheduledSends().isEmpty)
+        #expect(try await backend.draft(for: "remove-me", sourceID: sourceID) == nil)
+    }
+
+    @Test("failed Mock cleanup retains the account for retry")
+    func failedRemovalRetainsAccount() async throws {
+        let invalidDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("IsolatedMockJournalFile-\(UUID().uuidString)")
+        try Data([1]).write(to: invalidDirectory)
+        defer { try? FileManager.default.removeItem(at: invalidDirectory) }
+        let session = AppSessionFactory.makeIsolatedMock(mockPersistenceDirectory: invalidDirectory)
+        let backend = try #require(session.backend)
+
+        await session.removeAccount(backend.account)
+
+        #expect(await session.accountStore.current?.id == backend.account.id)
+        #expect(await session.accountStore.accounts.count == 1)
+    }
 }
 #endif

@@ -47,8 +47,11 @@ struct AppSessionFactoryTests {
 
     #if DEBUG
     @Test("developer demo policy builds the same usable session for either app target")
-    func demoPolicyBuildsDemoSession() async {
-        let demo = MockBackend()
+    func demoPolicyBuildsDemoSession() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AppSessionDemoJournal-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let demo = MockBackend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
         let configuration = AppSessionFactory.Configuration(
             applicationSupportURL: URL(filePath: "/tmp/brev-app-session-factory-tests"),
             oauthPresentationAnchor: { fatalError("OAuth anchor is not needed in demo mode") },
@@ -62,6 +65,43 @@ struct AppSessionFactoryTests {
         #expect(await session.accountStore.current == demo.account)
         #expect(!session.canUseDemoAccount)
         #expect(session.canUseInteractiveSignIn)
+
+        let mailbox = try await demo.currentMailbox()
+        _ = try await demo.send(
+            draft: Draft(id: "demo-remove", scheduledFor: Date(timeIntervalSince1970: 2_000_000_000)),
+            sourceID: demo.sourceID(for: mailbox)
+        )
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+        await session.removeAccount(demo.account)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
+
+    @Test("ordinary demo login registers its persistent Mock for account cleanup")
+    func demoLoginRegistersMockForCleanup() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AppSessionDemoLoginJournal-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let demo = MockBackend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
+        let configuration = AppSessionFactory.Configuration(
+            applicationSupportURL: URL(filePath: "/tmp/brev-app-session-factory-tests"),
+            oauthPresentationAnchor: { fatalError("OAuth anchor is not needed in demo mode") },
+            isDemoModeRequested: { false },
+            makeDemoBackend: { demo }
+        )
+        let session = AppSessionFactory.makeDefault(configuration: configuration)
+
+        await session.signInWithDemo()
+        #expect(session.backend?.account.id == demo.account.id)
+        let mailbox = try await demo.currentMailbox()
+        _ = try await demo.send(
+            draft: Draft(id: "ordinary-demo-remove", scheduledFor: Date(timeIntervalSince1970: 2_000_000_000)),
+            sourceID: demo.sourceID(for: mailbox)
+        )
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+
+        await session.removeAccount(demo.account)
+
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     }
     #endif
 

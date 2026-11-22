@@ -202,10 +202,12 @@ public enum ScheduledSendState: String, Codable, Sendable {
 
 /// Metadata for a submitted scheduled send; autosaved dates do not create entries.
 public struct PendingScheduledSend: Sendable, Hashable, Identifiable {
-    /// Identity within the owning account's Outbox.
-    public var id: String { draftID }
+    /// Identity within the owning account's Outbox; may differ from `draftID`.
+    public let id: String
     /// The staged draft that will be sent.
     public let draftID: String
+    /// The owning mailbox when the adapter exposes source-scoped schedules.
+    public let sourceID: MailSourceID?
     /// When the draft is due to be sent.
     public let scheduledFor: Date
     /// Submitted subject, without loading message bodies for the list.
@@ -218,9 +220,19 @@ public struct PendingScheduledSend: Sendable, Hashable, Identifiable {
     public let nextAttemptAt: Date?
 
     /// Creates metadata; older adapters may supply just the draft and due date.
-    public init(draftID: String, scheduledFor: Date, subject: String = "", state: ScheduledSendState = .waiting,
-                lastError: String? = nil, nextAttemptAt: Date? = nil) {
+    public init(
+        draftID: String,
+        scheduledFor: Date,
+        id: String? = nil,
+        sourceID: MailSourceID? = nil,
+        subject: String = "",
+        state: ScheduledSendState = .waiting,
+        lastError: String? = nil,
+        nextAttemptAt: Date? = nil
+    ) {
+        self.id = id ?? draftID
         self.draftID = draftID
+        self.sourceID = sourceID
         self.scheduledFor = scheduledFor
         self.subject = subject
         self.state = state

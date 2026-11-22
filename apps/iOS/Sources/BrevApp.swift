@@ -765,7 +765,13 @@ extension AppSession {
                 localSearchIndex: { accountID in
                     makeLocalSearchIndex(accountID: accountID)
                 },
-                makeDemoBackend: { MockBackend(capabilities: .full.union(.smtpOAuth)) },
+                makeDemoBackend: {
+                    MockBackend(
+                        capabilities: .full.union(.smtpOAuth),
+                        persistenceDirectory: applicationSupportURL
+                            .appendingPathComponent("Brev/MockScheduledSends/Demo", isDirectory: true)
+                    )
+                },
                 googleOAuthAccountProvisioningCoordinator: { result in
                     let connected = try await gmailConnector.provision(result)
                     return AppSession.LoginResult(

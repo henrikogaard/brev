@@ -46,6 +46,27 @@ public enum AppSessionFactoryError: Error, Sendable, Equatable, LocalizedError {
 }
 
 /// Builds the app-level session shared by the macOS and iOS targets.
+@MainActor
+private final class PersistentMockBackendRegistry {
+    static let shared = PersistentMockBackendRegistry()
+    private var backends: [BrevAccount.ID: MockBackend] = [:]
+
+    func make(_ factory: @MainActor () -> any MailBackend) -> any MailBackend {
+        let backend = factory()
+        if let mock = backend as? MockBackend {
+            backends[mock.account.id] = mock
+        }
+        return backend
+    }
+
+    func purge(accountID: BrevAccount.ID) async throws -> Bool {
+        guard let backend = backends[accountID] else { return false }
+        try await backend.purgePersistentState()
+        backends[accountID] = nil
+        return true
+    }
+}
+
 public enum AppSessionFactory {
     /// Platform-owned values needed to finish the shared session bootstrap.
     public struct Configuration {
@@ -160,9 +181,18 @@ public enum AppSessionFactory {
 
     #if DEBUG
     /// Creates synthetic mail without production credentials, stores or provider coordinators.
+    /// - Parameters:
+    ///   - themeDefaults: Isolated defaults suite for test-only appearance settings.
+    ///   - mockPersistenceDirectory: Optional app-owned directory for isolated scheduled-send fixtures.
     @MainActor
-    public static func makeIsolatedMock(themeDefaults: UserDefaults = .standard) -> AppSession {
-        let mock = MockBackend(capabilities: .full.union(.smtpOAuth))
+    public static func makeIsolatedMock(
+        themeDefaults: UserDefaults = .standard,
+        mockPersistenceDirectory: URL? = nil
+    ) -> AppSession {
+        let mock = MockBackend(
+            capabilities: .full.union(.smtpOAuth),
+            persistenceDirectory: mockPersistenceDirectory
+        )
         let secrets = IsolatedMockSecretStore()
         return AppSession(
             backend: mock,
@@ -172,6 +202,7 @@ public enum AppSessionFactory {
             loginCoordinator: { AppSession.LoginResult(backend: mock, account: mock.account) },
             googleOAuthIsConfigured: false,
             demoLoginCoordinator: { AppSession.LoginResult(backend: mock, account: mock.account) },
+            signOutCoordinator: { _ in try await mock.purgePersistentState() },
             aiProviderAssignmentCleanup: { _ in },
             aiProviderBackendResolver: AIProviderBackendResolver(defaults: themeDefaults, secretStore: secrets)
         )
@@ -332,7 +363,7 @@ public enum AppSessionFactory {
 
         #if DEBUG
         if configuration.isDemoModeRequested() {
-            let mock = configuration.makeDemoBackend()
+            let mock = PersistentMockBackendRegistry.shared.make(configuration.makeDemoBackend)
             let store = InMemoryAccountStore(accounts: [mock.account], current: mock.account)
             return AppSession(
                 backend: mock,
@@ -361,6 +392,9 @@ public enum AppSessionFactory {
                 pimContactWriteService: pimContactWriteService,
                 pimTaskWriteService: pimTaskWriteService,
                 googleDriveFeature: googleDriveFeature,
+                signOutCoordinator: { account in
+                    _ = try await PersistentMockBackendRegistry.shared.purge(accountID: account.id)
+                },
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
         }
@@ -391,7 +425,7 @@ public enum AppSessionFactory {
 
         #if DEBUG
         let demoLoginCoordinator: AppSession.DemoLoginCoordinator? = {
-            let mock = configuration.makeDemoBackend()
+            let mock = PersistentMockBackendRegistry.shared.make(configuration.makeDemoBackend)
             return AppSession.LoginResult(backend: mock, account: mock.account)
         }
         #else
@@ -469,6 +503,7 @@ public enum AppSessionFactory {
             },
             demoLoginCoordinator: demoLoginCoordinator,
             signOutCoordinator: { account in
+                if try await PersistentMockBackendRegistry.shared.purge(accountID: account.id) { return }
                 if account.backendIdentifier == BrevAccount.gmailAPIBackendIdentifier {
                     guard let coordinator = configuration.googleOAuthRemovalCoordinator else {
                         throw AppSessionFactoryError.missingGoogleOAuthRemovalCoordinator
