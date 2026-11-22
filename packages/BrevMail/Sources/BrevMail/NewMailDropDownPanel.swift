@@ -358,8 +358,7 @@ public final class NewMailDropDownPanelController {
                 self?.stateController.setHovering(hovering)
             }
         )
-        .brevTheme(theme)
-        .environment(\.colorScheme, theme.mode.colorScheme)
+        .brevSheetAppearance(theme)
 
         let hosting = NSHostingController(rootView: rootView)
         let targetPanel = ensurePanel()

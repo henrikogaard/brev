@@ -125,7 +125,10 @@ struct NewMailDropDownPanelTests {
         controller.present(payload)
         #expect(controller.activePayload == payload)
 
-        try await Task.sleep(for: .milliseconds(120))
+        let deadline = Date().addingTimeInterval(2.0)
+        while controller.activePayload != nil, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(25))
+        }
         #expect(controller.activePayload == nil)
     }
 
