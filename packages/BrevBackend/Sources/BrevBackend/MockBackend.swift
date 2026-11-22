@@ -41,15 +41,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     private let store: Store
     private let contacts: [ContactLookupResult]
     private let supportsScheduledSend: Bool
-    private let now: @Sendable () -> Date
-    private let automaticDeliveryEnabled: Bool
     private let scheduledSendSnapshot: MockScheduledSendSnapshot
-    private let journal: MockSendJournal?
-    private let workerLock = NSLock()
-    private var workerTask: Task<Void, Never>?
-    private var workerToken: Int?
-    private var workerRequestGeneration = 0
-    private var workerStartingRequest: Int?
 
     /// Creates a preview or demo backend; scheduled-send fixtures persist only when a directory is supplied.
     /// - Parameters:
@@ -74,10 +66,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         self.capabilities = capabilities
         self.extendedCapabilities = extendedCapabilities
         self.supportsScheduledSend = supportsScheduledSend
-        self.now = now
-        self.automaticDeliveryEnabled = automaticDeliveryEnabled
         let journal = persistenceDirectory.map { MockSendJournal(directoryURL: $0, accountID: account.id) }
-        self.journal = journal
         let scheduledSendSnapshot = MockScheduledSendSnapshot()
         self.scheduledSendSnapshot = scheduledSendSnapshot
         let resolvedMailboxes: [Mailbox]
@@ -90,7 +79,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
             accountID: account.id,
             mailboxID: resolvedMailboxes.first?.id ?? account.id
         )
-        store = Store(
+        let store = Store(
             mailboxes: resolvedMailboxes,
             dataByMailboxID: Self.previewMailboxData(
                 mailboxes: resolvedMailboxes,
@@ -103,8 +92,9 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
             automaticDeliveryEnabled: automaticDeliveryEnabled,
             scheduledSendSnapshot: scheduledSendSnapshot
         )
-        Task { [weak self] in
-            await self?.startWorkerIfNeeded()
+        self.store = store
+        Task { [weak store] in
+            await store?.startWorkerIfNeeded()
         }
     }
 
@@ -122,12 +112,9 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
 
     public func connect() async throws {
         try await store.resume()
-        await store.deliverDueScheduledSends(now: now())
-        await startWorkerIfNeeded(restart: true)
     }
 
     public func disconnect() async {
-        cancelWorker()
         await store.pause()
     }
 
@@ -440,7 +427,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         if let scheduledFor = draft.scheduledFor {
             let mailbox = try await store.currentMailbox()
             let result = try await store.schedule(draft: draft, scheduledFor: scheduledFor, mailboxID: mailbox.id)
-            await startWorkerIfNeeded(restart: true)
+            await store.startWorkerIfNeeded(restart: true)
             return result
         }
         let messageID = try await store.send(draft: draft)
@@ -453,7 +440,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         let owner = try mailboxID(for: sourceID)
         if let scheduledFor = draft.scheduledFor {
             let result = try await store.schedule(draft: draft, scheduledFor: scheduledFor, mailboxID: owner)
-            await startWorkerIfNeeded(restart: true)
+            await store.startWorkerIfNeeded(restart: true)
             return result
         }
         let messageID = try await store.send(draft: draft, mailboxID: owner)
@@ -471,13 +458,13 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
 
     public func cancelScheduledSend(id: String) async throws -> Draft? {
         let draft = try await store.cancelScheduledSend(id: id)
-        await startWorkerIfNeeded(restart: true)
+        await store.startWorkerIfNeeded(restart: true)
         return draft
     }
 
     public func rescheduleSend(id: String, for date: Date) async throws {
         try await store.rescheduleSend(id: id, for: date)
-        await startWorkerIfNeeded(restart: true)
+        await store.startWorkerIfNeeded(restart: true)
     }
 
     /// Treats a reviewed Mock send as a new schedule at the supplied due date.
@@ -486,85 +473,13 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     }
 
     public func deliverDueScheduledSends() async {
-        await store.deliverDueScheduledSends(now: now())
-        await startWorkerIfNeeded()
+        await store.deliverDueScheduledSends()
+        await store.startWorkerIfNeeded(restart: true)
     }
 
     /// Clears this Mock fixture's scheduled-send journal and its in-memory projections.
     public func purgePersistentState() async throws {
-        cancelWorker()
         try await store.purgePersistentState()
-    }
-
-    private func startWorkerIfNeeded(restart: Bool = false) async {
-        let reservation = workerLock.withLock { () -> (request: Int, previousTask: Task<Void, Never>?)? in
-            if !restart {
-                guard workerStartingRequest == nil,
-                      workerTask == nil || workerTask?.isCancelled == true else { return nil }
-            }
-            workerRequestGeneration += 1
-            let request = workerRequestGeneration
-            workerStartingRequest = request
-            let previousTask = workerTask
-            workerTask = nil
-            workerToken = nil
-            return (request, previousTask)
-        }
-        guard let reservation else { return }
-        reservation.previousTask?.cancel()
-        let request = reservation.request
-        guard let token = await store.startWorker(request: request, restart: restart) else {
-            workerLock.withLock {
-                if workerStartingRequest == request {
-                    workerStartingRequest = nil
-                }
-            }
-            return
-        }
-        let accepted = workerLock.withLock { () -> Bool in
-            guard workerRequestGeneration == request,
-                  workerStartingRequest == request,
-                  workerTask == nil else { return false }
-            workerStartingRequest = nil
-            workerToken = token
-            workerTask = Task { [weak self] in
-                while !Task.isCancelled {
-                    guard let delay = await self?.scheduledWorkerDelay(token: token) else { break }
-                    if delay <= 0 {
-                        guard let backend = self else { break }
-                        await backend.store.deliverDueScheduledSends(now: backend.now())
-                        continue
-                    }
-                    do { try await Task.sleep(for: .seconds(delay)) } catch { break }
-                }
-                guard let backend = self else { return }
-                backend.workerLock.withLock {
-                    if backend.workerRequestGeneration == request,
-                       backend.workerToken == token {
-                        backend.workerToken = nil
-                        backend.workerTask = nil
-                    }
-                }
-            }
-            return true
-        }
-        if !accepted {
-            await store.abandonWorker(request: request, generation: token)
-        }
-    }
-
-    private func cancelWorker() {
-        let task = workerLock.withLock { () -> Task<Void, Never>? in
-            workerRequestGeneration += 1
-            workerStartingRequest = nil
-            defer { workerTask = nil; workerToken = nil }
-            return workerTask
-        }
-        task?.cancel()
-    }
-
-    private func scheduledWorkerDelay(token: Int) async -> TimeInterval? {
-        await store.workerDelay(generation: token, now: now())
     }
 
     /// Returns every seeded header owned by the requested mailbox and folder.
@@ -1820,9 +1735,7 @@ private actor Store {
     private var isPaused = false
     private var isPurged = false
     private var workerGeneration = 0
-    private var activeWorkerGeneration: Int?
-    private var latestWorkerRequest = 0
-    private var activeDeliveries: Set<String> = []
+    private var workerTask: Task<Void, Never>?
     private var retryAfter: [String: Date] = [:]
 
     init(
@@ -1862,68 +1775,72 @@ private actor Store {
         scheduledSendSnapshot.replace(with: Self.scheduledEntries(from: journalRecords))
     }
 
+    deinit {
+        workerTask?.cancel()
+    }
+
     func resume() throws {
         try reloadJournalRecords()
         isPurged = false
         isPaused = false
-        workerGeneration += 1
-        activeWorkerGeneration = nil
+        deliverDueScheduledSends()
+        startWorkerIfNeeded(restart: true)
     }
 
     func pause() {
         isPaused = true
-        workerGeneration += 1
-        activeWorkerGeneration = nil
+        stopWorker()
     }
 
-    func startWorker(request: Int, restart: Bool) -> Int? {
-        guard request >= latestWorkerRequest else { return nil }
-        latestWorkerRequest = request
-        if restart {
-            workerGeneration += 1
-            activeWorkerGeneration = nil
-        }
+    func startWorkerIfNeeded(restart: Bool = false) {
+        if restart { stopWorker() }
         guard automaticDeliveryEnabled, !isPaused,
               journalLoadError == nil,
-              journalRecords.contains(where: { $0.state == .queued }) else { return nil }
-        if activeWorkerGeneration == workerGeneration { return nil }
-        activeWorkerGeneration = nil
+              journalRecords.contains(where: { $0.state == .queued }),
+              workerTask == nil else { return }
         workerGeneration += 1
-        activeWorkerGeneration = workerGeneration
-        return workerGeneration
-    }
-
-    func abandonWorker(request: Int, generation: Int) {
-        guard latestWorkerRequest == request,
-              workerGeneration == generation,
-              activeWorkerGeneration == generation else { return }
-        activeWorkerGeneration = nil
-        workerGeneration += 1
-    }
-
-    func workerDelay(generation: Int, now: Date) -> TimeInterval? {
-        guard generation == workerGeneration, !isPaused, journalLoadError == nil else {
-            if activeWorkerGeneration == generation { activeWorkerGeneration = nil }
-            return nil
+        let generation = workerGeneration
+        workerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let delay = await self?.workerDelay(generation: generation) else { break }
+                if delay > 0 {
+                    do { try await Task.sleep(for: .seconds(delay)) } catch { break }
+                }
+                guard !Task.isCancelled else { break }
+                guard let shouldContinue = await self?.deliverWorkerTick(generation: generation),
+                      shouldContinue else { break }
+            }
+            await self?.finishWorker(generation: generation)
         }
+    }
+
+    private func stopWorker() {
+        workerGeneration += 1
+        workerTask?.cancel()
+        workerTask = nil
+    }
+
+    private func workerDelay(generation: Int) -> TimeInterval? {
+        guard generation == workerGeneration, !isPaused, journalLoadError == nil else { return nil }
         let dates = journalRecords.compactMap { record -> Date? in
             guard record.state == .queued,
                   dataByMailboxID[record.sourceID.mailboxID] != nil,
-                  !activeDeliveries.contains(record.recordID),
                   let due = record.scheduledFor else { return nil }
             return max(due, record.nextAttemptAt ?? retryAfter[record.recordID] ?? due)
         }
-        guard let next = dates.min() else {
-            if !activeDeliveries.isEmpty { return 1 }
-            if activeWorkerGeneration == generation { activeWorkerGeneration = nil }
-            return nil
-        }
-        let delay = min(max(0, next.timeIntervalSince(now)), 60)
-        return activeDeliveries.isEmpty ? delay : min(delay, 1)
+        guard let next = dates.min() else { return nil }
+        return min(max(0, next.timeIntervalSince(now())), 60)
     }
 
-    func hasAutomaticWork() -> Bool {
-        automaticDeliveryEnabled && !isPaused && journalLoadError == nil && journalRecords.contains { $0.state == .queued }
+    private func deliverWorkerTick(generation: Int) -> Bool {
+        guard generation == workerGeneration, !isPaused, journalLoadError == nil else { return false }
+        deliverDueScheduledSends()
+        return generation == workerGeneration && !isPaused && journalLoadError == nil
+    }
+
+    private func finishWorker(generation: Int) {
+        guard generation == workerGeneration else { return }
+        workerTask = nil
     }
 
     func ensureActive() throws {
@@ -2023,7 +1940,6 @@ private actor Store {
         }
         guard update.1 else { return SendResult(sentMessageID: nil, scheduledFor: update.0.scheduledFor) }
         if journal == nil { dataByMailboxID[mailboxID] = mailboxData }
-        workerGeneration += 1
         refreshScheduledSnapshot()
         emit(existed ? .messagesUpdated(folderID: draftsFolderID, messageIDs: [canonical.remoteID!]) : .messagesAdded(
             folderID: draftsFolderID,
@@ -2066,7 +1982,6 @@ private actor Store {
             return ()
         }
         if journal == nil { dataByMailboxID[record.sourceID.mailboxID] = mailboxData }
-        workerGeneration += 1
         refreshScheduledSnapshot()
         emit(.messagesUpdated(folderID: folderID, messageIDs: [draft.remoteID ?? "draft-\(draft.id)"]))
         emit(.outboxChanged)
@@ -2107,24 +2022,22 @@ private actor Store {
             return ()
         }
         if journal == nil { dataByMailboxID[record.sourceID.mailboxID] = mailboxData }
-        workerGeneration += 1
         refreshScheduledSnapshot()
         emit(.messagesUpdated(folderID: folderID, messageIDs: [draft.remoteID ?? "draft-\(draft.id)"]))
         emit(.outboxChanged)
     }
 
-    func deliverDueScheduledSends(now date: Date) {
+    func deliverDueScheduledSends() {
         do { try reloadJournalRecords() } catch { return }
         guard journalLoadError == nil, !isPaused else { return }
+        let date = now()
         let dueRecords = journalRecords.filter {
             $0.state == .queued && ($0.scheduledFor ?? .distantFuture) <= date
                 && ($0.nextAttemptAt ?? retryAfter[$0.recordID] ?? .distantPast) <= date
         }
         for record in dueRecords {
             guard let draft = record.draft,
-                  dataByMailboxID[record.sourceID.mailboxID] != nil,
-                  activeDeliveries.insert(record.recordID).inserted else { continue }
-            defer { activeDeliveries.remove(record.recordID) }
+                  dataByMailboxID[record.sourceID.mailboxID] != nil else { continue }
             guard journalRecords.contains(where: { $0.recordID == record.recordID && $0.state == .queued }) else { continue }
             do {
                 guard !isPaused,
@@ -2235,11 +2148,10 @@ private actor Store {
     }
 
     func purgePersistentState() throws {
+        stopWorker()
         try journal?.purge()
-        workerGeneration += 1
         isPaused = true
         isPurged = true
-        activeDeliveries.removeAll()
         retryAfter.removeAll()
         dataByMailboxID = initialDataByMailboxID
         journalRecords = []

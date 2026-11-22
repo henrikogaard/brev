@@ -118,7 +118,7 @@ struct MockScheduledSendTests {
         #expect(try await editing.scheduledDraft(id: secondID).subject == "B")
 
         let sent = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .sent })
-        let (sentHeaders, _) = try await backend.messages(in: sent, pageToken: nil, sourceID: Self.sourceA)
+        let (sentHeaders, _) = try await backend.messages(in: sent, sourceID: Self.sourceA, pageToken: nil)
         #expect(sentHeaders.isEmpty)
     }
 
@@ -144,7 +144,7 @@ struct MockScheduledSendTests {
         #expect(saved.scheduledFor == scheduledFor)
         #expect(scheduler.pendingScheduledSends().isEmpty)
         let sentFolder = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .sent })
-        let (sentBefore, _) = try await backend.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (sentBefore, _) = try await backend.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(sentBefore.isEmpty)
 
         let result = try await backend.send(draft: saved, sourceID: Self.sourceA)
@@ -263,7 +263,7 @@ struct MockScheduledSendTests {
 
         #expect(deliveringScheduler.pendingScheduledSends().isEmpty)
         let sent = try #require(await deliveringBackend.folders(in: Self.sourceA).first { $0.role == .sent })
-        let (headers, _) = try await deliveringBackend.messages(in: sent, pageToken: nil, sourceID: Self.sourceA)
+        let (headers, _) = try await deliveringBackend.messages(in: sent, sourceID: Self.sourceA, pageToken: nil)
         #expect(headers.isEmpty)
     }
 
@@ -355,7 +355,7 @@ struct MockScheduledSendTests {
         ), sourceID: Self.sourceA)
         let parentID = try #require(parentResult.sentMessageID)
         let parentFolder = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .sent })
-        let (parentHeaders, _) = try await backend.messages(in: parentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (parentHeaders, _) = try await backend.messages(in: parentFolder, sourceID: Self.sourceA, pageToken: nil)
         let parent = try #require(parentHeaders.first { $0.id == parentID })
         let attachmentID = try await backend.uploadAttachment(
             draftID: "scheduled-reply",
@@ -366,11 +366,11 @@ struct MockScheduledSendTests {
         )
         let draft = Draft(
             id: "scheduled-reply",
+            inReplyToMessageID: parent.id,
             to: [Correspondent(email: "recipient@example.test")],
             subject: "Reply",
             htmlBody: "<p>Exact reply</p>",
             attachmentIDs: [attachmentID],
-            inReplyToMessageID: parent.id,
             scheduledFor: Self.now
         )
         let result = try await backend.send(draft: draft, sourceID: Self.sourceA)
@@ -379,7 +379,7 @@ struct MockScheduledSendTests {
         async let secondDelivery: Void = scheduler.deliverDueScheduledSends()
         _ = await (firstDelivery, secondDelivery)
 
-        let (sentHeaders, _) = try await backend.messages(in: parentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (sentHeaders, _) = try await backend.messages(in: parentFolder, sourceID: Self.sourceA, pageToken: nil)
         let sent = try #require(sentHeaders.first { $0.subject == "Reply" })
         let expectedMessageID = MIMEMessageBuilder.messageIDHeaderValue(
             draftID: draft.id,
@@ -397,14 +397,14 @@ struct MockScheduledSendTests {
             .downloadAttachment(#require(sentBody.attachments.first), sourceID: Self.sourceA) == Data("exact bytes".utf8))
 
         let restored = Self.backend(persistenceDirectory: directory, now: { Self.now.addingTimeInterval(50000) })
-        let (restoredHeaders, _) = try await restored.messages(in: parentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (restoredHeaders, _) = try await restored.messages(in: parentFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(restoredHeaders.filter { $0.messageID == expectedMessageID }.count == 1)
         #expect(restoredHeaders.contains { $0.id == parent.id && $0.messageID == parent.messageID })
         let restoredSent = try #require(restoredHeaders.first { $0.id == sent.id })
         #expect(restoredSent == sent)
         #expect(try await restored.body(for: sent.id, sourceID: Self.sourceA) == sentBody)
         await restored.extensionService(ScheduledSendManaging.self)?.deliverDueScheduledSends()
-        let (afterRetry, _) = try await restored.messages(in: parentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (afterRetry, _) = try await restored.messages(in: parentFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(afterRetry.filter { $0.messageID == expectedMessageID }.count == 1)
     }
 
@@ -425,7 +425,7 @@ struct MockScheduledSendTests {
         let sentID = try #require(first.sentMessageID)
         #expect(repeated.sentMessageID == sentID)
         let sentFolder = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .sent })
-        let (headers, _) = try await backend.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (headers, _) = try await backend.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         let sent = try #require(headers.first { $0.id == sentID })
         #expect(headers.filter { $0.id == sentID }.count == 1)
         #expect(sent.date == Self.now)
@@ -436,7 +436,7 @@ struct MockScheduledSendTests {
         let body = try await backend.body(for: sentID, sourceID: Self.sourceA)
 
         let restored = Self.backend(persistenceDirectory: directory, now: { Self.now.addingTimeInterval(50000) })
-        let (restoredHeaders, _) = try await restored.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (restoredHeaders, _) = try await restored.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(restoredHeaders == [sent])
         #expect(try await restored.body(for: sentID, sourceID: Self.sourceA) == body)
     }
@@ -458,7 +458,7 @@ struct MockScheduledSendTests {
         await scheduler.deliverDueScheduledSends()
         #expect(scheduler.pendingScheduledSends().isEmpty)
         let sentFolder = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .sent })
-        let (headers, _) = try await backend.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (headers, _) = try await backend.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(headers.filter { $0.date == scheduledFor }.count == 1)
     }
 
@@ -479,7 +479,7 @@ struct MockScheduledSendTests {
         let folders = try await backend.folders(in: Self.sourceA)
         let sentFolder = try #require(folders.first { $0.role == .sent })
         let archiveFolder = try #require(folders.first { $0.id == "archive-newsletters" })
-        let (sentBefore, _) = try await backend.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (sentBefore, _) = try await backend.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         let flagged = try #require(sentBefore.first { $0.subject == "flagged-sent" })
         let moved = try #require(sentBefore.first { $0.subject == "moved-sent" })
         let deleted = try #require(sentBefore.first { $0.subject == "deleted-sent" })
@@ -493,13 +493,13 @@ struct MockScheduledSendTests {
         )
         await scheduler.deliverDueScheduledSends()
 
-        let (sentAfter, _) = try await backend.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (sentAfter, _) = try await backend.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(sentAfter.map(\.id) == [flagged.id])
         #expect(sentAfter.first?.isFlagged == true)
-        let (archived, _) = try await backend.messages(in: archiveFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (archived, _) = try await backend.messages(in: archiveFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(archived.contains { $0.id == moved.id })
         let trashFolder = try #require(try await backend.folders(in: Self.sourceA).first { $0.role == .trash })
-        let (trashed, _) = try await backend.messages(in: trashFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (trashed, _) = try await backend.messages(in: trashFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(trashed.contains { $0.id == deleted.id })
         #expect(scheduler.pendingScheduledSends().map(\.draftID) == ["unrelated-queued"])
     }
@@ -514,7 +514,7 @@ struct MockScheduledSendTests {
             sourceID: Self.sourceA
         )
         let draftsFolder = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .drafts })
-        let (queuedHeaders, _) = try await backend.messages(in: draftsFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (queuedHeaders, _) = try await backend.messages(in: draftsFolder, sourceID: Self.sourceA, pageToken: nil)
         let queued = try #require(queuedHeaders.first { $0.id == "draft-projection-date" })
         #expect(queued.date == Self.now)
 
@@ -523,14 +523,14 @@ struct MockScheduledSendTests {
         let reopenedDrafts = try #require(await reopened.folders(in: Self.sourceA).first { $0.role == .drafts })
         let (restoredQueuedHeaders, _) = try await reopened.messages(
             in: reopenedDrafts,
-            pageToken: nil,
-            sourceID: Self.sourceA
+            sourceID: Self.sourceA,
+            pageToken: nil
         )
         let restoredQueued = try #require(restoredQueuedHeaders.first { $0.id == queued.id })
         #expect(restoredQueued.date == Self.now)
         let scheduleID = try #require(editor.pendingScheduledSends().first?.id)
         _ = try await editor.cancelScheduledSend(id: scheduleID)
-        let (canceledHeaders, _) = try await reopened.messages(in: reopenedDrafts, pageToken: nil, sourceID: Self.sourceA)
+        let (canceledHeaders, _) = try await reopened.messages(in: reopenedDrafts, sourceID: Self.sourceA, pageToken: nil)
         let canceled = try #require(canceledHeaders.first { $0.id == queued.id })
         #expect(canceled.date == Self.now.addingTimeInterval(50000))
         try await reopened.setFlagged(true, for: [canceled.id], sourceID: Self.sourceA)
@@ -541,8 +541,8 @@ struct MockScheduledSendTests {
         await reopened.extensionService(ScheduledSendManaging.self)?.deliverDueScheduledSends()
         let (mutatedCanceledHeaders, _) = try await reopened.messages(
             in: reopenedDrafts,
-            pageToken: nil,
-            sourceID: Self.sourceA
+            sourceID: Self.sourceA,
+            pageToken: nil
         )
         #expect(mutatedCanceledHeaders.first { $0.id == canceled.id }?.isFlagged == true)
         #expect(mutatedCanceledHeaders.first { $0.id == canceled.id }?.date == canceled.date)
@@ -551,8 +551,8 @@ struct MockScheduledSendTests {
         let finalDrafts = try #require(await reopenedAgain.folders(in: Self.sourceA).first { $0.role == .drafts })
         let (restoredCanceledHeaders, _) = try await reopenedAgain.messages(
             in: finalDrafts,
-            pageToken: nil,
-            sourceID: Self.sourceA
+            sourceID: Self.sourceA,
+            pageToken: nil
         )
         #expect(try #require(restoredCanceledHeaders.first { $0.id == queued.id }).date == canceled.date)
     }
@@ -729,7 +729,7 @@ struct MockScheduledSendTests {
         #expect(backend.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends().isEmpty == true)
         #expect(try await backend.draft(for: draft.id, sourceID: Self.sourceA) == nil)
         let sentFolder = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .sent })
-        let (headers, _) = try await backend.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (headers, _) = try await backend.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(headers.count == 1)
         #expect(headers[0].id == sentID)
         #expect(headers[0].subject == "Original")
@@ -835,7 +835,7 @@ struct MockScheduledSendTests {
         await second.deliverDueScheduledSends()
 
         let sentFolder = try #require(await second.folders(in: Self.sourceA).first { $0.role == .sent })
-        let (headers, _) = try await second.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (headers, _) = try await second.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         let sent = try #require(headers.first { $0.subject == "Reply" })
         #expect(sent.from.email == "primary@example.test")
         #expect(sent.messageID == MIMEMessageBuilder.messageIDHeaderValue(
@@ -910,8 +910,45 @@ struct MockScheduledSendTests {
         }
         #expect(scheduler.pendingScheduledSends().isEmpty)
         let sentFolder = try #require(await restored.folders(in: Self.sourceA).first { $0.role == .sent })
-        let (headers, _) = try await restored.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (headers, _) = try await restored.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(headers.contains { $0.subject == "Restored" })
+    }
+
+    @Test("scheduled worker releases its backend and Store while sleeping")
+    func scheduledWorkerReleasesOwnerWhileSleeping() async throws {
+        let readCounter = MockScheduledSendReadCounter()
+        let probe = MockScheduledSendWorkerLifetimeProbe()
+        var readsWhileSleeping = 0
+        do {
+            let clock = MockScheduledSendClock(Self.now, readCounter: readCounter)
+            probe.clock = clock
+            let backend = Self.backend(
+                persistenceDirectory: nil,
+                now: { clock.now },
+                automaticDeliveryEnabled: true
+            )
+            probe.backend = backend
+            let readsBeforeSchedule = readCounter.readCount
+            _ = try await backend.send(
+                draft: Draft(id: "worker-release", scheduledFor: Self.now.addingTimeInterval(2)),
+                sourceID: Self.sourceA
+            )
+            for _ in 0 ..< 200 {
+                if readCounter.readCount >= readsBeforeSchedule + 3 { break }
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            try await Task.sleep(for: .milliseconds(10))
+            readsWhileSleeping = readCounter.readCount
+            #expect(readsWhileSleeping >= readsBeforeSchedule + 3)
+        }
+        for _ in 0 ..< 100 {
+            if probe.backend == nil, probe.clock == nil { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(probe.backend == nil)
+        #expect(probe.clock == nil)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(readCounter.readCount == readsWhileSleeping)
     }
 
     @Test("disconnect pauses overdue work until reconnect")
@@ -966,7 +1003,7 @@ struct MockScheduledSendTests {
         }
         #expect(scheduler.pendingScheduledSends().isEmpty)
         let sentFolder = try #require(await restored.folders(in: Self.sourceA).first { $0.role == .sent })
-        let (headers, _) = try await restored.messages(in: sentFolder, pageToken: nil, sourceID: Self.sourceA)
+        let (headers, _) = try await restored.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         #expect(headers.filter { $0.subject == "Worker race" }.count == 1)
     }
 
@@ -1007,17 +1044,38 @@ struct MockScheduledSendTests {
 
 private final class MockScheduledSendClock: @unchecked Sendable {
     private let lock = NSLock()
+    private let readCounter: MockScheduledSendReadCounter
     private var value: Date
 
-    init(_ value: Date) {
+    init(_ value: Date, readCounter: MockScheduledSendReadCounter = MockScheduledSendReadCounter()) {
         self.value = value
+        self.readCounter = readCounter
     }
 
     var now: Date {
+        readCounter.recordRead()
         lock.withLock { value }
     }
 
     func advance(to value: Date) {
         lock.withLock { self.value = value }
     }
+}
+
+private final class MockScheduledSendReadCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var readCount: Int {
+        lock.withLock { count }
+    }
+
+    func recordRead() {
+        lock.withLock { count += 1 }
+    }
+}
+
+private final class MockScheduledSendWorkerLifetimeProbe {
+    weak var backend: MockBackend?
+    weak var clock: MockScheduledSendClock?
 }

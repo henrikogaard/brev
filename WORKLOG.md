@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — Issue #297 / PR #325 worker ownership consolidation
+
+- Goal: simplify Mock scheduled-send worker ownership while preserving startup, manual delivery, reconnect, retry, and teardown behavior.
+- Changes: moved the cancellable weak worker loop into Store with one generation; removed backend task/request coordination and actor-local active-delivery bookkeeping. Due delivery remains synchronous Store work, and `sendHandler` remains only the public send override. Corrected `MockScheduledSendTests` message-call and Draft initializer argument order; added a backend/Store release regression while the worker sleeps.
+- Verification: targeted SwiftFormat, Swift parse, diff, and ADR checks plus a focused call-order scan. Native package tests were not rerun, per the brief, because the known Linux `PDFKit` import failure occurs before compilation.
+- Handoff: local commit only on `feature/compose-later-action`; do not push before review.
+
 ## 2026-11-22 — Agent — Issue #297 / PR #325 journal health correction
 
 - Goal: fail closed when established Mock send-journal data is missing or unreadable, and surface initial corruption through ordinary mailbox loading.
