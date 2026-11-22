@@ -2266,6 +2266,45 @@ public struct BrevMailRootView: View {
         return hasher.finalize()
     }
 
+    /// Reads cached Inbox and Sent headers for every visible source; no
+    /// network (ADR-0006). Returns nil when cancelled or when any read fails,
+    /// so the page keeps what it showed rather than claiming "nothing".
+    private func loadTodayDigest(_ sections: [MailSourceSection]) async -> TodayDigest? {
+        var inbox: [(MailSourceID, [MessageHeader])] = []
+        var sent: [(MailSourceID, [MessageHeader])] = []
+        var addresses = Set(backends.map(\.account.emailAddress))
+        for section in sections {
+            addresses.insert(section.mailbox.email)
+            let owner = backend(for: section.id)
+            for folder in section.folders where folder.role == .inbox || folder.role == .sent {
+                guard !Task.isCancelled,
+                      let headers = try? await owner.cachedMessageHeaders(in: folder, sourceID: section.id)
+                else { return nil }
+                if folder.role == .inbox { inbox.append((section.id, headers)) } else { sent.append((section.id, headers)) }
+            }
+        }
+        let myAddresses = addresses
+        let readInbox = inbox
+        let readSent = sent
+        // The rules and the keyword classifier walk every cached header, so
+        // keep them off the main actor.
+        let digest = await Task.detached(priority: .userInitiated) {
+            let overrides = InboxCategoryOverrideStore()
+            return TodayDigestBuilder.build(
+                inbox: readInbox,
+                sent: readSent,
+                myAddresses: myAddresses,
+                now: .now,
+                classify: { header, sourceID in
+                    InboxClassificationPolicy.classification(for: header, sourceID: sourceID, overrideStore: overrides)
+                        .category
+                }
+            )
+        }.value
+        return Task.isCancelled ? nil : digest
+    }
+    #endif
+
     /// Builds the Subscriptions catalog strictly from locally cached headers
     /// and cached `List-Unsubscribe` metadata — zero network calls (#295, ADR-0006).
     private func loadSubscriptionsCatalog(_ sections: [MailSourceSection]) async -> [SubscriptionSenderGroup] {
@@ -2327,45 +2366,6 @@ public struct BrevMailRootView: View {
             navigation.requestReload()
         }
     }
-
-    /// Reads cached Inbox and Sent headers for every visible source; no
-    /// network (ADR-0006). Returns nil when cancelled or when any read fails,
-    /// so the page keeps what it showed rather than claiming "nothing".
-    private func loadTodayDigest(_ sections: [MailSourceSection]) async -> TodayDigest? {
-        var inbox: [(MailSourceID, [MessageHeader])] = []
-        var sent: [(MailSourceID, [MessageHeader])] = []
-        var addresses = Set(backends.map(\.account.emailAddress))
-        for section in sections {
-            addresses.insert(section.mailbox.email)
-            let owner = backend(for: section.id)
-            for folder in section.folders where folder.role == .inbox || folder.role == .sent {
-                guard !Task.isCancelled,
-                      let headers = try? await owner.cachedMessageHeaders(in: folder, sourceID: section.id)
-                else { return nil }
-                if folder.role == .inbox { inbox.append((section.id, headers)) } else { sent.append((section.id, headers)) }
-            }
-        }
-        let myAddresses = addresses
-        let readInbox = inbox
-        let readSent = sent
-        // The rules and the keyword classifier walk every cached header, so
-        // keep them off the main actor.
-        let digest = await Task.detached(priority: .userInitiated) {
-            let overrides = InboxCategoryOverrideStore()
-            return TodayDigestBuilder.build(
-                inbox: readInbox,
-                sent: readSent,
-                myAddresses: myAddresses,
-                now: .now,
-                classify: { header, sourceID in
-                    InboxClassificationPolicy.classification(for: header, sourceID: sourceID, overrideStore: overrides)
-                        .category
-                }
-            )
-        }.value
-        return Task.isCancelled ? nil : digest
-    }
-    #endif
 
     /// The split view's detail column. On iPhone it is the pushed reader; at
     /// regular width it is the reading pane.
