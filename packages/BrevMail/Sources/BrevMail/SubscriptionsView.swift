@@ -186,15 +186,14 @@ enum SubscriptionsActions {
             }
         }
 
-        let reversibleReceipts = receipts.compactMap { $0 }
-        if !reversibleReceipts.isEmpty {
+        // Preserve every folder's optional receipt so `MailMoveUndoRegistration`
+        // suppresses partial Undo if any completed move lacks an Undo receipt.
+        if !receipts.isEmpty {
             undoQueue.registerMoves(
-                reversibleReceipts.map { Optional($0) },
+                receipts,
                 description: String(localized: "Archived", bundle: .module),
                 lease: lease
             )
-        } else if !receipts.isEmpty {
-            undoQueue.discardPendingUndo(lease: lease)
         }
         return allSucceeded
     }

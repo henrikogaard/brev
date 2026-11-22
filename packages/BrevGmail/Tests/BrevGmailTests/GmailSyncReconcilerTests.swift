@@ -319,7 +319,18 @@ struct GmailSyncReconcilerTests {
             id: "m-old",
             threadID: "t1",
             labelIDs: ["INBOX"],
-            payload: GmailMessagePart(headers: [GmailMessageHeader(name: "From", value: "news@example.org")])
+            payload: GmailMessagePart(
+                mimeType: "multipart/mixed",
+                headers: [GmailMessageHeader(name: "From", value: "news@example.org")],
+                parts: [
+                    GmailMessagePart(
+                        partID: "1",
+                        mimeType: "application/pdf",
+                        filename: "invoice.pdf",
+                        body: GmailMessageBody(size: 1024, attachmentID: "att-1")
+                    ),
+                ]
+            )
         )
         let refreshedMessage = GmailMessage(
             id: "m-old",
@@ -354,6 +365,7 @@ struct GmailSyncReconcilerTests {
         #expect(await client.requestedMessageIDs() == ["m-old"])
         let stored = try await store.message(accountID: "acct", messageID: "m-old")
         #expect(stored?.payload?.headers.contains { $0.name == "List-Unsubscribe" } == true)
+        #expect(stored?.payload?.parts.first?.filename == "invoice.pdf")
 
         // A second delta sync does not re-fetch already-backfilled rows.
         let secondClient = FakeGmailClient(

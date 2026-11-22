@@ -313,11 +313,17 @@ public struct MessageListView: View {
                 PeopleUpdatesObserverModifier(
                     activeTab: activePeopleUpdatesTab,
                     signalRefreshKey: peopleUpdatesSignalRefreshKey,
+                    selectedMessageID: navigation.selectedMessageID,
                     onOverridesChanged: { inboxCategoryOverrideRevision += 1 },
                     onTabChanged: {
-                        let visibleIDs = Set(presentationSnapshot.headers.map(\.id))
-                        navigation.bulkSelection.formIntersection(visibleIDs)
+                        let selectableHeaders = activePeopleUpdatesTab == .updates
+                            ? presentationSnapshot.filteredUngroupedHeaders
+                            : presentationSnapshot.headers
+                        navigation.bulkSelection.formIntersection(Set(selectableHeaders.map(\.id)))
                         reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+                    },
+                    onMessageOpened: { openedID in
+                        peopleUpdatesScannedMessageIDs.remove(openedID)
                     },
                     onRefreshSignals: { await refreshPeopleUpdatesSignals() }
                 )
@@ -770,8 +776,10 @@ public struct MessageListView: View {
             peopleUpdatesSignalsByMessageID = signals
             peopleUpdatesRepliedSenders = replied
             peopleUpdatesSignalsRevision += 1
-            let visibleIDs = Set(presentationSnapshot.headers.map(\.id))
-            navigation.bulkSelection.formIntersection(visibleIDs)
+            let selectableHeaders = activePeopleUpdatesTab == .updates
+                ? presentationSnapshot.filteredUngroupedHeaders
+                : presentationSnapshot.headers
+            navigation.bulkSelection.formIntersection(Set(selectableHeaders.map(\.id)))
             reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
         }
     }

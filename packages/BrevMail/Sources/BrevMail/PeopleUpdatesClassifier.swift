@@ -20,8 +20,10 @@ import SwiftUI
 struct PeopleUpdatesObserverModifier: ViewModifier {
     let activeTab: InboxSplitTab
     let signalRefreshKey: String
+    let selectedMessageID: MessageHeader.ID?
     let onOverridesChanged: () -> Void
     let onTabChanged: () -> Void
+    let onMessageOpened: (MessageHeader.ID) -> Void
     let onRefreshSignals: () async -> Void
 
     func body(content: Content) -> some View {
@@ -31,6 +33,11 @@ struct PeopleUpdatesObserverModifier: ViewModifier {
             }
             .onChange(of: activeTab) { _, _ in
                 onTabChanged()
+            }
+            .onChange(of: selectedMessageID) { _, openedID in
+                if let openedID {
+                    onMessageOpened(openedID)
+                }
             }
             .task(id: signalRefreshKey) {
                 await onRefreshSignals()

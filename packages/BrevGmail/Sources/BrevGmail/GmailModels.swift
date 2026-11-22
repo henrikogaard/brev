@@ -204,7 +204,8 @@ public struct GmailMessage: Codable, Sendable, Equatable, Identifiable {
 }
 
 extension GmailMessage {
-    /// Preserves richer cached content when a metadata refresh omits payloads.
+    /// Preserves richer cached content when a metadata refresh omits payloads
+    /// or returns a headers-only metadata payload for an already-cached MIME tree.
     func preservingCachedContent(from existing: GmailMessage?) -> GmailMessage {
         guard let existing else { return self }
         return GmailMessage(
@@ -215,8 +216,32 @@ extension GmailMessage {
             historyID: historyID ?? existing.historyID,
             internalDate: internalDate ?? existing.internalDate,
             sizeEstimate: sizeEstimate ?? existing.sizeEstimate,
-            payload: payload ?? existing.payload,
+            payload: Self.mergedPayload(incoming: payload, existing: existing.payload),
             raw: raw ?? existing.raw
+        )
+    }
+
+    private static func mergedPayload(
+        incoming: GmailMessagePart?,
+        existing: GmailMessagePart?
+    ) -> GmailMessagePart? {
+        guard let incoming else { return existing }
+        guard let existing else { return incoming }
+        let incomingIsMetadataOnly = incoming.parts.isEmpty && incoming.body == nil
+        let existingHasContent = !existing.parts.isEmpty || existing.body != nil
+        guard incomingIsMetadataOnly, existingHasContent else { return incoming }
+        var mergedHeaders = existing.headers
+        let existingNames = Set(existing.headers.map { $0.name.lowercased() })
+        for header in incoming.headers where !existingNames.contains(header.name.lowercased()) {
+            mergedHeaders.append(header)
+        }
+        return GmailMessagePart(
+            partID: existing.partID ?? incoming.partID,
+            mimeType: existing.mimeType ?? incoming.mimeType,
+            filename: existing.filename ?? incoming.filename,
+            headers: mergedHeaders,
+            body: existing.body,
+            parts: existing.parts
         )
     }
 
