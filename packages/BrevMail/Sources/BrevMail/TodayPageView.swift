@@ -39,6 +39,8 @@ struct TodayPageView: View {
     let activeSignInCode: SignInCodeSurfaceMatch?
     /// The moment the page describes; fixed in snapshot tests.
     let now: Date
+    /// True when the caller supplied a fixed reference date (e.g. snapshots).
+    private let usesFixedClock: Bool
 
     @State private var digest: TodayDigest?
 
@@ -52,7 +54,7 @@ struct TodayPageView: View {
         onAsk: (() -> Void)?,
         onStartTriage: (() -> Void)? = nil,
         activeSignInCode: SignInCodeSurfaceMatch? = nil,
-        now: Date = .now,
+        now: Date? = nil,
         preloaded: TodayDigest? = nil
     ) {
         self.displayName = displayName
@@ -62,7 +64,8 @@ struct TodayPageView: View {
         self.onAsk = onAsk
         self.onStartTriage = onStartTriage
         self.activeSignInCode = activeSignInCode
-        self.now = now
+        self.now = now ?? .now
+        usesFixedClock = now != nil
         _digest = State(initialValue: preloaded)
     }
 
@@ -70,7 +73,23 @@ struct TodayPageView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 if let activeSignInCode {
-                    TodaySignInCodeCard(match: activeSignInCode)
+                    if usesFixedClock {
+                        if !SignInCodePresentationFormat.isProbablyExpired(
+                            sentAt: activeSignInCode.sentAt,
+                            now: now
+                        ) {
+                            TodaySignInCodeCard(match: activeSignInCode)
+                        }
+                    } else {
+                        TimelineView(.periodic(from: .now, by: 30)) { context in
+                            if !SignInCodePresentationFormat.isProbablyExpired(
+                                sentAt: activeSignInCode.sentAt,
+                                now: context.date
+                            ) {
+                                TodaySignInCodeCard(match: activeSignInCode)
+                            }
+                        }
+                    }
                 }
                 header
                 if let digest {

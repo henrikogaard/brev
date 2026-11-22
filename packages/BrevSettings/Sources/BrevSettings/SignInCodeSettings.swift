@@ -58,12 +58,15 @@ public struct SignInCodeSettings: Equatable, Sendable {
 
     /// Persists only consent flags and account IDs to the supplied local defaults.
     public func save(to defaults: UserDefaults) {
-        guard !accountOverrides.isEmpty,
-              let data = try? JSONEncoder().encode(accountOverrides) else {
+        if !accountOverrides.isEmpty,
+           let data = try? JSONEncoder().encode(accountOverrides) {
+            defaults.set(data, forKey: Key.accountOverrides)
+        } else {
             defaults.removeObject(forKey: Key.accountOverrides)
-            return
         }
-        defaults.set(data, forKey: Key.accountOverrides)
+        if defaults === UserDefaults.standard {
+            NotificationCenter.default.post(name: .brevNotificationSettingsDidChange, object: nil)
+        }
     }
 
     /// Returns explicit account consent, or both opt-ins off when absent.

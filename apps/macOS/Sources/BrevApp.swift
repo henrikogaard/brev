@@ -254,6 +254,12 @@ struct BrevApp: App {
                     showRestoreErrorAlert = true
                 }
             }
+            .onAppear {
+                session.mailboxWindowDidOpen()
+            }
+            .onDisappear {
+                session.mailboxWindowDidClose()
+            }
             .onChange(of: session.visibleBackends.map(\.account.id)) { _, _ in
                 BrevMacOSAppDelegate.currentSession = session
                 session.syncBackgroundPanelSubscriptions()
