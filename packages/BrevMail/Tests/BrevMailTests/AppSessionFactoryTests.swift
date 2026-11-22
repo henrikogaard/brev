@@ -176,12 +176,12 @@ struct AppSessionFactoryTests {
 
         await firstSession.removeAccount(first.account)
 
-        #expect(try FileManager.default.contentsOfDirectory(atPath: firstDirectory).isEmpty)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: secondDirectory).count == 2)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: firstDirectory.path).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: secondDirectory.path).count == 2)
         #expect(second.pendingScheduledSends().map(\.draftID) == ["session-b"])
 
         await secondSession.removeAccount(second.account)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: secondDirectory).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: secondDirectory.path).isEmpty)
     }
     #endif
 

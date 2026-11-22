@@ -1,3 +1,10 @@
+## 2026-11-22 — Agent — PR #325 BrevMail test compile correction
+
+- Goal: unblock native BrevMail tests after hosted CI found invalid filesystem API arguments.
+- Changes: pass `URL.path` to `FileManager.contentsOfDirectory(atPath:)` in the isolated-session cleanup regression.
+- Verification: pinned SwiftFormat requires no changes; `swiftc -frontend -parse` passes; diff and ADR-required checks pass. Hosted CI is pending rerun.
+- Handoff: hosted macOS CI must confirm the Mock/account/Outbox suites execute.
+
 # Worklog
 
 ## 2026-11-22 — Agent — Issue #297 / PR #325 scheduled-draft cleanup
