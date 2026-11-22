@@ -38,6 +38,9 @@ struct NotificationSection: View {
     /// Whether an account's backend can make a trusted sign-in assessment
     /// (ADR-0088); false hides the consent switches.
     private let signInAssessmentAvailable: (BrevAccount.ID) -> Bool
+    /// Called when per-account sign-in consent changes so the session cancels
+    /// pending work and dismisses any visible panel (ADR-0088 §5).
+    private let onSignInCodeConsentChanged: (BrevAccount.ID) -> Void
     private let authorizationStatusProvider: () async -> BrevSettingsNotificationAuthStatus
 
     /// - Parameter authorizationStatus: Reads the system permission; tests inject a fixed status
@@ -46,6 +49,7 @@ struct NotificationSection: View {
         settingsStore: SettingsPersistenceStore = .standard,
         accounts: [BrevAccount] = [],
         signInAssessmentAvailable: @escaping (BrevAccount.ID) -> Bool = { _ in false },
+        onSignInCodeConsentChanged: @escaping (BrevAccount.ID) -> Void = { _ in },
         authorizationStatus: @escaping () async -> BrevSettingsNotificationAuthStatus = {
             let systemSettings = await UNUserNotificationCenter.current().notificationSettings()
             return BrevSettingsNotificationAuthStatus.map(systemSettings.authorizationStatus)
@@ -54,6 +58,7 @@ struct NotificationSection: View {
         self.settingsStore = settingsStore
         self.accounts = accounts
         self.signInAssessmentAvailable = signInAssessmentAvailable
+        self.onSignInCodeConsentChanged = onSignInCodeConsentChanged
         authorizationStatusProvider = authorizationStatus
         _settings = State(initialValue: settingsStore.notificationSettings())
     }
@@ -73,7 +78,8 @@ struct NotificationSection: View {
                 SignInCodeSettingsGroup(
                     accounts: accounts,
                     settingsStore: settingsStore,
-                    isAvailable: signInAssessmentAvailable
+                    isAvailable: signInAssessmentAvailable,
+                    onChange: onSignInCodeConsentChanged
                 )
             }
         }

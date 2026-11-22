@@ -685,6 +685,17 @@ public struct MessageDetailView: View {
 
                     senderAuthWarningBanner(for: header)
 
+                    if let signInCodeMatch = SignInCodeSurfacePolicy.bodyCode(
+                        plainText: messageBody?.plainText,
+                        header: header,
+                        sourceID: sourceID,
+                        accountID: backend.account.id,
+                        settings: SignInCodeSettings.load(from: .standard)
+                    ) {
+                        SignInCodeReaderCard(match: signInCodeMatch)
+                        BrevDivider()
+                    }
+
                     bodyLoadFallbackNoticeBanner
 
                     bodyContent(for: header)

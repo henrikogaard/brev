@@ -35,6 +35,8 @@ struct TodayPageView: View {
     let onAsk: (() -> Void)?
     /// Starts sequential triage mode (#293); nil hides the button.
     let onStartTriage: (() -> Void)?
+    /// Optional newest non-expired sign-in code for opted-in accounts (#239).
+    let activeSignInCode: SignInCodeSurfaceMatch?
     /// The moment the page describes; fixed in snapshot tests.
     let now: Date
 
@@ -49,6 +51,7 @@ struct TodayPageView: View {
         onOpen: @escaping (TodayDigest.Row) -> Void,
         onAsk: (() -> Void)?,
         onStartTriage: (() -> Void)? = nil,
+        activeSignInCode: SignInCodeSurfaceMatch? = nil,
         now: Date = .now,
         preloaded: TodayDigest? = nil
     ) {
@@ -58,6 +61,7 @@ struct TodayPageView: View {
         self.onOpen = onOpen
         self.onAsk = onAsk
         self.onStartTriage = onStartTriage
+        self.activeSignInCode = activeSignInCode
         self.now = now
         _digest = State(initialValue: preloaded)
     }
@@ -65,6 +69,9 @@ struct TodayPageView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+                if let activeSignInCode {
+                    TodaySignInCodeCard(match: activeSignInCode)
+                }
                 header
                 if let digest {
                     if !digest.waitingOnYou.isEmpty {

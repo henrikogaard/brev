@@ -456,6 +456,7 @@ public struct BrevMailRootView: View {
     private let backgroundMail: BackgroundMailCoordinator?
     private let notificationActionExecutor: NotificationActionExecutor?
     private let newMailPanelController: NewMailDropDownPanelController?
+    private let signInCodeArrivalController: SignInCodeArrivalController?
     /// Session-owned periodic sync for PIM sources the user enabled sync on.
     /// The root view hands it the fetch interval so its cadence tracks the
     /// mail schedule; once started it keeps ticking while the session lives.
@@ -520,6 +521,7 @@ public struct BrevMailRootView: View {
         backgroundMail: BackgroundMailCoordinator? = nil,
         notificationActionExecutor: NotificationActionExecutor? = nil,
         newMailPanelController: NewMailDropDownPanelController? = nil,
+        signInCodeArrivalController: SignInCodeArrivalController? = nil,
         pimSyncScheduler: PIMSyncScheduler? = nil,
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
@@ -554,6 +556,7 @@ public struct BrevMailRootView: View {
             backgroundMail: backgroundMail,
             notificationActionExecutor: notificationActionExecutor,
             newMailPanelController: newMailPanelController,
+            signInCodeArrivalController: signInCodeArrivalController,
             pimSyncScheduler: pimSyncScheduler,
             localBackend: localBackend,
             onLocalFoldersChanged: onLocalFoldersChanged,
@@ -596,6 +599,7 @@ public struct BrevMailRootView: View {
         backgroundMail: BackgroundMailCoordinator? = nil,
         notificationActionExecutor: NotificationActionExecutor? = nil,
         newMailPanelController: NewMailDropDownPanelController? = nil,
+        signInCodeArrivalController: SignInCodeArrivalController? = nil,
         pimSyncScheduler: PIMSyncScheduler? = nil,
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
@@ -645,6 +649,7 @@ public struct BrevMailRootView: View {
         self.backgroundMail = backgroundMail
         self.notificationActionExecutor = notificationActionExecutor
         self.newMailPanelController = newMailPanelController
+        self.signInCodeArrivalController = signInCodeArrivalController
         self.pimSyncScheduler = pimSyncScheduler
         self.localBackend = localBackend
         self.onLocalFoldersChanged = onLocalFoldersChanged
@@ -8443,6 +8448,9 @@ public struct BrevMailRootView: View {
             guard ObjectIdentifier(backend) == ObjectIdentifier(selectedBackend) else { return }
             await refreshOutboxCount()
         case .folderRefreshed, .messagesAdded, .messagesRemoved, .messagesUpdated:
+            if case .messagesAdded = event {
+                signInCodeArrivalController?.handle(event, from: backend)
+            }
             let effects = MailRootAccountEventPolicy.mailboxEventEffects(
                 for: event,
                 eventAccountID: backend.account.id,

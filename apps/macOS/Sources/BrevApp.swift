@@ -144,6 +144,7 @@ struct BrevApp: App {
                         backgroundMail: session.backgroundMail,
                         notificationActionExecutor: session.notificationActionExecutor,
                         newMailPanelController: session.newMailPanelController,
+                        signInCodeArrivalController: session.signInCodeArrivalController,
                         pimSyncScheduler: session.pimSyncScheduler,
                         localBackend: session.localBackend,
                         onLocalFoldersChanged: { session.refreshLocalFolders() },
@@ -420,6 +421,9 @@ struct BrevApp: App {
                 },
                 onAIProviderConfigurationChanged: {
                     await session.reloadConfiguredAIBackends()
+                },
+                onSignInCodeConsentChanged: { accountID in
+                    session.cancelSignInCodeArrival(accountID: accountID)
                 }
             )
             .brevWindowTranslucency(windowRole: .settings)

@@ -101,6 +101,10 @@ public final class AppSession {
     )
     private var restoreAccountsTask: Task<Void, Never>?
     private var hasCompletedInitialRestore = false
+    /// Session-owned floating panel presenter for sign-in codes and links (#239, ADR-0088).
+    public let signInCodePanelController: SignInCodePanelController
+    /// Session-owned arrival controller for opted-in, trust-assessed accounts (#239, ADR-0088).
+    public let signInCodeArrivalController: SignInCodeArrivalController
     /// Session-owned periodic sync loop for PIM sources the user opted into
     /// sync (`PIMSource.syncEnabled`). Inert until a view or the app target
     /// calls `start(interval:)` with the configured fetch interval.
@@ -409,7 +413,14 @@ public final class AppSession {
         self.localBackend = localBackend
         backgroundMail = BackgroundMailCoordinator()
         notificationActionExecutor = NotificationActionExecutor()
+        let panelController = SignInCodePanelController()
+        signInCodePanelController = panelController
+        signInCodeArrivalController = SignInCodeArrivalController(
+            settings: { SignInCodeSettings.load(from: .standard) },
+            presenter: panelController
+        )
         pimSyncScheduler = PIMSyncScheduler()
+        panelController.themeProvider = { [weak self] in self?.theme ?? .brevMonoLight }
         backgroundMail.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         notificationActionExecutor.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         notificationActionExecutor.prepareBackends = { [weak self] in
@@ -1167,11 +1178,25 @@ public final class AppSession {
     }
 
     public func signOut(account: BrevAccount) async {
+        cancelSignInCodeArrival(accountID: account.id, removeConsent: false)
         await endAccountSession(
             account,
             shouldRunSignOutCoordinator: true,
             deleteLinkedSourceCache: false
         )
+    }
+
+    /// Cancels in-flight sign-in code inspections and hides any visible panel
+    /// for `accountID` (ADR-0088 §5, §11).
+    public func cancelSignInCodeArrival(
+        accountID: BrevAccount.ID,
+        removeConsent: Bool = false
+    ) {
+        signInCodeArrivalController.cancel(accountID: accountID)
+        if removeConsent {
+            var consent = SignInCodeSettings.load(from: .standard)
+            consent.removeAccountOverride(accountID: accountID, from: .standard)
+        }
     }
 
     /// Removes the account and every PIM source linked to it (ADR-0072).
@@ -1185,6 +1210,7 @@ public final class AppSession {
         _ account: BrevAccount,
         deleteLinkedSourceCache: Bool = false
     ) async {
+        cancelSignInCodeArrival(accountID: account.id, removeConsent: true)
         await endAccountSession(
             account,
             shouldRunSignOutCoordinator: true,

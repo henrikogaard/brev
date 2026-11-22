@@ -154,6 +154,9 @@ struct BrevApp: App {
             onAIProviderConfigurationChanged: {
                 await session.reloadConfiguredAIBackends()
             },
+            onSignInCodeConsentChanged: { accountID in
+                session.cancelSignInCodeArrival(accountID: accountID)
+            },
             onClose: { showSettings = false }
         )
         .environment(\.openURL, browserOpenURLAction)
@@ -225,6 +228,7 @@ struct BrevApp: App {
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
                         notificationActionExecutor: session.notificationActionExecutor,
+                        signInCodeArrivalController: session.signInCodeArrivalController,
                         pimSyncScheduler: session.pimSyncScheduler,
                         localBackend: session.localBackend,
                         onLocalFoldersChanged: { session.refreshLocalFolders() },

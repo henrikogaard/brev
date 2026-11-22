@@ -23,6 +23,15 @@ All notable changes to Brev are documented here.
   time with single-key shortcuts (`E` archive, `H` snooze until tomorrow, `R`
   reply, `J` skip, `Esc` done), next-body preloading, `⌘Z` undo, and exact list
   position restoration on exit.
+- Sign-in codes on screen (#239, ADR-0088): added the non-activating macOS
+  bottom-center floating panel (`SignInCodePanelController` with
+  `org.nspasteboard.ConcealedType` clipboard writes, change-count-guarded
+  auto-clear, and app-active-only Escape dismissal), wired `AppSession`
+  ownership and Settings consent-change cancellation, added opt-in-gated
+  reader/list/Today sign-in code surfaces, updated `PRIVACY.md` and ADR-0006,
+  and drafted the Proposed iOS notification privacy amendment in ADR-0088.
+  Gmail's `.trustedSignInAssessment` capability remains off pending E1–E5 live
+  evidence.
 - Tracking pixels are removed before a message renders, even when remote
   images are allowed, so senders can't tell when you opened their mail. The
   reader shows a quiet "Blocked 2 trackers" note (#299).
