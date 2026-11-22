@@ -66,12 +66,15 @@ extension MailSingleKeyShortcut {
         navigation: MailNavigationState?, header: MessageHeader?, sourceID: MailSourceID?,
         perform: (MessageContextMenuAction, MessageHeader) -> Bool
     ) -> Bool {
-        guard let header else { return false }
         if let navigation {
-            guard navigation.selectedSourceID == sourceID, navigation.selectedMessageID == header.id,
+            guard navigation.selectedSourceID == sourceID, let selected = navigation.selectedMessageID,
+                  header == nil || header?.id == selected,
                   navigation.presentedSheet == nil, navigation.bulkSelection.isEmpty else { return false }
         }
-        if let menuAction { return perform(menuAction, header) }
+        if let menuAction {
+            guard let header else { return false }
+            return perform(menuAction, header)
+        }
         guard let navigation else { return false }
         if navigation.isUnifiedInboxSelected || navigation.isSmartViewSelected || navigation.selectedSavedSearchID != nil {
             navigation.unifiedReaderStep.send(self == .next)

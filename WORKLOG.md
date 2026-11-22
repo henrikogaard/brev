@@ -1,5 +1,10 @@
 # Worklog
 
+## 2026-11-22 — Agent — #300 reader navigation
+
+- Reader J/K use the same source-scoped row sequence as the merged list and preserve reader focus. Hiding a selected card with Unread only still allows navigation, but no message action can operate on the hidden card.
+- Added cross-account duplicate-ID and hidden-card regressions. SwiftFormat, parse and diff checks run on Linux; macOS CI and focus QA remain outstanding.
+
 ## 2026-11-22 — Agent — #300 typing in the mounted compose and search controls
 
 - The keyboard UI regression now mounts the actual compose editor and list search field inside the enabled shortcut modifier. It sends events through AppKit and checks both the typed text and the action callback, even when the pane still reports keyboard focus. This is an in-process native UI test; full app keyboard QA remains on the issue. Swift parse, format and diff checks ran on Linux; the macOS package suite executes the test.

@@ -144,6 +144,12 @@ struct MailSingleKeyShortcutTests {
         #expect(navigation.selectedMessageID == next.id)
         #expect(!run(.delete, header: header))
         #expect(run(.previous, header: next))
+        // Unread-only thread presentation hides this selected read card.
+        #expect(!run(.archive, header: nil))
+        #expect(run(.next, header: nil))
+        #expect(navigation.selectedMessageID == next.id)
+        #expect(run(.previous, header: nil))
+        #expect(navigation.selectedMessageID == header.id)
         navigation.bulkSelection = [header.id, next.id]
         #expect(!run(.star, header: header))
         #expect(actions == [.archive])
