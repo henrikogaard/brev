@@ -7,6 +7,14 @@
 - Verification: pinned SwiftFormat reported 0/3 files requiring formatting; `swiftc -frontend -parse` parsed the three changed Swift files; diff and ADR-required checks passed. Native tests were not run on this Linux host; a prior BrevMail package attempt stopped before test execution because SwiftUI is unavailable, and native CI is required for these targets.
 - Handoff: locally committed on `feature/snooze-wake-order`; do not push until the review round is complete.
 
+## 2026-11-22 — Agent — PR #324 legacy unsnooze scope
+
+- Goal: prevent unsnoozing one legacy message schedule from clearing a linked message's independent schedule.
+- Changes: legacy-only clears now target the exact source-message ID; when an explicit conversation rule overlaps the selection, the full overlap set still clears. Added separate-linked-legacy and mixed conversation/legacy regressions; existing reschedule-conversion and no-resurrection cases remain.
+- Red/green: the focused Foundation harness regression failed before the mutation change because both schedules were removed. After the fix, `/home/ubuntu/.cache/brev-final-projection-spm` passed 51 tests in 3 suites, including the new legacy-only and mixed-overlap cases.
+- Verification: pinned SwiftFormat reported `0/2 files require formatting`; `swiftc -frontend -parse` parsed both changed Swift files; `git diff --check` and `scripts/check-adr-required.sh` passed. The focused Foundation harness passed 51 tests in 3 suites; native SwiftUI tests were not run on this Linux host.
+- Handoff: local commit only; do not push until the review round is complete.
+
 ## 2026-11-22 — Agent — #297 CI lint correction
 
 - Goal: clear the new PR #324 lint failure without changing loader behavior.

@@ -360,6 +360,70 @@ struct LocalMessageWorkflowConversationProjectionTests {
         ).snoozes.isEmpty)
     }
 
+    @Test("unsnoozing one legacy member preserves another linked legacy schedule")
+    func unsnoozingLegacyMemberPreservesLinkedSchedule() {
+        let first = Self.header(id: "legacy-first", folder: "Inbox", rfcID: "first@example")
+        let second = Self.header(
+            id: "legacy-second", folder: "Archive", rfcID: "second@example", inReplyTo: "first@example"
+        )
+        let firstSnooze = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: first.id),
+            wakeAt: now.addingTimeInterval(600),
+            createdAt: now.addingTimeInterval(-20)
+        )
+        let secondSnooze = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: second.id),
+            wakeAt: now.addingTimeInterval(1200),
+            createdAt: now.addingTimeInterval(-10)
+        )
+        let state = LocalMessageWorkflowState(snoozes: [firstSnooze, secondSnooze])
+        let candidates = [first, second].map { LocalMessageWorkflowCandidate(sourceID: source, header: $0) }
+        let projection = LocalMessageWorkflowConversationProjection(candidates: candidates, state: state, now: now)
+
+        let unsnoozed = LocalMessageWorkflowConversationMutationPolicy.clearingSnooze(
+            [candidates[0]], projection: projection, in: state
+        )
+        let remainingProjection = LocalMessageWorkflowConversationProjection(
+            candidates: candidates, state: unsnoozed, now: now
+        )
+
+        #expect(unsnoozed.snoozes == [secondSnooze])
+        #expect(remainingProjection.snooze(
+            for: .init(sourceID: source, messageID: second.id), header: second
+        ) == secondSnooze)
+        #expect(remainingProjection.isSnoozed(
+            .init(sourceID: source, messageID: second.id), header: second, at: now
+        ))
+    }
+
+    @Test("unsnoozing a conversation rule clears mixed legacy overlaps")
+    func unsnoozingConversationRuleClearsMixedLegacyOverlaps() {
+        let first = Self.header(id: "conversation-first", folder: "Inbox", rfcID: "first@example")
+        let second = Self.header(
+            id: "legacy-second", folder: "Archive", rfcID: "second@example", inReplyTo: "first@example"
+        )
+        let conversationSnooze = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: first.id),
+            wakeAt: now.addingTimeInterval(600),
+            createdAt: now.addingTimeInterval(-20),
+            conversationMetadata: .init(rfcIdentifiers: ["first@example"])
+        )
+        let legacySnooze = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: second.id),
+            wakeAt: now.addingTimeInterval(1200),
+            createdAt: now.addingTimeInterval(-10)
+        )
+        let state = LocalMessageWorkflowState(snoozes: [conversationSnooze, legacySnooze])
+        let candidates = [first, second].map { LocalMessageWorkflowCandidate(sourceID: source, header: $0) }
+        let projection = LocalMessageWorkflowConversationProjection(candidates: candidates, state: state, now: now)
+
+        let cleared = LocalMessageWorkflowConversationMutationPolicy.clearingSnooze(
+            [candidates[0]], projection: projection, in: state
+        )
+
+        #expect(cleared.snoozes.isEmpty)
+    }
+
     @Test("a new cached reply bridges independently snoozed persisted branches")
     func cachedReplyBridgesPersistedRules() {
         let reply = Self.header(id: "bridge", folder: "Archive", rfcID: "reply@example", references: ["b@example", "c@example"])

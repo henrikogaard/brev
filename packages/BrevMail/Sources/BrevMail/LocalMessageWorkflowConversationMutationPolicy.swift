@@ -325,15 +325,21 @@ enum LocalMessageWorkflowConversationMutationPolicy {
         projection: LocalMessageWorkflowConversationProjection,
         in state: LocalMessageWorkflowState
     ) -> LocalMessageWorkflowState {
-        let overlappingIDs = Set(candidates.flatMap { candidate in
+        var snoozeIDs: Set<SourceMessageID> = []
+        for candidate in candidates {
             let messageID = SourceMessageID(sourceID: candidate.sourceID, messageID: candidate.header.id)
-            return projection.overlappingSnoozes(
+            let overlappingSnoozes = projection.overlappingSnoozes(
                 for: messageID,
                 header: candidate.header,
                 in: state
-            ).map(\.messageID)
-        })
-        return LocalMessageWorkflowStatePolicy.clearingSnooze(Array(overlappingIDs), in: state)
+            )
+            if overlappingSnoozes.contains(where: { $0.conversationMetadata != nil }) {
+                snoozeIDs.formUnion(overlappingSnoozes.map(\.messageID))
+            } else {
+                snoozeIDs.insert(messageID)
+            }
+        }
+        return LocalMessageWorkflowStatePolicy.clearingSnooze(Array(snoozeIDs), in: state)
     }
 
     static func reconcilingActiveSnoozes(
