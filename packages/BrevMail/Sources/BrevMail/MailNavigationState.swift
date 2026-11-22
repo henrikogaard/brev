@@ -377,6 +377,11 @@ public final class MailNavigationState {
         browsingFolderID == Self.allAttachmentsSmartViewFolderID
     }
 
+    /// Concrete mailbox source preserved when opening the sidebar Assistant
+    /// destination so `MailboxChatController`'s `.account` scope stays bound to
+    /// a real mailbox (#294).
+    public var assistantSourceID: MailSourceID?
+
     /// True when the full-pane Assistant sidebar destination is selected (#294).
     public var isAssistantSelected: Bool {
         browsingFolderID == Self.assistantDestinationFolderID
@@ -460,8 +465,10 @@ public final class MailNavigationState {
         selectSmartView(folderID: Self.allAttachmentsSmartViewFolderID)
     }
 
-    /// Selects the full-pane Assistant destination in the sidebar (#294).
-    public func selectAssistantDestination() {
+    /// Selects the full-pane Assistant destination in the sidebar while
+    /// preserving a concrete mailbox source for account-scoped queries (#294).
+    public func selectAssistantDestination(preserving sourceID: MailSourceID? = nil) {
+        assistantSourceID = sourceID ?? selectedSourceID ?? assistantSourceID
         selectSmartView(folderID: Self.assistantDestinationFolderID)
     }
 

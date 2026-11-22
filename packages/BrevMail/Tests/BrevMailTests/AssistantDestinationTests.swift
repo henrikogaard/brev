@@ -192,14 +192,37 @@ struct AssistantDestinationTests {
         #expect(cards.sections.first?.cards.first?.sourceID == Self.source)
     }
 
-    @Test("Navigation selects and clears Assistant sidebar destination cleanly")
+    @Test("Navigation preserves concrete mailbox source when opening Assistant and clears cleanly")
     func navigationAssistantDestination() {
         let navigation = MailNavigationState()
+        navigation.selectFolder("inbox", in: Self.source)
         #expect(!navigation.isAssistantSelected)
         navigation.selectAssistantDestination()
         #expect(navigation.isAssistantSelected)
+        #expect(navigation.assistantSourceID == Self.source)
         navigation.selectFolder("inbox", in: Self.source)
         #expect(!navigation.isAssistantSelected)
+    }
+
+    @Test("AI availability gate blocks disabled or unconsented Assistant requests")
+    func availabilityGateBlocksDisabledOrUnconsented() {
+        let disabled = MailboxChatAvailabilityState(
+            settings: AIWriterSettings(isEnabled: false, consentGiven: false),
+            hasProviderBackend: true
+        )
+        #expect(MailboxChatAvailability.disabledReason(in: disabled) == .notEnabled)
+
+        let unconsented = MailboxChatAvailabilityState(
+            settings: AIWriterSettings(isEnabled: true, consentGiven: false),
+            hasProviderBackend: true
+        )
+        #expect(MailboxChatAvailability.disabledReason(in: unconsented) == .consentRequired)
+
+        let ready = MailboxChatAvailabilityState(
+            settings: AIWriterSettings(isEnabled: true, consentGiven: true),
+            hasProviderBackend: true
+        )
+        #expect(MailboxChatAvailability.disabledReason(in: ready) == nil)
     }
 
     @Test("Assistant destination strings have Norwegian localizations")

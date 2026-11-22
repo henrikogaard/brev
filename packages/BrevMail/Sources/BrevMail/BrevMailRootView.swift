@@ -1697,12 +1697,15 @@ public struct BrevMailRootView: View {
     }
 
     private var assistantDestinationPane: some View {
-        AssistantDestinationView(
-            sourceID: navigation.selectedSourceID,
+        let resolvedSource = navigation.assistantSourceID
+            ?? navigation.selectedSourceID
+            ?? preferredDefaultSection(in: visibleSourceSections)?.id
+        return AssistantDestinationView(
+            sourceID: resolvedSource,
             aiBackend: selectedAIBackend,
-            actionFolders: mailboxActionFolders(for: navigation.selectedSourceID),
+            actionFolders: mailboxActionFolders(for: resolvedSource),
             focusedFolder: selectedFolder,
-            actionSourceScope: mailboxActionSourceScope(for: navigation.selectedSourceID),
+            actionSourceScope: mailboxActionSourceScope(for: resolvedSource),
             executeAction: { plan in
                 try await executeMailboxAction(plan: plan)
             },
@@ -1716,21 +1719,71 @@ public struct BrevMailRootView: View {
                 openMailContextMessage(card.citation.recentItem)
             },
             onReplyCard: { card in
-                let header = MessageHeader(
-                    id: card.messageID,
-                    threadID: card.messageID,
-                    folderID: card.folderID,
-                    from: Correspondent(name: card.senderName, email: card.senderEmail),
-                    subject: card.subject,
-                    snippet: card.snippet,
-                    date: card.date,
-                    isRead: card.citation.isRead,
-                    isFlagged: card.citation.isFlagged,
-                    isAnswered: card.citation.isAnswered
-                )
-                presentReply(to: header, sourceID: card.sourceID)
-            }
+                Task { @MainActor in
+                    let owner = card.sourceID.map { backend(for: $0) } ?? selectedBackend
+                    let cachedHeader = await owner
+                        .extensionService(CachedMessageHeaderProviding.self)?
+                        .cachedMessageHeader(messageID: card.messageID, folderID: card.folderID)
+                    let header = cachedHeader
+                        ?? navigation.currentFolderHeaders.first(where: { $0.id == card.messageID })
+                        ?? MessageHeader(
+                            id: card.messageID,
+                            threadID: card.messageID,
+                            folderID: card.folderID,
+                            from: Correspondent(name: card.senderName, email: card.senderEmail),
+                            subject: card.subject,
+                            snippet: card.snippet,
+                            date: card.date,
+                            isRead: card.citation.isRead,
+                            isFlagged: card.citation.isFlagged,
+                            isAnswered: card.citation.isAnswered
+                        )
+                    presentReply(to: header, sourceID: card.sourceID)
+                }
+            },
+            onArchiveCards: { cards in
+                await archiveAssistantCards(cards)
+            },
+            onOpenSettings: onOpenSettings
         )
+    }
+
+    private func archiveAssistantCards(_ cards: [AssistantConversationCard]) async {
+        let bySource = Dictionary(grouping: cards) {
+            $0.sourceID ?? navigation.assistantSourceID ?? preferredDefaultSection(in: visibleSourceSections)?.id
+        }
+        var receipts: [MailMoveUndo?] = []
+        let lease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(lease) }
+        for (sourceID, sourceCards) in bySource {
+            guard let sourceID,
+                  let section = sidebarSourceSections.first(where: { $0.id == sourceID }),
+                  let archiveFolder = section.folders.first(where: { $0.role == .archive })
+            else { continue }
+            let owner = backend(for: sourceID)
+            let byFolder = Dictionary(grouping: sourceCards, by: \.folderID)
+            for (folderID, folderCards) in byFolder where folderID != archiveFolder.id {
+                let sourceFolder = section.folders.first { $0.id == folderID }
+                    ?? Folder(id: folderID, name: folderID, role: .custom)
+                if let receipt = try? await owner.moveWithUndo(
+                    messageIDs: folderCards.map(\.messageID),
+                    from: sourceFolder,
+                    to: archiveFolder,
+                    sourceID: sourceID
+                ) {
+                    receipts.append(receipt)
+                }
+            }
+        }
+        if !receipts.isEmpty {
+            undoQueue.registerMoves(
+                receipts,
+                description: String(localized: "Archived", bundle: .module),
+                lease: lease
+            )
+            await loadFolders()
+            navigation.requestReload()
+        }
     }
 
     private var readingPanePresentation: MailRootReadingPanePresentation {
@@ -1864,8 +1917,10 @@ public struct BrevMailRootView: View {
         )
         #if os(macOS)
         .sidebarChrome(
-            onOpenAssistant: selectedAIBackend == nil ? nil : {
-                navigation.selectAssistantDestination()
+            onOpenAssistant: selectedAIBackend == nil || navigation.inlineReply != nil ? nil : {
+                navigation.selectAssistantDestination(
+                    preserving: navigation.selectedSourceID ?? preferredDefaultSection(in: visibleSourceSections)?.id
+                )
             },
             onAddAccount: onAddAccount,
             footer: FolderSidebarFooter(
@@ -2185,7 +2240,11 @@ public struct BrevMailRootView: View {
                 navigation.selectedMessageID = row.header.id
                 navigation.endSelection()
             },
-            onAsk: selectedAIBackend == nil ? nil : { navigation.selectAssistantDestination() },
+            onAsk: selectedAIBackend == nil || navigation.inlineReply != nil ? nil : {
+                navigation.selectAssistantDestination(
+                    preserving: navigation.selectedSourceID ?? preferredDefaultSection(in: visibleSourceSections)?.id
+                )
+            },
             onStartTriage: navigation.inlineReply != nil ? nil : {
                 Task { await startTriage() }
             }
@@ -4773,7 +4832,7 @@ public struct BrevMailRootView: View {
         currentID: Folder.ID?
     ) {
         guard !navigation.isUnifiedInboxSelected, !navigation.isSmartViewSelected,
-              !navigation.isAllAttachmentsSelected else { return }
+              !navigation.isAllAttachmentsSelected, !navigation.isAssistantSelected else { return }
         let selectedFolderID = visibleFolderID(
             in: folders,
             sourceID: sourceID,
@@ -4788,7 +4847,7 @@ public struct BrevMailRootView: View {
 
     private func syncSelectedFolderForCurrentSource() {
         guard !navigation.isUnifiedInboxSelected, !navigation.isSmartViewSelected,
-              !navigation.isAllAttachmentsSelected else { return }
+              !navigation.isAllAttachmentsSelected, !navigation.isAssistantSelected else { return }
         if let section = selectedSourceSection {
             syncSelectedFolderID(
                 for: section.folders,

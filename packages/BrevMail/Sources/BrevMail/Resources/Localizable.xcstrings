@@ -1,6 +1,39 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Archive updates": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arkiver oppdateringer"
+          }
+        }
+      }
+    },
+    "Enable AI Assistant": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktiver AI-assistent"
+          }
+        }
+      }
+    },
+    "Questions send matching local message summaries to your configured AI provider.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørsmål sender treffende lokale meldingssammendrag til din konfigurerte AI-leverandør."
+          }
+        }
+      }
+    },
     "%lld need you": {
       "extractionState": "manual",
       "localizations": {

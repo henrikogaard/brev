@@ -26,6 +26,9 @@ struct AssistantDestinationView: View {
     @Environment(\.locale) private var locale
     @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = 26
 
+    @AppStorage(AIWriterSettings.Key.isEnabled) private var aiEnabled = false
+    @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
+
     let sourceID: MailSourceID?
     let aiBackend: (any AIBackend)?
     let actionFolders: [Folder]
@@ -35,10 +38,15 @@ struct AssistantDestinationView: View {
     let search: MailboxChatSearch
     let onOpenCard: (AssistantConversationCard) -> Void
     let onReplyCard: (AssistantConversationCard) -> Void
+    let onArchiveCards: (([AssistantConversationCard]) async -> Void)?
+    let onOpenSettings: (() -> Void)?
+    let availabilityOverride: MailboxChatAvailabilityState?
 
     @StateObject private var controller: MailboxChatController
     @State private var draftPrompt = ""
     @State private var confirmationPhrases: [UUID: String] = [:]
+    @State private var pendingArchiveCards: [AssistantConversationCard]?
+    @State private var showAIConsent = false
 
     private static let suggestedStarters: [String] = [
         String(localized: "What needs me today?", bundle: .module),
@@ -55,6 +63,9 @@ struct AssistantDestinationView: View {
         search: @escaping MailboxChatSearch,
         onOpenCard: @escaping (AssistantConversationCard) -> Void,
         onReplyCard: @escaping (AssistantConversationCard) -> Void,
+        onArchiveCards: (([AssistantConversationCard]) async -> Void)? = nil,
+        onOpenSettings: (() -> Void)? = nil,
+        availabilityOverride: MailboxChatAvailabilityState? = nil,
         preloadedTurns: [MailboxChatTurnKind] = []
     ) {
         self.sourceID = sourceID
@@ -66,6 +77,9 @@ struct AssistantDestinationView: View {
         self.search = search
         self.onOpenCard = onOpenCard
         self.onReplyCard = onReplyCard
+        self.onArchiveCards = onArchiveCards
+        self.onOpenSettings = onOpenSettings
+        self.availabilityOverride = availabilityOverride
         _controller = StateObject(wrappedValue: MailboxChatController(
             scope: .account,
             sourceID: sourceID,
@@ -77,6 +91,17 @@ struct AssistantDestinationView: View {
             turns: preloadedTurns,
             search: search
         ))
+    }
+
+    private var availabilityState: MailboxChatAvailabilityState {
+        availabilityOverride ?? MailboxChatAvailabilityState(
+            settings: AIWriterSettings(isEnabled: aiEnabled, consentGiven: aiConsentGiven),
+            hasProviderBackend: aiBackend != nil
+        )
+    }
+
+    private var disabledReason: MailboxChatDisabledReason? {
+        MailboxChatAvailability.disabledReason(in: availabilityState)
     }
 
     var body: some View {
@@ -113,6 +138,49 @@ struct AssistantDestinationView: View {
         .background(theme.bgPrimary.color)
         .onChange(of: sourceID) { _, _ in
             reconfigureController()
+        }
+        .alert(
+            String(localized: "Enable AI Assistant", bundle: .module),
+            isPresented: $showAIConsent
+        ) {
+            Button(String(localized: "Enable", bundle: .module)) {
+                aiEnabled = true
+                aiConsentGiven = true
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+        } message: {
+            Text(
+                String(
+                    localized: "Questions send matching local message summaries to your configured AI provider.",
+                    bundle: .module
+                )
+            )
+        }
+        .confirmationDialog(
+            String(localized: "Archive updates", bundle: .module),
+            isPresented: Binding(
+                get: { pendingArchiveCards != nil },
+                set: { if !$0 { pendingArchiveCards = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let cards = pendingArchiveCards {
+                Button(
+                    String(
+                        format: String(localized: "Archive all %lld", bundle: .module),
+                        Int64(cards.count)
+                    ),
+                    role: .destructive
+                ) {
+                    pendingArchiveCards = nil
+                    Task {
+                        await onArchiveCards?(cards)
+                    }
+                }
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                pendingArchiveCards = nil
+            }
         }
     }
 
@@ -439,6 +507,15 @@ struct AssistantDestinationView: View {
     private func submit(_ prompt: String) {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !controller.isSending else { return }
+        if let disabledReason {
+            switch disabledReason {
+            case .notEnabled, .consentRequired:
+                showAIConsent = true
+            case .missingBackend:
+                onOpenSettings?()
+            }
+            return
+        }
         draftPrompt = ""
         Task {
             await controller.send(userText: trimmed)
@@ -452,10 +529,8 @@ struct AssistantDestinationView: View {
         case .followUpPrompt(let prompt):
             submit(prompt)
         case .archiveUpdates(_, let cards):
-            // Route through the ADR-0026 supervised planner so bulk archiving
-            // always goes through counted review and explicit confirmation.
-            guard let sender = cards.first?.senderEmail, !sender.isEmpty else { return }
-            submit("archive all mail from \(sender)")
+            guard !cards.isEmpty else { return }
+            pendingArchiveCards = cards
         }
     }
 }
