@@ -172,25 +172,18 @@ enum UnifiedInboxSearchPolicy {
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> [UnifiedInboxSearchPlan] {
-        searchableSources(
-            from: sourceSections,
-            execution: execution,
-            capabilities: capabilities
-        ).map { source in
+        sourceSections.compactMap { section in
+            let supported = capabilities(section.id)
+            guard let source = UnifiedInboxSearchSource(section: section, capabilities: supported, execution: execution)
+            else { return nil }
             let sourceExecution = execution == .cacheThenServer
-                && !capabilities(source.sourceID).contains(.serverSideSearch)
+                && !supported.contains(.serverSideSearch)
                 ? SearchExecution.cacheOnly
                 : execution
-            return UnifiedInboxSearchPlan(
-                source: source,
-                query: searchQuery(
-                    text: text,
-                    inboxFolderID: source.inbox.id,
-                    execution: sourceExecution,
-                    now: now,
-                    calendar: calendar
-                )
-            )
+            let plan = searchPlan(text: text, inboxFolderID: source.inbox.id, execution: sourceExecution,
+                                  now: now, calendar: calendar)
+            guard let query = plan.resolvedQuery(in: section.folders) else { return nil }
+            return UnifiedInboxSearchPlan(source: source, query: query)
         }
     }
 

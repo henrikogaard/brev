@@ -3296,7 +3296,8 @@ public struct MessageListView: View {
             selectedFolderID: folder?.id,
             execution: navigation.searchExecution,
             searchAllFolders: searchAllFolders,
-            searchScope: searchScope
+            searchScope: searchScope,
+            folders: allFolders
         )
         let request = searchPlan.request
         guard canStartSearch(request) else {
@@ -3326,16 +3327,22 @@ public struct MessageListView: View {
             return
         }
         isLoading = true
-        activeAttachmentSearchQuery = searchPlan.query.hasAttachments != nil
-            && searchPlan.query.execution != .cacheOnly
-            ? searchPlan.query
-            : nil
         errorMessage = nil
         mutationErrorStatus = nil
         loadMoreErrorStatus = nil
+        guard let resolvedQuery = searchPlan.query else {
+            searchProgress.apply(MailSearchUpdate(headers: [], coverage: .cached, replacesResults: true, isComplete: true),
+                                 source: progressSource, request: progressRequest)
+            headers = []
+            navigation.replaceCurrentFolderHeaders([], selectFirstIfNeeded: false)
+            finishSearch(request, progressRequest: progressRequest)
+            return
+        }
+        activeAttachmentSearchQuery = resolvedQuery.hasAttachments != nil && resolvedQuery.execution != .cacheOnly
+            ? resolvedQuery : nil
         do {
             let results = try await MailSearchExecution
-                .run(backend: backend, query: searchPlan.query, sourceID: sourceID) { update in
+                .run(backend: backend, query: resolvedQuery, sourceID: sourceID) { update in
                     await MainActor.run {
                         guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request),
                               searchProgress.apply(
@@ -3379,7 +3386,7 @@ public struct MessageListView: View {
                 // Backend/server search is temporarily unavailable or rejected;
                 // fall back to the already-loaded page without alarming the user.
                 let resultCount = applyLocalSearchFallback(
-                    searchQuery: searchPlan.query,
+                    searchQuery: resolvedQuery,
                     request: request,
                     progressRequest: progressRequest
                 )
@@ -4564,6 +4571,8 @@ private extension NaturalLanguageSearchChip.Kind {
         switch self {
         case .keyword:
             return "magnifyingglass"
+        case .folder:
+            return "folder"
         case .sender:
             return "person"
         case .subject:

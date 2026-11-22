@@ -1,5 +1,11 @@
 # Worklog
 
+## 2026-11-22 — Agent — #296 folder search chips
+
+- Recognize English and Norwegian phrases for Inbox, Sent, Drafts, Archive, Trash and Spam. Resolve the role within each source; skip sources missing the role and keep navigation anchored to the original list. Reuse the existing localized folder label.
+- Red: “receipt in Sent unread” kept “in Sent” as keywords and produced no folder chip. The focused Linux harness now covers chip removal, submission, result filtering, and two account-specific Sent IDs. No provider or storage changes.
+- Native app builds and the real MockBackend test need macOS CI. Verify saved-search label membership and the folder chip in both platform search fields; snapshot needs recording on macOS 26.
+
 ## 2026-11-22 — Agent — #296 bilingual sender and date chips
 
 - Extended the existing search planner and iOS tokens with sender names and Norwegian date, read, flag and attachment phrases. The toolbar and iOS search field now give an example in the user's language.

@@ -17,11 +17,48 @@ import Testing
 
 @Suite("NaturalLanguageSearchPlanner")
 struct NaturalLanguageSearchPlannerTests {
+    @Test("folder phrases survive submission and can be removed without losing the keywords")
+    func folderPhraseEditing() throws {
+        for phrase in ["in Sent", "i Sendt"] {
+            let text = "receipt \(phrase) unread"
+            let plan = NaturalLanguageSearchPlanner.plan(for: text, execution: .cacheOnly)
+            #expect(plan.query.text == "receipt")
+            #expect(plan.query.isUnread == true)
+            let chip = try #require(plan.chips.first { $0.value == phrase })
+            #expect(NaturalLanguageSearchChipEditing.removing(chip, from: text) == "receipt unread")
+            let submitted = MailSearchTokens.extract(from: text)
+            #expect(submitted.remainingText == "receipt")
+            let composed = MailSearchTokens.composedText(freeText: submitted.remainingText, tokens: submitted.tokens)
+            #expect(NaturalLanguageSearchPlanner.plan(for: composed, execution: .cacheOnly).chips.contains(chip))
+        }
+        let literal = NaturalLanguageSearchPlanner.plan(for: "in sentiment analysis", execution: .cacheOnly)
+        #expect(literal.query.text == "in sentiment analysis")
+        #expect(literal.chips.isEmpty)
+    }
+
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         return calendar
     }()
+
+    @Test("a folder chip filters mock results and removing it restores all folders")
+    func folderChipFiltersMockResults() async throws {
+        let sent = Folder(id: "outgoing", name: "Outgoing", role: .sent)
+        func header(_ id: String, _ folder: String) -> MessageHeader {
+            MessageHeader(id: id, threadID: id, folderID: folder, from: Correspondent(email: "a@example.test"),
+                          subject: "receipt", snippet: "", date: .now)
+        }
+        let mock = MockBackend(messagesByFolder: ["outgoing": [header("a", "outgoing")], "inbox": [header("b", "inbox")]])
+        let text = "receipt i sendt"
+        let plan = NaturalLanguageSearchPlanner.plan(for: text, execution: .cacheOnly)
+        let scoped = try #require(plan.resolvedQuery(in: [sent]))
+        #expect(try await mock.search(scoped).map(\.id) == ["a"])
+        let chip = try #require(plan.chips.first { $0.kind == .folder })
+        let edited = NaturalLanguageSearchChipEditing.removing(chip, from: text)
+        let all = try #require(NaturalLanguageSearchPlanner.plan(for: edited, execution: .cacheOnly).resolvedQuery(in: [sent]))
+        #expect(try await Set(mock.search(all).map(\.id)) == ["a", "b"])
+    }
 
     @Test("deterministic parser turns last month into a cache search date range")
     func deterministicParserTurnsLastMonthIntoDateRange() throws {

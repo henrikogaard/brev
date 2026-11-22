@@ -80,6 +80,9 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Search accepts folder phrases such as “in Sent” and “i Sendt”. The folder chip
+  uses each mailbox’s own folder and can be removed independently (#296).
+
 - macOS sidebar (#306): the account switcher is now the sidebar's title, an
   Assistant row sits right under it when AI is on, Inbox, Drafts, Archive, Spam
   and the other mailboxes get theme-coloured icons, Accounts has a "+" to add an

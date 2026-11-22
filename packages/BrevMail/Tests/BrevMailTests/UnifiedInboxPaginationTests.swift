@@ -358,6 +358,25 @@ struct UnifiedInboxPaginationTests {
         ))
     }
 
+    @Test("Sent resolves separately per source; a source without Sent cannot return inbox matches")
+    func sentPhraseScopesToProviderFolderIDs() {
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let a = Self.section(account: "a", mailbox: "1", folders: [inbox, Folder(id: "SENT", name: "Sent mail", role: .sent)])
+        let b = Self.section(account: "b", mailbox: "1", folders: [inbox, Folder(id: "Utsendt", name: "Utsendt", role: .sent)])
+        let c = Self.section(account: "c", mailbox: "1", folders: [inbox])
+        for text in ["receipt in Sent", "receipt i Sendt"] {
+            let plans = UnifiedInboxSearchPolicy.searchPlans(
+                text: text,
+                from: [a, b, c],
+                execution: .cacheOnly,
+                capabilities: { _ in [] }
+            )
+            #expect(plans.map(\.source.sourceID) == [a.id, b.id])
+            #expect(plans.map(\.query.folderID) == ["SENT", "Utsendt"])
+            #expect(plans.map(\.query.text) == ["receipt", "receipt"])
+        }
+    }
+
     @Test("auto search plans use local search for visible sources without server search")
     func autoSearchPlansUseLocalSearchForVisibleSourcesWithoutServerSearch() throws {
         let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)

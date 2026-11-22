@@ -127,7 +127,7 @@ struct MailSearchMailboxScopeTests {
             searchAllFolders: MailSearchMailboxScope.currentMailbox.searchesAllFolders,
             searchScope: .all
         )
-        #expect(current.query.folderID == "inbox")
+        #expect(current.query?.folderID == "inbox")
 
         let all = MessageListSearchPlanPolicy.plan(
             text: "invoice",
@@ -137,7 +137,8 @@ struct MailSearchMailboxScopeTests {
             searchAllFolders: MailSearchMailboxScope.allMailboxes.searchesAllFolders,
             searchScope: .all
         )
-        #expect(all.query.folderID == nil)
+        #expect(all.query != nil)
+        #expect(all.query?.folderID == nil)
         #expect(all.request != current.request)
     }
 
