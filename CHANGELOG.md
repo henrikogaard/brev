@@ -4,6 +4,7 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- On Mac, press ⌘K to search menu commands, accounts, mailboxes and settings.
 - On Mac, single-key shortcuts act on the selected message while the message list or reader has focus (`E` archive, `R` reply, `S` star, `#` delete, `H` snooze, `J`/`K` next and previous) and pause while typing; toggle them in Settings → Mailbox View (#300).
 - Cached expired snoozed messages outside the loaded Inbox page now reappear
   on Inbox open and at wake without a timer-triggered provider reload (#297).

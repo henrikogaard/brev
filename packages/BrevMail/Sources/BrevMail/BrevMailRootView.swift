@@ -1167,6 +1167,17 @@ public struct BrevMailRootView: View {
 
     private var mailRootCommandContextContent: some View {
         MailRootRenderStage { mailRootPresentationContent }
+        #if os(macOS)
+            .focusedSceneValue(\.mailPaletteMailboxContext, MailPaletteMailboxContext(
+                sections: { sidebarSourceSections },
+                select: { source, folderID in
+                    guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
+                          let section = sidebarSourceSections.first(where: { $0.id == source }), section.loadError == nil,
+                          section.folders.contains(where: { $0.id == folderID }) else { return }
+                    navigation.selectFolder(folderID, in: source)
+                }
+            ))
+        #endif
             .focusedSceneValue(\.mailNavigation, triageSession == nil ? navigation : triageReaderNavigation)
             .focusedSceneValue(\.mailBackend, selectedBackend)
             .focusedSceneValue(\.mailFolders, folders)

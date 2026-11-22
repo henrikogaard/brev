@@ -16831,6 +16831,50 @@
           }
         }
       }
+    },
+    "Command Palette…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kommandopalett …"
+          }
+        }
+      }
+    },
+    "Search commands, mailboxes, accounts and settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søk i kommandoer, postkasser, kontoer og innstillinger"
+          }
+        }
+      }
+    },
+    "No matching commands or destinations": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen kommandoer eller mål samsvarer med søket"
+          }
+        }
+      }
+    },
+    "Account": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konto"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

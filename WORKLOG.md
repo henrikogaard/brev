@@ -1,5 +1,11 @@
 # Worklog
 
+## 2026-11-22 — Agent — #300 command palette
+
+- Added a macOS ⌘K palette backed by the current native menu, visible mail sources and available Settings sections. Commands are validated after the sheet dismisses; folder selection is checked against the current profile and source. No new network calls or stored search history.
+- Tests cover a nested native command, disabled/removed items, source-scoped routing, Settings keywords and nb catalog entries. SwiftFormat, Swift parse, catalog validation, diff and ADR gates run on Linux; native tests and both builds run on CI.
+- Handoff: verify keyboard focus and window routing on Mac; the palette snapshot needs recording on macOS 26. No existing PNGs changed.
+
 ## 2026-11-23 — Agent — PR #327 (#300 single-key shortcuts rebase and macOS snapshots)
 
 - Goal: rebase PR #327 onto `origin/main`, verify zero conflicts with merged #293 Triage mode (Triage owns its own local key monitor and renders key hints on its action bar), refresh Today snapshots for the shortcut legend, and record the Mailbox View shortcuts toggle snapshot.
