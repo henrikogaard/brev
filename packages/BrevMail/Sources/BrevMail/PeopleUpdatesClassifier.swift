@@ -361,4 +361,23 @@ enum UpdatesSenderBundler {
             )
         }
     }
+
+    /// Returns strictly the individual message headers currently rendered as
+    /// selectable rows in the Updates tab: single-message bundles and the
+    /// children of expanded multi-message bundles (never hidden messages inside
+    /// collapsed bundles) (#295).
+    static func selectableHeaders(
+        from headers: [MessageHeader],
+        sourceID: MailSourceID?,
+        expandedBundleIDs: Set<String>
+    ) -> [MessageHeader] {
+        let bundles = bundle(headers, sourceID: sourceID)
+        var result: [MessageHeader] = []
+        for entry in bundles {
+            if entry.headers.count == 1 || expandedBundleIDs.contains(entry.id) {
+                result.append(contentsOf: entry.headers)
+            }
+        }
+        return result
+    }
 }

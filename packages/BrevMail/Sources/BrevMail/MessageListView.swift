@@ -266,7 +266,7 @@ public struct MessageListView: View {
                 Task { await reloadForSearchChange() }
             }
         #if os(iOS)
-            .toolbar { selectionToolbar(visibleHeaders: presentationSnapshot.headers) }
+            .toolbar { selectionToolbar(visibleHeaders: renderedSelectableHeaders(in: presentationSnapshot)) }
         #endif
             .confirmationDialog(
                 swipeMoreHeader?.subject ?? "",
@@ -316,10 +316,8 @@ public struct MessageListView: View {
                     selectedMessageID: navigation.selectedMessageID,
                     onOverridesChanged: { inboxCategoryOverrideRevision += 1 },
                     onTabChanged: {
-                        let selectableHeaders = activePeopleUpdatesTab == .updates
-                            ? presentationSnapshot.filteredUngroupedHeaders
-                            : presentationSnapshot.headers
-                        navigation.bulkSelection.formIntersection(Set(selectableHeaders.map(\.id)))
+                        let selectable = renderedSelectableHeaders(in: presentationSnapshot)
+                        navigation.bulkSelection.formIntersection(Set(selectable.map(\.id)))
                         reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
                     },
                     onMessageOpened: { openedID in
@@ -776,10 +774,8 @@ public struct MessageListView: View {
             peopleUpdatesSignalsByMessageID = signals
             peopleUpdatesRepliedSenders = replied
             peopleUpdatesSignalsRevision += 1
-            let selectableHeaders = activePeopleUpdatesTab == .updates
-                ? presentationSnapshot.filteredUngroupedHeaders
-                : presentationSnapshot.headers
-            navigation.bulkSelection.formIntersection(Set(selectableHeaders.map(\.id)))
+            let selectable = renderedSelectableHeaders(in: presentationSnapshot)
+            navigation.bulkSelection.formIntersection(Set(selectable.map(\.id)))
             reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
         }
     }
@@ -841,6 +837,19 @@ public struct MessageListView: View {
         }
     }
 
+    private func renderedSelectableHeaders(
+        in presentation: MessageListPresentationSnapshot
+    ) -> [MessageHeader] {
+        guard showsPeopleUpdatesBar, activePeopleUpdatesTab == .updates else {
+            return presentation.headers
+        }
+        return UpdatesSenderBundler.selectableHeaders(
+            from: presentation.filteredUngroupedHeaders,
+            sourceID: sourceID,
+            expandedBundleIDs: expandedUpdateBundleIDs
+        )
+    }
+
     @ViewBuilder
     private func peopleUpdatesListRows(
         presentation: MessageListPresentationSnapshot,
@@ -860,6 +869,7 @@ public struct MessageListView: View {
                         onToggleExpanded: {
                             if expandedUpdateBundleIDs.contains(bundle.id) {
                                 expandedUpdateBundleIDs.remove(bundle.id)
+                                navigation.bulkSelection.subtract(bundle.headers.map(\.id))
                             } else {
                                 expandedUpdateBundleIDs.insert(bundle.id)
                             }

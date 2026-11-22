@@ -393,6 +393,66 @@ struct PeopleUpdatesClassifierTests {
         #expect(bundles[0].headers.map(\.id) == ["u1"])
     }
 
+    @Test("Updates selectableHeaders excludes collapsed multi-message bundles and includes expanded rows")
+    func updatesSelectableHeadersMatchesRenderedBundleRows() {
+        let m1 = MessageHeader(
+            id: "u1",
+            threadID: "shared-thread",
+            folderID: "inbox",
+            from: Correspondent(name: "Linear", email: "notifications@linear.app"),
+            to: [],
+            subject: "Issue #1",
+            snippet: "Update 1",
+            date: Date().addingTimeInterval(-60),
+            isRead: false,
+            isFlagged: false,
+            hasAttachments: false
+        )
+        let m2 = MessageHeader(
+            id: "u2",
+            threadID: "shared-thread",
+            folderID: "inbox",
+            from: Correspondent(name: "Linear", email: "notifications@linear.app"),
+            to: [],
+            subject: "Re: Issue #1",
+            snippet: "Update 2",
+            date: Date().addingTimeInterval(-120),
+            isRead: false,
+            isFlagged: false,
+            hasAttachments: false
+        )
+        let single = MessageHeader(
+            id: "u3",
+            threadID: "solo-thread",
+            folderID: "inbox",
+            from: Correspondent(name: "GitHub", email: "notifications@github.com"),
+            to: [],
+            subject: "Release",
+            snippet: "v2",
+            date: Date().addingTimeInterval(-180),
+            isRead: false,
+            isFlagged: false,
+            hasAttachments: false
+        )
+        let headers = [m1, m2, single]
+
+        // Collapsed multi-message bundle hides u1 & u2 from selectable rows; single u3 stays selectable.
+        let collapsed = UpdatesSenderBundler.selectableHeaders(
+            from: headers,
+            sourceID: Self.source,
+            expandedBundleIDs: []
+        )
+        #expect(collapsed.map(\.id) == ["u3"])
+
+        // Expanding Linear's bundle exposes both u1 and u2 so Select/Deselect All covers all rendered rows.
+        let expanded = UpdatesSenderBundler.selectableHeaders(
+            from: headers,
+            sourceID: Self.source,
+            expandedBundleIDs: ["notifications@linear.app"]
+        )
+        #expect(Set(expanded.map(\.id)) == ["u1", "u2", "u3"])
+    }
+
     @Test("HTTPS unsubscribe confirmation states browser opening accurately even when one-click is advertised")
     func unsubscribeConfirmationMatchesBrowserBehavior() {
         let oneClick = ListUnsubscribeOptions.parse(
