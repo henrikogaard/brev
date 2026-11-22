@@ -3314,7 +3314,12 @@ private actor Store {
     ) throws -> String {
         try ensureActive()
         return try updateData(mailboxID: mailboxID) { mailboxData in
-            let attachmentID = "attachment-\(draftID)-\(mailboxData.attachmentsByID.count + 1)"
+            let journalAttachmentIDs = Set(journalRecords.filter { $0.sourceID.mailboxID == mailboxID }
+                .flatMap { $0.attachments.map { $0.metadata.id } })
+            var attachmentID: String
+            repeat {
+                attachmentID = "attachment-\(draftID)-\(UUID().uuidString)"
+            } while mailboxData.attachmentsByID[attachmentID] != nil || journalAttachmentIDs.contains(attachmentID)
             mailboxData.attachmentsByID[attachmentID] = Attachment(
                 id: attachmentID,
                 name: filename,
