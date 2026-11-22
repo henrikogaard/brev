@@ -337,7 +337,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     }
 
     public func move(messageIDs: [String], to folder: Folder) async throws {
-        await store.move(ids: messageIDs, to: folder.id)
+        try await store.move(ids: messageIDs, to: folder.id)
     }
 
     public func move(messageIDs: [String], to folder: Folder, sourceID: MailSourceID) async throws {
@@ -353,7 +353,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     }
 
     public func delete(messageIDs: [String]) async throws {
-        await store.delete(ids: messageIDs)
+        try await store.delete(ids: messageIDs)
     }
 
     public func delete(messageIDs: [String], sourceID: MailSourceID) async throws {
@@ -2872,8 +2872,8 @@ private actor Store {
         }
     }
 
-    func move(ids: [String], to destinationFolderID: String) {
-        try? move(ids: ids, to: destinationFolderID, mailboxID: activeMailboxID)
+    func move(ids: [String], to destinationFolderID: String) throws {
+        try move(ids: ids, to: destinationFolderID, mailboxID: activeMailboxID)
     }
 
     func move(ids: [String], to destinationFolderID: String, mailboxID: Mailbox.ID) throws {
@@ -2941,8 +2941,8 @@ private actor Store {
         }
     }
 
-    func delete(ids: [String]) {
-        try? delete(ids: ids, mailboxID: activeMailboxID)
+    func delete(ids: [String]) throws {
+        try delete(ids: ids, mailboxID: activeMailboxID)
     }
 
     func delete(ids: [String], mailboxID: Mailbox.ID) throws {

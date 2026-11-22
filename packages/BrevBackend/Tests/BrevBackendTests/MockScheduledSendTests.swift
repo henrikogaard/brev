@@ -56,7 +56,7 @@ struct MockScheduledSendTests {
             mimeType: "text/plain",
             sourceID: Self.sourceB
         )
-        #expect(firstAttachmentID == secondAttachmentID)
+        #expect(firstAttachmentID != secondAttachmentID)
 
         let first = try await backend.save(draft: Draft(
             id: "same-draft",
@@ -110,16 +110,72 @@ struct MockScheduledSendTests {
         let firstID = try #require(entries.first { $0.sourceID == Self.sourceA }?.id)
         let secondID = try #require(entries.first { $0.sourceID == Self.sourceB }?.id)
         let editing = try #require(backend.extensionService(ScheduledSendEditing.self))
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        _ = try journal.transact { records in
+            guard let index = records.firstIndex(where: {
+                $0.sourceID == Self.sourceB && $0.draftID == "same-draft" && $0.state == .queued
+            }),
+                let attachment = records[index].attachments.first,
+                var draft = records[index].draft else {
+                throw MockSendJournalError.invalidFile
+            }
+            let metadata = attachment.metadata
+            records[index].attachments = [MockSendJournalAttachment(
+                metadata: Attachment(
+                    id: firstAttachmentID,
+                    name: metadata.name,
+                    mimeType: metadata.mimeType,
+                    sizeBytes: metadata.sizeBytes,
+                    isInline: metadata.isInline,
+                    contentID: metadata.contentID,
+                    resource: metadata.resource
+                ),
+                data: attachment.data,
+                draftID: attachment.draftID
+            )]
+            draft.attachmentIDs = [firstAttachmentID]
+            records[index].draft = draft
+        }
+        try await backend.connect()
+        let restoredFirst = try #require(try await backend.draft(for: first.id, sourceID: Self.sourceA))
+        let restoredSecond = try #require(try await backend.draft(for: second.id, sourceID: Self.sourceB))
+        #expect(restoredFirst.attachmentIDs == [firstAttachmentID])
+        #expect(restoredSecond.attachmentIDs == [firstAttachmentID])
+        #expect(try await backend.localDraftAttachments(for: restoredFirst, sourceID: Self.sourceA).map(\.data) == [Data([1])])
+        #expect(try await backend.localDraftAttachments(for: restoredSecond, sourceID: Self.sourceB).map(\.data) == [Data([2])])
         await #expect(throws: (any Error).self) {
             try await editing.cancelScheduledSend(id: "unknown-schedule-id")
         }
         _ = try await editing.cancelScheduledSend(id: firstID)
         #expect(scheduler.pendingScheduledSends().map(\.id) == [secondID])
         #expect(try await editing.scheduledDraft(id: secondID).subject == "B")
+        let canceledFirst = try #require(try await backend.draft(for: first.id, sourceID: Self.sourceA))
+        #expect(try await backend.localDraftAttachments(for: canceledFirst, sourceID: Self.sourceA).map(\.data) == [Data([1])])
+        await scheduler.deliverDueScheduledSends()
+        #expect(scheduler.pendingScheduledSends().isEmpty)
 
         let sent = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .sent })
         let (sentHeaders, _) = try await backend.messages(in: sent, sourceID: Self.sourceA, pageToken: nil)
         #expect(sentHeaders.isEmpty)
+        let sentB = try #require(await backend.folders(in: Self.sourceB).first { $0.role == .sent })
+        let (sentBHeaders, _) = try await backend.messages(in: sentB, sourceID: Self.sourceB, pageToken: nil)
+        let sentBHeader = try #require(sentBHeaders.first { $0.subject == "B" })
+        let sentBBody = try await backend.body(for: sentBHeader.id, sourceID: Self.sourceB)
+        let sentBAttachment = try #require(sentBBody.attachments.first)
+        #expect(sentBAttachment.id == firstAttachmentID)
+        #expect(try await backend.downloadAttachment(sentBAttachment, sourceID: Self.sourceB) == Data([2]))
+
+        let reopened = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
+        let reopenedScheduler = try #require(reopened.extensionService(ScheduledSendManaging.self))
+        #expect(reopenedScheduler.pendingScheduledSends().isEmpty)
+        let reopenedDraft = try #require(try await reopened.draft(for: first.id, sourceID: Self.sourceA))
+        #expect(try await reopened.localDraftAttachments(for: reopenedDraft, sourceID: Self.sourceA).map(\.data) == [Data([1])])
+        let reopenedSent = try #require(await reopened.folders(in: Self.sourceB).first { $0.role == .sent })
+        let (reopenedSentHeaders, _) = try await reopened.messages(in: reopenedSent, sourceID: Self.sourceB, pageToken: nil)
+        let reopenedSentHeader = try #require(reopenedSentHeaders.first { $0.subject == "B" })
+        let reopenedSentBody = try await reopened.body(for: reopenedSentHeader.id, sourceID: Self.sourceB)
+        let reopenedAttachment = try #require(reopenedSentBody.attachments.first)
+        #expect(try await reopened.downloadAttachment(reopenedAttachment, sourceID: Self.sourceB) == Data([2]))
     }
 
     @Test("saving an attachment draft preserves its planned Later date until explicit send")
@@ -458,7 +514,21 @@ struct MockScheduledSendTests {
         )
 
         #expect(addedID != retainedID)
-        #expect(try await backend.localDraftAttachments(for: saved, sourceID: Self.sourceA).map(\.data) == [Data([2])])
+        var savedWithBoth = saved
+        savedWithBoth.attachmentIDs = [retainedID, addedID]
+        savedWithBoth = try await backend.save(draft: savedWithBoth, sourceID: Self.sourceA)
+        #expect(try await backend.localDraftAttachments(for: savedWithBoth, sourceID: Self.sourceA).map(\.data) == [
+            Data([2]),
+            Data([3]),
+        ])
+
+        let reopened = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
+        let restored = try #require(try await reopened.draft(for: savedWithBoth.id, sourceID: Self.sourceA))
+        #expect(restored.attachmentIDs == [retainedID, addedID])
+        #expect(try await reopened.localDraftAttachments(for: restored, sourceID: Self.sourceA).map(\.data) == [
+            Data([2]),
+            Data([3]),
+        ])
     }
 
     @Test("trash and permanent deletion remove queued drafts without restoring them")
@@ -555,6 +625,53 @@ struct MockScheduledSendTests {
         let (headers, _) = try await backend.messages(in: drafts, sourceID: Self.sourceA, pageToken: nil)
         #expect(headers.contains { $0.id == "draft-\(draft.id)" })
         let preservedDraft = try #require(try await backend.draft(for: draft.id, sourceID: Self.sourceA))
+        #expect(preservedDraft.htmlBody == draft.htmlBody)
+    }
+
+    @Test("unscoped delete and Trash move propagate journal failures")
+    func failedUnscopedDeleteAndTrashMovePreserveQueuedDraft() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
+        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        let mailbox = try await backend.currentMailbox()
+        let sourceID = backend.sourceID(for: mailbox)
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        let draft = Draft(
+            id: "unscoped-delete-storage-failure",
+            subject: "Keep unscoped content",
+            htmlBody: "<p>Retain this body</p>",
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
+        _ = try await backend.send(draft: draft, sourceID: sourceID)
+        let messageID = "draft-\(draft.id)"
+        let scheduleID = try #require(scheduler.pendingScheduledSends().first?.id)
+        let acceptedJournal = try Data(contentsOf: journal.fileURL)
+        try FileManager.default.removeItem(at: directory)
+
+        await #expect(throws: (any Error).self) {
+            try await backend.delete(messageIDs: [messageID])
+        }
+        #expect(scheduler.pendingScheduledSends().map(\.id) == [scheduleID])
+        await #expect(throws: (any Error).self) {
+            try await backend.move(
+                messageIDs: [messageID],
+                to: Folder(id: "trash", name: "Trash", role: .trash)
+            )
+        }
+        #expect(scheduler.pendingScheduledSends().map(\.id) == [scheduleID])
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try acceptedJournal.write(to: journal.fileURL, options: .atomic)
+        try await backend.connect()
+        #expect(scheduler.pendingScheduledSends().map(\.id) == [scheduleID])
+        let drafts = try #require(await backend.folders(in: sourceID).first { $0.role == .drafts })
+        let (draftHeaders, _) = try await backend.messages(in: drafts, sourceID: sourceID, pageToken: nil)
+        #expect(draftHeaders.contains { $0.id == messageID })
+        let trash = try #require(await backend.folders(in: sourceID).first { $0.role == .trash })
+        let (trashHeaders, _) = try await backend.messages(in: trash, sourceID: sourceID, pageToken: nil)
+        #expect(!trashHeaders.contains { $0.id == messageID })
+        let preservedDraft = try #require(try await backend.draft(for: draft.id, sourceID: sourceID))
         #expect(preservedDraft.htmlBody == draft.htmlBody)
     }
 
