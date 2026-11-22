@@ -229,6 +229,15 @@ public final class SignInCodePanelStateController: CustomStringConvertible,
         }
     }
 
+    /// Waits for any in-flight post-copy dismiss and clipboard-clear tasks to
+    /// finish so tests do not race wall-clock deadlines under heavy CI load.
+    func awaitPendingCopyTasksForTesting() async {
+        let dismissTask = copiedDismissTask
+        let clearTask = clipboardClearTask
+        await dismissTask?.value
+        await clearTask?.value
+    }
+
     private func activate(_ presentation: SignInCodePresentation) {
         copiedDismissTask?.cancel()
         copiedDismissTask = nil

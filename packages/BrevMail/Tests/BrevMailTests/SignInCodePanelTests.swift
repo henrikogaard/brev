@@ -61,8 +61,8 @@ struct SignInCodePanelTests {
         let pasteboard = MockConcealedPasteboard()
         let controller = SignInCodePanelStateController(
             pasteboard: pasteboard,
-            clipboardClearDelay: .milliseconds(40),
-            copiedDismissDelay: .milliseconds(20),
+            clipboardClearDelay: .milliseconds(20),
+            copiedDismissDelay: .milliseconds(10),
             isAppActive: { true }
         )
 
@@ -80,10 +80,7 @@ struct SignInCodePanelTests {
         #expect(pasteboard.wasConcealed == true)
         #expect(controller.didCopyActiveCode == true)
 
-        let clearDeadline = Date().addingTimeInterval(2.0)
-        while controller.activePresentation != nil || pasteboard.storedString != nil, Date() < clearDeadline {
-            try await Task.sleep(for: .milliseconds(25))
-        }
+        await controller.awaitPendingCopyTasksForTesting()
         #expect(controller.activePresentation == nil)
         #expect(pasteboard.storedString == nil)
         #expect(pasteboard.clearCallCount == 1)
@@ -92,11 +89,8 @@ struct SignInCodePanelTests {
         controller.present(presentation)
         controller.copyActiveCode()
         pasteboard.simulateExternalCopy("keep-this")
-        let keepDeadline = Date().addingTimeInterval(2.0)
-        while controller.activePresentation != nil, Date() < keepDeadline {
-            try await Task.sleep(for: .milliseconds(25))
-        }
-        try await Task.sleep(for: .milliseconds(80))
+        await controller.awaitPendingCopyTasksForTesting()
+        #expect(controller.activePresentation == nil)
         #expect(pasteboard.storedString == "keep-this")
         #expect(pasteboard.clearCallCount == 1)
     }
