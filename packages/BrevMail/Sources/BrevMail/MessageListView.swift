@@ -3091,9 +3091,11 @@ public struct MessageListView: View {
     private func canApplyFolderLoadResponse(_ request: MessageListFolderLoadRequest) -> Bool {
         let currentSourceID = navigation.selectedSourceID
         let currentBackends = currentBackendsProvider?() ?? [backend]
-        let currentBackendIdentity = currentSourceID.flatMap { sourceID in
-            currentBackends.first(where: { $0.account.id == sourceID.accountID }).map(ObjectIdentifier.init)
-        }
+        let currentBackendIdentity = MessageListFolderLoadResponsePolicy.currentBackendIdentity(
+            currentSourceID: currentSourceID,
+            viewBackendAccountID: backend.account.id,
+            backends: currentBackends.map { (accountID: $0.account.id, identity: ObjectIdentifier($0)) }
+        )
         guard currentSourceID.map({ isSourceAvailable?($0) ?? true }) ?? true else { return false }
         return MessageListFolderLoadResponsePolicy.canApplyFolderLoadResponse(
             request: request,

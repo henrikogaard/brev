@@ -53,6 +53,15 @@ enum MessageListFolderLoadStartPolicy {
 }
 
 enum MessageListFolderLoadResponsePolicy {
+    static func currentBackendIdentity(
+        currentSourceID: MailSourceID?,
+        viewBackendAccountID: String,
+        backends: [(accountID: String, identity: ObjectIdentifier)]
+    ) -> ObjectIdentifier? {
+        let accountID = currentSourceID?.accountID ?? viewBackendAccountID
+        return backends.first(where: { $0.accountID == accountID })?.identity
+    }
+
     static func canApplyFolderLoadResponse(
         request: MessageListFolderLoadRequest,
         activeRequest: MessageListFolderLoadRequest?,

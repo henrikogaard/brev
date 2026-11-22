@@ -135,6 +135,105 @@ struct MessageListFolderLoadResponsePolicyTests {
         #expect(!canApply(ObjectIdentifier(capturedBackend), 5))
     }
 
+    @Test("unscoped page publication selects the view backend and rejects replacement or removal")
+    func unscopedPageUsesCurrentViewBackendIdentity() {
+        final class BackendIdentity {
+            let accountID: String
+
+            init(_ accountID: String) {
+                self.accountID = accountID
+            }
+        }
+
+        let viewBackend = BackendIdentity("view-account")
+        let otherBackend = BackendIdentity("other-account")
+        let replacementBackend = BackendIdentity("view-account")
+        let request = MessageListFolderLoadRequest(
+            folderID: "inbox",
+            backendIdentity: ObjectIdentifier(viewBackend),
+            reloadRequestID: 2
+        )
+        let canApply: (ObjectIdentifier?) -> Bool = { identity in
+            MessageListFolderLoadResponsePolicy.canApplyFolderLoadResponse(
+                request: request,
+                activeRequest: request,
+                currentSourceID: nil,
+                currentFolderID: "inbox",
+                currentReloadRequestID: 2,
+                currentSearchText: "",
+                currentBackendIdentity: identity
+            )
+        }
+        let currentBackends = [
+            (accountID: otherBackend.accountID, identity: ObjectIdentifier(otherBackend)),
+            (accountID: viewBackend.accountID, identity: ObjectIdentifier(viewBackend)),
+        ]
+        let currentIdentity = MessageListFolderLoadResponsePolicy.currentBackendIdentity(
+            currentSourceID: nil,
+            viewBackendAccountID: viewBackend.accountID,
+            backends: currentBackends
+        )
+
+        #expect(currentIdentity == ObjectIdentifier(viewBackend))
+        #expect(canApply(currentIdentity))
+
+        let replacementIdentity = MessageListFolderLoadResponsePolicy.currentBackendIdentity(
+            currentSourceID: nil,
+            viewBackendAccountID: viewBackend.accountID,
+            backends: [(accountID: replacementBackend.accountID, identity: ObjectIdentifier(replacementBackend))]
+        )
+        #expect(replacementIdentity == ObjectIdentifier(replacementBackend))
+        #expect(!canApply(replacementIdentity))
+
+        let removedIdentity = MessageListFolderLoadResponsePolicy.currentBackendIdentity(
+            currentSourceID: nil,
+            viewBackendAccountID: viewBackend.accountID,
+            backends: []
+        )
+        #expect(removedIdentity == nil)
+        #expect(!canApply(removedIdentity))
+    }
+
+    @Test("scoped page publication selects the selected source account")
+    func scopedPageUsesSelectedSourceBackendIdentity() {
+        final class BackendIdentity {
+            let accountID: String
+
+            init(_ accountID: String) {
+                self.accountID = accountID
+            }
+        }
+
+        let viewBackend = BackendIdentity("view-account")
+        let selectedBackend = BackendIdentity("selected-account")
+        let sourceID = MailSourceID(accountID: selectedBackend.accountID, mailboxID: "mailbox")
+        let selectedIdentity = MessageListFolderLoadResponsePolicy.currentBackendIdentity(
+            currentSourceID: sourceID,
+            viewBackendAccountID: viewBackend.accountID,
+            backends: [
+                (accountID: viewBackend.accountID, identity: ObjectIdentifier(viewBackend)),
+                (accountID: selectedBackend.accountID, identity: ObjectIdentifier(selectedBackend)),
+            ]
+        )
+        let request = MessageListFolderLoadRequest(
+            folderID: "inbox",
+            sourceID: sourceID,
+            backendIdentity: ObjectIdentifier(selectedBackend),
+            reloadRequestID: 2
+        )
+
+        #expect(selectedIdentity == ObjectIdentifier(selectedBackend))
+        #expect(MessageListFolderLoadResponsePolicy.canApplyFolderLoadResponse(
+            request: request,
+            activeRequest: request,
+            currentSourceID: sourceID,
+            currentFolderID: "inbox",
+            currentReloadRequestID: 2,
+            currentSearchText: "",
+            currentBackendIdentity: selectedIdentity
+        ))
+    }
+
     @Test("page ownership requires both the captured source and backend")
     func sourceAndBackendOwnershipAreBothRequired() {
         final class BackendIdentity {}

@@ -1,5 +1,15 @@
 # Worklog
 
+## 2026-11-22 — Agent — PR #324 nil-source folder-load ownership
+
+- Goal: let unscoped `MessageListView` first-page responses publish while retaining stale-backend rejection.
+- Changes: backend identity selection uses the selected source account when scoped and otherwise this view's backend account. The current-backend provider remains authoritative, so same-account replacement and removal still reject the captured request; source and revision guards are unchanged.
+- Regressions: exercise account-to-`ObjectIdentifier` selection itself, unscoped success/replacement/removal, and selected-source precedence for scoped loads.
+- Red/green: the focused harness first failed the unscoped selection and publication assertions with a nil current identity; after the fix it passed 75 tests in 8 suites.
+- Verification: Foundation harness passed 75 tests in 8 suites; SwiftFormat reported 0/3 files needing formatting; Swift parse passed for 3 changed Swift files; `git diff --check` and `scripts/check-adr-required.sh origin/feature/snooze-wake-order` exited successfully.
+- Limits: native SwiftUI tests were not run because this Linux host lacks SwiftUI; no visual render was performed. This restores expected unscoped loading rather than adding a new user-facing feature, so no changelog entry was added.
+- Handoff: local correction commit only; do not push until requested.
+
 ## 2026-11-22 — Devin — PR #324 collapsed wake-order correction
 
 - Goal: complete collapsed-row wake ordering on both the single-folder and Unified Inbox surfaces without changing individual RFC-scoped message state.
