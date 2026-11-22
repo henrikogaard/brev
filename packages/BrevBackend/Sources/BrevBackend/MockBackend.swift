@@ -302,11 +302,11 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         }
         if isJunk {
             if let spam = await store.spamFolderID() {
-                await store.move(ids: messageIDs, to: spam)
+                try await store.move(ids: messageIDs, to: spam)
             }
         } else {
             let inboxID = await store.inboxFolderID()
-            await store.move(ids: messageIDs, to: inboxID)
+            try await store.move(ids: messageIDs, to: inboxID)
         }
     }
 
