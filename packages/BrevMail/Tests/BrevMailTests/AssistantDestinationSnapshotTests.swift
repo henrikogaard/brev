@@ -122,5 +122,99 @@ struct AssistantDestinationSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    @Test("Assistant renders multi-sender archive confirmation review card", arguments: ["light", "dark"])
+    func assistantArchiveReviewCard(_ mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: 9, minute: 30))!
+        let source = MailSourceID(accountID: "acct", mailboxID: "box")
+        let folders = [
+            Folder(id: "inbox", name: "Inbox", role: .inbox),
+            Folder(id: "archive", name: "Archive", role: .archive),
+        ]
+        let card1 = AssistantConversationCard(
+            messageID: "m1",
+            folderID: "inbox",
+            sourceID: source,
+            senderName: "Linear",
+            senderEmail: "notifications@linear.app",
+            subject: "Weekly workspace digest",
+            snippet: "14 issues completed.",
+            date: now.addingTimeInterval(-3600),
+            section: .updatesAndNewsletters,
+            tags: [],
+            citation: MailboxChatCitation(
+                id: "m1",
+                folderID: "inbox",
+                sourceID: source,
+                subject: "Weekly workspace digest",
+                date: now.addingTimeInterval(-3600),
+                senderName: "Linear",
+                senderEmail: "notifications@linear.app",
+                snippet: "14 issues completed.",
+                isRead: false,
+                isFlagged: false,
+                isAnswered: false
+            )
+        )
+        let card2 = AssistantConversationCard(
+            messageID: "m2",
+            folderID: "inbox",
+            sourceID: source,
+            senderName: "GitHub",
+            senderEmail: "notifications@github.com",
+            subject: "Release notes v2.4",
+            snippet: "New features shipped.",
+            date: now.addingTimeInterval(-7200),
+            section: .updatesAndNewsletters,
+            tags: [],
+            citation: MailboxChatCitation(
+                id: "m2",
+                folderID: "inbox",
+                sourceID: source,
+                subject: "Release notes v2.4",
+                date: now.addingTimeInterval(-7200),
+                senderName: "GitHub",
+                senderEmail: "notifications@github.com",
+                snippet: "New features shipped.",
+                isRead: true,
+                isFlagged: false,
+                isAnswered: false
+            )
+        )
+        let planned = MailboxActionAgentPlanner().planArchive(cards: [card1, card2], folders: folders)
+        guard case .planned(let plan) = planned else {
+            Issue.record("Expected planned archive review")
+            return
+        }
+        let turns: [MailboxChatTurnKind] = [
+            .actionReview(plan, providerLabel: MailboxChatProviderLabelPolicy.actionPlanner()),
+        ]
+        let view = AssistantDestinationView(
+            sourceID: source,
+            aiBackend: SnapshotAI(),
+            actionFolders: folders,
+            search: { _, _ in [] },
+            onOpenCard: { _ in },
+            onReplyCard: { _ in },
+            preloadedTurns: turns
+        )
+        .frame(width: 720, height: 340)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .environment(\.locale, Locale(identifier: "en_US"))
+
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 720, height: 340)),
+            named: "assistant-archive-review-" + mode,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
 }
 #endif

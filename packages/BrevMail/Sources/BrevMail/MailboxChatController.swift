@@ -36,6 +36,7 @@ final class MailboxChatController: ObservableObject {
     private var actionFolders: [Folder]
     private var focusedFolder: Folder?
     private var actionSourceScope: MailboxActionAgentSourceScope
+    private var supportsAllMailArchive: Bool
     private var actionProviderLabel: String
     private var executeAction: ActionExecute?
     private let maxMessages: Int
@@ -49,6 +50,7 @@ final class MailboxChatController: ObservableObject {
         actionFolders: [Folder] = [],
         focusedFolder: Folder? = nil,
         actionSourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false,
         actionProviderLabel: String = MailboxChatController.localActionProviderLabel,
         executeAction: ActionExecute? = nil,
         maxMessages: Int = 12,
@@ -62,6 +64,7 @@ final class MailboxChatController: ObservableObject {
         self.actionFolders = actionFolders
         self.focusedFolder = focusedFolder
         self.actionSourceScope = actionSourceScope
+        self.supportsAllMailArchive = supportsAllMailArchive
         self.actionProviderLabel = actionProviderLabel
         self.executeAction = executeAction
         self.maxMessages = maxMessages
@@ -77,6 +80,7 @@ final class MailboxChatController: ObservableObject {
         actionFolders: [Folder] = [],
         focusedFolder: Folder? = nil,
         actionSourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false,
         actionProviderLabel: String = MailboxChatController.localActionProviderLabel,
         executeAction: ActionExecute? = nil,
         search: @escaping Search
@@ -87,6 +91,7 @@ final class MailboxChatController: ObservableObject {
         self.actionFolders = actionFolders
         self.focusedFolder = focusedFolder
         self.actionSourceScope = actionSourceScope
+        self.supportsAllMailArchive = supportsAllMailArchive
         self.actionProviderLabel = actionProviderLabel
         self.executeAction = executeAction
         self.search = search
@@ -279,7 +284,8 @@ final class MailboxChatController: ObservableObject {
         let result = MailboxActionAgentPlanner().planArchive(
             cards: cards,
             folders: actionFolders,
-            sourceScope: actionSourceScope
+            sourceScope: actionSourceScope,
+            supportsAllMailArchive: supportsAllMailArchive
         )
         switch result {
         case .planned(let plan):
@@ -316,6 +322,7 @@ final class MailboxChatController: ObservableObject {
         let actionFolders = actionFolders
         let focusedFolder = focusedFolder
         let actionSourceScope = actionSourceScope
+        let supportsAllMailArchive = supportsAllMailArchive
         let actionProviderLabel = actionProviderLabel
 
         let task = Task<MailboxChatTurnKind?, Never> {
@@ -326,6 +333,7 @@ final class MailboxChatController: ObservableObject {
                     focusedFolder: focusedFolder,
                     sourceID: sourceID,
                     sourceScope: actionSourceScope,
+                    supportsAllMailArchive: supportsAllMailArchive,
                     search: search
                 )
                 switch result {

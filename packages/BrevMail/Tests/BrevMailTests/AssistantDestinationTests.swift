@@ -387,6 +387,170 @@ struct AssistantDestinationTests {
         } else {
             Issue.record("Expected clarification when no dedicated Archive folder exists")
         }
+
+        // Genuine Gmail API (supportsAllMailArchive: true) and Gmail IMAP ([Gmail]/All Mail) succeed.
+        let gmailAPIFolders = [
+            Folder(id: "INBOX", name: "Inbox", role: .inbox),
+            Folder(id: "ALL_MAIL", name: "All Mail", role: .allMail),
+        ]
+        let gmailAPIPlan = MailboxActionAgentPlanner().planArchive(
+            cards: [card1],
+            folders: gmailAPIFolders,
+            supportsAllMailArchive: true
+        )
+        if case .planned(let p) = gmailAPIPlan {
+            #expect(p.operation == .archive(to: gmailAPIFolders[1]))
+        } else {
+            Issue.record("Expected Gmail API All Mail archive plan")
+        }
+
+        let gmailIMAPFolders = [
+            Folder(id: "INBOX", name: "Inbox", role: .inbox),
+            Folder(id: "[Gmail]/All Mail", name: "All Mail", role: .allMail),
+        ]
+        let gmailIMAPPlan = MailboxActionAgentPlanner().planArchive(
+            cards: [card1],
+            folders: gmailIMAPFolders,
+            supportsAllMailArchive: false
+        )
+        if case .planned(let p) = gmailIMAPPlan {
+            #expect(p.operation == .archive(to: gmailIMAPFolders[1]))
+        } else {
+            Issue.record("Expected Gmail IMAP All Mail archive plan")
+        }
+    }
+
+    @Test("Multi-folder archive executor suppresses partial nil-receipt Undo and preserves Undo on later folder failure")
+    func multiFolderArchiveExecutorUndoSemantics() async throws {
+        final class PartialUndoBackend: MailBackend, @unchecked Sendable {
+            let account = BrevAccount(id: "acct", displayName: "Test", emailAddress: "t@example.org")
+            let capabilities: BackendCapabilities = []
+            var nilReceiptFolders: Set<String> = []
+            var failingFolders: Set<String> = []
+            var restoredIDs: [String] = []
+            func connect() async throws {}
+            func disconnect() async {}
+            func folders() async throws -> [Folder] { [] }
+            func refresh(folder: Folder) async throws {}
+            func currentMailbox() async throws -> Mailbox {
+                Mailbox(id: "acct", email: "t@example.org", displayName: "Test", isPrimary: true)
+            }
+
+            func switchMailbox(id: String) async throws {}
+            func messages(in folder: Folder,
+                          pageToken: String?) async throws -> (headers: [MessageHeader], nextPageToken: String?) { (
+                [],
+                nil
+            ) }
+            func body(for messageID: String) async throws -> MessageBody { MessageBody(messageID: messageID) }
+            func setRead(_ isRead: Bool, for messageIDs: [String]) async throws {}
+            func setFlagged(_ isFlagged: Bool, for messageIDs: [String]) async throws {}
+            func move(messageIDs: [String], to folder: Folder) async throws {}
+            func moveWithUndo(
+                messageIDs: [String],
+                from sourceFolder: Folder,
+                to destinationFolder: Folder,
+                sourceID: MailSourceID
+            ) async throws -> MailMoveUndo? {
+                if failingFolders.contains(sourceFolder.id) {
+                    throw MailBackendError.backendSpecific(message: "Read-only folder")
+                }
+                if nilReceiptFolders.contains(sourceFolder.id) {
+                    return nil
+                }
+                return MailMoveUndo(
+                    sourceID: sourceID,
+                    originalFolder: sourceFolder
+                ) { [weak self] in
+                    self?.restoredIDs.append(contentsOf: messageIDs)
+                    return [:]
+                }
+            }
+
+            func delete(messageIDs: [String]) async throws {}
+            func save(draft: Draft) async throws -> Draft { draft }
+            func discard(draftID: String) async throws {}
+            func send(draft: Draft) async throws -> SendResult { SendResult() }
+            func search(_ query: SearchQuery) async throws -> [MessageHeader] { [] }
+            func calendarEvent(from attachmentID: String) async throws -> CalendarEvent { throw MailBackendError.notSupported([])
+            }
+
+            func replyToCalendarInvite(messageID: String, response: AttendeeState) async throws {}
+            func subscribeToChanges() -> AsyncStream<MailEvent> { AsyncStream { $0.finish() } }
+            func sourceID(for mailbox: Mailbox) -> MailSourceID { MailSourceID(accountID: account.id, mailboxID: mailbox.id) }
+            func extensionService<Service>(_ type: Service.Type) -> Service? { nil }
+        }
+
+        let sourceID = MailSourceID(accountID: "acct", mailboxID: "acct")
+        let folders = [
+            Folder(id: "INBOX", name: "Inbox", role: .inbox),
+            Folder(id: "PROJECTS", name: "Projects", role: .custom),
+            Folder(id: "ARCHIVE", name: "Archive", role: .archive),
+        ]
+        let now = Date()
+        let cards = [
+            AssistantConversationCard(
+                messageID: "m1",
+                folderID: "INBOX",
+                sourceID: sourceID,
+                senderName: "A",
+                senderEmail: "a@example.org",
+                subject: "One",
+                snippet: "",
+                date: now,
+                section: .updatesAndNewsletters,
+                tags: [],
+                citation: MailboxChatCitation(
+                    id: "m1", folderID: "INBOX", sourceID: sourceID, subject: "One", date: now,
+                    senderName: "A", senderEmail: "a@example.org", snippet: "", isRead: false, isFlagged: false, isAnswered: false
+                )
+            ),
+            AssistantConversationCard(
+                messageID: "m2",
+                folderID: "PROJECTS",
+                sourceID: sourceID,
+                senderName: "B",
+                senderEmail: "b@example.org",
+                subject: "Two",
+                snippet: "",
+                date: now,
+                section: .updatesAndNewsletters,
+                tags: [],
+                citation: MailboxChatCitation(
+                    id: "m2", folderID: "PROJECTS", sourceID: sourceID, subject: "Two", date: now,
+                    senderName: "B", senderEmail: "b@example.org", snippet: "", isRead: false, isFlagged: false, isAnswered: false
+                )
+            ),
+        ]
+        guard case .planned(let plan) = MailboxActionAgentPlanner().planArchive(cards: cards, folders: folders) else {
+            Issue.record("Expected plan")
+            return
+        }
+
+        // Case A: one folder returns nil receipt -> whole-command Undo suppressed.
+        let nilBackend = PartialUndoBackend()
+        nilBackend.nilReceiptFolders = ["INBOX"]
+        let queueA = UndoQueue(timeout: 30)
+        try await MailboxActionArchiveExecutor.archive(
+            plan: plan, to: folders[2], sourceID: sourceID, folders: folders, backend: nilBackend, undoQueue: queueA
+        )
+        #expect(!queueA.canUndo)
+
+        // Case B: second folder throws after first succeeds -> Undo still restores first folder.
+        let failBackend = PartialUndoBackend()
+        failBackend.failingFolders = ["PROJECTS"]
+        let queueB = UndoQueue(timeout: 30)
+        do {
+            try await MailboxActionArchiveExecutor.archive(
+                plan: plan, to: folders[2], sourceID: sourceID, folders: folders, backend: failBackend, undoQueue: queueB
+            )
+            Issue.record("Expected PROJECTS folder error")
+        } catch {
+            // Expected failure
+        }
+        #expect(queueB.canUndo)
+        _ = await queueB.undo()?.value
+        #expect(failBackend.restoredIDs == ["m1"])
     }
 
     @Test("Assistant destination strings have Norwegian localizations")

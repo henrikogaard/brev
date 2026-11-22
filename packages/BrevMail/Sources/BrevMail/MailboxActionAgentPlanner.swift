@@ -929,6 +929,7 @@ struct MailboxActionAgentRequestResolver: Sendable {
         focusedFolder: Folder?,
         sourceID: MailSourceID?,
         sourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false,
         search: Search
     ) async throws -> MailboxActionAgentPlanningResult {
         let preliminary = planner.plan(
@@ -936,7 +937,8 @@ struct MailboxActionAgentRequestResolver: Sendable {
             headers: [],
             folders: folders,
             focusedFolder: focusedFolder,
-            sourceScope: sourceScope
+            sourceScope: sourceScope,
+            supportsAllMailArchive: supportsAllMailArchive
         )
         guard case .planned(let preliminaryPlan) = preliminary else {
             return preliminary
@@ -948,7 +950,8 @@ struct MailboxActionAgentRequestResolver: Sendable {
             headers: headers,
             folders: folders,
             focusedFolder: focusedFolder,
-            sourceScope: sourceScope
+            sourceScope: sourceScope,
+            supportsAllMailArchive: supportsAllMailArchive
         )
     }
 }
@@ -970,7 +973,8 @@ struct MailboxActionAgentPlanner: Sendable {
         headers: [MessageHeader],
         folders: [Folder],
         focusedFolder: Folder?,
-        sourceScope: MailboxActionAgentSourceScope = .currentMailbox
+        sourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false
     ) -> MailboxActionAgentPlanningResult {
         guard let action = Self.action(in: request) else {
             return .clarificationRequired(.unsupportedRequest)
@@ -1007,7 +1011,7 @@ struct MailboxActionAgentPlanner: Sendable {
                 return .clarificationRequired(clarification)
             }
         case .archive:
-            switch Self.archiveTarget(in: folders) {
+            switch Self.archiveTarget(in: folders, supportsAllMailArchive: supportsAllMailArchive) {
             case .resolved(let folder):
                 operation = .archive(to: folder)
             case .needsClarification(let clarification):
@@ -1196,13 +1200,25 @@ struct MailboxActionAgentPlanner: Sendable {
     }
 
     private static func archiveTarget(
-        in folders: [Folder]
+        in folders: [Folder],
+        supportsAllMailArchive: Bool
     ) -> ArchiveTargetResolution {
-        // Strictly require `.archive`: on IMAP, an ordinary folder named "All"
-        // may be classified `.allMail` without a special-use flag and must not
-        // be treated as an archive target.
         if let archive = folders.first(where: { $0.role == .archive }) {
             return .resolved(archive)
+        }
+        // Label-based providers (e.g. Gmail API via `.labels`) and Gmail IMAP
+        // `[Gmail]/All Mail` use All Mail as the provider-validated archive
+        // destination. Reject ordinary IMAP folders merely named "All".
+        if supportsAllMailArchive,
+           let allMail = folders.first(where: { $0.role == .allMail }) {
+            return .resolved(allMail)
+        }
+        if let gmailIMAPAllMail = folders.first(where: { folder in
+            guard folder.role == .allMail else { return false }
+            let lower = folder.id.lowercased()
+            return lower.hasPrefix("[gmail]/") || lower.hasPrefix("[google mail]/")
+        }) {
+            return .resolved(gmailIMAPAllMail)
         }
         return .needsClarification(.unknownFolder("Archive"))
     }
@@ -1213,10 +1229,11 @@ struct MailboxActionAgentPlanner: Sendable {
     func planArchive(
         cards: [AssistantConversationCard],
         folders: [Folder],
-        sourceScope: MailboxActionAgentSourceScope = .currentMailbox
+        sourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false
     ) -> MailboxActionAgentPlanningResult {
         let archiveFolder: Folder
-        switch Self.archiveTarget(in: folders) {
+        switch Self.archiveTarget(in: folders, supportsAllMailArchive: supportsAllMailArchive) {
         case .resolved(let folder):
             archiveFolder = folder
         case .needsClarification(let clarification):
@@ -1507,40 +1524,55 @@ enum MailboxActionArchiveExecutor {
             let byFolder = Dictionary(grouping: plan.matchedMessageStates, by: \.folderID)
             grouped = byFolder
                 .keys
+                .filter { $0 != archiveFolder.id }
                 .sorted()
                 .map { folderID in
                     (folderID, byFolder[folderID, default: []].map(\.id))
                 }
         } else {
             let fallbackFolderID = folders.first(where: { $0.role == .inbox })?.id ?? "INBOX"
-            grouped = [(fallbackFolderID, plan.matchingMessageIDs)]
+            grouped = fallbackFolderID == archiveFolder.id ? [] : [(fallbackFolderID, plan.matchingMessageIDs)]
         }
+
+        guard !grouped.isEmpty else { return }
 
         var receipts: [MailMoveUndo?] = []
         let lease = undoQueue.beginMutation()
         defer { undoQueue.endMutation(lease) }
 
-        for (folderID, messageIDs) in grouped where !messageIDs.isEmpty {
-            let sourceFolder = folders.first { $0.id == folderID }
-                ?? Folder(id: folderID, name: folderID, role: .custom)
-            let receipt = try await backend.moveWithUndo(
-                messageIDs: messageIDs,
-                from: sourceFolder,
-                to: archiveFolder,
-                sourceID: sourceID
-            )
-            receipts.append(receipt)
+        do {
+            for (folderID, messageIDs) in grouped where !messageIDs.isEmpty {
+                let sourceFolder = folders.first { $0.id == folderID }
+                    ?? Folder(id: folderID, name: folderID, role: .custom)
+                let receipt = try await backend.moveWithUndo(
+                    messageIDs: messageIDs,
+                    from: sourceFolder,
+                    to: archiveFolder,
+                    sourceID: sourceID
+                )
+                receipts.append(receipt)
+            }
+        } catch {
+            // Preserve reversible Undo for any earlier source folders that
+            // already committed before the later folder failed.
+            if !receipts.isEmpty {
+                undoQueue.registerMoves(
+                    receipts,
+                    description: String(localized: "Archived", bundle: .module),
+                    lease: lease
+                )
+            }
+            throw error
         }
 
-        let reversibleReceipts = receipts.compactMap { $0 }
-        if !reversibleReceipts.isEmpty {
+        // Pass original optional receipts so `MailMoveUndoRegistration`
+        // suppresses partial Undo whenever any completed move lacks a receipt.
+        if !receipts.isEmpty {
             undoQueue.registerMoves(
-                reversibleReceipts.map { Optional($0) },
+                receipts,
                 description: String(localized: "Archived", bundle: .module),
                 lease: lease
             )
-        } else if !receipts.isEmpty {
-            undoQueue.discardPendingUndo(lease: lease)
         }
     }
 }

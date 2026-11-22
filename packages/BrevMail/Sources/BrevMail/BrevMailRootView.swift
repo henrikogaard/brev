@@ -1700,13 +1700,15 @@ public struct BrevMailRootView: View {
         let resolvedSource = navigation.assistantSourceID
             ?? navigation.selectedSourceID
             ?? preferredDefaultSection(in: visibleSourceSections)?.id
-        let resolvedAIBackend = aiBackend(for: backend(for: resolvedSource).account)
+        let resolvedOwner = backend(for: resolvedSource)
+        let resolvedAIBackend = aiBackend(for: resolvedOwner.account)
         return AssistantDestinationView(
             sourceID: resolvedSource,
             aiBackend: resolvedAIBackend,
             actionFolders: mailboxActionFolders(for: resolvedSource),
             focusedFolder: selectedFolder,
             actionSourceScope: mailboxActionSourceScope(for: resolvedSource),
+            supportsAllMailArchive: resolvedOwner.capabilities.contains(.labels),
             executeAction: { plan in
                 try await executeMailboxAction(plan: plan)
             },

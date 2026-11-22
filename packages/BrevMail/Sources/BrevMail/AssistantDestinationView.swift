@@ -62,6 +62,7 @@ struct AssistantDestinationView: View {
     let actionFolders: [Folder]
     let focusedFolder: Folder?
     let actionSourceScope: MailboxActionAgentSourceScope
+    let supportsAllMailArchive: Bool
     let executeAction: MailboxChatActionExecute?
     let search: MailboxChatSearch
     let onOpenCard: (AssistantConversationCard) -> Void
@@ -85,6 +86,7 @@ struct AssistantDestinationView: View {
         actionFolders: [Folder] = [],
         focusedFolder: Folder? = nil,
         actionSourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false,
         executeAction: MailboxChatActionExecute? = nil,
         search: @escaping MailboxChatSearch,
         onOpenCard: @escaping (AssistantConversationCard) -> Void,
@@ -98,6 +100,7 @@ struct AssistantDestinationView: View {
         self.actionFolders = actionFolders
         self.focusedFolder = focusedFolder
         self.actionSourceScope = actionSourceScope
+        self.supportsAllMailArchive = supportsAllMailArchive
         self.executeAction = executeAction
         self.search = search
         self.onOpenCard = onOpenCard
@@ -111,6 +114,7 @@ struct AssistantDestinationView: View {
             actionFolders: actionFolders,
             focusedFolder: focusedFolder,
             actionSourceScope: actionSourceScope,
+            supportsAllMailArchive: supportsAllMailArchive,
             executeAction: executeAction,
             turns: preloadedTurns,
             search: search
@@ -178,6 +182,7 @@ struct AssistantDestinationView: View {
             actionFolders: actionFolders,
             focusedFolder: focusedFolder,
             actionSourceScope: actionSourceScope,
+            supportsAllMailArchive: supportsAllMailArchive,
             executeAction: executeAction,
             search: search
         )
