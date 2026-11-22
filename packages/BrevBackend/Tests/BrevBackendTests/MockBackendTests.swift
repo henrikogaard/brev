@@ -15,7 +15,7 @@ import Foundation
 import Testing
 
 @Suite("MockBackend") struct MockBackendTests {
-    @Test("local draft staging IDs can collide across mailboxes without crossing sources")
+    @Test("local draft staging IDs remain isolated across mailboxes")
     func localDraftSourceIsolation() async throws {
         let account = BrevAccount(id: "account", displayName: "Account", emailAddress: "me@example.test")
         let sourceA = MailSourceID(accountID: account.id, mailboxID: "a")
@@ -43,10 +43,9 @@ import Testing
             mimeType: "text/plain",
             sourceID: sourceB
         )
-        #expect(firstID == secondID)
-        let draft = Draft(id: "same", attachmentIDs: [firstID])
-        let first = try await backend.save(draft: draft, sourceID: sourceA)
-        let second = try await backend.save(draft: draft, sourceID: sourceB)
+        #expect(firstID != secondID)
+        let first = try await backend.save(draft: Draft(id: "same", attachmentIDs: [firstID]), sourceID: sourceA)
+        let second = try await backend.save(draft: Draft(id: "same", attachmentIDs: [secondID]), sourceID: sourceB)
         let service = try #require(backend.extensionService(LocalDraftAttachmentProviding.self))
         #expect(try await service.localDraftAttachments(for: first, sourceID: sourceA).map(\.data) == [Data([1])])
         #expect(try await service.localDraftAttachments(for: second, sourceID: sourceB).map(\.data) == [Data([2])])
@@ -122,7 +121,6 @@ import Testing
         let backend = MockBackend()
         let archive = try #require(await backend.folders().first(where: { $0.id == "archive" }))
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
 
         let created = try await backend.createFolder(name: "Travel", parentID: archive.id)
 
@@ -132,6 +130,16 @@ import Testing
         #expect(folders.contains { $0.id == created.id && $0.name == "Travel" })
         let event = try await nextEvent(from: stream)
         #expect(event == .folderRefreshed(folderID: created.id))
+    }
+
+    @Test("event waits time out when no matching event arrives")
+    func eventWaitsTimeOutWhenNoMatchingEventArrives() async throws {
+        let backend = MockBackend()
+        let stream = backend.subscribeToChanges()
+
+        await #expect(throws: EventTimeout.self) {
+            try await nextEvent(from: stream, timeoutNanoseconds: 10_000_000)
+        }
     }
 
     @Test("mail import service persists imported messages into a folder")
@@ -227,7 +235,6 @@ import Testing
         let target = headers.first(where: { !$0.isRead })!
 
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
         try await backend.setRead(true, for: [target.id])
 
         let event = try await nextEvent(from: stream)
@@ -260,7 +267,6 @@ import Testing
         let (headers, _) = try await backend.messages(in: inbox, pageToken: nil)
         let target = try #require(headers.first)
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
 
         try await backend.copy(messageIDs: [target.id], to: archive)
 
@@ -284,7 +290,6 @@ import Testing
         let (headers, _) = try await backend.messages(in: inbox, pageToken: nil)
         let target = try #require(headers.first)
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
 
         try await backend.delete(messageIDs: [target.id])
 
@@ -319,7 +324,6 @@ import Testing
         let (headers, _) = try await backend.messages(in: inbox, pageToken: nil)
         let target = try #require(headers.first)
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
 
         try await backend.delete(messageIDs: [target.id])
 
@@ -350,7 +354,6 @@ import Testing
         let target = try #require(headers.first)
         try await backend.delete(messageIDs: [target.id])
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
 
         try await backend.delete(messageIDs: [target.id])
 
@@ -420,7 +423,6 @@ import Testing
         let header = try #require(headers.first(where: { $0.hasAttachments }))
         #expect(!header.isAnswered)
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
 
         try await backend.replyToCalendarInvite(messageID: header.id, response: .accepted)
 
@@ -814,7 +816,6 @@ import Testing
         let backend = MockBackend()
         let sent = try #require(await backend.folders().first(where: { $0.role == .sent }))
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
 
         let result = try await backend.send(draft: Draft(
             id: "draft-2",
@@ -869,7 +870,6 @@ import Testing
         let (headers, _) = try await backend.messages(in: inbox, pageToken: nil)
         let original = try #require(headers.first(where: { !$0.isAnswered }))
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
 
         _ = try await backend.send(draft: Draft(
             id: "reply-send",
@@ -898,7 +898,6 @@ import Testing
         let (headers, _) = try await backend.messages(in: inbox, pageToken: nil)
         let original = try #require(headers.first(where: { !$0.isForwarded }))
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
 
         _ = try await backend.send(draft: Draft(
             id: "forward-send",
@@ -937,7 +936,6 @@ import Testing
         let primaryInbox = try #require(await backend.folders().first { $0.role == .inbox })
         let (primaryHeaders, _) = try await backend.messages(in: primaryInbox, pageToken: nil)
         let stream = backend.subscribeToChanges()
-        try await Task.sleep(nanoseconds: 10_000_000)
 
         let initial = try await backend.currentMailbox()
         try await backend.switchMailbox(id: secondary.id)
@@ -1042,35 +1040,43 @@ private enum EventTimeout: Error {
     case timedOut
 }
 
-private func nextEvent(
+func nextEvent(
     from stream: AsyncStream<MailEvent>,
     timeoutNanoseconds: UInt64 = 1_000_000_000
 ) async throws -> MailEvent? {
     try await nextEvent(from: stream, timeoutNanoseconds: timeoutNanoseconds) { _ in true }
 }
 
-private func nextEvent(
+func nextEvent(
     from stream: AsyncStream<MailEvent>,
     timeoutNanoseconds: UInt64 = 1_000_000_000,
     matching predicate: @escaping @Sendable (MailEvent) -> Bool
 ) async throws -> MailEvent? {
-    try await withThrowingTaskGroup(of: MailEvent?.self) { group in
-        group.addTask {
+    let timedStream = AsyncThrowingStream<MailEvent, Error> { continuation in
+        let eventTask = Task {
             var iterator = stream.makeAsyncIterator()
             while let event = await iterator.next() {
                 if predicate(event) {
-                    return event
+                    continuation.yield(event)
+                    continuation.finish()
+                    return
                 }
             }
-            return nil
+            continuation.finish()
         }
-        group.addTask {
-            try await Task.sleep(nanoseconds: timeoutNanoseconds)
-            throw EventTimeout.timedOut
+        let timeoutTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+            } catch {
+                return
+            }
+            continuation.finish(throwing: EventTimeout.timedOut)
         }
-
-        let event = try await group.next()
-        group.cancelAll()
-        return event ?? nil
+        continuation.onTermination = { _ in
+            eventTask.cancel()
+            timeoutTask.cancel()
+        }
     }
+    var iterator = timedStream.makeAsyncIterator()
+    return try await iterator.next()
 }

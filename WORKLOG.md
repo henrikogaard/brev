@@ -7,6 +7,14 @@
 
 # Worklog
 
+## 2026-11-22 — Agent — Issue #297 / PR #325 Backend CI repair
+
+- Goal: resolve hosted Backend fixture and assertion failures and ensure missing events fail boundedly instead of hanging.
+- Changes: preserve the folder set on failed unscoped cleanup; create the Archive fixture explicitly; align local draft attachment assertions with UUID allocation while retaining the seeded cross-mailbox collision test; register Store event streams synchronously; emit original-message updates for replies/forwards; replace task-group event waits with bounded stream waits.
+- Diagnosis: the previous Store stream registered continuations asynchronously, so an immediate event could be lost. The reply/forward send path also changed original headers without emitting `.messagesUpdated`. Its timeout task group could still wait for a blocked stream iterator during scope cleanup.
+- Verification: pinned SwiftFormat, Swift parse, ADR-required check, and `git diff --check` pass. The raw Backend log was read in full; job 137160169346 was canceled at the 30-minute limit after the reported fixture/attachment failures and incomplete event tests. Native package tests were not rerun because the known Linux `PDFKit` import failure occurs before test compilation.
+- Handoff: commit and push this repair normally, then record the immediate CI snapshot without waiting for the run to settle.
+
 ## 2026-11-22 — Agent — Issue #297 / PR #325 scheduled-draft cleanup
 
 - Goal: ensure discard, Trash moves, and deletion remove durable scheduling intent before succeeding; preserve queued content if persistence fails.

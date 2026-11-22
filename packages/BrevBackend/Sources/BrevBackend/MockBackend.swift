@@ -1724,12 +1724,39 @@ private struct MockScheduledDraftProjectionSnapshot {
     let body: MessageBody?
 }
 
+private final class MockBackendEventHub: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [UUID: AsyncStream<MailEvent>.Continuation] = [:]
+
+    func stream() -> AsyncStream<MailEvent> {
+        AsyncStream { continuation in
+            let token = UUID()
+            lock.withLock {
+                continuations[token] = continuation
+            }
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                _ = lock.withLock {
+                    self.continuations.removeValue(forKey: token)
+                }
+            }
+        }
+    }
+
+    func emit(_ event: MailEvent) {
+        let current = lock.withLock { Array(continuations.values) }
+        for continuation in current {
+            continuation.yield(event)
+        }
+    }
+}
+
 private actor Store {
     var mailboxes: [Mailbox]
     var activeMailboxID: Mailbox.ID
     var dataByMailboxID: [Mailbox.ID: MockMailboxData]
     private(set) var blockedSenders: Set<String> = []
-    private var continuations: [UUID: AsyncStream<MailEvent>.Continuation] = [:]
+    nonisolated let eventHub = MockBackendEventHub()
     private let accountID: BrevAccount.ID
     private let journal: MockSendJournal?
     private let now: @Sendable () -> Date
@@ -3487,12 +3514,7 @@ private actor Store {
         updatedData.messagesByFolder[sentFolderID, default: []].removeAll { $0.id == messageID }
         updatedData.messagesByFolder[sentFolderID, default: []].append(header)
         updatedData.messageBodies[messageID] = body
-        if let replyID = canonical.inReplyToMessageID {
-            Self.updateHeader(id: replyID, in: &updatedData) { $0.isAnswered = true }
-        }
-        if let forwardedID = canonical.forwardedMessageID {
-            Self.updateHeader(id: forwardedID, in: &updatedData) { $0.isForwarded = true }
-        }
+        let updatedOriginalMessageEvents = Self.updateRelatedMessageHeaders(for: canonical, in: &updatedData)
         let committed: (messageID: String, changed: Bool)
         do {
             committed = try transactJournal { records in
@@ -3547,6 +3569,9 @@ private actor Store {
         if journal == nil { dataByMailboxID[mailboxID] = updatedData }
         emit(.messagesAdded(folderID: sentFolderID, messageIDs: [committed.messageID]))
         emit(.messagesRemoved(folderID: draftsFolderID, messageIDs: [draftRemoteID]))
+        for event in updatedOriginalMessageEvents {
+            emit(event)
+        }
         emit(.outboxChanged)
         return committed.messageID
     }
@@ -3609,18 +3634,38 @@ private actor Store {
         return fallbackID
     }
 
+    private static func updateRelatedMessageHeaders(for draft: Draft, in data: inout MockMailboxData) -> [MailEvent] {
+        var updatedMessageIDsByFolder: [Folder.ID: Set<String>] = [:]
+        if let replyID = draft.inReplyToMessageID,
+           let folderID = updateHeader(id: replyID, in: &data, update: { $0.isAnswered = true }) {
+            updatedMessageIDsByFolder[folderID, default: []].insert(replyID)
+        }
+        if let forwardedID = draft.forwardedMessageID,
+           let folderID = updateHeader(id: forwardedID, in: &data, update: { $0.isForwarded = true }) {
+            updatedMessageIDsByFolder[folderID, default: []].insert(forwardedID)
+        }
+        return updatedMessageIDsByFolder.keys.sorted().map { folderID in
+            .messagesUpdated(
+                folderID: folderID,
+                messageIDs: (updatedMessageIDsByFolder[folderID] ?? []).sorted()
+            )
+        }
+    }
+
+    @discardableResult
     private static func updateHeader(
         id: String,
         in data: inout MockMailboxData,
         update: (inout MessageHeader) -> Void
-    ) {
+    ) -> Folder.ID? {
         for folderID in Array(data.messagesByFolder.keys) {
             guard var headers = data.messagesByFolder[folderID],
                   let index = headers.firstIndex(where: { $0.id == id }) else { continue }
             update(&headers[index])
             data.messagesByFolder[folderID] = headers
-            return
+            return folderID
         }
+        return nil
     }
 
     @discardableResult
@@ -3738,27 +3783,11 @@ private actor Store {
     }
 
     nonisolated func eventStream() -> AsyncStream<MailEvent> {
-        AsyncStream { continuation in
-            let token = UUID()
-            Task { await self.register(token: token, continuation: continuation) }
-            continuation.onTermination = { _ in
-                Task { await self.unregister(token: token) }
-            }
-        }
-    }
-
-    func register(token: UUID, continuation: AsyncStream<MailEvent>.Continuation) {
-        continuations[token] = continuation
-    }
-
-    func unregister(token: UUID) {
-        continuations.removeValue(forKey: token)
+        eventHub.stream()
     }
 
     func emit(_ event: MailEvent) {
-        for c in continuations.values {
-            c.yield(event)
-        }
+        eventHub.emit(event)
     }
 }
 

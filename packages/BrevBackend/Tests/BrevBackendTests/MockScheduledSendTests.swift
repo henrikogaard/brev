@@ -77,7 +77,7 @@ struct MockScheduledSendTests {
             sourceID: Self.sourceA
         )
         #expect(scheduler.pendingScheduledSends().isEmpty)
-        var events = backend.subscribeToChanges().makeAsyncIterator()
+        let events = backend.subscribeToChanges()
 
         var scheduledFirst = first
         scheduledFirst.scheduledFor = Self.now
@@ -85,21 +85,14 @@ struct MockScheduledSendTests {
         scheduledSecond.scheduledFor = Self.now
         let firstResult = try await backend.send(draft: scheduledFirst, sourceID: Self.sourceA)
         let secondResult = try await backend.send(draft: scheduledSecond, sourceID: Self.sourceB)
-        var receivedCommittedQueueEvent = false
-        for _ in 0 ..< 4 {
-            guard let event = await events.next() else { break }
-            if event == .outboxChanged {
-                receivedCommittedQueueEvent = true
-                break
-            }
-        }
+        let committedQueueEvent = try await nextEvent(from: events) { $0 == .outboxChanged }
 
         #expect(firstResult.sentMessageID == nil)
         #expect(firstResult.scheduledFor == Self.now)
         #expect(secondResult.sentMessageID == nil)
         let entries = scheduler.pendingScheduledSends()
         #expect(entries.count == 2)
-        #expect(receivedCommittedQueueEvent)
+        #expect(committedQueueEvent == .outboxChanged)
         #expect(Set(entries.map(\.id)).count == 2)
         #expect(entries.allSatisfy { $0.id != "same-draft" })
         #expect(Set(entries.compactMap(\.sourceID)) == [Self.sourceA, Self.sourceB])
@@ -295,7 +288,7 @@ struct MockScheduledSendTests {
         let secondScheduleID = try #require(entries.first { $0.sourceID == Self.sourceB }?.id)
         let first = try await restored.scheduledDraft(id: firstScheduleID)
         let second = try await restored.scheduledDraft(id: secondScheduleID)
-        #expect(first.attachmentIDs == second.attachmentIDs)
+        #expect(first.attachmentIDs != second.attachmentIDs)
         #expect(try await restored.localDraftAttachments(for: first, sourceID: Self.sourceA).map(\.data) == [Data([1])])
         #expect(try await restored.localDraftAttachments(for: second, sourceID: Self.sourceB).map(\.data) == [Data([2])])
     }
@@ -647,6 +640,7 @@ struct MockScheduledSendTests {
         let messageID = "draft-\(draft.id)"
         let scheduleID = try #require(scheduler.pendingScheduledSends().first?.id)
         let acceptedJournal = try Data(contentsOf: journal.fileURL)
+        let originalFolders = try await backend.folders(in: sourceID)
         try FileManager.default.removeItem(at: directory)
 
         await #expect(throws: (any Error).self) {
@@ -665,12 +659,12 @@ struct MockScheduledSendTests {
         try acceptedJournal.write(to: journal.fileURL, options: .atomic)
         try await backend.connect()
         #expect(scheduler.pendingScheduledSends().map(\.id) == [scheduleID])
+        let foldersAfterRecovery = try await backend.folders(in: sourceID)
+        #expect(foldersAfterRecovery == originalFolders)
+        #expect(!foldersAfterRecovery.contains { $0.role == .trash })
         let drafts = try #require(await backend.folders(in: sourceID).first { $0.role == .drafts })
         let (draftHeaders, _) = try await backend.messages(in: drafts, sourceID: sourceID, pageToken: nil)
         #expect(draftHeaders.contains { $0.id == messageID })
-        let trash = try #require(await backend.folders(in: sourceID).first { $0.role == .trash })
-        let (trashHeaders, _) = try await backend.messages(in: trash, sourceID: sourceID, pageToken: nil)
-        #expect(!trashHeaders.contains { $0.id == messageID })
         let preservedDraft = try #require(try await backend.draft(for: draft.id, sourceID: sourceID))
         #expect(preservedDraft.htmlBody == draft.htmlBody)
     }
@@ -802,6 +796,7 @@ struct MockScheduledSendTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let backend = Self.backend(persistenceDirectory: directory, now: { Self.now })
         let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        let archiveFolder = try await backend.createFolder(name: "Archive", parentID: nil, sourceID: Self.sourceA)
         for id in ["flagged-sent", "moved-sent", "deleted-sent"] {
             _ = try await backend.send(
                 draft: Draft(id: id, subject: id, scheduledFor: Self.now),
@@ -812,7 +807,6 @@ struct MockScheduledSendTests {
 
         let folders = try await backend.folders(in: Self.sourceA)
         let sentFolder = try #require(folders.first { $0.role == .sent })
-        let archiveFolder = try #require(folders.first { $0.id == "archive-newsletters" })
         let (sentBefore, _) = try await backend.messages(in: sentFolder, sourceID: Self.sourceA, pageToken: nil)
         let flagged = try #require(sentBefore.first { $0.subject == "flagged-sent" })
         let moved = try #require(sentBefore.first { $0.subject == "moved-sent" })
