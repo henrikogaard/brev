@@ -2091,9 +2091,12 @@ struct UnifiedInboxListView: View {
             }
         }
 
-        guard loadOwnership.accepts(request),
+        guard !Task.isCancelled,
+              loadOwnership.accepts(request),
               sourceSectionsRevisionProvider?() == sourceRevision else { return }
-        let availableSources = Set(sourceSections.map(\.id))
+        let availableSources = Set(sourceSections.filter { section in
+            isSourceAvailable?(section.id) ?? true
+        }.map(\.id))
         let snapshots = LocalMessageWorkflowSnoozedCachePolicy.mergingSuccessfulSources(
             successful,
             into: snoozedCacheSourceSnapshots,

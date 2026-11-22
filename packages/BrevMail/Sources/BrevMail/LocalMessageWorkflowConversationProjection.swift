@@ -18,6 +18,32 @@ struct LocalMessageWorkflowCandidate: Sendable {
     let header: MessageHeader
 }
 
+enum LocalMessageWorkflowReaderCandidatePolicy {
+    static func candidates(
+        targetSourceID: MailSourceID,
+        targetHeader: MessageHeader,
+        selectedSourceID: MailSourceID?,
+        loadedHeaders: [MessageHeader],
+        relatedMembers: [ConversationMember]
+    ) -> [LocalMessageWorkflowCandidate] {
+        var candidates = relatedMembers
+            .filter { $0.sourceID == targetSourceID }
+            .map { LocalMessageWorkflowCandidate(sourceID: $0.sourceID, header: $0.header) }
+        if selectedSourceID == targetSourceID {
+            candidates.append(contentsOf: loadedHeaders.map {
+                LocalMessageWorkflowCandidate(sourceID: targetSourceID, header: $0)
+            })
+        }
+        candidates.append(.init(sourceID: targetSourceID, header: targetHeader))
+
+        var seen = Set<String>()
+        return candidates.filter { candidate in
+            let key = "\(candidate.sourceID.accountID)\u{0}\(candidate.sourceID.mailboxID)\u{0}\(candidate.header.folderID)\u{0}\(candidate.header.id)"
+            return seen.insert(key).inserted
+        }
+    }
+}
+
 struct LocalMessageWorkflowConversationProjection: Sendable {
     private struct CandidateKey: Hashable {
         let sourceID: MailSourceID

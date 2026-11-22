@@ -24,6 +24,18 @@ struct LocalMessageWorkflowSnoozeTransactionResult<Value> {
     let value: Value
 }
 
+enum LocalMessageWorkflowSnoozeTargetPolicy {
+    static func areValid(
+        _ candidates: [LocalMessageWorkflowCandidate],
+        sourceID: MailSourceID,
+        knownFolderIDs: Set<Folder.ID>
+    ) -> Bool {
+        !candidates.isEmpty && candidates.allSatisfy {
+            $0.sourceID == sourceID && knownFolderIDs.contains($0.header.folderID)
+        }
+    }
+}
+
 struct LocalMessageWorkflowSnoozeReconciliationCoordinator {
     private(set) var generation = 0
     private(set) var isRunning = false

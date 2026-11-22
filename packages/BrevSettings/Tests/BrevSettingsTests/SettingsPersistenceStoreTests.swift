@@ -118,6 +118,32 @@ struct SettingsPersistenceStoreTests {
         #expect(store.data(forKey: key) == nil)
     }
 
+    @Test("account cleanup removes workflow snoozes only from its injected suite")
+    func accountCleanupRemovesInjectedWorkflowState() throws {
+        let defaults = try Self.makeDefaults()
+        let otherDefaults = try Self.makeDefaults()
+        let first = LocalMessageSnooze(
+            messageID: .init(sourceID: .init(accountID: "account-a", mailboxID: "personal"), messageID: "a"),
+            wakeAt: Date(timeIntervalSince1970: 20000),
+            createdAt: Date(timeIntervalSince1970: 10000),
+            conversationMetadata: .init(rfcIdentifiers: ["a@example.org"])
+        )
+        let second = LocalMessageSnooze(
+            messageID: .init(sourceID: .init(accountID: "account-b", mailboxID: "personal"), messageID: "b"),
+            wakeAt: Date(timeIntervalSince1970: 20000),
+            createdAt: Date(timeIntervalSince1970: 10000),
+            conversationMetadata: .init(rfcIdentifiers: ["b@example.org"])
+        )
+        let state = LocalMessageWorkflowState(snoozes: [first, second])
+        LocalMessageWorkflowStateStorage.save(state, to: defaults)
+        LocalMessageWorkflowStateStorage.save(state, to: otherDefaults)
+
+        SettingsPersistenceStore(defaults: defaults).removeAccountScopedState(accountID: "account-a")
+
+        #expect(LocalMessageWorkflowStateStorage.load(from: defaults).snoozes == [second])
+        #expect(LocalMessageWorkflowStateStorage.load(from: otherDefaults) == state)
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "SettingsPersistenceStoreTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

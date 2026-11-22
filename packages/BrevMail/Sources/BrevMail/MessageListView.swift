@@ -3827,8 +3827,12 @@ public struct MessageListView: View {
         let sourceID = workflowSourceID
         let targetIDs = sourceMessageIDs(for: targetHeaders)
         let targetCandidates = targetHeaders.map { LocalMessageWorkflowCandidate(sourceID: sourceID, header: $0) }
-        guard targetIDs.allSatisfy({ $0.sourceID == sourceID && allFolders.contains { $0.id == folder.id } }),
-              targetHeaders.allSatisfy({ $0.folderID == folder.id }) else {
+        guard targetIDs.allSatisfy({ $0.sourceID == sourceID }),
+              LocalMessageWorkflowSnoozeTargetPolicy.areValid(
+                  targetCandidates,
+                  sourceID: sourceID,
+                  knownFolderIDs: Set(allFolders.map(\.id))
+              ) else {
             mutationErrorStatus = MessageListPresentation.mutationErrorStatus(
                 for: LocalMessageWorkflowConversationCacheError.incompleteCache
             )
@@ -3909,7 +3913,9 @@ public struct MessageListView: View {
                 if !result.limitedMessageIDs.isEmpty {
                     mutationErrorStatus = MessageListFooterStatus(
                         message: String(
-                            localized: "Only this message was snoozed because it has no usable reply identifiers.",
+                            localized: targetHeaders.count == 1
+                                ? "Only this message was snoozed because it has no usable reply identifiers."
+                                : "Messages without usable reply identifiers were snoozed individually.",
                             bundle: .module
                         ),
                         actionTitle: String(localized: "Refresh", bundle: .module)

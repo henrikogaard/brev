@@ -6520,14 +6520,15 @@ public struct BrevMailRootView: View {
         state: LocalMessageWorkflowState? = nil
     ) -> LocalMessageWorkflowConversationProjection {
         let source = readerWorkflowSourceID(for: sourceID)
-        var candidates = relatedConversation.mergedThreadHeaders(
-            loaded: threadHeadersForSelection(fallbackHeader: header)
+        let candidates = LocalMessageWorkflowReaderCandidatePolicy.candidates(
+            targetSourceID: source,
+            targetHeader: header,
+            selectedSourceID: navigation.selectedSourceID,
+            loadedHeaders: threadHeadersForSelection(fallbackHeader: header),
+            relatedMembers: relatedConversation.snapshot?.members ?? []
         )
-        if !candidates.contains(where: { $0.id == header.id }) {
-            candidates.append(header)
-        }
         return LocalMessageWorkflowConversationProjection(
-            candidates: candidates.map { .init(sourceID: source, header: $0) },
+            candidates: candidates,
             state: state ?? currentLocalMessageWorkflowState()
         )
     }
@@ -6736,7 +6737,6 @@ public struct BrevMailRootView: View {
         let expectedRevision = sourceSectionsRevision
         let expectedBackendIdentity = ObjectIdentifier(backend)
         let expectedState = currentLocalMessageWorkflowState()
-        let messageID = SourceMessageID(sourceID: resolvedSourceID, messageID: header.id)
         let candidate = LocalMessageWorkflowCandidate(sourceID: resolvedSourceID, header: header)
         readerSnoozeLookupTask = Task { @MainActor in
             do {

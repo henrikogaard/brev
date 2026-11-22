@@ -726,14 +726,11 @@ struct LocalMessageWorkflowConversationProjectionTests {
     func reconciliationCoordinatorCoalescesAndCancelsByGeneration() {
         var coordinator = LocalMessageWorkflowSnoozeReconciliationCoordinator()
         let generation = coordinator.request()!
-        var revisions = [1]
         for _ in 0 ..< 20 {
             #expect(coordinator.request() == nil)
         }
-        revisions.append(2)
         #expect(coordinator.finishPass(generation: generation))
         #expect(!coordinator.finishPass(generation: generation))
-        #expect(revisions == [1, 2])
 
         let staleGeneration = coordinator.request()!
         coordinator.request()
@@ -746,6 +743,7 @@ struct LocalMessageWorkflowConversationProjectionTests {
     }
 
     @Test("a changed source rule does not block healthy-source reconciliation")
+    @MainActor
     func reconciliationSourcesAreIndependent() throws {
         let anchor = Self.header(id: "source-anchor", folder: "Inbox", rfcID: "seed@example")
         let arrival = Self.header(
@@ -785,7 +783,7 @@ struct LocalMessageWorkflowConversationProjectionTests {
             mutation: { state, projection, ruleIDs in
                 (
                     state: LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
-                        in: state, projection: projection, only: ruleIDs
+                        in: state, projection: projection, only: ruleIDs, at: now
                     ),
                     value: ()
                 )
@@ -868,6 +866,34 @@ struct LocalMessageWorkflowConversationProjectionTests {
         #expect(snoozed.isSnoozed(.init(sourceID: source, messageID: "new-arrival"), header: arrival, at: now))
         let unsnoozed = LocalMessageWorkflowConversationProjection(candidates: candidates, state: .defaults, now: now)
         #expect(!unsnoozed.isSnoozed(.init(sourceID: source, messageID: "new-arrival"), header: arrival, at: now))
+    }
+
+    @Test("detached reader candidate selection preserves explicit source ownership")
+    func detachedReaderCandidatesStaySourceOwned() {
+        let targetHeader = Self.header(id: "target", folder: "Inbox", rfcID: "target@example")
+        let foreignHeader = Self.header(id: "foreign", folder: "Inbox", rfcID: "foreign@example")
+        let candidates = LocalMessageWorkflowReaderCandidatePolicy.candidates(
+            targetSourceID: otherSource,
+            targetHeader: targetHeader,
+            selectedSourceID: source,
+            loadedHeaders: [foreignHeader],
+            relatedMembers: [ConversationMember(sourceID: source, header: foreignHeader)]
+        )
+        #expect(candidates.count == 1)
+        #expect(candidates[0].sourceID == otherSource)
+        #expect(candidates[0].header.id == targetHeader.id)
+    }
+
+    @Test("search snooze targets may come from any known source folder")
+    func snoozeTargetValidationAllowsKnownSearchFolders() {
+        let searchHit = Self.header(id: "archive-hit", folder: "Archive", rfcID: "archive@example")
+        let candidate = LocalMessageWorkflowCandidate(sourceID: source, header: searchHit)
+        #expect(LocalMessageWorkflowSnoozeTargetPolicy.areValid(
+            [candidate], sourceID: source, knownFolderIDs: ["Inbox", "Archive"]
+        ))
+        #expect(!LocalMessageWorkflowSnoozeTargetPolicy.areValid(
+            [candidate], sourceID: source, knownFolderIDs: ["Inbox"]
+        ))
     }
 
     private static func state(
