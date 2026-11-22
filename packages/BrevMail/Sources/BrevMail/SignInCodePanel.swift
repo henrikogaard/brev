@@ -437,8 +437,7 @@ public final class SignInCodePanelController: SignInCodePresenting {
                 self?.renderCurrentPanel()
             }
         )
-        .brevTheme(theme)
-        .environment(\.colorScheme, theme.mode.colorScheme)
+        .brevSheetAppearance(theme)
 
         let hosting = NSHostingController(rootView: rootView)
         let targetPanel = ensurePanel()
