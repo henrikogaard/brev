@@ -37,6 +37,9 @@ struct MessageListPresentationSnapshotTests {
                                              selectedSourceID: navigation.selectedSourceID,
                                              expandedThreadIDs: expanded)
             #expect(row == (expanded.isEmpty ? parent.id : child.id))
+            // The visible parent only paints the selection; a shortcut still acts on the child.
+            #expect(snapshot.shortcutTarget(messageID: child.id, source: source)?.id == child.id)
+            #expect(snapshot.shortcutTarget(messageID: child.id, source: nil) == nil)
             #expect(navigation.selectedHeader?.id == child.id)
             #expect(navigation.selectedMessageID == child.id)
             #expect(navigation.selectedSourceID == source)

@@ -1333,7 +1333,7 @@ public struct MessageListView: View {
             .focused($listKeyboardFocus)
             .focusEffectDisabled()
             .modifier(MailSingleKeyShortcutModifier(focused: listKeyboardFocus) { shortcut in
-                performSingleKeyShortcut(shortcut, selectedRowID: selectedRowID, presentation: presentation)
+                performSingleKeyShortcut(shortcut, presentation: presentation)
             })
             .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
                 listKeyboardFocus = true
@@ -2693,7 +2693,6 @@ public struct MessageListView: View {
     /// Single-key mail actions with the list focused (#300).
     private func performSingleKeyShortcut(
         _ shortcut: MailSingleKeyShortcut,
-        selectedRowID: MessageHeader.ID?,
         presentation: MessageListPresentationSnapshot
     ) -> Bool {
         guard navigation.presentedSheet == nil else { return false }
@@ -2703,9 +2702,8 @@ public struct MessageListView: View {
             if shortcut == .previous { navigation.selectPreviousHeader() } else { navigation.selectNextHeader() }
             return true
         }
-        let candidates = presentation.headers + presentation.headersByThreadID.values.joined()
         guard navigation.bulkSelection.isEmpty, !isMutationActionBlocked,
-              let header = candidates.first(where: { $0.id == selectedRowID }),
+              let header = presentation.shortcutTarget(messageID: navigation.selectedMessageID, source: navigation.selectedSourceID),
               contextMenuPresentation(for: header).action(action)?.isEnabled == true else { return false }
         performRowMailAction(action, for: header)
         return true
