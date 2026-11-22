@@ -1,5 +1,9 @@
 # Worklog
 
+## 2026-11-22 — Agent — #300 command palette appearance
+
+- Passed the session theme into the palette's separate hosting controller and used its surface, text and accent tokens. A macOS rendering regression samples the palette background with two different themes; native execution runs on CI. The full palette snapshot needs recording on macOS 26.
+
 ## 2026-11-22 — Agent — #300 command palette
 
 - Added a macOS ⌘K palette backed by the current native menu, visible mail sources and available Settings sections. Commands are validated after the sheet dismisses; folder selection is checked against the current profile and source. No new network calls or stored search history.

@@ -313,7 +313,7 @@ struct BrevApp: App {
             }
             // Window scenes register themselves in the Window menu's window
             // list automatically — a manual group here produced duplicates.
-            BrevMailCommands(settingsSections: settingsSectionAvailability.visibleSections) { section in
+            BrevMailCommands(theme: session.theme, settingsSections: settingsSectionAvailability.visibleSections) { section in
                 settingsSectionRequest = settingsSectionAvailability.fallback(for: section)
                 openWindow(id: BrevWindowID.settings)
             }

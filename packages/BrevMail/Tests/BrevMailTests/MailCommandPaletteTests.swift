@@ -15,11 +15,30 @@ import AppKit
 import BrevBackend
 @testable import BrevMail
 import BrevSettings
+import BrevThemes
 import Testing
 
 @MainActor
 @Suite("Command palette")
 struct MailCommandPaletteTests {
+    @Test("the palette sheet paints the selected Brev theme")
+    func sheetAppearance() throws {
+        for theme in [BrevTheme.brevPaper, BrevTheme.brevSlate] {
+            let host = MailCommandPalette.contentController(theme: theme, entries: []) { _ in }
+            host.view.frame = NSRect(x: 0, y: 0, width: 560, height: 400)
+            host.view.layoutSubtreeIfNeeded()
+            let bounds = host.view.bounds
+            let bitmap = try #require(host.view.bitmapImageRepForCachingDisplay(in: bounds))
+            host.view.cacheDisplay(in: bounds, to: bitmap)
+            let sample = try #require(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.sRGB))
+            let expected = try #require(NSColor(theme.bgPrimary.color).usingColorSpace(.sRGB))
+            #expect(sample.alphaComponent > 0.99)
+            #expect(abs(sample.redComponent - expected.redComponent) < 0.02)
+            #expect(abs(sample.greenComponent - expected.greenComponent) < 0.02)
+            #expect(abs(sample.blueComponent - expected.blueComponent) < 0.02)
+        }
+    }
+
     @Test("nested commands follow menu validation and cannot run after removal")
     func commands() throws {
         let root = NSMenu()

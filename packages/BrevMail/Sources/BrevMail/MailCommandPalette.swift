@@ -14,6 +14,7 @@
 import AppKit
 import BrevDesign
 import BrevSettings
+import BrevThemes
 import SwiftUI
 
 /// Opens the macOS command palette over the window whose menu and destinations it searches.
@@ -23,7 +24,7 @@ public enum MailCommandPalette {
     public static var title: String { String(localized: "Command Palette…", bundle: .module) }
 
     /// Snapshot the owner's menu before presenting; run its command after the sheet releases focus.
-    public static func present(mailbox: MailPaletteMailboxContext?, settings: [SettingsSection],
+    public static func present(theme: BrevTheme, mailbox: MailPaletteMailboxContext?, settings: [SettingsSection],
                                openSettings: @escaping @MainActor (SettingsSection) -> Void) {
         guard let owner = NSApp.keyWindow, owner.attachedSheet == nil, owner.sheetParent == nil,
               let menu = NSApp.mainMenu else { return }
@@ -36,11 +37,11 @@ public enum MailCommandPalette {
         sheet.title = title
         sheet.isReleasedWhenClosed = false
         var chosen: MailPaletteEntry?
-        sheet.contentViewController = NSHostingController(rootView: MailCommandPaletteView(entries: entries) { entry in
+        sheet.contentViewController = contentController(theme: theme, entries: entries) { entry in
             guard owner.attachedSheet === sheet else { return }
             chosen = entry
             owner.endSheet(sheet)
-        })
+        }
         owner.beginSheet(sheet) { _ in
             sheet.orderOut(nil)
             sheet.contentViewController = nil
@@ -50,10 +51,17 @@ public enum MailCommandPalette {
             chosen?.run()
         }
     }
+
+    static func contentController(theme: BrevTheme, entries: [MailPaletteEntry],
+                                  choose: @escaping (MailPaletteEntry?) -> Void) -> NSViewController {
+        NSHostingController(rootView: MailCommandPaletteView(entries: entries, choose: choose)
+            .brevSheetAppearance(theme))
+    }
 }
 
 @MainActor
 private struct MailCommandPaletteView: View {
+    @Environment(\.brevTheme) private var theme
     let entries: [MailPaletteEntry]
     let choose: (MailPaletteEntry?) -> Void
     @State private var query = ""
@@ -73,7 +81,7 @@ private struct MailCommandPaletteView: View {
             .onKeyPress(.upArrow) { cursor = max(0, cursor - 1); return .handled }
             if matches.isEmpty {
                 Text("No matching commands or destinations", bundle: .module)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary.color)
                 Spacer()
             } else {
                 ScrollViewReader { proxy in
@@ -88,7 +96,7 @@ private struct MailCommandPaletteView: View {
                                             .accessibilityHidden(true)
                                         Text(verbatim: row.title)
                                         Spacer()
-                                        Text(verbatim: row.detail).font(.caption).foregroundStyle(.secondary)
+                                        Text(verbatim: row.detail).font(.caption).foregroundStyle(theme.textSecondary.color)
                                     }
                                     .padding(.vertical, BrevSpacing.xs)
                                     .contentShape(Rectangle())
@@ -107,6 +115,9 @@ private struct MailCommandPaletteView: View {
         }
         .padding(BrevSpacing.lg)
         .frame(width: 560, height: 400, alignment: .topLeading)
+        .foregroundStyle(theme.textPrimary.color)
+        .background(theme.bgPrimary.color)
+        .tint(theme.accent.color)
         .onAppear { searching = true }
         .onChange(of: query) { _, _ in cursor = 0 }
         .onExitCommand { choose(nil) }

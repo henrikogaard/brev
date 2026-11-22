@@ -12,6 +12,7 @@
 
 import BrevMail
 import BrevSettings
+import BrevThemes
 import SwiftUI
 
 /// macOS menu-bar commands. Keyboard shortcuts follow Apple's HIG
@@ -22,6 +23,7 @@ import SwiftUI
 /// are provided by `MailCommands`. This struct adds macOS-only additions:
 /// Import/Export and the Keyboard Shortcuts window command.
 struct BrevMailCommands: Commands {
+    let theme: BrevTheme
     let settingsSections: [SettingsSection]
     let openSettingsSection: @MainActor (SettingsSection) -> Void
     @FocusedValue(\.mailPaletteMailboxContext) private var paletteMailbox
@@ -30,7 +32,12 @@ struct BrevMailCommands: Commands {
     @FocusedValue(\.mailFolderExportAction) private var exportAction
     @Environment(\.openWindow) private var openWindow
 
-    init(settingsSections: [SettingsSection], openSettingsSection: @escaping @MainActor (SettingsSection) -> Void) {
+    init(
+        theme: BrevTheme,
+        settingsSections: [SettingsSection],
+        openSettingsSection: @escaping @MainActor (SettingsSection) -> Void
+    ) {
+        self.theme = theme
         self.settingsSections = settingsSections
         self.openSettingsSection = openSettingsSection
     }
@@ -78,7 +85,12 @@ struct BrevMailCommands: Commands {
             Divider()
 
             Button(MailCommandPalette.title) {
-                MailCommandPalette.present(mailbox: paletteMailbox, settings: settingsSections, openSettings: openSettingsSection)
+                MailCommandPalette.present(
+                    theme: theme,
+                    mailbox: paletteMailbox,
+                    settings: settingsSections,
+                    openSettings: openSettingsSection
+                )
             }
             .keyboardShortcut("k", modifiers: .command)
 
