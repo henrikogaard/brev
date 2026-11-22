@@ -93,4 +93,39 @@ public protocol CachedListUnsubscribeProviding: Sendable {
         for messageID: MessageHeader.ID,
         sourceID: MailSourceID
     ) async -> ListUnsubscribeOptions?
+
+    /// Returns whether locally cached headers mark `messageID` as bulk or
+    /// auto-generated mail (`Precedence: bulk|list|junk` or `Auto-Submitted`).
+    func cachedIsBulkPrecedence(
+        for messageID: MessageHeader.ID,
+        sourceID: MailSourceID
+    ) async -> Bool
+}
+
+public extension CachedListUnsubscribeProviding {
+    func cachedIsBulkPrecedence(
+        for _: MessageHeader.ID,
+        sourceID _: MailSourceID
+    ) async -> Bool {
+        false
+    }
+}
+
+public extension ListUnsubscribeOptions {
+    /// Evaluates standard bulk-mail precedence headers (`Precedence` / `Auto-Submitted`).
+    static func isBulkPrecedence(precedence: String?, autoSubmitted: String?) -> Bool {
+        if let precedence {
+            let normalized = precedence.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized == "bulk" || normalized == "list" || normalized == "junk" {
+                return true
+            }
+        }
+        if let autoSubmitted {
+            let normalized = autoSubmitted.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !normalized.isEmpty, normalized != "no" {
+                return true
+            }
+        }
+        return false
+    }
 }

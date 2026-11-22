@@ -165,7 +165,10 @@ public struct MessageListView: View {
     @State private var activePeopleUpdatesTab: InboxSplitTab = .people
     @State private var inboxCategoryOverrideRevision = 0
     @State private var inboxCategoryOverrideStore = InboxCategoryOverrideStore()
-    @State private var senderCategoryOverrideStore = InboxSenderCategoryOverrideStore()
+    @State private var senderCategoryOverrideStore = InboxSenderCategoryOverrideStore.shared
+    @State private var peopleUpdatesSignalsByMessageID: [MessageHeader.ID: PeopleUpdatesHeaderSignals] = [:]
+    @State private var peopleUpdatesRepliedSenders: Set<String> = []
+    @State private var peopleUpdatesSignalsRevision = 0
     @State private var expandedUpdateBundleIDs: Set<String> = []
     /// Lowercased blocklist materialized once per load so each rendered row's
     /// `isBlockedSender` check is a Set hit instead of a scan.
@@ -304,6 +307,19 @@ public struct MessageListView: View {
             .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
                 followUpReminderIndex = FollowUpReminderIndex(settings: .load())
             }
+            .modifier(
+                PeopleUpdatesObserverModifier(
+                    activeTab: activePeopleUpdatesTab,
+                    signalRefreshKey: peopleUpdatesSignalRefreshKey,
+                    onOverridesChanged: { inboxCategoryOverrideRevision += 1 },
+                    onTabChanged: {
+                        let visibleIDs = Set(presentationSnapshot.headers.map(\.id))
+                        navigation.bulkSelection.formIntersection(visibleIDs)
+                        reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+                    },
+                    onRefreshSignals: { await refreshPeopleUpdatesSignals() }
+                )
+            )
             .onReceive(
                 NotificationCenter.default.publisher(for: BlockedSendersSettings.Key.didChangeNotification)
             ) { _ in
@@ -678,10 +694,72 @@ public struct MessageListView: View {
         inboxClassificationSettings.mode == .peopleAndUpdates && folder?.role == .inbox
     }
 
+    private var peopleUpdatesSignalRefreshKey: String {
+        guard showsPeopleUpdatesBar else { return "off" }
+        let ids = headers.map(\.id).joined(separator: ",")
+        let src = sourceID.map { "\($0.accountID)/\($0.mailboxID)" } ?? ""
+        return "\(src):\(folder?.id ?? ""):\(ids)"
+    }
+
+    /// Loads cache-only `List-Unsubscribe`, bulk-precedence, and Sent-recipient
+    /// signals for the visible Inbox headers with zero network calls (ADR-0006, #295).
+    private func refreshPeopleUpdatesSignals() async {
+        guard showsPeopleUpdatesBar else {
+            if !peopleUpdatesSignalsByMessageID.isEmpty || !peopleUpdatesRepliedSenders.isEmpty {
+                peopleUpdatesSignalsByMessageID = [:]
+                peopleUpdatesRepliedSenders = []
+                peopleUpdatesSignalsRevision += 1
+            }
+            return
+        }
+        let resolvedSourceID = sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        var signals: [MessageHeader.ID: PeopleUpdatesHeaderSignals] = [:]
+        if let provider = backend.extensionService(CachedListUnsubscribeProviding.self) {
+            for header in headers {
+                guard !Task.isCancelled else { return }
+                let options = await provider.cachedListUnsubscribe(for: header.id, sourceID: resolvedSourceID)
+                let isBulk = await provider.cachedIsBulkPrecedence(for: header.id, sourceID: resolvedSourceID)
+                let hasUnsubscribe = options?.methods.isEmpty == false
+                if hasUnsubscribe || isBulk {
+                    signals[header.id] = PeopleUpdatesHeaderSignals(
+                        hasListUnsubscribe: hasUnsubscribe,
+                        isBulkPrecedence: isBulk
+                    )
+                }
+            }
+        }
+
+        var replied = Set<String>()
+        for header in headers where header.isAnswered {
+            let email = header.from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !email.isEmpty { replied.insert(email) }
+        }
+        if let sentFolder = allFolders.first(where: { $0.role == .sent }),
+           let sentHeaders = try? await backend.cachedMessageHeaders(in: sentFolder, sourceID: resolvedSourceID) {
+            for sent in sentHeaders {
+                guard !Task.isCancelled else { return }
+                for recipient in sent.to + sent.cc {
+                    let email = recipient.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if !email.isEmpty { replied.insert(email) }
+                }
+            }
+        }
+
+        guard !Task.isCancelled else { return }
+        if signals != peopleUpdatesSignalsByMessageID || replied != peopleUpdatesRepliedSenders {
+            peopleUpdatesSignalsByMessageID = signals
+            peopleUpdatesRepliedSenders = replied
+            peopleUpdatesSignalsRevision += 1
+        }
+    }
+
     private var peopleUpdatesCounts: PeopleUpdatesCounts {
         _ = inboxCategoryOverrideRevision
+        _ = peopleUpdatesSignalsRevision
         return PeopleUpdatesCounts.compute(
             headers: headers,
+            signalsByMessageID: peopleUpdatesSignalsByMessageID,
+            repliedSenderEmails: peopleUpdatesRepliedSenders,
             senderOverrideStore: senderCategoryOverrideStore
         )
     }
@@ -689,10 +767,13 @@ public struct MessageListView: View {
     private func peopleUpdatesFilteredHeaders(from candidates: [MessageHeader]) -> [MessageHeader] {
         guard showsPeopleUpdatesBar, activePeopleUpdatesTab != .all else { return candidates }
         _ = inboxCategoryOverrideRevision
+        _ = peopleUpdatesSignalsRevision
         let desired: PeopleUpdatesBucket = activePeopleUpdatesTab == .people ? .people : .updates
         return candidates.filter { header in
             PeopleUpdatesClassifier.classify(
                 header: header,
+                signals: peopleUpdatesSignalsByMessageID[header.id] ?? PeopleUpdatesHeaderSignals(),
+                repliedSenderEmails: peopleUpdatesRepliedSenders,
                 senderOverrideStore: senderCategoryOverrideStore
             ).bucket == desired
         }
@@ -735,8 +816,10 @@ public struct MessageListView: View {
         selectedRowID: MessageHeader.ID?
     ) -> some View {
         if activePeopleUpdatesTab == .updates {
-            let updateHeaders = peopleUpdatesFilteredHeaders(from: presentation.headers)
-            let bundles = UpdatesSenderBundler.bundle(updateHeaders, sourceID: sourceID)
+            // Build bundles from all matching ungrouped Updates headers so
+            // multi-message threads from the same sender are counted, expanded,
+            // and archived together (#295).
+            let bundles = UpdatesSenderBundler.bundle(presentation.navigationHeaders, sourceID: sourceID)
             ForEach(bundles) { bundle in
                 if bundle.headers.count > 1 {
                     UpdatesBundleRowView(
@@ -780,15 +863,32 @@ public struct MessageListView: View {
                 }
             }
         } else {
-            let peopleHeaders = peopleUpdatesFilteredHeaders(from: presentation.headers)
-            ForEach(peopleHeaders) { header in
+            ForEach(presentation.headers) { header in
                 messageRow(
                     for: header,
                     visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
-                    visibleCount: peopleHeaders.count,
+                    visibleCount: presentation.headers.count,
                     threadChildrenByID: presentation.headersByThreadID,
                     selectedRowID: selectedRowID
                 )
+            }
+        }
+        if hasMore, !isLoadingMore, loadMoreErrorStatus == nil {
+            HStack {
+                Spacer()
+                Button(String(localized: "Load older messages", bundle: .module)) {
+                    Task { await loadMore() }
+                }
+                .buttonStyle(.borderless)
+                .brevFont(.caption)
+                .foregroundStyle(theme.accent.color)
+                Spacer()
+            }
+            .padding(.vertical, BrevSpacing.sm)
+            .listRowSeparator(.hidden)
+            .messageListThemedRowBackground()
+            .onAppear {
+                Task { await loadMore() }
             }
         }
     }
@@ -1023,14 +1123,29 @@ public struct MessageListView: View {
             BrevSkeletonList(rowCount: 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if presentation.headers.isEmpty {
-            MessageListEmptyStateView(
-                status: MessageListPresentation.emptyStatus(
-                    searchText: navigation.searchText,
-                    filtersActive: navigation.mailboxFilter.isActive
-                )
-            ) {
-                navigation.searchText = ""
-                navigation.mailboxFilter.clear()
+            VStack(spacing: BrevSpacing.md) {
+                MessageListEmptyStateView(
+                    status: MessageListPresentation.emptyStatus(
+                        searchText: navigation.searchText,
+                        filtersActive: navigation.mailboxFilter.isActive
+                    )
+                ) {
+                    navigation.searchText = ""
+                    navigation.mailboxFilter.clear()
+                }
+                if showsPeopleUpdatesBar, activePeopleUpdatesTab != .all, hasMore {
+                    if isLoadingMore {
+                        ProgressView()
+                            .padding(.bottom, BrevSpacing.md)
+                    } else {
+                        Button(String(localized: "Load older messages", bundle: .module)) {
+                            Task { await loadMore() }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .padding(.bottom, BrevSpacing.md)
+                    }
+                }
             }
         } else {
             Group {
@@ -1409,6 +1524,8 @@ public struct MessageListView: View {
             if showsPeopleUpdatesBar {
                 let currentBucket = PeopleUpdatesClassifier.classify(
                     header: header,
+                    signals: peopleUpdatesSignalsByMessageID[header.id] ?? PeopleUpdatesHeaderSignals(),
+                    repliedSenderEmails: peopleUpdatesRepliedSenders,
                     senderOverrideStore: senderCategoryOverrideStore
                 ).bucket
                 Button {
@@ -2110,6 +2227,9 @@ public struct MessageListView: View {
             workflowState: localMessageWorkflowState,
             sourceID: sourceID,
             activeInboxCategory: activeInboxCategory,
+            showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+            activePeopleUpdatesTab: activePeopleUpdatesTab,
+            peopleUpdatesSignalsRevision: peopleUpdatesSignalsRevision,
             inboxClassificationModeRaw: inboxClassificationModeRaw,
             inboxCategoryOverrideRevision: inboxCategoryOverrideRevision,
             mailboxSortOrder: mailboxSortOrder,
@@ -2173,13 +2293,14 @@ public struct MessageListView: View {
             state: localMessageWorkflowState,
             now: now
         )
-        return InboxClassificationVisibilityPolicy.headers(
+        let categoryFiltered = InboxClassificationVisibilityPolicy.headers(
             workflowVisible,
             sourceID: sourceID,
             selectedCategory: activeInboxCategory,
             settings: inboxClassificationSettings,
             overrideStore: inboxCategoryOverrideStore
         )
+        return peopleUpdatesFilteredHeaders(from: categoryFiltered)
     }
 
     private var pinnedMessageIDs: Set<MessageHeader.ID> {

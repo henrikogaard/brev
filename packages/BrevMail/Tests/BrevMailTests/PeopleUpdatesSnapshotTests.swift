@@ -147,7 +147,7 @@ struct PeopleUpdatesSnapshotTests {
             refreshKey: 0,
             load: { groups },
             canArchive: { _ in true },
-            onArchiveAll: { _ in },
+            onArchiveAll: { _ in true },
             onConfirmedUnsubscribe: { _, _ in },
             onSelectMessage: { _, _ in },
             preloaded: groups

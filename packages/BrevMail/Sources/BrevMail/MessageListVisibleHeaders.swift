@@ -45,6 +45,9 @@ final class MessageListPresentationSnapshotCache {
         let workflowState: LocalMessageWorkflowState
         let sourceID: MailSourceID?
         let activeInboxCategory: InboxCategory
+        var showsPeopleUpdatesBar = false
+        var activePeopleUpdatesTab: InboxSplitTab = .all
+        var peopleUpdatesSignalsRevision = 0
         let inboxClassificationModeRaw: String
         let inboxCategoryOverrideRevision: Int
         let mailboxSortOrder: MailboxSortOrder

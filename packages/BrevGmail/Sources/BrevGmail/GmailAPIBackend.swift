@@ -1732,6 +1732,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         switch ObjectIdentifier(type) {
         case ObjectIdentifier(CachedMessageHeaderProviding.self),
              ObjectIdentifier(CachedMessageBodyProviding.self),
+             ObjectIdentifier(CachedListUnsubscribeProviding.self),
              ObjectIdentifier(CachedConversationProviding.self):
             return self as? Service
         case ObjectIdentifier(RelatedConversationLoading.self):
@@ -2567,11 +2568,16 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         var attachments: [Attachment] = []
         collectParts(payload, messageID: message.id, plain: &plain, html: &html, attachments: &attachments)
         let headers = headerMap(payload.headers)
+        let parsedUnsubscribe = ListUnsubscribeOptions.parse(
+            listUnsubscribe: headers["list-unsubscribe"],
+            listUnsubscribePost: headers["list-unsubscribe-post"]
+        )
         return MessageBody(
             messageID: message.id,
             html: html,
             plainText: plain,
             attachments: attachments,
+            listUnsubscribe: parsedUnsubscribe.methods.isEmpty ? nil : parsedUnsubscribe,
             readReceiptRequest: headers["disposition-notification-to"].map(ReadReceiptRequest.init),
             authenticationResults: headers["authentication-results"]
         )
@@ -2883,5 +2889,42 @@ extension GmailAPIBackend: CachedMessageBodyProviding {
         }
         let parsed = Self.body(from: cachedMessage)
         return Self.hasBodyContent(parsed) ? parsed : nil
+    }
+}
+
+extension GmailAPIBackend: CachedListUnsubscribeProviding {
+    public func cachedListUnsubscribe(
+        for messageID: MessageHeader.ID,
+        sourceID _: MailSourceID
+    ) async -> ListUnsubscribeOptions? {
+        if let options = try? await readCache?.cachedBody(accountID: account.id, messageID: messageID)?.listUnsubscribe,
+           !options.methods.isEmpty {
+            return options
+        }
+        guard let cached = try? await store.message(accountID: account.id, messageID: messageID),
+              let payloadHeaders = cached.payload?.headers else {
+            return nil
+        }
+        let headers = Self.headerMap(payloadHeaders)
+        let parsed = ListUnsubscribeOptions.parse(
+            listUnsubscribe: headers["list-unsubscribe"],
+            listUnsubscribePost: headers["list-unsubscribe-post"]
+        )
+        return parsed.methods.isEmpty ? nil : parsed
+    }
+
+    public func cachedIsBulkPrecedence(
+        for messageID: MessageHeader.ID,
+        sourceID _: MailSourceID
+    ) async -> Bool {
+        guard let cached = try? await store.message(accountID: account.id, messageID: messageID),
+              let payloadHeaders = cached.payload?.headers else {
+            return false
+        }
+        let headers = Self.headerMap(payloadHeaders)
+        return ListUnsubscribeOptions.isBulkPrecedence(
+            precedence: headers["precedence"],
+            autoSubmitted: headers["auto-submitted"]
+        )
     }
 }

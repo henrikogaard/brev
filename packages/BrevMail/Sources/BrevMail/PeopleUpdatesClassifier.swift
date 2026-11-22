@@ -13,6 +13,30 @@
 import BrevBackend
 import BrevDesign
 import Foundation
+import SwiftUI
+
+/// Groups People/Updates observers into a dedicated modifier so `MessageListView`
+/// stays well within SwiftUI's expression type-check budget (#295).
+struct PeopleUpdatesObserverModifier: ViewModifier {
+    let activeTab: InboxSplitTab
+    let signalRefreshKey: String
+    let onOverridesChanged: () -> Void
+    let onTabChanged: () -> Void
+    let onRefreshSignals: () async -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .brevPeopleUpdatesOverridesDidChange)) { _ in
+                onOverridesChanged()
+            }
+            .onChange(of: activeTab) { _, _ in
+                onTabChanged()
+            }
+            .task(id: signalRefreshKey) {
+                await onRefreshSignals()
+            }
+    }
+}
 
 /// The two-way inbox destination for local classification (#295, ADR-0035).
 enum PeopleUpdatesBucket: String, Codable, Sendable, Hashable {
@@ -48,18 +72,26 @@ struct PeopleUpdatesClassificationResult: Equatable, Sendable {
     let signal: PeopleUpdatesSignal
 }
 
+extension Notification.Name {
+    /// Posted whenever a People/Updates sender override changes so every open
+    /// window refreshes its classification without overwriting sibling edits.
+    static let brevPeopleUpdatesOverridesDidChange = Notification.Name(
+        "brev.peopleUpdatesOverridesDidChange"
+    )
+}
+
 /// Persists per-sender People/Updates overrides locally by normalized sender email (#295).
-final class InboxSenderCategoryOverrideStore: Equatable {
+final class InboxSenderCategoryOverrideStore: Equatable, @unchecked Sendable {
+    static let shared = InboxSenderCategoryOverrideStore()
     static let empty = InboxSenderCategoryOverrideStore(defaults: emptyDefaults)
 
     private static let key = "list.inboxSenderPeopleUpdatesOverrides.v1"
     private static let emptyDefaults = UserDefaults(suiteName: "InboxSenderCategoryOverrideStore.empty") ?? .standard
+    private static let defaultsLock = NSLock()
     private let defaults: UserDefaults
-    private var cachedOverrides: [String: String]
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        cachedOverrides = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
     }
 
     static func == (
@@ -72,23 +104,37 @@ final class InboxSenderCategoryOverrideStore: Equatable {
     /// Returns the remembered People/Updates override for `email`, or nil if unset.
     func bucket(forSenderEmail email: String) -> PeopleUpdatesBucket? {
         let normalized = Self.normalize(email)
-        guard let raw = cachedOverrides[normalized] else { return nil }
-        return PeopleUpdatesBucket(rawValue: raw)
+        guard !normalized.isEmpty else { return nil }
+        return Self.defaultsLock.withLock {
+            let current = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+            guard let raw = current[normalized] else { return nil }
+            return PeopleUpdatesBucket(rawValue: raw)
+        }
     }
 
-    /// Remembers `bucket` for every message from `email`.
+    /// Remembers `bucket` for every message from `email`, merging with any
+    /// concurrent writes from other windows.
     func set(_ bucket: PeopleUpdatesBucket, forSenderEmail email: String) {
         let normalized = Self.normalize(email)
         guard !normalized.isEmpty else { return }
-        cachedOverrides[normalized] = bucket.rawValue
-        defaults.set(cachedOverrides, forKey: Self.key)
+        Self.defaultsLock.withLock {
+            var current = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+            current[normalized] = bucket.rawValue
+            defaults.set(current, forKey: Self.key)
+        }
+        NotificationCenter.default.post(name: .brevPeopleUpdatesOverridesDidChange, object: nil)
     }
 
     /// Clears a saved sender override so heuristics apply again.
     func clear(senderEmail email: String) {
         let normalized = Self.normalize(email)
-        cachedOverrides.removeValue(forKey: normalized)
-        defaults.set(cachedOverrides, forKey: Self.key)
+        guard !normalized.isEmpty else { return }
+        Self.defaultsLock.withLock {
+            var current = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+            current.removeValue(forKey: normalized)
+            defaults.set(current, forKey: Self.key)
+        }
+        NotificationCenter.default.post(name: .brevPeopleUpdatesOverridesDidChange, object: nil)
     }
 
     private static func normalize(_ email: String) -> String {

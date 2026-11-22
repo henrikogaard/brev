@@ -250,26 +250,98 @@ struct PeopleUpdatesClassifierTests {
         #expect(groups[0].unsubscribeOptions.requiresExplicitConfirmation)
         #expect(groups[0].confirmationSummary != nil)
 
-        // Verify Archive all + Undo on real MockBackend messages
+        // Verify real cross-folder Archive all + Undo on MockBackend
         let inboxHeaders = try await backend.messages(in: inbox, pageToken: nil).headers
-        let target = try #require(inboxHeaders.first)
-        let undoQueue = UndoQueue(timeout: 30)
-        let archived = await SubscriptionsActions.archiveAll(
-            headers: [target],
+        let target1 = try #require(inboxHeaders.first)
+        let customFolder = folders.first { $0.role == .custom }
+        var groupedHeaders = [target1]
+        if let customFolder,
+           let customHeader = try await backend.messages(in: customFolder, pageToken: nil).headers.first {
+            groupedHeaders.append(customHeader)
+        }
+        let senderGroup = SubscriptionSenderGroup(
+            id: "\(sourceID.accountID):\(sourceID.mailboxID):\(target1.from.email.lowercased())",
             sourceID: sourceID,
-            from: inbox,
-            to: archive,
+            senderName: target1.from.displayName,
+            senderEmail: target1.from.email.lowercased(),
+            headers: groupedHeaders,
+            lastReceived: target1.date,
+            unsubscribeOptions: groups[0].unsubscribeOptions
+        )
+        let undoQueue = UndoQueue(timeout: 30)
+        let archived = await SubscriptionsActions.archiveAllMessages(
+            in: senderGroup,
+            folders: folders,
             backend: backend,
             undoQueue: undoQueue
         )
         #expect(archived)
         let afterArchive = try await backend.messages(in: inbox, pageToken: nil).headers
-        #expect(!afterArchive.contains { $0.id == target.id })
+        #expect(!afterArchive.contains { $0.id == target1.id })
 
         let undone = await undoQueue.undo()?.value ?? false
         #expect(undone)
         let afterUndo = try await backend.messages(in: inbox, pageToken: nil).headers
-        #expect(afterUndo.contains { $0.id == target.id })
+        #expect(afterUndo.contains { $0.id == target1.id })
+
+        // Verify failure returns false when no archive folder exists
+        let failed = await SubscriptionsActions.archiveAllMessages(
+            in: senderGroup,
+            folders: [inbox],
+            backend: backend,
+            undoQueue: undoQueue
+        )
+        #expect(!failed)
+    }
+
+    @Test("Simultaneously initialized override stores merge writes across windows without clobbering")
+    func overrideStoreMergesAcrossWindows() throws {
+        let suite = "PeopleUpdatesCrossWindow-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let windowOne = InboxSenderCategoryOverrideStore(defaults: defaults)
+        let windowTwo = InboxSenderCategoryOverrideStore(defaults: defaults)
+
+        windowOne.set(.updates, forSenderEmail: "maya@company.com")
+        windowTwo.set(.people, forSenderEmail: "notifications@linear.app")
+
+        let fresh = InboxSenderCategoryOverrideStore(defaults: defaults)
+        #expect(fresh.bucket(forSenderEmail: "maya@company.com") == .updates)
+        #expect(fresh.bucket(forSenderEmail: "notifications@linear.app") == .people)
+    }
+
+    @Test("Updates bundler retains multiple messages from the same thread when built from ungrouped headers")
+    func updatesBundlerIncludesAllThreadedMessages() {
+        let m1 = MessageHeader(
+            id: "u1",
+            threadID: "shared-thread",
+            folderID: "inbox",
+            from: Correspondent(name: "Linear", email: "notifications@linear.app"),
+            to: [],
+            subject: "Issue #1 updated",
+            snippet: "Assigned to you",
+            date: Date().addingTimeInterval(-60),
+            isRead: false,
+            isFlagged: false,
+            hasAttachments: false
+        )
+        let m2 = MessageHeader(
+            id: "u2",
+            threadID: "shared-thread",
+            folderID: "inbox",
+            from: Correspondent(name: "Linear", email: "notifications@linear.app"),
+            to: [],
+            subject: "Re: Issue #1 updated",
+            snippet: "New comment",
+            date: Date().addingTimeInterval(-120),
+            isRead: false,
+            isFlagged: false,
+            hasAttachments: false
+        )
+        let bundles = UpdatesSenderBundler.bundle([m1, m2], sourceID: nil)
+        #expect(bundles.count == 1)
+        #expect(bundles[0].headers.map(\.id) == ["u1", "u2"])
     }
 
     @Test("People, Updates, and Subscriptions strings have Norwegian localizations")

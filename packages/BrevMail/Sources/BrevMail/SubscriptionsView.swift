@@ -120,6 +120,7 @@ enum SubscriptionsCatalogBuilder {
 
 /// Reusable archive-all helper for Subscriptions with full `UndoQueue` support (#295).
 enum SubscriptionsActions {
+    /// Archives a single folder's subscription messages and registers undo.
     @MainActor
     @discardableResult
     static func archiveAll(
@@ -151,6 +152,56 @@ enum SubscriptionsActions {
             return false
         }
     }
+
+    /// Archives every non-archived message in `group` across all source folders
+    /// and registers one combined `UndoQueue` entry. Returns `true` only when
+    /// every folder move succeeds without error (#295).
+    @MainActor
+    @discardableResult
+    static func archiveAllMessages(
+        in group: SubscriptionSenderGroup,
+        folders: [Folder],
+        backend: any MailBackend,
+        undoQueue: UndoQueue
+    ) async -> Bool {
+        guard let archiveFolder = folders.first(where: { $0.role == .archive }) else {
+            return false
+        }
+        let byFolder = Dictionary(grouping: group.headers, by: \.folderID)
+            .filter { $0.key != archiveFolder.id }
+            .sorted { $0.key < $1.key }
+        guard !byFolder.isEmpty else { return true }
+
+        var receipts: [MailMoveUndo?] = []
+        var allSucceeded = true
+        let lease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(lease) }
+
+        for (folderID, folderHeaders) in byFolder {
+            let sourceFolder = folders.first { $0.id == folderID }
+                ?? Folder(id: folderID, name: folderID, role: .custom)
+            do {
+                let receipt = try await backend.moveWithUndo(
+                    messageIDs: folderHeaders.map(\.id),
+                    from: sourceFolder,
+                    to: archiveFolder,
+                    sourceID: group.sourceID
+                )
+                receipts.append(receipt)
+            } catch {
+                allSucceeded = false
+            }
+        }
+
+        if !receipts.isEmpty {
+            undoQueue.registerMoves(
+                receipts,
+                description: String(localized: "Archived", bundle: .module),
+                lease: lease
+            )
+        }
+        return allSucceeded
+    }
 }
 
 /// Sidebar destination listing every locally detected newsletter/subscription
@@ -163,19 +214,20 @@ struct SubscriptionsView: View {
     let refreshKey: Int
     let load: () async -> [SubscriptionSenderGroup]
     let canArchive: (SubscriptionSenderGroup) -> Bool
-    let onArchiveAll: (SubscriptionSenderGroup) async -> Void
+    let onArchiveAll: (SubscriptionSenderGroup) async -> Bool
     let onConfirmedUnsubscribe: (SubscriptionSenderGroup, ListUnsubscribeMethod) -> Void
     let onSelectMessage: (MailSourceID, MessageHeader) -> Void
 
     @State private var groups: [SubscriptionSenderGroup] = []
     @State private var isLoading = false
     @State private var pendingConfirmationGroup: SubscriptionSenderGroup?
+    @State private var archiveErrorGroupID: String?
 
     init(
         refreshKey: Int,
         load: @escaping () async -> [SubscriptionSenderGroup],
         canArchive: @escaping (SubscriptionSenderGroup) -> Bool,
-        onArchiveAll: @escaping (SubscriptionSenderGroup) async -> Void,
+        onArchiveAll: @escaping (SubscriptionSenderGroup) async -> Bool,
         onConfirmedUnsubscribe: @escaping (SubscriptionSenderGroup, ListUnsubscribeMethod) -> Void,
         onSelectMessage: @escaping (MailSourceID, MessageHeader) -> Void,
         preloaded: [SubscriptionSenderGroup]? = nil
@@ -310,8 +362,16 @@ struct SubscriptionsView: View {
                 if canArchive(group) {
                     Button {
                         Task {
-                            await onArchiveAll(group)
-                            groups.removeAll { $0.id == group.id }
+                            archiveErrorGroupID = nil
+                            let succeeded = await onArchiveAll(group)
+                            if succeeded {
+                                groups.removeAll { $0.id == group.id }
+                            } else {
+                                archiveErrorGroupID = group.id
+                                let reloaded = await load()
+                                guard !Task.isCancelled else { return }
+                                groups = reloaded
+                            }
                         }
                     } label: {
                         Text("Archive all", bundle: .module)
@@ -323,6 +383,13 @@ struct SubscriptionsView: View {
             }
         }
         .padding(.vertical, BrevSpacing.xs)
+        .overlay(alignment: .bottomLeading) {
+            if archiveErrorGroupID == group.id {
+                Text("Couldn't archive all messages from this sender.", bundle: .module)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.danger.color)
+            }
+        }
     }
 
     private func subtitle(for group: SubscriptionSenderGroup) -> String {

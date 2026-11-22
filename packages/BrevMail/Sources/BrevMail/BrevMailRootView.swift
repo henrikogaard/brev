@@ -2335,36 +2335,20 @@ public struct BrevMailRootView: View {
         return SubscriptionsCatalogBuilder.build(candidates: candidates)
     }
 
-    private func archiveAllSubscriptionMessages(in group: SubscriptionSenderGroup) async {
-        guard let section = sidebarSourceSections.first(where: { $0.id == group.sourceID }),
-              let archiveFolder = section.folders.first(where: { $0.role == .archive })
-        else { return }
+    private func archiveAllSubscriptionMessages(in group: SubscriptionSenderGroup) async -> Bool {
+        guard let section = sidebarSourceSections.first(where: { $0.id == group.sourceID }) else {
+            return false
+        }
         let owner = backend(for: group.sourceID)
-        let byFolder = Dictionary(grouping: group.headers, by: \.folderID)
-        var receipts: [MailMoveUndo?] = []
-        let lease = undoQueue.beginMutation()
-        defer { undoQueue.endMutation(lease) }
-        for (folderID, folderHeaders) in byFolder where folderID != archiveFolder.id {
-            let sourceFolder = section.folders.first { $0.id == folderID }
-                ?? Folder(id: folderID, name: folderID, role: .custom)
-            if let receipt = try? await owner.moveWithUndo(
-                messageIDs: folderHeaders.map(\.id),
-                from: sourceFolder,
-                to: archiveFolder,
-                sourceID: group.sourceID
-            ) {
-                receipts.append(receipt)
-            }
-        }
-        if !receipts.isEmpty {
-            undoQueue.registerMoves(
-                receipts,
-                description: String(localized: "Archived", bundle: .module),
-                lease: lease
-            )
-            await loadFolders()
-            navigation.requestReload()
-        }
+        let succeeded = await SubscriptionsActions.archiveAllMessages(
+            in: group,
+            folders: section.folders,
+            backend: owner,
+            undoQueue: undoQueue
+        )
+        await loadFolders()
+        navigation.requestReload()
+        return succeeded
     }
 
     /// The split view's detail column. On iPhone it is the pushed reader; at
