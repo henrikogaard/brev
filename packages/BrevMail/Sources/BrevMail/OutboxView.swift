@@ -28,7 +28,7 @@ public struct OutboxView: View {
     @State private var scheduled: [PendingScheduledSend] = []
     @State private var changingSchedule: PendingScheduledSend?
     @State private var reviewAction: ScheduleReviewAction?
-    @State private var contextGeneration = 0
+    @State private var contextTransition = ScheduledOutboxContextTransition()
     @State private var loadedContext: ScheduledOutboxContext?
     @State private var loadedGeneration = -1
 
@@ -96,14 +96,11 @@ public struct OutboxView: View {
                 }
         }
         .onChange(of: requestedContext) { _, _ in
-            contextGeneration += 1
-            clearLoadedContext()
+            _ = transitionContext(to: requestedContext)
         }
         .task(id: requestedContext) {
-            contextGeneration += 1
-            let generation = contextGeneration
-            clearLoadedContext()
             let context = requestedContext
+            let generation = transitionContext(to: context)
             await loadMutations(context: context, generation: generation)
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
@@ -259,6 +256,18 @@ public struct OutboxView: View {
 
     private var requestedContext: ScheduledOutboxContext {
         ScheduledOutboxContext(backendID: ObjectIdentifier(backend), sourceID: sourceID)
+    }
+
+    private var contextGeneration: Int {
+        contextTransition.generation
+    }
+
+    private func transitionContext(to context: ScheduledOutboxContext) -> Int {
+        var transition = contextTransition
+        guard transition.transition(to: context) else { return transition.generation }
+        contextTransition = transition
+        clearLoadedContext()
+        return transition.generation
     }
 
     private var isLoadedForCurrentContext: Bool {

@@ -17,6 +17,18 @@ struct ScheduledOutboxContext: Hashable {
     let sourceID: MailSourceID?
 }
 
+struct ScheduledOutboxContextTransition {
+    private(set) var context: ScheduledOutboxContext?
+    private(set) var generation = 0
+
+    mutating func transition(to context: ScheduledOutboxContext) -> Bool {
+        guard self.context != context else { return false }
+        self.context = context
+        generation += 1
+        return true
+    }
+}
+
 enum ScheduledOutboxSourcePolicy {
     static func visibleEntries(
         _ entries: [PendingScheduledSend],

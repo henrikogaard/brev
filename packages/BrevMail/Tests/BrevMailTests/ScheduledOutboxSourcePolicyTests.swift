@@ -89,4 +89,58 @@ struct ScheduledOutboxSourcePolicyTests {
             currentGeneration: 4
         ))
     }
+
+    @Test("same context transition is idempotent in either lifecycle ordering")
+    func sameContextTransitionIsIdempotent() {
+        let backend = NSObject()
+        let source = MailSourceID(accountID: "account", mailboxID: "a")
+        let context = ScheduledOutboxContext(backendID: ObjectIdentifier(backend), sourceID: source)
+
+        var changeThenTask = ScheduledOutboxContextTransition()
+        let onChangeStarted = changeThenTask.transition(to: context)
+        #expect(onChangeStarted)
+        let changeGeneration = changeThenTask.generation
+        let taskStartedNewGeneration = changeThenTask.transition(to: context)
+        #expect(!taskStartedNewGeneration)
+        #expect(changeThenTask.generation == changeGeneration)
+
+        var taskThenChange = ScheduledOutboxContextTransition()
+        let taskStarted = taskThenChange.transition(to: context)
+        #expect(taskStarted)
+        let taskGeneration = taskThenChange.generation
+        let onChangeStartedNewGeneration = taskThenChange.transition(to: context)
+        #expect(!onChangeStartedNewGeneration)
+        #expect(taskThenChange.generation == taskGeneration)
+        #expect(taskThenChange.generation == changeThenTask.generation)
+    }
+
+    @Test("an old Outbox context cannot publish under a newer transition")
+    func oldContextCannotPublishAfterTransition() {
+        let backend = NSObject()
+        let sourceA = MailSourceID(accountID: "account", mailboxID: "a")
+        let sourceB = MailSourceID(accountID: "account", mailboxID: "b")
+        let oldContext = ScheduledOutboxContext(backendID: ObjectIdentifier(backend), sourceID: sourceA)
+        let newContext = ScheduledOutboxContext(backendID: ObjectIdentifier(backend), sourceID: sourceB)
+        var transition = ScheduledOutboxContextTransition()
+        let firstContextChanged = transition.transition(to: oldContext)
+        #expect(firstContextChanged)
+        let oldGeneration = transition.generation
+        let secondContextChanged = transition.transition(to: newContext)
+        #expect(secondContextChanged)
+
+        #expect(!ScheduledOutboxSourcePolicy.isCurrent(
+            requested: oldContext,
+            current: newContext,
+            generation: oldGeneration,
+            currentGeneration: transition.generation,
+            isCancelled: false
+        ))
+        #expect(ScheduledOutboxSourcePolicy.isCurrent(
+            requested: newContext,
+            current: newContext,
+            generation: transition.generation,
+            currentGeneration: transition.generation,
+            isCancelled: false
+        ))
+    }
 }

@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — Issue #297 / PR #325 Outbox context ordering
+
+- Goal: prevent duplicate Outbox lifecycle callbacks from invalidating the active load generation.
+- Changes: route `.onChange` and `.task(id:)` through one idempotent context transition; a late callback for the same backend/source preserves the current generation. Keep existing context, cancellation, generation, and selected-source checks. Add production-policy regressions for both callback orderings and stale-context publication.
+- Verification: targeted SwiftFormat, Swift parse, diff, and ADR checks. Native execution was not attempted because it remains unavailable on this Linux host, as specified.
+- Handoff: local commit only on `feature/compose-later-action`; do not push before review.
+
 ## 2026-11-22 — Agent — Issue #297 / PR #325 worker ownership consolidation
 
 - Goal: simplify Mock scheduled-send worker ownership while preserving startup, manual delivery, reconnect, retry, and teardown behavior.
