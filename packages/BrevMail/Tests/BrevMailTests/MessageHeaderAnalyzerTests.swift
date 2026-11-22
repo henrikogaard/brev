@@ -89,6 +89,16 @@ struct MessageHeaderAnalyzerTests {
         #expect(check("info@mail.paypal.com", name: "PayPal") == nil)
     }
 
+    @Test("internationalized display-name domains are compared across Unicode and IDNA spellings")
+    func internationalizedDisplayDomain() {
+        func differs(_ name: String, _ email: String) -> Bool {
+            MessageHeaderAnalyzer.hasDisplayNameMismatch(from: .init(name: name, email: email))
+        }
+        #expect(differs("пример.рф", "a@example.test"))
+        #expect(!differs("пример.рф", "a@mail.xn--e1afmkfd.xn--p1ai"))
+        #expect(!differs("Release 2.3.1", "a@example.test"))
+    }
+
     @Test("DMARC fail and permerror are flagged; pass and transient temperror are not")
     func dmarcFailureDetection() {
         #expect(MessageHeaderAnalyzer.hasDMARCFail(in: "mx.example.com; dmarc=fail header.from=evil.test"))
