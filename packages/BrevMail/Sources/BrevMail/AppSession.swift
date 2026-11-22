@@ -10,6 +10,9 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+#if os(macOS)
+import AppKit
+#endif
 import BrevAI
 import BrevBackend
 import BrevCalendar
@@ -70,6 +73,34 @@ public final class AppSession {
     /// in the background" setting is on (ADR-0075). Inert until the app
     /// target calls `start(interval:)`.
     public let backgroundMail: BackgroundMailCoordinator
+    /// Session-owned executor for Mark-as-read and Archive notification
+    /// actions (#307, ADR-0075). Works even when no mail window is open.
+    public let notificationActionExecutor: NotificationActionExecutor
+    #if os(macOS)
+    /// Session-owned presenter for the opt-in macOS new-mail drop-down panel (#307).
+    public let newMailPanelController = NewMailDropDownPanelController()
+    private var backgroundPanelSubscriptionTasks: [BrevAccount.ID: (identity: ObjectIdentifier, task: Task<Void, Never>)] = [:]
+    private var panelSettingsObserver: NSObjectProtocol?
+    #endif
+    /// Pending Reply route triggered from a macOS drop-down panel when no mail
+    /// window was mounted; consumed once the main window opens (#307).
+    public static var pendingPanelReplyRoute: NotificationMailRoute?
+    /// Callback installed by the macOS app shell to open/reveal the main window
+    /// when a windowless panel's Reply action fires (#307).
+    public var openMainWindowForPanelReply: (@MainActor () -> Void)?
+    /// Returns and clears any pending windowless panel Reply route.
+    public static func takePendingPanelReplyRoute() -> NotificationMailRoute? {
+        defer { pendingPanelReplyRoute = nil }
+        return pendingPanelReplyRoute
+    }
+
+    /// Posted when the user clicks Reply on a session-presented drop-down panel
+    /// so the app shell reveals a mail window and opens a reply composer (#307).
+    public static let didRequestPanelReplyNotification = Notification.Name(
+        "eu.brevmail.notifications.panelReplyRequested"
+    )
+    private var restoreAccountsTask: Task<Void, Never>?
+    private var hasCompletedInitialRestore = false
     /// Session-owned periodic sync loop for PIM sources the user opted into
     /// sync (`PIMSource.syncEnabled`). Inert until a view or the app target
     /// calls `start(interval:)` with the configured fetch interval.
@@ -377,8 +408,13 @@ public final class AppSession {
         self.pendingMutationCleanup = pendingMutationCleanup
         self.localBackend = localBackend
         backgroundMail = BackgroundMailCoordinator()
+        notificationActionExecutor = NotificationActionExecutor()
         pimSyncScheduler = PIMSyncScheduler()
         backgroundMail.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
+        notificationActionExecutor.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
+        notificationActionExecutor.prepareBackends = { [weak self] in
+            await self?.ensureAccountsRestored()
+        }
         pimSyncScheduler.sourcesProvider = { [weak self] in
             guard let coordinator = self?.pimSourceCoordinator else { return [] }
             let sources = try? await coordinator.allSources()
@@ -399,6 +435,178 @@ public final class AppSession {
         }
         refreshLocalFolders()
     }
+
+    /// Installs session-owned async Mark-as-read and Archive handlers on the
+    /// shared notification delegate so notification actions drain after cold
+    /// launch and keep working when no main window is open (#307, ADR-0075).
+    public func installNotificationActionHandlers(on delegate: BrevNotificationDelegate) {
+        let executor = notificationActionExecutor
+        delegate.onMarkRead = { route in
+            _ = await executor.markRead(route: route)
+        }
+        delegate.onArchive = { route in
+            _ = await executor.archive(route: route)
+        }
+    }
+
+    /// Ensures stored accounts have been restored at least once, coalescing
+    /// concurrent callers (for example a scene-less cold iOS notification
+    /// action and the SwiftUI scene startup task) into one restore pass (#307).
+    public func ensureAccountsRestored() async {
+        if let existing = restoreAccountsTask {
+            await existing.value
+            return
+        }
+        if hasCompletedInitialRestore {
+            return
+        }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await restoreAllAccounts()
+            hasCompletedInitialRestore = true
+            #if os(macOS)
+            syncBackgroundPanelSubscriptions()
+            #endif
+        }
+        restoreAccountsTask = task
+        await task.value
+        restoreAccountsTask = nil
+    }
+
+    /// Replays pending offline mutations across every currently connected backend.
+    /// Owned at the session lifecycle level so windowless macOS offline actions
+    /// drain on reconnect without requiring a mounted mail window (#307, ADR-0075).
+    public func replayOfflineMutationsForAllBackends() async {
+        let connected = visibleBackends
+        for backend in connected {
+            await backend.replayOfflineMutations()
+        }
+    }
+
+    /// Attaches session-scoped reconnect mutation replay to `monitor` and starts it.
+    public func startReconnectMutationReplay(monitor: NetworkReachabilityMonitor) {
+        monitor.onReconnect = { [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.replayOfflineMutationsForAllBackends()
+            }
+        }
+        monitor.start()
+    }
+
+    #if os(macOS)
+    /// Keeps session-scoped event subscriptions aligned with connected backends
+    /// strictly while BOTH background mail checking and the opt-in drop-down
+    /// panel are enabled (#307, ADR-0075). Tracks backend object identity so
+    /// reauthentication replaces the watcher cleanly, and cancels all watchers
+    /// immediately when either preference is off.
+    public func syncBackgroundPanelSubscriptions() {
+        if panelSettingsObserver == nil {
+            panelSettingsObserver = NotificationCenter.default.addObserver(
+                forName: .brevNotificationSettingsDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.syncBackgroundPanelSubscriptions()
+                }
+            }
+        }
+        let settings = NotificationSettings.load()
+        guard settings.backgroundMailEnabled, settings.newMailPanelEnabled else {
+            for (_, entry) in backgroundPanelSubscriptionTasks {
+                entry.task.cancel()
+            }
+            backgroundPanelSubscriptionTasks.removeAll()
+            return
+        }
+        let activeByID = Dictionary(
+            uniqueKeysWithValues: visibleBackends.map { ($0.account.id, ObjectIdentifier($0)) }
+        )
+        for (id, entry) in backgroundPanelSubscriptionTasks
+            where activeByID[id] != entry.identity {
+            entry.task.cancel()
+            backgroundPanelSubscriptionTasks.removeValue(forKey: id)
+        }
+        for backend in visibleBackends {
+            let accountID = backend.account.id
+            let identity = ObjectIdentifier(backend)
+            if backgroundPanelSubscriptionTasks[accountID]?.identity == identity {
+                continue
+            }
+            let task = Task { @MainActor [weak self] in
+                for await event in backend.subscribeToChanges() {
+                    guard !Task.isCancelled, let self else { break }
+                    if case .messagesAdded(let folderID, let messageIDs) = event {
+                        await presentDropDownPanelIfEligible(
+                            folderID: folderID,
+                            messageIDs: messageIDs,
+                            backend: backend
+                        )
+                    }
+                }
+            }
+            backgroundPanelSubscriptionTasks[accountID] = (identity: identity, task: task)
+        }
+    }
+
+    private func presentDropDownPanelIfEligible(
+        folderID: String,
+        messageIDs: [String],
+        backend: any MailBackend
+    ) async {
+        let settings = NotificationSettings.load()
+        guard settings.newMailPanelEnabled, let messageID = messageIDs.first else { return }
+        let preview: MessageHeader?
+        if backend.extendedCapabilities.contains(.cachedMessageHeaders) {
+            preview = await backend
+                .extensionService(CachedMessageHeaderProviding.self)?
+                .cachedMessageHeader(messageID: messageID, folderID: folderID)
+        } else {
+            preview = nil
+        }
+        let route = NotificationMailRoute(
+            accountID: backend.account.id,
+            folderID: folderID,
+            messageID: messageID
+        )
+        guard let payload = NewMailPanelPolicy.payload(
+            settings: settings,
+            route: route,
+            correspondent: preview?.from ?? Correspondent(name: nil, email: ""),
+            subject: preview?.subject ?? "",
+            snippet: preview?.snippet ?? "",
+            receivedAt: preview?.date ?? Date()
+        ) else { return }
+
+        let canArchive: Bool
+        if let folders = try? await backend.folders() {
+            canArchive = NotificationActionExecutor.archiveDestinationFolder(in: folders) != nil
+        } else {
+            canArchive = false
+        }
+        let executor = notificationActionExecutor
+        newMailPanelController.present(
+            payload: payload,
+            theme: theme,
+            canArchive: canArchive,
+            onArchive: {
+                Task { _ = await executor.archive(route: route) }
+            },
+            onMarkRead: {
+                Task { _ = await executor.markRead(route: route) }
+            },
+            onReply: { [weak self] in
+                Self.pendingPanelReplyRoute = route
+                NSApplication.shared.activate()
+                self?.openMainWindowForPanelReply?()
+                NotificationCenter.default.post(
+                    name: Self.didRequestPanelReplyNotification,
+                    object: route
+                )
+            }
+        )
+    }
+    #endif
 
     /// Runs one sync pass for a PIM source through the service matching its
     /// kind. Returns a failure summary, or `nil` on success — and `nil` when
@@ -1241,6 +1449,9 @@ public final class AppSession {
             await accountStore.add(result.account)
         }
         backends[result.account.id] = result.backend
+        #if os(macOS)
+        syncBackgroundPanelSubscriptions()
+        #endif
         if let aiBackend = result.aiBackend {
             builtInAIBackends[result.account.id] = aiBackend
         } else {

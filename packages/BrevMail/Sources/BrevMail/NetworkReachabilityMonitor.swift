@@ -24,6 +24,9 @@ import SwiftUI
 public final class NetworkReachabilityMonitor {
     public private(set) var isOnline = true
     public private(set) var connectionType = "unknown"
+    /// Optional session-scoped callback fired whenever connectivity transitions
+    /// from offline to online so pending mutations replay even with no window mounted.
+    public var onReconnect: (@MainActor () -> Void)?
 
     private let monitor: NWPathMonitor
     private let queue: DispatchQueue
@@ -37,8 +40,13 @@ public final class NetworkReachabilityMonitor {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
             Task { @MainActor in
-                self.isOnline = path.status == .satisfied
+                let wasOnline = self.isOnline
+                let nowOnline = path.status == .satisfied
+                self.isOnline = nowOnline
                 self.connectionType = self.describe(path)
+                if nowOnline, !wasOnline {
+                    self.onReconnect?()
+                }
             }
         }
         monitor.start(queue: queue)

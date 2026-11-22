@@ -40,6 +40,21 @@ struct BrevLocalNotificationCenterTests {
         #expect(!textAction.options.contains(.foreground))
     }
 
+    @Test("mark-as-read and archive actions run without foregrounding the app")
+    @MainActor
+    func markReadAndArchiveActionsDoNotForegroundApp() {
+        let markRead = BrevLocalNotificationCenter.makeMarkReadAction()
+        #expect(markRead.identifier == BrevLocalNotificationCenter.markReadActionIdentifier)
+        #expect(markRead.options.contains(.authenticationRequired))
+        #expect(!markRead.options.contains(.foreground))
+
+        let archive = BrevLocalNotificationCenter.makeArchiveAction()
+        #expect(archive.identifier == BrevLocalNotificationCenter.archiveActionIdentifier)
+        #expect(archive.options.contains(.destructive))
+        #expect(archive.options.contains(.authenticationRequired))
+        #expect(!archive.options.contains(.foreground))
+    }
+
     // Regression: the inbox-refresh reminder must use a FIXED identifier so each
     // schedule replaces the prior pending request. A per-call UUID identifier
     // made reminders stack on every focus loss and fire as foreground banners.

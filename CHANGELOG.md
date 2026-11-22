@@ -4,6 +4,14 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Actionable notifications & optional macOS drop-down panel (#307): Mark as
+  Read and Archive notification actions now run in the background without
+  foregrounding the app, buffer during cold launch, route through the offline
+  mutation queue, and keep working when no main window is open on macOS. An
+  opt-in macOS new-mail drop-down panel (off by default in Settings →
+  Notifications) shows the sender, one-line preview, and Archive / Mark as Read
+  / Reply buttons near the top of the screen and auto-dismisses, while
+  excluding sign-in code messages (ADR-0088).
 - Triage mode (#293): start sequential, full-window conversation triage from the
   Today page or Message → Start Triage (`⇧⌘T`). Process one conversation at a
   time with single-key shortcuts (`E` archive, `H` snooze until tomorrow, `R`

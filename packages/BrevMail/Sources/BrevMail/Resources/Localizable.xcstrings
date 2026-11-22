@@ -1,6 +1,17 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "New mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ny e-post"
+          }
+        }
+      }
+    },
     "All caught up": {
       "extractionState": "manual",
       "localizations": {

@@ -89,6 +89,21 @@ struct NotificationSettingsTests {
         #expect(!PreferenceSyncAllowlist.keys.contains(NotificationSettings.Key.launchAtLogin))
     }
 
+    @Test("macOS new-mail drop-down panel defaults off and persists per device")
+    func newMailPanelFlagRoundTrip() throws {
+        let defaults = try Self.makeDefaults()
+
+        #expect(NotificationSettings.load(from: defaults).newMailPanelEnabled == false)
+
+        var settings = NotificationSettings.defaults
+        settings.newMailPanelEnabled = true
+        settings.save(to: defaults)
+
+        let restored = NotificationSettings.load(from: defaults)
+        #expect(restored.newMailPanelEnabled)
+        #expect(!PreferenceSyncAllowlist.keys.contains(NotificationSettings.Key.newMailPanelEnabled))
+    }
+
     @Test("notification settings change signal has a stable name")
     func notificationSettingsChangeSignalHasStableName() {
         #expect(Notification.Name.brevNotificationSettingsDidChange.rawValue == "eu.brevmail.settings.notifications.changed")

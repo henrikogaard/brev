@@ -1071,7 +1071,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             await state.recordListedMessageIDs(
                 cachedPage.headers.map(\.id),
                 folderID: folder.id,
-                isCompleteFolderWindow: cachedPage.nextPageToken == nil
+                isCompleteFolderWindow: cachedPage.nextPageToken == nil,
+                emitAddedEvents: pageToken == nil
             )
             if pageToken == nil {
                 scheduleFirstPageRefreshAfterCachedReturn(folder)

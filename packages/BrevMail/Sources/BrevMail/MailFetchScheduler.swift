@@ -88,6 +88,14 @@ public enum MailFetchScheduler {
     public static func performBackgroundRefresh(backends: [any MailBackend]) async -> String? {
         await withTaskGroup(of: String?.self) { group in
             for backend in backends {
+                // Drain queued offline mutations (such as background notification
+                // MARK: - as-read or Archive actions) during every background tick
+
+                // even when no mail window is open (#307, ADR-0075).
+                group.addTask {
+                    await backend.replayOfflineMutations()
+                    return nil
+                }
                 // A background window is also the only chance a suspended app
                 // gets to flush "send later" drafts that came due meanwhile.
                 if let scheduledSends = backend.extensionService(ScheduledSendManaging.self) {

@@ -14,25 +14,23 @@ import BrevBackend
 import Foundation
 import UserNotifications
 
-/// `UNUserNotificationCenter` delegate wired by `BrevMailRootView` to
-/// translate notification taps into backend operations.
+/// `UNUserNotificationCenter` delegate wired by the app session and mail root
+/// to translate notification taps and actions into backend operations (#307).
 ///
-/// The delegate exposes action closures that the view sets once at startup:
-/// - `onOpen(route)`: invoked when the user taps the notification.
-/// - `onMarkRead(route)`: invoked on the "Mark Read" action.
-/// - `onArchive(route)`: invoked on the "Archive" action; the view is
-///   responsible for resolving the archive folder and calling
-///   `backend.move` on the correct account.
-/// - `onReply(route, text)`: awaited for an inline notification reply so iOS
-///   keeps the app alive until draft persistence and delivery finish.
-///
-/// Replies received during cold launch are buffered until the mail root has
-/// restored accounts and installed `onReply`. The notification completion is
-/// held with the buffered reply so iOS keeps the launch alive rather than
-/// silently discarding the user's text.
+/// Actions received during cold launch are buffered until accounts restore and
+/// handlers are installed. Each buffered action holds its system completion
+/// handler so macOS/iOS keep the process alive until the mutation completes.
 public final class BrevNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    /// Async handler for Mark-as-read and Archive notification actions.
+    public typealias ActionHandler = @Sendable (NotificationMailRoute) async -> Void
+
     /// Async handler that stages and delivers a reply for its exact route.
-    public typealias ReplyHandler = (NotificationMailRoute, String) async -> Void
+    public typealias ReplyHandler = @Sendable (NotificationMailRoute, String) async -> Void
+
+    private struct PendingAction {
+        let route: NotificationMailRoute
+        let completionHandler: () -> Void
+    }
 
     private struct PendingReply {
         let route: NotificationMailRoute
@@ -41,17 +39,66 @@ public final class BrevNotificationDelegate: NSObject, UNUserNotificationCenterD
     }
 
     public var onOpen: ((NotificationMailRoute) -> Void)?
-    public var onMarkRead: ((NotificationMailRoute) -> Void)?
-    public var onArchive: ((NotificationMailRoute) -> Void)?
+
+    public var onMarkRead: ActionHandler? {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return markReadHandler
+        }
+        set {
+            let pending: [PendingAction]
+            stateLock.lock()
+            markReadHandler = newValue
+            if newValue == nil {
+                pending = []
+            } else {
+                pending = pendingMarkReads
+                pendingMarkReads.removeAll()
+            }
+            stateLock.unlock()
+
+            guard let newValue else { return }
+            for action in pending {
+                deliverAction(action, using: newValue)
+            }
+        }
+    }
+
+    public var onArchive: ActionHandler? {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return archiveHandler
+        }
+        set {
+            let pending: [PendingAction]
+            stateLock.lock()
+            archiveHandler = newValue
+            if newValue == nil {
+                pending = []
+            } else {
+                pending = pendingArchives
+                pendingArchives.removeAll()
+            }
+            stateLock.unlock()
+
+            guard let newValue else { return }
+            for action in pending {
+                deliverAction(action, using: newValue)
+            }
+        }
+    }
+
     public var onReply: ReplyHandler? {
         get {
-            replyStateLock.lock()
-            defer { replyStateLock.unlock() }
+            stateLock.lock()
+            defer { stateLock.unlock() }
             return replyHandler
         }
         set {
             let pending: [PendingReply]
-            replyStateLock.lock()
+            stateLock.lock()
             replyHandler = newValue
             if newValue == nil {
                 pending = []
@@ -59,22 +106,38 @@ public final class BrevNotificationDelegate: NSObject, UNUserNotificationCenterD
                 pending = pendingReplies
                 pendingReplies.removeAll()
             }
-            replyStateLock.unlock()
+            stateLock.unlock()
 
             guard let newValue else { return }
             for reply in pending {
-                deliver(reply, using: newValue)
+                deliverReply(reply, using: newValue)
             }
         }
     }
 
-    private let replyStateLock = NSLock()
+    private let stateLock = NSLock()
+    private var markReadHandler: ActionHandler?
+    private var archiveHandler: ActionHandler?
     private var replyHandler: ReplyHandler?
+    private var pendingMarkReads: [PendingAction] = []
+    private var pendingArchives: [PendingAction] = []
     private var pendingReplies: [PendingReply] = []
 
+    var pendingMarkReadCount: Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return pendingMarkReads.count
+    }
+
+    var pendingArchiveCount: Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return pendingArchives.count
+    }
+
     var pendingReplyCount: Int {
-        replyStateLock.lock()
-        defer { replyStateLock.unlock() }
+        stateLock.lock()
+        defer { stateLock.unlock() }
         return pendingReplies.count
     }
 
@@ -106,11 +169,9 @@ public final class BrevNotificationDelegate: NSObject, UNUserNotificationCenterD
 
         switch response.actionIdentifier {
         case BrevLocalNotificationCenter.markReadActionIdentifier:
-            onMarkRead?(route)
-            completionHandler()
+            handleMarkRead(route: route, completionHandler: completionHandler)
         case BrevLocalNotificationCenter.archiveActionIdentifier:
-            onArchive?(route)
-            completionHandler()
+            handleArchive(route: route, completionHandler: completionHandler)
         case BrevLocalNotificationCenter.replyActionIdentifier:
             guard let textResponse = response as? UNTextInputNotificationResponse else {
                 completionHandler()
@@ -124,6 +185,36 @@ public final class BrevNotificationDelegate: NSObject, UNUserNotificationCenterD
         default:
             onOpen?(route)
             completionHandler()
+        }
+    }
+
+    func handleMarkRead(
+        route: NotificationMailRoute,
+        completionHandler: @escaping () -> Void
+    ) {
+        let pending = PendingAction(route: route, completionHandler: completionHandler)
+        stateLock.lock()
+        if let handler = markReadHandler {
+            stateLock.unlock()
+            deliverAction(pending, using: handler)
+        } else {
+            pendingMarkReads.append(pending)
+            stateLock.unlock()
+        }
+    }
+
+    func handleArchive(
+        route: NotificationMailRoute,
+        completionHandler: @escaping () -> Void
+    ) {
+        let pending = PendingAction(route: route, completionHandler: completionHandler)
+        stateLock.lock()
+        if let handler = archiveHandler {
+            stateLock.unlock()
+            deliverAction(pending, using: handler)
+        } else {
+            pendingArchives.append(pending)
+            stateLock.unlock()
         }
     }
 
@@ -143,17 +234,24 @@ public final class BrevNotificationDelegate: NSObject, UNUserNotificationCenterD
             text: text,
             completionHandler: completionHandler
         )
-        replyStateLock.lock()
+        stateLock.lock()
         if let handler = replyHandler {
-            replyStateLock.unlock()
-            deliver(pending, using: handler)
+            stateLock.unlock()
+            deliverReply(pending, using: handler)
         } else {
             pendingReplies.append(pending)
-            replyStateLock.unlock()
+            stateLock.unlock()
         }
     }
 
-    private func deliver(_ reply: PendingReply, using handler: @escaping ReplyHandler) {
+    private func deliverAction(_ action: PendingAction, using handler: @escaping ActionHandler) {
+        Task {
+            await handler(action.route)
+            action.completionHandler()
+        }
+    }
+
+    private func deliverReply(_ reply: PendingReply, using handler: @escaping ReplyHandler) {
         Task {
             await handler(reply.route, reply.text)
             reply.completionHandler()

@@ -142,6 +142,8 @@ struct BrevApp: App {
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
                         backgroundMail: session.backgroundMail,
+                        notificationActionExecutor: session.notificationActionExecutor,
+                        newMailPanelController: session.newMailPanelController,
                         pimSyncScheduler: session.pimSyncScheduler,
                         localBackend: session.localBackend,
                         onLocalFoldersChanged: { session.refreshLocalFolders() },
@@ -227,8 +229,23 @@ struct BrevApp: App {
                 // An App Intent can enqueue a compose request while the
                 // app was still launching; drain it once accounts exist.
                 consumeIntentHandoff()
-                await session.restoreAllAccounts()
+                await session.ensureAccountsRestored()
                 sessionRestoreAttempted = true
+                session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
+                session.startReconnectMutationReplay(monitor: networkMonitor)
+                session.openMainWindowForPanelReply = {
+                    // A WindowGroup's openWindow always creates another window;
+                    // prefer surfacing an existing main window over a duplicate.
+                    if let existing = NSApp.windows.first(where: {
+                        $0.identifier?.rawValue.hasPrefix(BrevWindowID.main) == true && $0.isVisible
+                    }) {
+                        existing.makeKeyAndOrderFront(nil)
+                    } else {
+                        openWindow(id: BrevWindowID.main)
+                    }
+                    NSApp.activate()
+                }
+                session.syncBackgroundPanelSubscriptions()
                 BrevMacOSAppDelegate.currentSession = session
                 if !session.accountRestoreErrors.isEmpty,
                    !session.visibleBackends.isEmpty {
@@ -237,15 +254,7 @@ struct BrevApp: App {
             }
             .onChange(of: session.visibleBackends.map(\.account.id)) { _, _ in
                 BrevMacOSAppDelegate.currentSession = session
-            }
-            .onChange(of: networkMonitor.isOnline) { wasOnline, isOnline in
-                guard isOnline, !wasOnline else { return }
-                let backends = session.visibleBackends
-                Task {
-                    for backend in backends {
-                        await backend.replayOfflineMutations()
-                    }
-                }
+                session.syncBackgroundPanelSubscriptions()
             }
             .onReceive(
                 NotificationCenter.default.publisher(for: .brevDidReceiveMailtoURL)
