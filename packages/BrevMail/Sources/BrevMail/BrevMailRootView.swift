@@ -887,11 +887,7 @@ public struct BrevMailRootView: View {
                 navigation.requestReload()
                 updateUnreadBadge()
             }
-            .onReceive(NotificationCenter.default.publisher(for: AppSession.didRequestPanelReplyNotification)) { note in
-                if let route = note.object as? NotificationMailRoute,
-                   AppSession.pendingPanelReplyRoute == nil {
-                    AppSession.pendingPanelReplyRoute = route
-                }
+            .onReceive(NotificationCenter.default.publisher(for: AppSession.didRequestPanelReplyNotification)) { _ in
                 consumePendingPanelReplyRouteIfReady()
             }
             .onAppear {
