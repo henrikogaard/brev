@@ -4,6 +4,7 @@
 
 - Search maps PDF phrases to a removable chip and matches cached attachment metadata within each source. A filename ending in another extension, a PDF mentioned only in the subject, or an inline part is not a match. Removing the chip keeps other search predicates.
 - Reused the attachment browser's MIME/extension rule and cache-only enumeration, and supplied the missing Gmail, local Maildir and Mock implementations. No network, storage schema or indexing permission change.
+- Review: a keyword found only by the full-text index disappeared when adding the PDF chip. Folder, unified and saved searches now intersect source-local cache hits with PDF evidence; regression verifies an index-only hit and cache-only execution.
 - Verification: the missing chip failed first. Eleven focused Linux harness tests pass, covering the planner, token round trip, Norwegian strings, and metadata selection. Provider tests exercise Gmail without transport calls, local Maildir folder scope, and PDF vs. text drafts in Mock.
 - Linux cannot build the apps, run the full native suites or record snapshots. Check both native search fields and saved searches; snapshot needs recording on macOS 26. Account scope is separate work under #296.
 

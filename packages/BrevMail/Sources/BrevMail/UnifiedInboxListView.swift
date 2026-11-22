@@ -811,13 +811,19 @@ struct UnifiedInboxListView: View {
             settings: inboxClassificationSettings,
             overrideStore: inboxCategoryOverrideStore
         )
-        let refinement = savedSearchQuery == nil ? nil : NaturalLanguageSearchPlanner.plan(
+        let plan = savedSearchQuery == nil ? nil : NaturalLanguageSearchPlanner.plan(
             for: navigation.searchText, execution: .cacheOnly, now: now, calendar: calendar
         )
-        let folderIDs = refinement?.folderPhrase.map { phrase in
+        let folderIDs = plan?.folderPhrase.map { phrase in
             Dictionary(uniqueKeysWithValues: sourceSections.map { section in
                 (section.id, Set(section.folders.filter { $0.role == phrase.role }.map(\.id)))
             })
+        }
+        // For PDF refinement the cache search already applied the text and attachment predicates.
+        var refinement = plan?.query
+        if plan?.searchesCachedPDFs == true {
+            refinement?.text = ""
+            if refinement?.hasAttachments == true { refinement?.hasAttachments = nil }
         }
         let filtered = categorized
             .filter { navigation.mailboxFilter.matches($0, now: now, calendar: calendar) }
@@ -835,7 +841,7 @@ struct UnifiedInboxListView: View {
                     guard let requested = folderIDs[item.sourceID], !requested.isDisjoint(with: memberships)
                     else { return false }
                 }
-                return refinement?.query.matches(item.header) ?? true
+                return refinement?.matches(item.header) ?? true
             }
         let threadedSourceIDs = Set(sourceSections.compactMap { section in
             backend(for: section.id)?.groupsMessagesIntoThreads == true ? section.id : nil
@@ -2700,8 +2706,8 @@ struct UnifiedInboxListView: View {
         defer { if loadOwnership.current == request { isLoading = false } }
         activeSearchRequest = nil
         activeAttachmentSearchQueries = []
-        let filtersPDFs = NaturalLanguageSearchPlanner.plan(for: trimmedSearchText, execution: .cacheOnly).searchesCachedPDFs
-        let contentKey = savedContentKey(filtersPDFs: filtersPDFs)
+        let pdfPlan = NaturalLanguageSearchPlanner.plan(for: trimmedSearchText, execution: .cacheOnly)
+        let contentKey = savedContentKey(refinement: pdfPlan)
         if loadedContentKey != contentKey { items = [] }
         loadedContentKey = contentKey
         loadedSavedQuery = nil
@@ -2718,8 +2724,8 @@ struct UnifiedInboxListView: View {
             guard let backend = byAccount[section.account.id] else { return ([], nil) }
             do {
                 let rows = try await SavedSearchMessageLoader.load(section: section, backend: backend, query: query)
-                guard filtersPDFs else { return (rows, nil) }
-                let pdfs = try await CachedPDFSearch.headers(backend: backend, query: SearchQuery(execution: .cacheOnly),
+                guard pdfPlan.searchesCachedPDFs else { return (rows, nil) }
+                let pdfs = try await CachedPDFSearch.headers(backend: backend, query: pdfPlan.query,
                                                              folders: section.folders, sourceID: section.id)
                 let ids = Set(pdfs.map(\.id))
                 return (rows.filter { ids.contains($0.header.id) }, nil)
@@ -2771,14 +2777,14 @@ struct UnifiedInboxListView: View {
         await searchWork.run { await performSearch(query: query) }
     }
 
-    private func savedContentKey(filtersPDFs: Bool) -> String {
-        "saved:\(reloadKey):\(filtersPDFs)"
+    private func savedContentKey(refinement: NaturalLanguageSearchPlan) -> String {
+        "saved:\(reloadKey):\(refinement.searchesCachedPDFs ? refinement.originalText : "")"
     }
 
     private func performSearch(query: String) async {
         if let savedSearchQuery {
-            let filtersPDFs = NaturalLanguageSearchPlanner.plan(for: query, execution: .cacheOnly).searchesCachedPDFs
-            if loadedContentKey != savedContentKey(filtersPDFs: filtersPDFs) || loadedSavedQuery != savedSearchQuery {
+            let refinement = NaturalLanguageSearchPlanner.plan(for: query, execution: .cacheOnly)
+            if loadedContentKey != savedContentKey(refinement: refinement) || loadedSavedQuery != savedSearchQuery {
                 await reloadSavedSearch(savedSearchQuery)
             }
             return

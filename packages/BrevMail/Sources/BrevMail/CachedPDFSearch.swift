@@ -40,7 +40,23 @@ enum CachedPDFSearch {
             messages = await backend.cachedAttachmentMessages(in: selected)
         }
         try Task.checkCancellation()
-        return matches(messages, query: query)
+        guard !messages.isEmpty, !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return matches(messages, query: query)
+        }
+        // Only the backend's existing cache search knows which body, filename, or indexed content matched.
+        var lookup = query
+        lookup.execution = .cacheOnly
+        if lookup.hasAttachments == true { lookup.hasAttachments = nil }
+        let indexed: [MessageHeader]
+        if let sourceID {
+            indexed = try await backend.search(lookup, sourceID: sourceID)
+        } else {
+            indexed = try await backend.search(lookup)
+        }
+        try Task.checkCancellation()
+        let ids = Set(indexed.map(\.id))
+        lookup.text = ""
+        return matches(messages.filter { ids.contains($0.header.id) }, query: lookup)
     }
 
     static func matches(_ messages: [CachedAttachmentMessage], query: SearchQuery) -> [MessageHeader] {
