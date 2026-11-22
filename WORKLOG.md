@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — #296 cached PDF search
+
+- Search maps PDF phrases to a removable chip and matches cached attachment metadata within each source. A filename ending in another extension, a PDF mentioned only in the subject, or an inline part is not a match. Removing the chip keeps other search predicates.
+- Reused the attachment browser's MIME/extension rule and cache-only enumeration, and supplied the missing Gmail, local Maildir and Mock implementations. No network, storage schema or indexing permission change.
+- Verification: the missing chip failed first. Eleven focused Linux harness tests pass, covering the planner, token round trip, Norwegian strings, and metadata selection. Provider tests exercise Gmail without transport calls, local Maildir folder scope, and PDF vs. text drafts in Mock.
+- Linux cannot build the apps, run the full native suites or record snapshots. Check both native search fields and saved searches; snapshot needs recording on macOS 26. Account scope is separate work under #296.
+
 ## 2026-11-22 — Agent — #296 folder search chips
 
 - Recognize English and Norwegian phrases for Inbox, Sent, Drafts, Archive, Trash and Spam. Resolve the role within each source; skip sources missing the role and keep navigation anchored to the original list. Reuse the existing localized folder label.

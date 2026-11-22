@@ -629,6 +629,51 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     // MARK: Read operations
 
+    /// Reads attachment metadata from locally stored payloads or parsed bodies, without fetching a message.
+    public func cachedAttachmentMessages(in folders: [Folder]) async -> [CachedAttachmentMessage] {
+        guard !folders.isEmpty else { return [] }
+        let labels = await (try? store.labels(accountID: account.id)) ?? []
+        var cursor: String?
+        var result: [CachedAttachmentMessage] = []
+        while !Task.isCancelled, let page = try? await store.cachedSearchPage(
+            accountID: account.id,
+            afterMessageID: cursor,
+            limit: 100
+        ),
+            let lastID = page.last?.id, cursor.map({ $0 < lastID }) ?? true {
+            cursor = lastID
+            for message in page {
+                guard !Task.isCancelled else { return [] }
+                let matches = folders.filter { folder in
+                    folder.id == "ALL_MAIL" ? !message.labelIDs.contains("SPAM") && !message.labelIDs.contains("TRASH")
+                        : message.labelIDs.contains(folder.id)
+                }
+                guard !matches.isEmpty else { continue }
+                let body: MessageBody
+                if Self.hasAttachments(message.payload) {
+                    body = Self.body(from: message)
+                } else if let cached = try? await readCache?.cachedBody(accountID: account.id, messageID: message.id) {
+                    body = cached
+                } else { continue }
+                guard !body.attachments.isEmpty else { continue }
+                for folder in matches {
+                    result.append(CachedAttachmentMessage(
+                        folder: folder,
+                        header: Self.header(from: message, folderID: folder.id, labels: labels),
+                        body: body
+                    ))
+                }
+            }
+        }
+        return result
+    }
+
+    /// Restricts cache reads to this Gmail account's mailbox.
+    public func cachedAttachmentMessages(in folders: [Folder], sourceID: MailSourceID) async -> [CachedAttachmentMessage] {
+        guard sourceID.accountID == account.id, sourceID.mailboxID == account.id else { return [] }
+        return await cachedAttachmentMessages(in: folders)
+    }
+
     public func body(for messageID: String) async throws -> MessageBody {
         try requireConnected()
         if let cached = try await readCache?.cachedBody(accountID: account.id, messageID: messageID) {

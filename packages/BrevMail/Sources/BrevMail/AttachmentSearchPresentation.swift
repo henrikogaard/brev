@@ -218,7 +218,7 @@ enum AttachmentSearchPresentation {
     }
 }
 
-private extension AttachmentSearchFileType {
+extension AttachmentSearchFileType {
     func matches(_ attachment: Attachment) -> Bool {
         let mimeType = attachment.mimeType.lowercased()
         let fileExtension = (attachment.name as NSString).pathExtension.lowercased()

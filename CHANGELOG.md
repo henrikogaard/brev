@@ -4,6 +4,7 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Search for “pdf” or “med PDF” to filter downloaded mail by attachment type.
 - iOS lock-screen-safe sign-in notifications (#239, ADR-0088 accepted iOS
   amendment): opted-in accounts with `.trustedSignInAssessment` post
   time-sensitive iOS notifications containing only the sender and generic copy

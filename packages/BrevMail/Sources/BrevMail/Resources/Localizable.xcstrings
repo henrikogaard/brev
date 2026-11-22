@@ -17051,6 +17051,28 @@
           }
         }
       }
+    },
+    "Has: PDF (cached)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Har: PDF (lokalt)"
+          }
+        }
+      }
+    },
+    "PDF search uses downloaded mail. Choose an on-device search.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PDF-søk bruker nedlastet e-post. Velg søk på enheten."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

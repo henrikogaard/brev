@@ -17,6 +17,25 @@ import Testing
 
 @Suite("Gmail API read backend")
 struct GmailAPIBackendTests {
+    @Test("cached attachment enumeration reads only the requested label without fetching bodies")
+    func cachedAttachmentsStayLocal() async throws {
+        let store = InMemoryGmailAccountStore()
+        let payload = GmailMessagePart(mimeType: "application/pdf", filename: "notes.pdf")
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "hit", threadID: "one", labels: ["INBOX"], payload: payload),
+            Self.message(id: "elsewhere", threadID: "two", labels: ["TRASH"], payload: payload),
+            Self.message(id: "unloaded", threadID: "three", labels: ["INBOX"]),
+        ]))
+        let transport = StubGmailTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let folders = [Folder(id: "INBOX", name: "Inbox", role: .inbox)]
+        let source = MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+        let matches = await backend.cachedAttachmentMessages(in: folders, sourceID: source)
+        #expect(matches.map(\.header.id) == ["hit"])
+        #expect(matches.first?.body.attachments.first?.name == "notes.pdf")
+        #expect(await transport.networkCalls == 0)
+    }
+
     @Test("cached header point lookup respects label membership without network access")
     func cachedHeaderPointLookup() async throws {
         let store = InMemoryGmailAccountStore()

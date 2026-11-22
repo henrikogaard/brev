@@ -116,8 +116,20 @@ enum MailSearchExecution {
         backend: any MailBackend,
         query: SearchQuery,
         sourceID: MailSourceID?,
+        cachedPDFFolders: [Folder]? = nil,
         onUpdate: @escaping MailSearchProgressHandler
     ) async throws -> [MessageHeader] {
+        if let cachedPDFFolders {
+            let headers = try await CachedPDFSearch.headers(
+                backend: backend,
+                query: query,
+                folders: cachedPDFFolders,
+                sourceID: sourceID
+            )
+            await onUpdate(MailSearchUpdate(headers: headers, coverage: .cached, replacesResults: true, isComplete: true))
+            try Task.checkCancellation()
+            return headers
+        }
         // Decorate cached updates with attachment-content match names so the
         // "Found in <name>" badge reaches the list (ADR-0078 §5).
         let decorated: MailSearchProgressHandler = { update in

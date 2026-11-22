@@ -61,6 +61,7 @@ struct UnifiedInboxSearchRequest: Equatable, Sendable {
 struct UnifiedInboxSearchPlan: Equatable, Sendable {
     let source: UnifiedInboxSearchSource
     let query: SearchQuery
+    let cachedPDFFolders: [Folder]?
 }
 
 enum UnifiedInboxSearchPolicy {
@@ -181,7 +182,8 @@ enum UnifiedInboxSearchPolicy {
             if execution == .serverOnly, !supported.contains(.serverSideSearch) {
                 unavailableServerCount += 1
             } else {
-                plans.append(UnifiedInboxSearchPlan(source: source, query: query))
+                let cachedPDFFolders: [Folder]? = plan.searchesCachedPDFs ? section.folders : nil
+                plans.append(UnifiedInboxSearchPlan(source: source, query: query, cachedPDFFolders: cachedPDFFolders))
             }
         }
         return (plans, unavailableServerCount)

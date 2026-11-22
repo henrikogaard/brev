@@ -107,6 +107,7 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
     case unread
     case flagged
     case hasAttachment
+    case cachedPDF
     case date(MailSearchDatePreset)
 
     var id: String {
@@ -117,6 +118,7 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
         case .unread: "unread"
         case .flagged: "flagged"
         case .hasAttachment: "attachment"
+        case .cachedPDF: "cachedPDF"
         case .date(let preset): "date:\(preset.rawValue)"
         }
     }
@@ -136,6 +138,8 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
             String(localized: "Flagged", bundle: .module)
         case .hasAttachment:
             String(localized: "Has attachments", bundle: .module)
+        case .cachedPDF:
+            CachedPDFClause.title
         case .date(let preset):
             preset.title
         }
@@ -148,7 +152,7 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
         case .field(.subject): "text.alignleft"
         case .unread: "envelope.badge"
         case .flagged: "flag"
-        case .hasAttachment: "paperclip"
+        case .hasAttachment, .cachedPDF: "paperclip"
         case .date: "calendar"
         }
     }
@@ -163,6 +167,7 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
         case .unread: "unread"
         case .flagged: "flagged"
         case .hasAttachment: "has attachments"
+        case .cachedPDF: "pdf"
         case .date(let preset): preset.phrase
         }
     }
@@ -221,6 +226,7 @@ enum MailSearchTokens {
             case .date: MailSearchDatePreset(phrase: chip.value).map { tokens.append(.date($0)) }
             case .unread: tokens.append(.unread)
             case .attachment: tokens.append(.hasAttachment)
+            case .cachedPDF: tokens.append(.cachedPDF)
             case .flagged: tokens.append(.flagged)
             }
         }

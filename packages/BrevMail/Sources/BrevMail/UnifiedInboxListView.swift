@@ -2700,7 +2700,8 @@ struct UnifiedInboxListView: View {
         defer { if loadOwnership.current == request { isLoading = false } }
         activeSearchRequest = nil
         activeAttachmentSearchQueries = []
-        let contentKey = "saved:\(reloadKey)"
+        let filtersPDFs = NaturalLanguageSearchPlanner.plan(for: trimmedSearchText, execution: .cacheOnly).searchesCachedPDFs
+        let contentKey = savedContentKey(filtersPDFs: filtersPDFs)
         if loadedContentKey != contentKey { items = [] }
         loadedContentKey = contentKey
         loadedSavedQuery = nil
@@ -2716,7 +2717,12 @@ struct UnifiedInboxListView: View {
         await MailConcurrentWork.forEachResult(sourceSections) { section -> ([UnifiedInboxItem], String?) in
             guard let backend = byAccount[section.account.id] else { return ([], nil) }
             do {
-                return try await (SavedSearchMessageLoader.load(section: section, backend: backend, query: query), nil)
+                let rows = try await SavedSearchMessageLoader.load(section: section, backend: backend, query: query)
+                guard filtersPDFs else { return (rows, nil) }
+                let pdfs = try await CachedPDFSearch.headers(backend: backend, query: SearchQuery(execution: .cacheOnly),
+                                                             folders: section.folders, sourceID: section.id)
+                let ids = Set(pdfs.map(\.id))
+                return (rows.filter { ids.contains($0.header.id) }, nil)
             } catch {
                 return ([], error.localizedDescription)
             }
@@ -2765,9 +2771,14 @@ struct UnifiedInboxListView: View {
         await searchWork.run { await performSearch(query: query) }
     }
 
+    private func savedContentKey(filtersPDFs: Bool) -> String {
+        "saved:\(reloadKey):\(filtersPDFs)"
+    }
+
     private func performSearch(query: String) async {
         if let savedSearchQuery {
-            if loadedContentKey != "saved:\(reloadKey)" || loadedSavedQuery != savedSearchQuery {
+            let filtersPDFs = NaturalLanguageSearchPlanner.plan(for: query, execution: .cacheOnly).searchesCachedPDFs
+            if loadedContentKey != savedContentKey(filtersPDFs: filtersPDFs) || loadedSavedQuery != savedSearchQuery {
                 await reloadSavedSearch(savedSearchQuery)
             }
             return
@@ -2809,7 +2820,7 @@ struct UnifiedInboxListView: View {
             }
         )
         let progressRequest = searchProgress.begin(sources: searchPlans.map { $0.source.sourceID })
-        activeAttachmentSearchQueries = searchPlans.map(\.query)
+        activeAttachmentSearchQueries = searchPlans.filter { $0.cachedPDFFolders == nil }.map(\.query)
         var loadedItems: [UnifiedInboxItem] = []
         var firstError: (any Error)?
         let backendsByAccountID = Dictionary(backends.map { ($0.account.id, $0) }) { _, latest in latest }
@@ -2822,7 +2833,8 @@ struct UnifiedInboxListView: View {
             }
             do {
                 let headers = try await MailSearchExecution
-                    .run(backend: backend, query: plan.query, sourceID: source.sourceID) { update in
+                    .run(backend: backend, query: plan.query, sourceID: source.sourceID,
+                         cachedPDFFolders: plan.cachedPDFFolders) { update in
                         await MainActor.run {
                             guard loadOwnership.accepts(loadRequest), UnifiedInboxSearchResponsePolicy.canApplySearchResponse(
                                 request: request, activeRequest: activeSearchRequest, currentSearchText: navigation.searchText,

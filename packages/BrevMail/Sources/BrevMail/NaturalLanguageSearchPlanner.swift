@@ -22,6 +22,7 @@ struct NaturalLanguageSearchChip: Equatable, Identifiable, Sendable {
         case date
         case unread
         case attachment
+        case cachedPDF
         case flagged
     }
 
@@ -38,6 +39,8 @@ struct NaturalLanguageSearchPlan: Equatable, Sendable {
     let chips: [NaturalLanguageSearchChip]
     let requiresAI: Bool
     let folderPhrase: SearchFolderPhrase?
+
+    var searchesCachedPDFs: Bool { chips.contains { $0.kind == .cachedPDF } }
 
     /// A missing role cannot silently broaden a request to every folder.
     func resolvedQuery(in folders: [Folder]) -> SearchQuery? {
@@ -138,6 +141,10 @@ enum NaturalLanguageSearchPlanner {
             ))
         }
 
+        if let range = workingText.range(of: CachedPDFClause.pattern, options: [.regularExpression, .caseInsensitive]) {
+            parsedChips.append(.init(kind: .cachedPDF, label: CachedPDFClause.title, value: String(workingText[range])))
+            workingText.replaceSubrange(range, with: " ")
+        }
         query.text = cleanedKeywordText(workingText)
 
         var chips: [NaturalLanguageSearchChip] = []
@@ -510,6 +517,11 @@ enum NaturalLanguageSearchChipEditing {
         switch chip.kind {
         case .folder:
             return removingFolderOutsideQuotedSender(matching: chip.value, from: text)
+        case .cachedPDF:
+            let tokens = chip.value.split(whereSeparator: \.isWhitespace)
+                .map { NSRegularExpression.escapedPattern(for: String($0)) }
+            let pattern = #"(?<!\S)"# + tokens.joined(separator: #"\s+"#) + #"(?=\s|$)"#
+            return removingPatternOutsideQuotedSender(pattern, from: text)
         case .keyword, .subject:
             return removingLiteral(chip.value, from: text)
         case .sender:

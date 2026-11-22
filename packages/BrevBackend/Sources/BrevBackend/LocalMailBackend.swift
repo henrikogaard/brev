@@ -306,6 +306,31 @@ public final class LocalMailBackend: MailBackend, MailImporting, @unchecked Send
         )
     }
 
+    /// Reads attachment metadata from local Maildir files without requiring indexing or remote access.
+    public func cachedAttachmentMessages(in folders: [Folder]) async -> [CachedAttachmentMessage] {
+        var messages: [CachedAttachmentMessage] = []
+        for folder in folders {
+            guard !Task.isCancelled else { return [] }
+            let matches = try? await store
+                .compactMapMessages(folderID: folder.id) { [bodyParser] item -> CachedAttachmentMessage? in
+                    let body = bodyParser.parse(
+                        messageID: Self.messageID(for: item.ref),
+                        rawMessage: bodyParser.rawMessageString(from: item.data)
+                    )
+                    guard !body.attachments.isEmpty else { return nil }
+                    return CachedAttachmentMessage(folder: folder, header: Self.header(from: item), body: body)
+                }
+            messages.append(contentsOf: matches ?? [])
+        }
+        return messages
+    }
+
+    /// Restricts local attachment enumeration to the on-device mailbox.
+    public func cachedAttachmentMessages(in folders: [Folder], sourceID: MailSourceID) async -> [CachedAttachmentMessage] {
+        guard sourceID.accountID == account.id, sourceID.mailboxID == account.id else { return [] }
+        return await cachedAttachmentMessages(in: folders)
+    }
+
     public func rawSource(for messageID: String) async throws -> String {
         try await bodyParser.rawMessageString(from: rawMessageData(for: messageID))
     }

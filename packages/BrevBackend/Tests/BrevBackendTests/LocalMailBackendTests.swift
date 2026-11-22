@@ -44,6 +44,32 @@ struct LocalMailBackendTests {
         #expect(backend.hasFolders == false)
     }
 
+    @Test("locally stored files contribute attachments only from the selected folder")
+    func localAttachments() async throws {
+        let (backend, store) = Self.makeBackend()
+        let one = try await backend.createFolder(name: "First", parentID: nil)
+        let two = try await backend.createFolder(name: "Second", parentID: nil)
+        let raw = """
+        From: ada@example.org
+        Subject: Notes
+        MIME-Version: 1.0
+        Content-Type: multipart/mixed; boundary="test-boundary"
+
+        --test-boundary
+        Content-Type: application/pdf
+        Content-Disposition: attachment; filename="notes.pdf"
+        Content-Transfer-Encoding: base64
+
+        dGVzdA==
+        --test-boundary--
+        """
+        let ref = try await store.append(rawMessage: Data(raw.utf8), flags: [], folderID: two.id)
+        #expect(await backend.cachedAttachmentMessages(in: [one]).isEmpty)
+        let matches = await backend.cachedAttachmentMessages(in: [two])
+        #expect(matches.map(\.header.id) == [LocalMailBackend.messageID(for: ref)])
+        #expect(matches.first?.body.attachments.first?.name == "notes.pdf")
+    }
+
     @Test("createFolder then folders() lists it and flips hasFolders")
     func folderLifecycle() async throws {
         let (backend, _) = Self.makeBackend()
