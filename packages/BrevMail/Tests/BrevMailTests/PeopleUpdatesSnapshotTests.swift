@@ -153,6 +153,7 @@ struct PeopleUpdatesSnapshotTests {
                         sourceContext: nil,
                         isBlockedSender: false,
                         hasFollowUp: false,
+                        referenceDate: now,
                         onActivate: {},
                         onToggleCheck: {},
                         onToggleThread: {}

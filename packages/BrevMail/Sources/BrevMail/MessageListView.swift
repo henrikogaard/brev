@@ -2631,6 +2631,7 @@ public struct MessageListView: View {
         } else {
             target = rows[0]
         }
+        navigation.readerExpansionSelectionID = nil
         navigation.selectedMessageID = target.id
     }
 
@@ -2644,6 +2645,7 @@ public struct MessageListView: View {
             current: currentIndex,
             count: rows.count
         ) else { return }
+        navigation.readerExpansionSelectionID = nil
         navigation.selectedMessageID = rows[targetIndex].id
     }
 
