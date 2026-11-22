@@ -21,7 +21,7 @@ import Foundation
 /// (ADR-0028 invariant 3).
 public struct RenderedBody: Sendable {
     /// HTML content ready for display, or `nil` if unavailable.
-    public let html: String?
+    public private(set) var html: String?
     /// Plaintext content, or `nil` if unavailable.
     public let plainText: String?
     /// Attachments after any decryption unwrapping.
@@ -43,6 +43,13 @@ public struct RenderedBody: Sendable {
         self.attachments = attachments
         self.securityState = securityState
         self.authenticationResults = authenticationResults
+    }
+
+    /// Inline attachment enrichment changes only the HTML, retaining all security metadata.
+    func replacingHTML(_ html: String?) -> Self {
+        var copy = self
+        copy.html = html
+        return copy
     }
 }
 

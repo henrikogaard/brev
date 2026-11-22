@@ -2513,12 +2513,7 @@ public struct MessageDetailView: View {
             if resolvedHTML != rendered.html {
                 messageBody = MessageDetailPresentation.displayBody(
                     loaded: loaded,
-                    rendered: RenderedBody(
-                        html: resolvedHTML,
-                        plainText: rendered.plainText,
-                        attachments: rendered.attachments,
-                        securityState: rendered.securityState
-                    ),
+                    rendered: rendered.replacingHTML(resolvedHTML),
                     fallbackSnippet: header.snippet
                 )
                 let importRequest = nextNativeHTMLImportRequest()

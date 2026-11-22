@@ -24,6 +24,9 @@ struct BodyRendererTests {
         let body = MessageBody(messageID: "auth", authenticationResults: original)
         let rendered = await BodyRenderer().render(body)
         #expect(rendered.authenticationResults == original)
+        let enriched = rendered.replacingHTML("<p>Inline attachment resolved</p>")
+        #expect(enriched.html != rendered.html)
+        #expect(enriched.authenticationResults == original)
     }
 
     @Test("default renderer surfaces encrypted state from crypto processor")

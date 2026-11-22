@@ -786,12 +786,7 @@ struct ThreadMessageCard: View {
             }
         )
         guard resolvedHTML != rendered.html else { return rendered }
-        return RenderedBody(
-            html: resolvedHTML,
-            plainText: rendered.plainText,
-            attachments: rendered.attachments,
-            securityState: rendered.securityState
-        )
+        return rendered.replacingHTML(resolvedHTML)
     }
 
     private var bodyPresentationContext: ThreadMessageBodyPresentation.Context {
