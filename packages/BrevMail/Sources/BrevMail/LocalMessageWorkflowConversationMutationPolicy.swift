@@ -18,6 +18,138 @@ struct LocalMessageWorkflowConversationSnoozeResult: Sendable {
     let limitedMessageIDs: Set<SourceMessageID>
 }
 
+struct LocalMessageWorkflowSnoozeTransactionResult<Value> {
+    let previousState: LocalMessageWorkflowState
+    let state: LocalMessageWorkflowState
+    let value: Value
+}
+
+@MainActor
+enum LocalMessageWorkflowSnoozeTransaction {
+    static func applying<Value>(
+        candidates: [LocalMessageWorkflowCandidate],
+        affectedCandidates: [LocalMessageWorkflowCandidate],
+        basedOn baselineState: LocalMessageWorkflowState,
+        latestState: @MainActor () -> LocalMessageWorkflowState,
+        mutation: (
+            LocalMessageWorkflowState,
+            LocalMessageWorkflowConversationProjection
+        ) -> (state: LocalMessageWorkflowState, value: Value)
+    ) -> LocalMessageWorkflowSnoozeTransactionResult<Value>? {
+        let projection = LocalMessageWorkflowConversationProjection(
+            candidates: candidates,
+            state: baselineState
+        )
+        let currentState = latestState()
+        let currentProjection = LocalMessageWorkflowConversationProjection(
+            candidates: candidates,
+            state: currentState
+        )
+        guard snoozesAreUnchanged(
+            for: affectedCandidates,
+            baselineState: baselineState,
+            baselineProjection: projection,
+            currentState: currentState,
+            currentProjection: currentProjection
+        ) else { return nil }
+
+        let result = mutation(currentState, currentProjection)
+        return .init(previousState: currentState, state: result.state, value: result.value)
+    }
+
+    static func reconciling<Value>(
+        candidates: [LocalMessageWorkflowCandidate],
+        rules: [LocalMessageSnooze],
+        basedOn baselineState: LocalMessageWorkflowState,
+        latestState: @MainActor () -> LocalMessageWorkflowState,
+        mutation: (
+            LocalMessageWorkflowState,
+            LocalMessageWorkflowConversationProjection,
+            Set<SourceMessageID>
+        ) -> (state: LocalMessageWorkflowState, value: Value)
+    ) -> LocalMessageWorkflowSnoozeTransactionResult<Value>? {
+        let currentState = latestState()
+        guard rules.allSatisfy({ rule in
+            currentState.snoozes.contains { $0.messageID == rule.messageID && $0 == rule }
+        }) else { return nil }
+
+        let projection = LocalMessageWorkflowConversationProjection(
+            candidates: candidates,
+            state: baselineState
+        )
+        let currentProjection = LocalMessageWorkflowConversationProjection(
+            candidates: candidates,
+            state: currentState
+        )
+        let ruleIDs = Set(rules.map(\.messageID))
+        let affectedCandidates = candidates.filter { candidate in
+            let messageID = SourceMessageID(sourceID: candidate.sourceID, messageID: candidate.header.id)
+            return projection.overlappingSnoozes(for: messageID, header: candidate.header, in: baselineState)
+                .contains { ruleIDs.contains($0.messageID) }
+        }
+        guard snoozesAreUnchanged(
+            for: affectedCandidates,
+            baselineState: baselineState,
+            baselineProjection: projection,
+            currentState: currentState,
+            currentProjection: currentProjection
+        ) else { return nil }
+
+        let result = mutation(currentState, currentProjection, ruleIDs)
+        return .init(previousState: currentState, state: result.state, value: result.value)
+    }
+
+    private static func snoozesAreUnchanged(
+        for candidates: [LocalMessageWorkflowCandidate],
+        baselineState: LocalMessageWorkflowState,
+        baselineProjection: LocalMessageWorkflowConversationProjection,
+        currentState: LocalMessageWorkflowState,
+        currentProjection: LocalMessageWorkflowConversationProjection
+    ) -> Bool {
+        candidates.allSatisfy { candidate in
+            let messageID = SourceMessageID(sourceID: candidate.sourceID, messageID: candidate.header.id)
+            let baseline = baselineProjection.overlappingSnoozes(
+                for: messageID,
+                header: candidate.header,
+                in: baselineState
+            )
+            let current = currentProjection.overlappingSnoozes(
+                for: messageID,
+                header: candidate.header,
+                in: currentState
+            )
+            return ordered(baseline) == ordered(current)
+        }
+    }
+
+    private static func ordered(_ snoozes: [LocalMessageSnooze]) -> [LocalMessageSnooze] {
+        snoozes.sorted { lhs, rhs in
+            if lhs.messageID.sourceID.accountID != rhs.messageID.sourceID.accountID {
+                return lhs.messageID.sourceID.accountID < rhs.messageID.sourceID.accountID
+            }
+            if lhs.messageID.sourceID.mailboxID != rhs.messageID.sourceID.mailboxID {
+                return lhs.messageID.sourceID.mailboxID < rhs.messageID.sourceID.mailboxID
+            }
+            if lhs.messageID.messageID != rhs.messageID.messageID {
+                return lhs.messageID.messageID < rhs.messageID.messageID
+            }
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+            return lhs.wakeAt < rhs.wakeAt
+        }
+    }
+}
+
+enum LocalMessageWorkflowSnoozeOwnership {
+    static func isCurrentBackend(
+        backendIdentity: ObjectIdentifier,
+        sourceID: MailSourceID,
+        in backends: [any MailBackend]
+    ) -> Bool {
+        guard let backend = backends.first(where: { $0.account.id == sourceID.accountID }) else { return false }
+        return ObjectIdentifier(backend) == backendIdentity
+    }
+}
+
 enum LocalMessageWorkflowConversationMutationPolicy {
     private enum ComponentKey: Hashable {
         case conversation(sourceID: MailSourceID, identifiers: [String])
@@ -88,10 +220,12 @@ enum LocalMessageWorkflowConversationMutationPolicy {
     static func reconcilingActiveSnoozes(
         in state: LocalMessageWorkflowState,
         projection: LocalMessageWorkflowConversationProjection,
-        at now: Date = Date()
+        at now: Date = Date(),
+        only ruleIDs: Set<SourceMessageID>? = nil
     ) -> LocalMessageWorkflowState {
         var snoozes = state.snoozes
         for index in snoozes.indices where snoozes[index].isActive(at: now)
+            && (ruleIDs.map { $0.contains(snoozes[index].messageID) } ?? true)
             && snoozes[index].conversationMetadata?.rfcIdentifiers.isEmpty == false {
             guard let metadata = projection.expandedMetadata(for: snoozes[index]) else { continue }
             snoozes[index].conversationMetadata = metadata

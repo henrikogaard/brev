@@ -185,6 +185,7 @@ struct BrevApp: App {
                 ) {
                     BrevMailRootView(
                         backends: session.visibleBackends,
+                        currentBackendsProvider: { session.visibleBackends },
                         aiBackends: session.aiBackends,
                         onSignOut: { await session.signOut() },
                         onChangeTheme: { newTheme in

@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-22 — Agent — #297 ownership/state correction
+
+- Goal: make asynchronous snooze work validate live backend ownership and commit against freshly persisted workflow state.
+- Changes: added the PR #326-compatible Root backend-provider seam and wired both app sessions; passed live backends and injected-store workflow-state providers to child lists; added a shared affected-snooze transaction for list, unified, reader, and reconciliation mutations; removed unrelated-workflow-change cancellation while retaining request/lifetime guards; added a suspendable MockBackend cache-read hook.
+- Tests: added regressions first for same-ID backend replacement during a suspended cache read, externally persisted notes/Done edits, and removed/rescheduled rule rejection. The focused Linux harness passed 52 checks using the production parser/model/projection/mutation/wake sources.
+- Verification: SwiftFormat 0.58.7 reported `0/9 files require formatting`; Swift parsing of all 9 changed Swift files exited 0; `git diff --check` exited 0.
+- Native/CI limits: native BrevMail typechecking/tests were not run on Linux per handoff. I inspected the existing PR #324 macOS build log (remote head `7e06f60`): `/Users/runner/work/brev/brev/packages/BrevMail/Sources/BrevMail/LocalMessageWorkflowConversationCache.swift:67:45: error: 'nil' cannot be used in context expecting type 'LocalMessageWorkflowCandidate'`. The current local source has the explicit `compactMap` return added in `a7e701d`; this old log does not report on the current unpushed code. PR snapshot was 17 passed / 6 failed; no CI was started or rerun, and other failing logs were not inspected.
+- Handoff: local commit only; do not push in this step. Coalescing, Snoozed-loader refresh, and reader candidate isolation remain deferred as requested.
+
 ## 2026-11-22 — Agent — #297 projection review correction
 
 - Goal: complete the pure RFC projection, cache-anchor identity, and wake-order corrections from the PR #324 review.

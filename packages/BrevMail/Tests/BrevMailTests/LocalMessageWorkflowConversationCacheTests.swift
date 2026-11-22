@@ -106,6 +106,49 @@ struct LocalMessageWorkflowConversationCacheTests {
         #expect(currentChecks == 2)
     }
 
+    @Test("a replaced backend is rejected after a cache read suspends")
+    func replacementBackendDuringSuspendedCacheReadIsRejected() async {
+        let source = MailSourceID(accountID: account.id, mailboxID: "personal")
+        let original = makeBackend(source: source, inboxHeaders: [], archiveHeaders: [])
+        let replacement = makeBackend(source: source, inboxHeaders: [], archiveHeaders: [])
+        let provider = CurrentBackendProvider([original])
+        let gate = CacheReadSuspender()
+        original.cachedMessageHeadersHandler = { _, _ in
+            await gate.suspend()
+            return []
+        }
+        let originalIdentity = ObjectIdentifier(original)
+
+        let task = Task { @MainActor in
+            do {
+                _ = try await LocalMessageWorkflowConversationCache.candidates(
+                    backend: original,
+                    sourceID: source,
+                    folders: [inbox],
+                    anchors: [],
+                    isCurrent: {
+                        LocalMessageWorkflowSnoozeOwnership.isCurrentBackend(
+                            backendIdentity: originalIdentity,
+                            sourceID: source,
+                            in: provider.backends
+                        )
+                    }
+                )
+                return false
+            } catch is CancellationError {
+                return true
+            } catch {
+                return false
+            }
+        }
+
+        await gate.waitUntilSuspended()
+        provider.backends = [replacement]
+        await gate.resume()
+
+        #expect(await task.value)
+    }
+
     private func makeBackend(
         source: MailSourceID,
         inboxHeaders: [MessageHeader],
@@ -131,5 +174,37 @@ struct LocalMessageWorkflowConversationCacheTests {
             date: Date(timeIntervalSince1970: 100),
             messageID: rfcID
         )
+    }
+}
+
+@MainActor
+private final class CurrentBackendProvider {
+    var backends: [any MailBackend]
+
+    init(_ backends: [any MailBackend]) {
+        self.backends = backends
+    }
+}
+
+private actor CacheReadSuspender {
+    private var isSuspended = false
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var resumeContinuation: CheckedContinuation<Void, Never>?
+
+    func suspend() async {
+        isSuspended = true
+        startedContinuation?.resume()
+        startedContinuation = nil
+        await withCheckedContinuation { resumeContinuation = $0 }
+    }
+
+    func waitUntilSuspended() async {
+        guard !isSuspended else { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func resume() {
+        resumeContinuation?.resume()
+        resumeContinuation = nil
     }
 }

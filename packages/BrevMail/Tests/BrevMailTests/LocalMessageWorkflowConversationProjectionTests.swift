@@ -451,6 +451,169 @@ struct LocalMessageWorkflowConversationProjectionTests {
         #expect(!loneCopy.isSnoozed(.init(sourceID: source, messageID: first.id), header: first))
     }
 
+    @Test("fresh transaction state preserves unrelated injected-store edits")
+    @MainActor
+    func freshTransactionPreservesUnrelatedInjectedStoreEdits() throws {
+        let suiteName = "LocalMessageWorkflowSnoozeTransaction-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let anchor = Self.header(id: "anchor", folder: "Inbox", rfcID: "anchor@example")
+        let candidate = LocalMessageWorkflowCandidate(sourceID: source, header: anchor)
+        let messageID = SourceMessageID(sourceID: source, messageID: anchor.id)
+        let originalSnooze = LocalMessageSnooze(
+            messageID: messageID,
+            wakeAt: now.addingTimeInterval(300),
+            createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["anchor@example"])
+        )
+        let staleViewState = LocalMessageWorkflowState(snoozes: [originalSnooze])
+        LocalMessageWorkflowStateStorage.save(staleViewState, to: defaults)
+        let done = LocalMessageDone(messageID: .init(sourceID: otherSource, messageID: "new-done"))
+        let note = LocalMessageNote(messageID: .init(sourceID: otherSource, messageID: "new-note"), body: "external edit")
+        let latestPersistedState = LocalMessageWorkflowState(
+            snoozes: [originalSnooze], doneMessages: [done], notes: [note]
+        )
+        LocalMessageWorkflowStateStorage.save(latestPersistedState, to: defaults)
+
+        let transaction = LocalMessageWorkflowSnoozeTransaction.applying(
+            candidates: [candidate],
+            affectedCandidates: [candidate],
+            basedOn: staleViewState,
+            latestState: { LocalMessageWorkflowStateStorage.load(from: defaults) }
+        ) { state, projection in
+            let result = LocalMessageWorkflowConversationMutationPolicy.snoozing(
+                [candidate], until: now.addingTimeInterval(900), now: now, projection: projection, in: state
+            )
+            return (state: result.state, result: result)
+        }
+
+        #expect(staleViewState == LocalMessageWorkflowState(snoozes: [originalSnooze]))
+        #expect(transaction?.previousState == latestPersistedState)
+        #expect(transaction?.state.doneMessages == [done])
+        #expect(transaction?.state.notes == [note])
+        if let committedState = transaction?.state {
+            LocalMessageWorkflowStateStorage.save(committedState, to: defaults)
+        }
+        #expect(LocalMessageWorkflowStateStorage.load(from: defaults).doneMessages == [done])
+        #expect(LocalMessageWorkflowStateStorage.load(from: defaults).notes == [note])
+    }
+
+    @Test("fresh transactions reject removed and rescheduled overlapping snoozes")
+    @MainActor
+    func freshTransactionRejectsRemovedOrRescheduledSnooze() throws {
+        let suiteName = "LocalMessageWorkflowSnoozeRuleConflict-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let anchor = Self.header(id: "anchor", folder: "Inbox", rfcID: "anchor@example")
+        let candidate = LocalMessageWorkflowCandidate(sourceID: source, header: anchor)
+        let snooze = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "old-rule"),
+            wakeAt: now.addingTimeInterval(300), createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["anchor@example"])
+        )
+        let baseline = LocalMessageWorkflowState(snoozes: [snooze])
+        let rescheduledSnooze = LocalMessageSnooze(
+            messageID: snooze.messageID,
+            wakeAt: now.addingTimeInterval(1200), createdAt: now.addingTimeInterval(1),
+            conversationMetadata: snooze.conversationMetadata
+        )
+
+        for currentState in [LocalMessageWorkflowState(), LocalMessageWorkflowState(snoozes: [rescheduledSnooze])] {
+            LocalMessageWorkflowStateStorage.save(currentState, to: defaults)
+            let transaction = LocalMessageWorkflowSnoozeTransaction.applying(
+                candidates: [candidate],
+                affectedCandidates: [candidate],
+                basedOn: baseline,
+                latestState: { LocalMessageWorkflowStateStorage.load(from: defaults) }
+            ) { state, projection in
+                let result = LocalMessageWorkflowConversationMutationPolicy.snoozing(
+                    [candidate], until: now.addingTimeInterval(900), now: now, projection: projection, in: state
+                )
+                return (state: result.state, result: result)
+            }
+
+            #expect(transaction.map { _ in false } ?? true)
+            #expect(LocalMessageWorkflowStateStorage.load(from: defaults) == currentState)
+        }
+    }
+
+    @Test("fresh reconciliation preserves external edits and expands only unchanged rules")
+    @MainActor
+    func freshReconciliationPreservesExternalEdits() throws {
+        let suiteName = "LocalMessageWorkflowSnoozeReconciliation-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let rule = LocalMessageSnooze(
+            messageID: .init(sourceID: source, messageID: "old-rule"),
+            wakeAt: now.addingTimeInterval(300), createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["ancestor@example"])
+        )
+        let unrelatedSnooze = LocalMessageSnooze(
+            messageID: .init(sourceID: otherSource, messageID: "other-rule"),
+            wakeAt: now.addingTimeInterval(300), createdAt: now,
+            conversationMetadata: .init(rfcIdentifiers: ["other@example"])
+        )
+        let staleViewState = LocalMessageWorkflowState(snoozes: [rule])
+        LocalMessageWorkflowStateStorage.save(staleViewState, to: defaults)
+        let done = LocalMessageDone(messageID: .init(sourceID: otherSource, messageID: "new-done"))
+        let note = LocalMessageNote(messageID: .init(sourceID: otherSource, messageID: "new-note"), body: "external edit")
+        let latestPersistedState = LocalMessageWorkflowState(
+            snoozes: [rule, unrelatedSnooze], doneMessages: [done], notes: [note]
+        )
+        LocalMessageWorkflowStateStorage.save(latestPersistedState, to: defaults)
+        let bridge = Self.header(id: "bridge", folder: "Archive", rfcID: "bridge@example", references: ["ancestor@example"])
+        let candidates = [LocalMessageWorkflowCandidate(sourceID: source, header: bridge)]
+
+        let transaction = LocalMessageWorkflowSnoozeTransaction.reconciling(
+            candidates: candidates,
+            rules: [rule],
+            basedOn: staleViewState,
+            latestState: { LocalMessageWorkflowStateStorage.load(from: defaults) }
+        ) { state, projection, ruleIDs in
+            let reconciled = LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
+                in: state, projection: projection, at: now, only: ruleIDs
+            )
+            return (state: reconciled, result: ())
+        }
+
+        #expect(transaction?.previousState == latestPersistedState)
+        #expect(transaction?.state.doneMessages == [done])
+        #expect(transaction?.state.notes == [note])
+        #expect(transaction?.state.snoozes.contains(unrelatedSnooze) == true)
+        #expect(transaction?.state.snoozes.first(where: { $0.messageID == rule.messageID })?.conversationMetadata?
+            .rfcIdentifiers == [
+                "ancestor@example",
+                "bridge@example"
+            ])
+
+        let rescheduledRule = LocalMessageSnooze(
+            messageID: rule.messageID,
+            wakeAt: now.addingTimeInterval(1200),
+            createdAt: now.addingTimeInterval(1),
+            conversationMetadata: rule.conversationMetadata
+        )
+        let rescheduledState = LocalMessageWorkflowState(
+            snoozes: [rescheduledRule, unrelatedSnooze], doneMessages: [done], notes: [note]
+        )
+        LocalMessageWorkflowStateStorage.save(rescheduledState, to: defaults)
+        let staleReconciliation = LocalMessageWorkflowSnoozeTransaction.reconciling(
+            candidates: candidates,
+            rules: [rule],
+            basedOn: staleViewState,
+            latestState: { LocalMessageWorkflowStateStorage.load(from: defaults) }
+        ) { state, projection, ruleIDs in
+            let reconciled = LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
+                in: state, projection: projection, at: now, only: ruleIDs
+            )
+            return (state: reconciled, result: ())
+        }
+        #expect(staleReconciliation.map { _ in false } ?? true)
+        #expect(LocalMessageWorkflowStateStorage.load(from: defaults) == rescheduledState)
+    }
+
     @Test("unsnoozing a derived member clears older overlaps without resurrection")
     func unsnoozingDerivedMemberClearsOverlaps() {
         let anchor = Self.header(id: "anchor", folder: "Inbox", rfcID: "anchor@example")

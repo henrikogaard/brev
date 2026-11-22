@@ -31,6 +31,9 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     /// Test/preview hook for cached conversation lookup; nil reports not supported.
     public var cachedConversationHandler:
         (@Sendable (ConversationMember, Bool) async throws -> ConversationSnapshot)?
+    /// Test/preview hook for suspending or failing cache-only header reads.
+    public var cachedMessageHeadersHandler:
+        (@Sendable (Folder, MailSourceID) async throws -> [MessageHeader])?
     /// Test/preview hook for consented remote related-header loading.
     public var relatedConversationHandler:
         (@Sendable (ConversationMember, Bool, String?,
@@ -401,6 +404,9 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
 
     /// Returns every seeded header owned by the requested mailbox and folder.
     public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
+        if let cachedMessageHeadersHandler {
+            return try await cachedMessageHeadersHandler(folder, sourceID)
+        }
         let all = try await store.allMessages(in: mailboxID(for: sourceID))
         return all.filter { $0.folderID == folder.id }
     }

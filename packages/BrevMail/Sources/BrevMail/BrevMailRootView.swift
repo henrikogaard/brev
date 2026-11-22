@@ -434,6 +434,7 @@ public struct BrevMailRootView: View {
 
     private let backend: any MailBackend
     private let backends: [any MailBackend]
+    private let currentBackendsProvider: @MainActor () -> [any MailBackend]
     private let aiBackend: (any AIBackend)?
     private let aiBackends: [BrevAccount.ID: any AIBackend]
     private let settingsStore: SettingsPersistenceStore
@@ -588,10 +589,12 @@ public struct BrevMailRootView: View {
 
     /// Creates a mailbox workspace sharing navigation across multiple account backends.
     /// - Parameters:
+    ///   - currentBackendsProvider: Reads the host session's current backend instances.
     ///   - readerCommandHandoff: Opaque one-use token for an in-memory detached-reader command.
     ///   - localBackend: Optional durable local-mail backend used for local-folder filing.
     public init(
         backends: [any MailBackend],
+        currentBackendsProvider: (@MainActor () -> [any MailBackend])? = nil,
         aiBackend: (any AIBackend)? = nil,
         aiBackends: [BrevAccount.ID: any AIBackend] = [:],
         settingsStore: SettingsPersistenceStore = .standard,
@@ -630,6 +633,7 @@ public struct BrevMailRootView: View {
         let firstBackend = backends[0]
         backend = firstBackend
         self.backends = backends
+        self.currentBackendsProvider = currentBackendsProvider ?? { backends }
         self.aiBackend = aiBackend
         if aiBackends.isEmpty, let aiBackend {
             self.aiBackends = [firstBackend.account.id: aiBackend]
@@ -2559,6 +2563,7 @@ public struct BrevMailRootView: View {
                 paneTitle: selectedMessageDestinationTitle,
                 savedSearchQuery: mailbox.query,
                 localMessageWorkflowState: localMessageWorkflowStateBinding,
+                currentWorkflowStateProvider: { currentLocalMessageWorkflowState() },
                 isWorkBlocked: isMessageWorkBlocked,
                 isMutationWorkBlocked: isCommandMutationBlocked,
                 composeActions: composePresentationActions,
@@ -2573,7 +2578,7 @@ public struct BrevMailRootView: View {
                 onMutation: { event in
                     await handleMessageListMutation(event)
                 },
-                currentBackendsProvider: { backends },
+                currentBackendsProvider: { currentBackendsProvider() },
                 sourceSectionsRevisionProvider: { sourceSectionsRevision },
                 isSourceAvailable: { sourceID in sourceSections.contains { $0.id == sourceID } }
             )
@@ -2649,6 +2654,7 @@ public struct BrevMailRootView: View {
                     smartView: selectedSmartView,
                     paneTitle: selectedMessageDestinationTitle,
                     localMessageWorkflowState: localMessageWorkflowStateBinding,
+                    currentWorkflowStateProvider: { currentLocalMessageWorkflowState() },
                     isWorkBlocked: isMessageWorkBlocked,
                     isMutationWorkBlocked: isCommandMutationBlocked,
                     composeActions: composePresentationActions,
@@ -2664,7 +2670,7 @@ public struct BrevMailRootView: View {
                         await handleMessageListMutation(event)
                     },
                     onRefresh: listPullToRefresh,
-                    currentBackendsProvider: { backends },
+                    currentBackendsProvider: { currentBackendsProvider() },
                     sourceSectionsRevisionProvider: { sourceSectionsRevision },
                     isSourceAvailable: { sourceID in sourceSections.contains { $0.id == sourceID } }
                 )
@@ -2684,6 +2690,7 @@ public struct BrevMailRootView: View {
                         allFolders: folders,
                         searchSyntaxDescription: selectedSearchSyntaxDescription,
                         localMessageWorkflowState: localMessageWorkflowStateBinding,
+                        currentWorkflowStateProvider: { currentLocalMessageWorkflowState() },
                         isWorkBlocked: isMessageWorkBlocked,
                         isMutationWorkBlocked: isCommandMutationBlocked,
                         composeActions: composePresentationActions,
@@ -2702,7 +2709,7 @@ public struct BrevMailRootView: View {
                             openMessageInNewWindow(header, sourceID: navigation.selectedSourceID)
                         } : nil,
                         onRefresh: listPullToRefresh,
-                        currentBackendsProvider: { backends },
+                        currentBackendsProvider: { currentBackendsProvider() },
                         sourceSectionsRevisionProvider: { sourceSectionsRevision },
                         isSourceAvailable: { sourceID in sourceSections.contains { $0.id == sourceID } }
                     )
@@ -4006,7 +4013,7 @@ public struct BrevMailRootView: View {
 
     private func backend(for sourceID: MailSourceID?) -> any MailBackend {
         guard let sourceID,
-              let match = backends.first(where: { $0.account.id == sourceID.accountID })
+              let match = currentBackendsProvider().first(where: { $0.account.id == sourceID.accountID })
         else { return selectedBackend }
         return match
     }
@@ -4035,6 +4042,12 @@ public struct BrevMailRootView: View {
                 localMessageWorkflowStateData = data
             }
         )
+    }
+
+    private func currentLocalMessageWorkflowState() -> LocalMessageWorkflowState {
+        LocalMessageWorkflowStateStorage.decode(
+            settingsStore.data(forKey: LocalMessageWorkflowStateStorage.storageKey) ?? Data()
+        ) ?? .defaults
     }
 
     private var customProfiles: [MailProfile] {
@@ -6496,12 +6509,13 @@ public struct BrevMailRootView: View {
     }
 
     private func readerWorkflowLookup() -> LocalMessageWorkflowLookup {
-        LocalMessageWorkflowLookup(state: localMessageWorkflowStateBinding.wrappedValue)
+        LocalMessageWorkflowLookup(state: currentLocalMessageWorkflowState())
     }
 
     private func readerConversationProjection(
         for header: MessageHeader,
-        sourceID: MailSourceID?
+        sourceID: MailSourceID?,
+        state: LocalMessageWorkflowState? = nil
     ) -> LocalMessageWorkflowConversationProjection {
         let source = readerWorkflowSourceID(for: sourceID)
         var candidates = relatedConversation.mergedThreadHeaders(
@@ -6512,7 +6526,7 @@ public struct BrevMailRootView: View {
         }
         return LocalMessageWorkflowConversationProjection(
             candidates: candidates.map { .init(sourceID: source, header: $0) },
-            state: localMessageWorkflowStateBinding.wrappedValue
+            state: state ?? currentLocalMessageWorkflowState()
         )
     }
 
@@ -6521,7 +6535,7 @@ public struct BrevMailRootView: View {
         workflowSnoozeReconciliationTask?.cancel()
         let generation = workflowSnoozeReconciliationGeneration
         let sourceRevision = sourceSectionsRevision
-        let initialState = localMessageWorkflowStateBinding.wrappedValue
+        let initialState = currentLocalMessageWorkflowState()
         let activeRules = initialState.snoozes.filter {
             $0.isActive() && $0.conversationMetadata != nil
         }
@@ -6534,7 +6548,7 @@ public struct BrevMailRootView: View {
         var sectionsBySource: [MailSourceID: MailSourceSection] = [:]
         for sourceID in sourceIDs {
             guard let section = sourceSections.first(where: { $0.id == sourceID }),
-                  let backend = backends.first(where: { $0.account.id == sourceID.accountID }) else {
+                  let backend = currentBackendsProvider().first(where: { $0.account.id == sourceID.accountID }) else {
                 workflowSnoozeReconciliationTask = nil
                 return
             }
@@ -6578,24 +6592,29 @@ public struct BrevMailRootView: View {
                     sourceIDs: sourceIDs,
                     backendIdentities: backendIdentities,
                     sourceRevision: sourceRevision
-                ), localMessageWorkflowStateBinding.wrappedValue == initialState else { return }
-
-                let projection = LocalMessageWorkflowConversationProjection(
+                ) else { return }
+                guard let transaction = LocalMessageWorkflowSnoozeTransaction.reconciling(
                     candidates: candidates,
-                    state: initialState
-                )
-                let reconciled = LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
-                    in: initialState,
-                    projection: projection
-                )
-                guard reconciled != initialState,
+                    rules: activeRules,
+                    basedOn: initialState,
+                    latestState: { currentLocalMessageWorkflowState() },
+                    mutation: { currentState, projection, ruleIDs in
+                        let reconciled = LocalMessageWorkflowConversationMutationPolicy.reconcilingActiveSnoozes(
+                            in: currentState,
+                            projection: projection,
+                            only: ruleIDs
+                        )
+                        return (state: reconciled, value: ())
+                    }
+                ) else { return }
+                guard transaction.state != transaction.previousState,
                       isCurrentWorkflowSnoozeReconciliation(
                           generation: generation,
                           sourceIDs: sourceIDs,
                           backendIdentities: backendIdentities,
                           sourceRevision: sourceRevision
-                      ), localMessageWorkflowStateBinding.wrappedValue == initialState else { return }
-                localMessageWorkflowStateBinding.wrappedValue = reconciled
+                      ) else { return }
+                localMessageWorkflowStateBinding.wrappedValue = transaction.state
             } catch {
                 return
             }
@@ -6613,8 +6632,12 @@ public struct BrevMailRootView: View {
               sourceSectionsRevision == sourceRevision else { return false }
         for sourceID in sourceIDs {
             guard sourceSections.contains(where: { $0.id == sourceID }),
-                  let backend = backends.first(where: { $0.account.id == sourceID.accountID }),
-                  ObjectIdentifier(backend) == backendIdentities[sourceID] else { return false }
+                  let expectedIdentity = backendIdentities[sourceID],
+                  LocalMessageWorkflowSnoozeOwnership.isCurrentBackend(
+                      backendIdentity: expectedIdentity,
+                      sourceID: sourceID,
+                      in: currentBackendsProvider()
+                  ) else { return false }
         }
         return true
     }
@@ -6631,8 +6654,11 @@ public struct BrevMailRootView: View {
               sourceSectionsRevision == sourceRevision,
               let section = sourceSections.first(where: { $0.id == sourceID }),
               section.folders.contains(where: { $0.id == folderID }),
-              let currentBackend = backends.first(where: { $0.account.id == sourceID.accountID }),
-              ObjectIdentifier(currentBackend) == backendIdentity else { return false }
+              LocalMessageWorkflowSnoozeOwnership.isCurrentBackend(
+                  backendIdentity: backendIdentity,
+                  sourceID: sourceID,
+                  in: currentBackendsProvider()
+              ) else { return false }
         return true
     }
 
@@ -6661,10 +6687,10 @@ public struct BrevMailRootView: View {
             sourceID: readerWorkflowSourceID(for: sourceID),
             messageID: header.id
         )
+        let previousState = currentLocalMessageWorkflowState()
         let candidate = LocalMessageWorkflowCandidate(sourceID: messageID.sourceID, header: header)
-        let projection = readerConversationProjection(for: header, sourceID: sourceID)
+        let projection = readerConversationProjection(for: header, sourceID: sourceID, state: previousState)
         if projection.isSnoozed(messageID, header: header) {
-            let previousState = localMessageWorkflowStateBinding.wrappedValue
             localMessageWorkflowStateBinding.wrappedValue =
                 LocalMessageWorkflowConversationMutationPolicy.clearingSnooze(
                     [candidate],
@@ -6683,7 +6709,7 @@ public struct BrevMailRootView: View {
     private func readerSnooze(header: MessageHeader, sourceID: MailSourceID?, until wakeAt: Date) {
         let resolvedSourceID = readerWorkflowSourceID(for: sourceID)
         guard let section = sourceSections.first(where: { $0.id == resolvedSourceID }),
-              let backend = backends.first(where: { $0.account.id == resolvedSourceID.accountID }),
+              let backend = currentBackendsProvider().first(where: { $0.account.id == resolvedSourceID.accountID }),
               section.folders.contains(where: { $0.id == header.folderID }) else {
             rootStatus = MailRootStatus(
                 message: LocalMessageWorkflowConversationCacheError.sourceUnavailable.errorDescription ?? ""
@@ -6696,7 +6722,7 @@ public struct BrevMailRootView: View {
         let generation = readerSnoozeRequestGeneration
         let expectedRevision = sourceSectionsRevision
         let expectedBackendIdentity = ObjectIdentifier(backend)
-        let expectedState = localMessageWorkflowStateBinding.wrappedValue
+        let expectedState = currentLocalMessageWorkflowState()
         let messageID = SourceMessageID(sourceID: resolvedSourceID, messageID: header.id)
         let candidate = LocalMessageWorkflowCandidate(sourceID: resolvedSourceID, header: header)
         readerSnoozeLookupTask = Task { @MainActor in
@@ -6724,23 +6750,17 @@ public struct BrevMailRootView: View {
                     sourceRevision: expectedRevision
                 ) else { return }
 
-                let currentState = localMessageWorkflowStateBinding.wrappedValue
-                let baselineProjection = LocalMessageWorkflowConversationProjection(
+                guard let transaction = LocalMessageWorkflowSnoozeTransaction.applying(
                     candidates: candidates,
-                    state: expectedState
-                )
-                let currentProjection = LocalMessageWorkflowConversationProjection(
-                    candidates: candidates,
-                    state: currentState
-                )
-                guard baselineProjection.overlappingSnoozes(
-                    for: messageID,
-                    header: header,
-                    in: expectedState
-                ) == currentProjection.overlappingSnoozes(
-                    for: messageID,
-                    header: header,
-                    in: currentState
+                    affectedCandidates: [candidate],
+                    basedOn: expectedState,
+                    latestState: { currentLocalMessageWorkflowState() },
+                    mutation: { state, projection in
+                        let result = LocalMessageWorkflowConversationMutationPolicy.snoozing(
+                            [candidate], until: wakeAt, projection: projection, in: state
+                        )
+                        return (state: result.state, value: result)
+                    }
                 ) else {
                     readerSnoozeLookupTask = nil
                     rootStatus = MailRootStatus(
@@ -6755,19 +6775,13 @@ public struct BrevMailRootView: View {
                     backendIdentity: expectedBackendIdentity,
                     folderID: header.folderID,
                     sourceRevision: expectedRevision
-                ), localMessageWorkflowStateBinding.wrappedValue == currentState else { return }
-
-                let result = LocalMessageWorkflowConversationMutationPolicy.snoozing(
-                    [candidate],
-                    until: wakeAt,
-                    projection: currentProjection,
-                    in: currentState
-                )
+                ) else { return }
+                let result = transaction.value
                 readerSnoozeLookupTask = nil
                 localMessageWorkflowStateBinding.wrappedValue = result.state
                 pushReaderWorkflowUndo(
                     description: String(localized: "Snoozed", bundle: .module),
-                    previousState: currentState
+                    previousState: transaction.previousState
                 )
                 if !result.limitedMessageIDs.isEmpty {
                     rootStatus = MailRootStatus(

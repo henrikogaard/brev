@@ -60,7 +60,8 @@ struct UnifiedInboxListView: View {
     @Bindable private var navigation: MailNavigationState
     @Binding private var localMessageWorkflowState: LocalMessageWorkflowState
     private let backends: [any MailBackend]
-    private let currentBackendsProvider: (() -> [any MailBackend])?
+    private let currentBackendsProvider: (@MainActor () -> [any MailBackend])?
+    private let currentWorkflowStateProvider: (@MainActor () -> LocalMessageWorkflowState)?
     private let sourceSectionsRevisionProvider: (() -> Int)?
     private let isSourceAvailable: ((MailSourceID) -> Bool)?
     private let sourceSections: [MailSourceSection]
@@ -171,6 +172,7 @@ struct UnifiedInboxListView: View {
         paneTitle: String? = nil,
         savedSearchQuery: SmartMailbox.SavedQuery? = nil,
         localMessageWorkflowState: Binding<LocalMessageWorkflowState> = .constant(.defaults),
+        currentWorkflowStateProvider: (@MainActor () -> LocalMessageWorkflowState)? = nil,
         isWorkBlocked: Bool,
         isMutationWorkBlocked: Bool = false,
         composeActions: MailComposePresentationActions,
@@ -178,12 +180,13 @@ struct UnifiedInboxListView: View {
         onOpenInNewWindow: ((UnifiedInboxItem) -> Void)? = nil,
         onMutation: @escaping (MailEvent) async -> Void = { _ in },
         onRefresh: (() async -> Bool?)? = nil,
-        currentBackendsProvider: (() -> [any MailBackend])? = nil,
+        currentBackendsProvider: (@MainActor () -> [any MailBackend])? = nil,
         sourceSectionsRevisionProvider: (() -> Int)? = nil,
         isSourceAvailable: ((MailSourceID) -> Bool)? = nil
     ) {
         self.navigation = navigation
         _localMessageWorkflowState = localMessageWorkflowState
+        self.currentWorkflowStateProvider = currentWorkflowStateProvider
         self.backends = backends
         self.sourceSections = sourceSections
         self.canFileLocally = canFileLocally
@@ -236,7 +239,6 @@ struct UnifiedInboxListView: View {
     var body: some View {
         workflowObservedContent
             .onChange(of: localMessageWorkflowState) {
-                invalidatePendingSnoozeLookup()
                 snoozeWakeScheduleRevision += 1
                 reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: navigation.selectedMessageID != nil)
             }
@@ -2931,11 +2933,10 @@ struct UnifiedInboxListView: View {
         workflowSnoozeLookupTask?.cancel()
         workflowSnoozeRequestGeneration += 1
         let generation = workflowSnoozeRequestGeneration
-        let expectedState = localMessageWorkflowState
+        let expectedState = freshWorkflowState()
         let backendIdentities = backendsBySource.mapValues { ObjectIdentifier($0) }
         let sourceIDs = Set(itemsBySource.keys)
         let expectedSourceRevision = sourceSectionsRevisionProvider?()
-        let targetIDs = sourceMessageIDs(for: targetItems)
         let targetCandidates = targetItems.map {
             LocalMessageWorkflowCandidate(sourceID: $0.sourceID, header: $0.header)
         }
@@ -2974,28 +2975,21 @@ struct UnifiedInboxListView: View {
                     sourceRevision: expectedSourceRevision
                 ) else { return }
 
-                let currentState = localMessageWorkflowState
-                let baselineProjection = LocalMessageWorkflowConversationProjection(
+                guard let transaction = LocalMessageWorkflowSnoozeTransaction.applying(
                     candidates: candidates,
-                    state: expectedState
-                )
-                let currentProjection = LocalMessageWorkflowConversationProjection(
-                    candidates: candidates,
-                    state: currentState
-                )
-                let affectedRulesChanged = targetCandidates.contains { candidate in
-                    let messageID = SourceMessageID(sourceID: candidate.sourceID, messageID: candidate.header.id)
-                    return baselineProjection.overlappingSnoozes(
-                        for: messageID,
-                        header: candidate.header,
-                        in: expectedState
-                    ) != currentProjection.overlappingSnoozes(
-                        for: messageID,
-                        header: candidate.header,
-                        in: currentState
-                    )
-                }
-                guard !affectedRulesChanged else {
+                    affectedCandidates: targetCandidates,
+                    basedOn: expectedState,
+                    latestState: { freshWorkflowState() },
+                    mutation: { state, projection in
+                        let result = LocalMessageWorkflowConversationMutationPolicy.snoozing(
+                            targetCandidates,
+                            until: wakeAt,
+                            projection: projection,
+                            in: state
+                        )
+                        return (state: result.state, value: result)
+                    }
+                ) else {
                     workflowSnoozeLookupTask = nil
                     mutationErrorStatus = MessageListPresentation.mutationErrorStatus(
                         for: LocalMessageWorkflowConversationCacheError.workflowChanged
@@ -3008,20 +3002,14 @@ struct UnifiedInboxListView: View {
                     backendIdentities: backendIdentities,
                     folderIDs: folderIDsBySource,
                     sourceRevision: expectedSourceRevision
-                ), localMessageWorkflowState == currentState else { return }
-
-                let result = LocalMessageWorkflowConversationMutationPolicy.snoozing(
-                    targetCandidates,
-                    until: wakeAt,
-                    projection: currentProjection,
-                    in: currentState
-                )
+                ) else { return }
+                let result = transaction.value
                 workflowSnoozeLookupTask = nil
                 saveLocalMessageWorkflowState(result.state)
                 removeSelectionAndReconcileAfterLocalWorkflowMutation(targetItems)
                 pushLocalWorkflowUndo(
                     description: targetItems.count == 1 ? "Snoozed" : "Snoozed \(targetItems.count) messages",
-                    previousState: currentState
+                    previousState: transaction.previousState
                 )
                 if !result.limitedMessageIDs.isEmpty {
                     mutationErrorStatus = MessageListFooterStatus(
@@ -3050,20 +3038,30 @@ struct UnifiedInboxListView: View {
 
     private func clearSnooze(items targetItems: [UnifiedInboxItem]) {
         guard !targetItems.isEmpty else { return }
-        let previousState = localMessageWorkflowState
         let candidates = targetItems.map {
             LocalMessageWorkflowCandidate(sourceID: $0.sourceID, header: $0.header)
         }
-        let nextState = LocalMessageWorkflowConversationMutationPolicy.clearingSnooze(
-            candidates,
-            projection: workflowConversationProjection,
-            in: previousState
-        )
-        saveLocalMessageWorkflowState(nextState)
+        let currentState = freshWorkflowState()
+        let allCandidates = items.map {
+            LocalMessageWorkflowCandidate(sourceID: $0.sourceID, header: $0.header)
+        }
+        guard let transaction = LocalMessageWorkflowSnoozeTransaction.applying(
+            candidates: allCandidates,
+            affectedCandidates: candidates,
+            basedOn: currentState,
+            latestState: { freshWorkflowState() },
+            mutation: { state, projection in
+                let nextState = LocalMessageWorkflowConversationMutationPolicy.clearingSnooze(
+                    candidates, projection: projection, in: state
+                )
+                return (state: nextState, value: ())
+            }
+        ) else { return }
+        saveLocalMessageWorkflowState(transaction.state)
         removeSelectionAndReconcileAfterLocalWorkflowMutation(targetItems)
         pushLocalWorkflowUndo(
             description: targetItems.count == 1 ? "Unsnoozed" : "Unsnoozed \(targetItems.count) messages",
-            previousState: previousState
+            previousState: transaction.previousState
         )
     }
 
@@ -3128,6 +3126,10 @@ struct UnifiedInboxListView: View {
         )
     }
 
+    private func freshWorkflowState() -> LocalMessageWorkflowState {
+        currentWorkflowStateProvider?() ?? localMessageWorkflowState
+    }
+
     private func invalidatePendingSnoozeLookup() {
         workflowSnoozeRequestGeneration += 1
         workflowSnoozeLookupTask?.cancel()
@@ -3149,14 +3151,12 @@ struct UnifiedInboxListView: View {
                   let expectedFolders = folderIDs[sourceID],
                   expectedFolders.isSubset(of: Set(section.folders.map(\.id))) else { return false }
             if let isSourceAvailable, !isSourceAvailable(sourceID) { return false }
-            if let currentBackendsProvider {
-                guard let currentBackend = currentBackendsProvider().first(where: {
-                    $0.account.id == sourceID.accountID
-                }), ObjectIdentifier(currentBackend) == backendIdentities[sourceID] else { return false }
-            } else {
-                guard let currentBackend = backend(for: sourceID),
-                      ObjectIdentifier(currentBackend) == backendIdentities[sourceID] else { return false }
-            }
+            guard let backendIdentity = backendIdentities[sourceID],
+                  LocalMessageWorkflowSnoozeOwnership.isCurrentBackend(
+                      backendIdentity: backendIdentity,
+                      sourceID: sourceID,
+                      in: currentBackendsProvider?() ?? backends
+                  ) else { return false }
         }
         return true
     }
@@ -3323,7 +3323,7 @@ struct UnifiedInboxListView: View {
     }
 
     private func backend(for sourceID: MailSourceID) -> (any MailBackend)? {
-        backends.first { $0.account.id == sourceID.accountID }
+        (currentBackendsProvider?() ?? backends).first { $0.account.id == sourceID.accountID }
     }
 
     private func saveMessageAsEML(_ item: UnifiedInboxItem) {
