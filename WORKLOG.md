@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-22 — Agent — PR #326 CI follow-up
+
+- Goal: settle PR #326 CI failures on `feature/no-reply-follow-ups` without changing PR metadata, branch, versions, or snapshot baselines.
+- Initial CI fixes: removed explicit `= nil` from the optional retry date flagged by SwiftLint; imported BrevSettings in detached compose; mapped notification authorization before checking ephemeral status on macOS; and made the Smart View reorder test derive the current custom-row index after Waiting was added. Hosted CI on `0535641` confirmed Lint, iOS/macOS builds, BrevSettings tests, selection profile, and ADR-required passed.
+- Queued-send diagnosis: `ComposeDraftPreservationTests` passed unsaved drafts to `Harness`. `Harness.prepare()` restores them; `ComposeDraftRestoration.resolveExisting` requires an exact source-owned canonical draft, but `MockBackend` returned `nil` for fixtures never saved. Restoration set `draftRestorationError`, leaving `restorationBlocksWork` true, so `ComposeView.send` returned through `canStartComposeOperation` before `MockBackend.sendHandler`. Empty HTML itself is supported by the restoration path. The accepted, queued, and hard-failure fixtures now save their drafts first and count `sendHandler` attempts; each asserts one backend attempt, accepted/queued assert exactly one callback using `#require` before inspecting it, and hard failure asserts no callback.
+- Prior hosted state on `0535641`: **19 passed, 1 failed, 2 pending, 0 skipped**. The BrevMail failure was `queued mounted send invokes the captured callback once` (`acceptedSends.count` was 0, followed by the test's index-out-of-range crash). BrevSyncEngine and `snapshot-test` were still pending; the initial snapshot job on the earlier SHA had failed during compilation, not image comparison. No PNGs changed.
+- Local verification for this correction: pinned SwiftFormat `0/1 files require formatting`; `swiftc -frontend -parse` passed; `scripts/check-adr-required.sh` exited 0; and `git diff --check` passed. Native BrevMail compose tests are left to hosted macOS CI because this Linux host lacks AppKit/SwiftUI. Local SwiftLint also remains unavailable because its mise binary requires GLIBC_2.38; hosted Lint is authoritative.
+- Handoff: push this test-only correction on the existing branch, then monitor checks with failure-mode waiting and bounded inspection. No PR metadata, review threads, or snapshot baselines were changed.
+
 ## 2026-11-21 — Agent — #297
 
 - Goal: add an opt-in three-day no-reply reminder flow without provider/network changes.

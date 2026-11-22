@@ -112,22 +112,30 @@ struct ComposeDraftPreservationTests {
         let backend = MockBackend()
         let mailbox = try #require(await backend.mailboxes().first)
         let sourceID = backend.sourceID(for: mailbox)
-        let original = Draft(
+        let sendAttempts = ComposeSendAttemptCounter()
+        backend.sendHandler = { _, _ in
+            await sendAttempts.record()
+            return SendResult(sentMessageID: "accepted")
+        }
+        let original = try await backend.save(draft: Draft(
             id: "accepted-callback",
             to: [Correspondent(email: "recipient@example.invalid")],
             subject: "Accepted callback",
             followUpRequest: DraftNoReplyFollowUpRequest(expectedMessageID: "<accepted@invalid>")
-        )
+        ), sourceID: sourceID)
         let harness = try Harness(backend: backend, original: original, sourceID: sourceID)
         defer { harness.dispose() }
         try await harness.prepare()
 
         await harness.mounted?.send(bypassingSendGuard: true)
 
+        let sendAttemptCount = await sendAttempts.count()
+        #expect(sendAttemptCount == 1)
         #expect(harness.acceptedSends.count == 1)
-        #expect(harness.acceptedSends[0].0.id == original.id)
-        #expect(harness.acceptedSends[0].2 == sourceID)
-        #expect(harness.acceptedSends[0].3 == ObjectIdentifier(backend))
+        let acceptedSend = try #require(harness.acceptedSends.first)
+        #expect(acceptedSend.0.id == original.id)
+        #expect(acceptedSend.2 == sourceID)
+        #expect(acceptedSend.3 == ObjectIdentifier(backend))
     }
 
     @Test("closing a mounted composer without Send never invokes the accepted callback")
@@ -148,36 +156,53 @@ struct ComposeDraftPreservationTests {
     @MainActor
     func queuedSendInvokesCallbackOnce() async throws {
         let backend = MockBackend()
+        let sendAttempts = ComposeSendAttemptCounter()
         backend.sendHandler = { _, _ in
-            SendResult(sentMessageID: "queued", warnings: [.queuedForRetry])
+            await sendAttempts.record()
+            return SendResult(sentMessageID: "queued", warnings: [.queuedForRetry])
         }
         let mailbox = try #require(await backend.mailboxes().first)
         let sourceID = backend.sourceID(for: mailbox)
-        let original = Draft(id: "queued-callback", to: [Correspondent(email: "recipient@example.invalid")])
+        let original = try await backend.save(draft: Draft(
+            id: "queued-callback",
+            to: [Correspondent(email: "recipient@example.invalid")]
+        ), sourceID: sourceID)
         let harness = try Harness(backend: backend, original: original, sourceID: sourceID)
         defer { harness.dispose() }
         try await harness.prepare()
 
         await harness.mounted?.send(bypassingSendGuard: true)
 
+        let sendAttemptCount = await sendAttempts.count()
+        #expect(sendAttemptCount == 1)
         #expect(harness.acceptedSends.count == 1)
-        #expect(harness.acceptedSends[0].1.warnings == [.queuedForRetry])
-        #expect(harness.acceptedSends[0].2 == sourceID)
-        #expect(harness.acceptedSends[0].3 == ObjectIdentifier(backend))
+        let acceptedSend = try #require(harness.acceptedSends.first)
+        #expect(acceptedSend.1.warnings == [.queuedForRetry])
+        #expect(acceptedSend.2 == sourceID)
+        #expect(acceptedSend.3 == ObjectIdentifier(backend))
     }
 
     @Test("failed mounted send never invokes the accepted callback")
     @MainActor
     func failedSendDoesNotInvokeCallback() async throws {
         let backend = MockBackend()
-        backend.sendHandler = { _, _ in throw MockComposeSendFailure.failed }
-        let original = Draft(id: "failed-callback", to: [Correspondent(email: "recipient@example.invalid")])
+        let sendAttempts = ComposeSendAttemptCounter()
+        backend.sendHandler = { _, _ in
+            await sendAttempts.record()
+            throw MockComposeSendFailure.failed
+        }
+        let original = try await backend.save(draft: Draft(
+            id: "failed-callback",
+            to: [Correspondent(email: "recipient@example.invalid")]
+        ))
         let harness = try Harness(backend: backend, original: original)
         defer { harness.dispose() }
         try await harness.prepare()
 
         await harness.mounted?.send(bypassingSendGuard: true)
 
+        let sendAttemptCount = await sendAttempts.count()
+        #expect(sendAttemptCount == 1)
         #expect(harness.acceptedSends.isEmpty)
     }
 
@@ -731,5 +756,17 @@ struct ComposeDraftPreservationTests {
 
 private enum MockComposeSendFailure: Error {
     case failed
+}
+
+private actor ComposeSendAttemptCounter {
+    private var attempts = 0
+
+    func record() {
+        attempts += 1
+    }
+
+    func count() -> Int {
+        attempts
+    }
 }
 #endif
