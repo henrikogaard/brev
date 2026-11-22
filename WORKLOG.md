@@ -7584,3 +7584,10 @@ buttons, and package-aware localization.
 - Changes: added `ADRs/0094-on-device-ai-apple-intelligence-and-local-models.md` (`Status: Proposed`) and updated `ADRs/README.md`. Documentation-only PR, so TDD does not apply.
 - Verification: `scripts/check-adr-required.sh origin/main`, `git diff --check`.
 - Handoff: awaiting Henrik's review and acceptance before implementing Slice 1 (`AppleIntelligenceAIBackend`) or Slice 2 (local weight download + ADR-0006 / `PRIVACY.md` entries).
+
+## 2026-11-22 — Agent — Issue #305 / ADR-0095 (Proposed)
+
+- Goal: draft Proposed ADR-0095 for local-only MCP agent access (stdio / user-private Unix socket, zero listening network ports, off by default per account, cache-only read tools, per-call in-app approvals for archive/label per ADR-0026, no send/delete, visible Settings audit log), with zero implementation code until accepted.
+- Changes: added `ADRs/0095-local-mcp-agent-access.md` (`Status: Proposed`) and updated `ADRs/README.md`. Documentation-only PR, so TDD does not apply.
+- Verification: `scripts/check-adr-required.sh origin/main`, `git diff --check`.
+- Handoff: awaiting Henrik's review and acceptance before implementing the mock-mailbox MCP server, approval flow, audit log, and ADR-0006 / `PRIVACY.md` entries.
