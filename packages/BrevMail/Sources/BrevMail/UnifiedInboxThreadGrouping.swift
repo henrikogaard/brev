@@ -11,6 +11,8 @@
  */
 
 import BrevBackend
+import BrevDesign
+import Foundation
 
 /// Groups unified-inbox items into threads the same way `MessageListView`
 /// groups a single folder, with one difference: a unified list mixes
@@ -56,6 +58,41 @@ enum UnifiedInboxThreadGrouping {
             guard counts[key, default: 1] > 1 else { return true }
             return seen.insert(key).inserted
         }
+    }
+
+    static func sortedParents(
+        from items: [UnifiedInboxItem],
+        counts: [String: Int],
+        by order: MailboxSortOrder,
+        pinnedIDs: Set<MessageHeader.ID>,
+        effectiveDateOverrides: [SourceMessageID: Date]
+    ) -> [UnifiedInboxItem] {
+        let parents = parents(from: items, counts: counts)
+        guard order == .newestFirst else { return parents }
+
+        var wakeDatesByThread: [String: Date] = [:]
+        for item in items {
+            let threadKey = key(for: item)
+            guard counts[threadKey, default: 1] > 1,
+                  let wakeDate = effectiveDateOverrides[
+                      SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
+                  ] else { continue }
+            wakeDatesByThread[threadKey] = max(wakeDatesByThread[threadKey] ?? .distantPast, wakeDate)
+        }
+
+        var parentDateOverrides: [SourceMessageID: Date] = [:]
+        for parent in parents {
+            let threadKey = key(for: parent)
+            guard let wakeDate = wakeDatesByThread[threadKey] else { continue }
+            parentDateOverrides[SourceMessageID(sourceID: parent.sourceID, messageID: parent.header.id)] = wakeDate
+        }
+        guard !parentDateOverrides.isEmpty else { return parents }
+        return MessageListSortPolicy.sortedItems(
+            parents,
+            by: order,
+            pinnedIDs: pinnedIDs,
+            dateOverrides: parentDateOverrides
+        )
     }
 
     /// Returns the other messages in `key`'s thread, oldest → newest.

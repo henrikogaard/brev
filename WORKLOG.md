@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-22 — Devin — Issue #297 / PR #324 collapsed Inbox wake priority
+
+- Goal: prioritize collapsed Inbox thread rows when a visible member has an expired conversation snooze, without changing RFC-scoped membership.
+- Changes: aggregate per-message effective wake dates across visible members sharing the existing source/thread key, then sort collapsed parents with the selected newest-first order and the existing pin policy. Expanded thread buckets and individual wake overrides remain unchanged.
+- Red/green: the focused rendered-row regression failed before the fix because the newer unrelated representative sorted ahead of the ordinary row; it passed after aggregation. It also covers source-ID collisions, expanded member state, pins, and a non-date sort.
+- Verification: the Foundation harness red case failed on the old collapsed ordering, then passed with 72 tests in 8 suites. SwiftFormat reported 0/3 files needing format after formatting; Swift parse passed for 3 changed Swift files; `git diff --check` and `scripts/check-adr-required.sh origin/feature/snooze-wake-order` exited successfully.
+- Limits: native BrevMail tests and visual UI verification were not run on this Linux host because SwiftUI is unavailable. No snapshots changed.
+- Handoff: separate local commit only; do not push until the PR #324 review round is complete. Existing Unreleased entries already describe Snoozed Inbox wake ordering, so no changelog edit was needed.
+
 ## 2026-11-22 — Agent — PR #324 wake-cache lifecycle correction
 
 - Goal: correct cache wake-scan cost, first-page ownership, and concurrent timer publication.

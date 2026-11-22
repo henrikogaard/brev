@@ -825,7 +825,13 @@ struct UnifiedInboxListView: View {
             isThreadedSource: isThreadedSource
         )
         return (
-            UnifiedInboxThreadGrouping.parents(from: sorted, counts: threadCounts),
+            UnifiedInboxThreadGrouping.sortedParents(
+                from: sorted,
+                counts: threadCounts,
+                by: mailboxSortOrder,
+                pinnedIDs: pinnedMessageIDs,
+                effectiveDateOverrides: dateOverrides
+            ),
             threadCounts,
             dateOverrides
         )
