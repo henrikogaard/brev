@@ -2621,32 +2621,19 @@ public struct MessageListView: View {
     }
 
     private func moveUpdatesKeyboardSelection(delta: Int) {
-        let rows = renderedSelectableHeaders(in: presentationSnapshot)
-        guard !rows.isEmpty else { return }
-        let target: MessageHeader
-        if let currentID = navigation.selectedMessageID,
-           let index = rows.firstIndex(where: { $0.id == currentID }) {
-            let nextIndex = min(max(0, index + delta), rows.count - 1)
-            target = rows[nextIndex]
-        } else {
-            target = rows[0]
-        }
-        navigation.readerExpansionSelectionID = nil
-        navigation.selectedMessageID = target.id
+        UpdatesSenderBundler.applyKeyboardSelection(
+            delta: delta,
+            rows: renderedSelectableHeaders(in: presentationSnapshot),
+            navigation: navigation
+        )
     }
 
     private func moveUpdatesKeyboardSelection(command: MessageListKeyCommand) {
-        let rows = renderedSelectableHeaders(in: presentationSnapshot)
-        let currentIndex = navigation.selectedMessageID.flatMap { id in
-            rows.firstIndex(where: { $0.id == id })
-        }
-        guard let targetIndex = MessageListKeyboardNavigation.targetIndex(
-            for: command,
-            current: currentIndex,
-            count: rows.count
-        ) else { return }
-        navigation.readerExpansionSelectionID = nil
-        navigation.selectedMessageID = rows[targetIndex].id
+        UpdatesSenderBundler.applyKeyboardSelection(
+            command: command,
+            rows: renderedSelectableHeaders(in: presentationSnapshot),
+            navigation: navigation
+        )
     }
 
     /// Moves the bulk selection, or the single selected message, to Trash

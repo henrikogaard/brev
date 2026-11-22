@@ -378,4 +378,47 @@ enum UpdatesSenderBundler {
         }
         return result
     }
+
+    /// Moves keyboard selection by a relative row delta across flat Updates rows,
+    /// clearing any stale inline-child reader expansion preference while leaving
+    /// bulk selection intact (#295).
+    @MainActor
+    static func applyKeyboardSelection(
+        delta: Int,
+        rows: [MessageHeader],
+        navigation: MailNavigationState
+    ) {
+        guard !rows.isEmpty else { return }
+        let target: MessageHeader
+        if let currentID = navigation.selectedMessageID,
+           let index = rows.firstIndex(where: { $0.id == currentID }) {
+            let nextIndex = min(max(0, index + delta), rows.count - 1)
+            target = rows[nextIndex]
+        } else {
+            target = rows[0]
+        }
+        navigation.readerExpansionSelectionID = nil
+        navigation.selectedMessageID = target.id
+    }
+
+    /// Moves keyboard selection for paging/home/end commands across flat Updates
+    /// rows, clearing any stale inline-child reader expansion preference while
+    /// leaving bulk selection intact (#295).
+    @MainActor
+    static func applyKeyboardSelection(
+        command: MessageListKeyCommand,
+        rows: [MessageHeader],
+        navigation: MailNavigationState
+    ) {
+        let currentIndex = navigation.selectedMessageID.flatMap { id in
+            rows.firstIndex(where: { $0.id == id })
+        }
+        guard let targetIndex = MessageListKeyboardNavigation.targetIndex(
+            for: command,
+            current: currentIndex,
+            count: rows.count
+        ) else { return }
+        navigation.readerExpansionSelectionID = nil
+        navigation.selectedMessageID = rows[targetIndex].id
+    }
 }

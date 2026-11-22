@@ -453,6 +453,59 @@ struct PeopleUpdatesClassifierTests {
         #expect(expanded.map(\.id) == ["u1", "u2", "u3"])
     }
 
+    @MainActor
+    @Test("Updates keyboard arrow and paging navigation clear stale reader expansion while keeping bulk selection")
+    func updatesKeyboardSelectionClearsReaderExpansionPreference() {
+        let newer = MessageHeader(
+            id: "u1",
+            threadID: "shared-thread",
+            folderID: "inbox",
+            from: Correspondent(name: "Linear", email: "notifications@linear.app"),
+            to: [],
+            subject: "Re: Issue #1",
+            snippet: "Latest update",
+            date: Date().addingTimeInterval(-60),
+            isRead: false,
+            isFlagged: false,
+            hasAttachments: false
+        )
+        let older = MessageHeader(
+            id: "u2",
+            threadID: "shared-thread",
+            folderID: "inbox",
+            from: Correspondent(name: "Linear", email: "notifications@linear.app"),
+            to: [],
+            subject: "Issue #1",
+            snippet: "Earlier update",
+            date: Date().addingTimeInterval(-120),
+            isRead: true,
+            isFlagged: false,
+            hasAttachments: false
+        )
+        let rows = [newer, older]
+        let navigation = MailNavigationState()
+
+        // Arrow path: explicit older-reply expansion is cleared when moving Up to the newer message.
+        navigation.selectMessage(older, from: rows, expandsSelectedMessage: true)
+        navigation.bulkSelection = [older.id]
+        #expect(navigation.readerExpansionSelectionID == older.id)
+
+        UpdatesSenderBundler.applyKeyboardSelection(delta: -1, rows: rows, navigation: navigation)
+        #expect(navigation.selectedMessageID == newer.id)
+        #expect(navigation.readerExpansionSelectionID == nil)
+        #expect(navigation.bulkSelection == Set([older.id]))
+
+        // Paging / Home path: explicit older-reply expansion is also cleared on moveToStart/pageUp.
+        navigation.selectMessage(older, from: rows, expandsSelectedMessage: true)
+        navigation.bulkSelection = [newer.id]
+        #expect(navigation.readerExpansionSelectionID == older.id)
+
+        UpdatesSenderBundler.applyKeyboardSelection(command: .moveToStart, rows: rows, navigation: navigation)
+        #expect(navigation.selectedMessageID == newer.id)
+        #expect(navigation.readerExpansionSelectionID == nil)
+        #expect(navigation.bulkSelection == Set([newer.id]))
+    }
+
     @Test("HTTPS unsubscribe confirmation states browser opening accurately even when one-click is advertised")
     func unsubscribeConfirmationMatchesBrowserBehavior() {
         let oneClick = ListUnsubscribeOptions.parse(
