@@ -22,7 +22,8 @@ import Foundation
 /// stream returned by `subscribeToChanges()`.
 public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManaging, ContactLookupProviding, MailImporting,
     SyncHealthReporting, SyncHealthRepairing, SyncConflictManaging,
-    CachedConversationProviding, RelatedConversationLoading, LocalDraftAttachmentProviding, @unchecked Sendable {
+    CachedConversationProviding, RelatedConversationLoading, LocalDraftAttachmentProviding, CachedListUnsubscribeProviding,
+    @unchecked Sendable {
     public let account: BrevAccount
     public let capabilities: BackendCapabilities
     public let extendedCapabilities: BackendExtendedCapabilities
@@ -404,6 +405,16 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         return all.filter { $0.folderID == folder.id }
     }
 
+    public func cachedListUnsubscribe(
+        for messageID: MessageHeader.ID,
+        sourceID: MailSourceID
+    ) async -> ListUnsubscribeOptions? {
+        guard sourceID.accountID == account.id,
+              let resolvedMailboxID = try? await mailboxID(for: sourceID)
+        else { return nil }
+        return await (try? store.body(for: messageID, mailboxID: resolvedMailboxID))?.listUnsubscribe
+    }
+
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
         guard query.hasSearchCriteria else { return [] }
         let all = await store.allMessages
@@ -458,6 +469,9 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     public func extensionService<Service>(_ type: Service.Type) -> Service? {
         switch ObjectIdentifier(type) {
         case ObjectIdentifier(LocalDraftAttachmentProviding.self):
+            return self as? Service
+        case ObjectIdentifier(CachedListUnsubscribeProviding.self)
+            where capabilities.contains(.listUnsubscribeHeaders):
             return self as? Service
         case ObjectIdentifier(AutoReplyManaging.self)
             where capabilities.contains(.autoReply) || capabilities.contains(.sieveVacation):
@@ -1926,13 +1940,24 @@ private actor Store {
             html: "<p>Hi team,</p><p>Thanks for the update. The plan looks good from my side.</p><p>I will share any final changes before our next check-in.</p><p>Best regards</p>",
             plainText: "Hi team,\n\nThanks for the update. The plan looks good from my side.\n\nI will share any final changes before our next check-in.\n\nBest regards",
             attachments: [],
-            listUnsubscribe: messageID == "m7"
-                ? ListUnsubscribeOptions.parse(
-                    listUnsubscribe: "<https://news.example.org/unsubscribe>, <mailto:unsubscribe@news.example.org>",
-                    listUnsubscribePost: nil
-                )
-                : nil
+            listUnsubscribe: previewListUnsubscribe(for: messageID)
         )
+    }
+
+    private static func previewListUnsubscribe(for messageID: String) -> ListUnsubscribeOptions? {
+        if messageID == "m7" {
+            return ListUnsubscribeOptions.parse(
+                listUnsubscribe: "<https://news.example.org/unsubscribe>, <mailto:unsubscribe@news.example.org>",
+                listUnsubscribePost: nil
+            )
+        }
+        if messageID == "newsletter-1" || messageID.hasSuffix("-inbox-5") {
+            return ListUnsubscribeOptions.parse(
+                listUnsubscribe: "<https://coastal-post.example/unsubscribe/one-click>, <mailto:unsubscribe@coastal-post.example>",
+                listUnsubscribePost: "List-Unsubscribe=One-Click"
+            )
+        }
+        return nil
     }
 
     private static func previewRawMessageSource(for body: MessageBody) -> String {

@@ -1,6 +1,149 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%lld more from %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld flere fra %@"
+          }
+        }
+      }
+    },
+    "%lld new": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nye"
+          }
+        }
+      }
+    },
+    "Archive all": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arkiver alle"
+          }
+        }
+      }
+    },
+    "Archive bundle": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arkiver bunke"
+          }
+        }
+      }
+    },
+    "Brev will open %@ in your browser. The site may learn your IP address and request time.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev åpner %@ i nettleseren din. Nettstedet kan se IP-adressen din og tidspunktet for forespørselen."
+          }
+        }
+      }
+    },
+    "Brev will open %@ to send a one-click unsubscribe request. The site may learn your IP address and request time.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev åpner %@ for å sende en ettklikks avmelding. Nettstedet kan se IP-adressen din og tidspunktet for forespørselen."
+          }
+        }
+      }
+    },
+    "Brev will open an unsubscribe email draft addressed to %@. Nothing is sent until you press Send.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev åpner et avmeldingsutkast adressert til %@. Ingenting sendes før du trykker Send."
+          }
+        }
+      }
+    },
+    "Move sender to People": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flytt avsender til Folk"
+          }
+        }
+      }
+    },
+    "Move sender to Updates": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flytt avsender til Oppdateringer"
+          }
+        }
+      }
+    },
+    "Newsletters with List-Unsubscribe headers appear here automatically from your cached mail.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nyhetsbrev med List-Unsubscribe-hoder vises her automatisk fra lagret e-post."
+          }
+        }
+      }
+    },
+    "No subscriptions found": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen abonnementer funnet"
+          }
+        }
+      }
+    },
+    "Subscriptions": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abonnementer"
+          }
+        }
+      }
+    },
+    "Unsubscribe": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meld av"
+          }
+        }
+      }
+    },
     "%@ sent a sign-in link": {
       "extractionState": "manual",
       "localizations": {

@@ -32,6 +32,13 @@ All notable changes to Brev are documented here.
   and drafted the Proposed iOS notification privacy amendment in ADR-0088.
   Gmail's `.trustedSignInAssessment` capability remains off pending E1–E5 live
   evidence.
+- Inbox split into People and Updates, plus Subscriptions view (#295, ADR-0035
+  amendment, ADR-0006): adds the two-way **People & Updates** inbox mode
+  showing live counts (**People N · Updates M · All**), deterministic local
+  classification with remembered per-sender People/Updates overrides,
+  expandable per-sender bundles in Updates with undoable bundle archive, and a
+  **Subscriptions** sidebar mailbox built locally from cached `List-Unsubscribe`
+  headers with explicit unsubscribe confirmation and undoable Archive all.
 - Tracking pixels are removed before a message renders, even when remote
   images are allowed, so senders can't tell when you opened their mail. The
   reader shows a quiet "Blocked 2 trackers" note (#299).

@@ -83,3 +83,14 @@ public enum ListUnsubscribeMethod: Sendable, Hashable, Codable {
     case https(URL, supportsOneClick: Bool)
     case mailto(URL)
 }
+
+/// Optional read-only seam exposing cached `List-Unsubscribe` options without
+/// performing any network fetch (ADR-0006, ADR-0028, #295).
+public protocol CachedListUnsubscribeProviding: Sendable {
+    /// Returns parsed `List-Unsubscribe` options from locally cached metadata
+    /// for `messageID`, or `nil` when uncached or absent.
+    func cachedListUnsubscribe(
+        for messageID: MessageHeader.ID,
+        sourceID: MailSourceID
+    ) async -> ListUnsubscribeOptions?
+}

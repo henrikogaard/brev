@@ -162,8 +162,11 @@ public struct MessageListView: View {
     @AppStorage(LocalRulesSettings.Key.isAutomaticExecutionEnabled)
     private var isAutomaticLocalRulesEnabled = false
     @State private var activeInboxCategory: InboxCategory = .all
+    @State private var activePeopleUpdatesTab: InboxSplitTab = .people
     @State private var inboxCategoryOverrideRevision = 0
     @State private var inboxCategoryOverrideStore = InboxCategoryOverrideStore()
+    @State private var senderCategoryOverrideStore = InboxSenderCategoryOverrideStore()
+    @State private var expandedUpdateBundleIDs: Set<String> = []
     /// Lowercased blocklist materialized once per load so each rendered row's
     /// `isBlockedSender` check is a Set hit instead of a scan.
     @State private var blockedSenderEmailSet = Set(
@@ -481,7 +484,15 @@ public struct MessageListView: View {
                                     )
                                 }
                                 #endif
-                                if showsInboxCategoryBar {
+                                if showsPeopleUpdatesBar {
+                                    PeopleUpdatesTabBar(
+                                        activeTab: $activePeopleUpdatesTab,
+                                        counts: peopleUpdatesCounts
+                                    )
+                                    .onChange(of: activePeopleUpdatesTab) {
+                                        reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+                                    }
+                                } else if showsInboxCategoryBar {
                                     InboxCategoryBar(activeCategory: $activeInboxCategory)
                                 }
                             }
@@ -661,6 +672,125 @@ public struct MessageListView: View {
 
     private var showsInboxCategoryBar: Bool {
         inboxClassificationSettings.mode == .categories && folder?.role == .inbox
+    }
+
+    private var showsPeopleUpdatesBar: Bool {
+        inboxClassificationSettings.mode == .peopleAndUpdates && folder?.role == .inbox
+    }
+
+    private var peopleUpdatesCounts: PeopleUpdatesCounts {
+        _ = inboxCategoryOverrideRevision
+        return PeopleUpdatesCounts.compute(
+            headers: headers,
+            senderOverrideStore: senderCategoryOverrideStore
+        )
+    }
+
+    private func peopleUpdatesFilteredHeaders(from candidates: [MessageHeader]) -> [MessageHeader] {
+        guard showsPeopleUpdatesBar, activePeopleUpdatesTab != .all else { return candidates }
+        _ = inboxCategoryOverrideRevision
+        let desired: PeopleUpdatesBucket = activePeopleUpdatesTab == .people ? .people : .updates
+        return candidates.filter { header in
+            PeopleUpdatesClassifier.classify(
+                header: header,
+                senderOverrideStore: senderCategoryOverrideStore
+            ).bucket == desired
+        }
+    }
+
+    private func archiveUpdateBundle(_ bundle: UpdatesSenderBundle) async {
+        guard let archiveFolder, !isMutationActionBlocked else { return }
+        let sourceFolder = folder ?? Folder(
+            id: bundle.latestHeader.folderID,
+            name: bundle.latestHeader.folderID,
+            role: .custom
+        )
+        let bundleSource = sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        let removedIDs = Set(bundle.headers.map(\.id))
+        headers.removeAll { removedIDs.contains($0.id) }
+        navigation.removeHeaders(ids: removedIDs)
+        let lease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let lease { undoQueue?.endMutation(lease) } }
+        do {
+            let receipt = try await backend.moveWithUndo(
+                messageIDs: bundle.headers.map(\.id),
+                from: sourceFolder,
+                to: archiveFolder,
+                sourceID: bundleSource
+            )
+            undoQueue?.registerMoves(
+                [receipt],
+                description: String(localized: "Archived", bundle: .module),
+                lease: lease
+            )
+            navigation.requestReload()
+        } catch {
+            navigation.requestReload()
+        }
+    }
+
+    @ViewBuilder
+    private func peopleUpdatesListRows(
+        presentation: MessageListPresentationSnapshot,
+        selectedRowID: MessageHeader.ID?
+    ) -> some View {
+        if activePeopleUpdatesTab == .updates {
+            let updateHeaders = peopleUpdatesFilteredHeaders(from: presentation.headers)
+            let bundles = UpdatesSenderBundler.bundle(updateHeaders, sourceID: sourceID)
+            ForEach(bundles) { bundle in
+                if bundle.headers.count > 1 {
+                    UpdatesBundleRowView(
+                        bundle: bundle,
+                        isExpanded: expandedUpdateBundleIDs.contains(bundle.id),
+                        canArchive: archiveFolder != nil && !isMutationActionBlocked,
+                        onToggleExpanded: {
+                            if expandedUpdateBundleIDs.contains(bundle.id) {
+                                expandedUpdateBundleIDs.remove(bundle.id)
+                            } else {
+                                expandedUpdateBundleIDs.insert(bundle.id)
+                            }
+                        },
+                        onArchiveBundle: {
+                            Task { await archiveUpdateBundle(bundle) }
+                        },
+                        onMoveSenderToPeople: {
+                            senderCategoryOverrideStore.set(.people, forSenderEmail: bundle.senderEmail)
+                            inboxCategoryOverrideRevision += 1
+                        }
+                    ) {
+                        ForEach(bundle.headers) { childHeader in
+                            messageRow(
+                                for: childHeader,
+                                visibleIndex: presentation.visibleIndex(for: childHeader.id) ?? 0,
+                                visibleCount: presentation.headers.count,
+                                threadChildrenByID: presentation.headersByThreadID,
+                                selectedRowID: selectedRowID
+                            )
+                        }
+                    }
+                    .messageListThemedRowBackground()
+                } else if let singleHeader = bundle.headers.first {
+                    messageRow(
+                        for: singleHeader,
+                        visibleIndex: presentation.visibleIndex(for: singleHeader.id) ?? 0,
+                        visibleCount: presentation.headers.count,
+                        threadChildrenByID: presentation.headersByThreadID,
+                        selectedRowID: selectedRowID
+                    )
+                }
+            }
+        } else {
+            let peopleHeaders = peopleUpdatesFilteredHeaders(from: presentation.headers)
+            ForEach(peopleHeaders) { header in
+                messageRow(
+                    for: header,
+                    visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
+                    visibleCount: peopleHeaders.count,
+                    threadChildrenByID: presentation.headersByThreadID,
+                    selectedRowID: selectedRowID
+                )
+            }
+        }
     }
 
     private var mailboxFolderStatsDetail: MailboxFolderStatsDetail {
@@ -906,7 +1036,9 @@ public struct MessageListView: View {
             Group {
                 ScrollViewReader { proxy in
                     List {
-                        if groupByDate {
+                        if showsPeopleUpdatesBar && activePeopleUpdatesTab != .all {
+                            peopleUpdatesListRows(presentation: presentation, selectedRowID: selectedRowID)
+                        } else if groupByDate {
                             ForEach(presentation.dateSections) { section in
                                 dateSectionHeaderRow(section)
                                 ForEach(section.visibleHeaders) { header in
@@ -1274,6 +1406,26 @@ public struct MessageListView: View {
     private func contextMenuExtras(for header: MessageHeader) -> some View {
         if let sourceID {
             Divider()
+            if showsPeopleUpdatesBar {
+                let currentBucket = PeopleUpdatesClassifier.classify(
+                    header: header,
+                    senderOverrideStore: senderCategoryOverrideStore
+                ).bucket
+                Button {
+                    senderCategoryOverrideStore.set(
+                        currentBucket == .people ? .updates : .people,
+                        forSenderEmail: header.from.email
+                    )
+                    inboxCategoryOverrideRevision += 1
+                } label: {
+                    Label(
+                        currentBucket == .people
+                            ? String(localized: "Move sender to Updates", bundle: .module)
+                            : String(localized: "Move sender to People", bundle: .module),
+                        systemImage: currentBucket == .people ? "tray.2" : "person.2"
+                    )
+                }
+            }
             inboxCategoryMenu(for: header, sourceID: sourceID)
         }
         // Capability-driven (ADR-0028 invariant 2): the label menu appears only

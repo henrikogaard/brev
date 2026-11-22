@@ -64,6 +64,7 @@ public enum MailboxThreadOrder: String, Sendable, Hashable, CaseIterable, Identi
 
 public enum InboxClassificationMode: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case off
+    case peopleAndUpdates
     case categories
 
     public var id: String { rawValue }
@@ -71,6 +72,7 @@ public enum InboxClassificationMode: String, Sendable, Hashable, CaseIterable, I
     public var title: String {
         switch self {
         case .off: return String(localized: "Off", bundle: .module)
+        case .peopleAndUpdates: return String(localized: "People & Updates", bundle: .module)
         case .categories: return String(localized: "Categories", bundle: .module)
         }
     }
@@ -78,10 +80,39 @@ public enum InboxClassificationMode: String, Sendable, Hashable, CaseIterable, I
     public var subtitle: String {
         switch self {
         case .off: return String(localized: "Show one normal inbox without classification tabs.", bundle: .module)
+        case .peopleAndUpdates: return String(
+                localized: "Split the inbox locally into People, bundled Updates, and All.",
+                bundle: .module
+            )
         case .categories: return String(
                 localized: "Sort messages locally into Primary, Transactions, Updates, Promotions, and Other.",
                 bundle: .module
             )
+        }
+    }
+}
+
+/// Tabs shown above the inbox when `InboxClassificationMode.peopleAndUpdates` is active (#295, ADR-0035).
+public enum InboxSplitTab: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
+    case people
+    case updates
+    case all
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .people: return String(localized: "People", bundle: .module)
+        case .updates: return String(localized: "Updates", bundle: .module)
+        case .all: return String(localized: "All", bundle: .module)
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .people: return "person.2"
+        case .updates: return "tray.2"
+        case .all: return "tray.full"
         }
     }
 }

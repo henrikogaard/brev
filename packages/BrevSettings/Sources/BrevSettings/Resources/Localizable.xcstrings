@@ -1,6 +1,17 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Subscriptions": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abonnementer"
+          }
+        }
+      }
+    },
     "Drop a compact alert from the top of the screen with Archive, Mark as read, and Reply actions. Auto-dismisses.": {
       "extractionState": "manual",
       "localizations": {
