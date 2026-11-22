@@ -131,7 +131,7 @@ struct MailSingleKeyShortcutTests {
         let legendEntry = try #require(strings[MailSingleKeyShortcut.legend] as? [String: Any])
         let legendNB = (legendEntry["localizations"] as? [String: Any])?["nb"] as? [String: Any]
         #expect((legendNB?["stringUnit"] as? [String: Any])?["value"] as? String != nil)
-        let entry = try #require(strings["%@ (%@)"] as? [String: Any])
+        let entry = try #require(strings["mail.shortcut.tooltip"] as? [String: Any])
         let nb = (entry["localizations"] as? [String: Any])?["nb"] as? [String: Any]
         #expect((nb?["stringUnit"] as? [String: Any])?["value"] as? String == "%1$@ (%2$@)")
     }

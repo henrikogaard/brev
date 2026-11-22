@@ -49,7 +49,7 @@ enum MailSingleKeyShortcut: String {
     /// Tooltip text naming the key, or the plain title when single keys are off.
     func help(_ title: String, enabled: Bool) -> String {
         guard enabled else { return title }
-        return String(localized: "\(title) (\(keyLabel))", bundle: .module)
+        return String(localized: "mail.shortcut.tooltip", defaultValue: "\(title) (\(keyLabel))", bundle: .module)
     }
 }
 

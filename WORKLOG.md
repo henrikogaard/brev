@@ -1,5 +1,9 @@
 # Worklog
 
+## 2026-11-22 — Agent — #300 tooltip catalog build
+
+- Xcode could not generate a Swift symbol for a key made entirely of placeholders and punctuation. Gave the shortcut tooltip a named key with the same English and Norwegian format. The catalog regression checks that key; native catalog compilation runs on CI.
+
 ## 2026-11-22 — Agent — #300 reader shortcuts and exact thread selection
 
 - A shortcut now acts on the message selected in the reader even when a collapsed parent represents it. The unified inbox also checks the account and mailbox before resolving a hidden child. Regression tests cover both inboxes.
