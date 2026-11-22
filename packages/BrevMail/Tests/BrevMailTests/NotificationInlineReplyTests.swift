@@ -12,6 +12,7 @@
 
 import BrevBackend
 @testable import BrevMail
+import BrevSettings
 import Foundation
 import Testing
 
@@ -81,7 +82,7 @@ struct NotificationInlineReplyTests {
         let boundBackendID = "account-original"
 
         let outcome = await NotificationInlineReplyPipeline.deliver(
-            draft: draft,
+            draft: draft, accountID: boundBackendID,
             save: { draft in
                 await recorder.record("save:\(boundBackendID):\(draft.id)")
                 await recorder.record("navigation:account-after-navigation")
@@ -91,6 +92,7 @@ struct NotificationInlineReplyTests {
             },
             send: { draft in
                 await recorder.record("send:\(boundBackendID):\(draft.remoteID ?? "nil")")
+                return SendResult()
             }
         )
 
@@ -102,19 +104,36 @@ struct NotificationInlineReplyTests {
         ])
     }
 
+    @Test("only an immediate inline reply marks its recipients as written to in the sending account")
+    @MainActor
+    func inlineReplyHistory() async throws {
+        let suite = UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RecentRecipientStore(defaults: defaults)
+        let draft = Draft(id: "d", to: [.init(email: "friend@example.org")])
+        for result in [SendResult(warnings: [.queuedForRetry]), SendResult(scheduledFor: .now), SendResult()] {
+            _ = await NotificationInlineReplyPipeline.deliver(draft: draft, accountID: "sending", store: store,
+                                                              save: { $0 }, send: { _ in result })
+            #expect(store.writtenAddresses(accountID: "sending").isEmpty == (result != SendResult()))
+            #expect(store.writtenAddresses(accountID: "other").isEmpty)
+        }
+        #expect(store.writtenAddresses(accountID: "sending") == ["friend@example.org"])
+    }
+
     @Test("reports whether a failed reply was preserved as a draft")
     func distinguishesSaveAndSendFailures() async {
         let draft = Draft(id: "draft-1")
 
         let saveFailure = await NotificationInlineReplyPipeline.deliver(
-            draft: draft,
+            draft: draft, accountID: "account",
             save: { _ in throw TestFailure() },
-            send: { _ in Issue.record("send must not run after save fails") }
+            send: { _ in Issue.record("send must not run after save fails"); throw TestFailure() }
         )
         #expect(saveFailure == .failed(draftWasSaved: false))
 
         let sendFailure = await NotificationInlineReplyPipeline.deliver(
-            draft: draft,
+            draft: draft, accountID: "account",
             save: { $0 },
             send: { _ in throw TestFailure() }
         )

@@ -14,6 +14,17 @@ import BrevBackend
 import BrevSettings
 import SwiftUI
 
+extension RecentRecipientStore {
+    @MainActor
+    func recordDelivery(of draft: Draft, result: SendResult, accountID: String) {
+        let wasSent = result.scheduledFor == nil && !result.warnings.contains(.queuedForRetry)
+        record((draft.to + draft.cc + draft.bcc).map { recipient in
+            RecentRecipientObservation(accountID: accountID, displayName: recipient.name, email: recipient.email,
+                                       date: .now, wasSentTo: wasSent)
+        })
+    }
+}
+
 /// Correspondence evidence for one reader. Retained only for the owning source.
 struct SenderWarningHistory: Sendable {
     var written: Set<String> = []

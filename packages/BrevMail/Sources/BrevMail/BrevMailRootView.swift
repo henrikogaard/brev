@@ -7358,7 +7358,7 @@ public struct BrevMailRootView: View {
         }
 
         let outcome = await NotificationInlineReplyPipeline.deliver(
-            draft: draft,
+            draft: draft, accountID: replyBackend.account.id,
             save: { draft in
                 if let sourceID {
                     return try await replyBackend.save(draft: draft, sourceID: sourceID)
@@ -7367,9 +7367,9 @@ public struct BrevMailRootView: View {
             },
             send: { draft in
                 if let sourceID {
-                    _ = try await replyBackend.send(draft: draft, sourceID: sourceID)
+                    return try await replyBackend.send(draft: draft, sourceID: sourceID)
                 } else {
-                    _ = try await replyBackend.send(draft: draft)
+                    return try await replyBackend.send(draft: draft)
                 }
             }
         )
@@ -7454,7 +7454,7 @@ public struct BrevMailRootView: View {
         }
 
         let outcome = await NotificationInlineReplyPipeline.deliver(
-            draft: draft,
+            draft: draft, accountID: routeBackend.account.id,
             save: { draft in
                 if let sourceID {
                     return try await routeBackend.save(draft: draft, sourceID: sourceID)
@@ -7463,9 +7463,9 @@ public struct BrevMailRootView: View {
             },
             send: { draft in
                 if let sourceID {
-                    _ = try await routeBackend.send(draft: draft, sourceID: sourceID)
+                    return try await routeBackend.send(draft: draft, sourceID: sourceID)
                 } else {
-                    _ = try await routeBackend.send(draft: draft)
+                    return try await routeBackend.send(draft: draft)
                 }
             }
         )

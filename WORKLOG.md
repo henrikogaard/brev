@@ -1,5 +1,11 @@
 # Worklog
 
+## 2026-11-22 — Agent — #301 sender warning review
+
+- Inline image enrichment now preserves authentication metadata, and display-name checks recognize internationalized domains, including equivalent IDNA spellings.
+- Quick replies and notification replies use the same account-specific recipient history as the full composer. Scheduled and retry results do not mark recipients as written to.
+- Verification: Unicode regression failed before the fix. All 28 focused Linux harness tests pass. Native build, render tests and macOS 26 snapshots remain outstanding.
+
 ## 2026-11-22 — Agent — #301 local sender warnings
 
 - Added a shared sender warning and details disclosure to the single reader, detached windows and expanded conversation cards. Domain checks use a small bundled brand list, look-alike spellings and outgoing correspondence; receiving a message does not make an address familiar.
