@@ -285,9 +285,7 @@ public final class LocalMailBackend: MailBackend, MailImporting, @unchecked Send
             throw MailBackendError.notFound(id: sourceID.mailboxID)
         }
         let records = try await store.folders()
-        guard let record = records.first(where: {
-            $0.id == folder.id && $0.name == folder.name && $0.parentID == folder.parentID
-        }) else {
+        guard let record = records.first(where: { $0.id == folder.id }) else {
             throw MailBackendError.notFound(id: folder.id)
         }
         return try await sortedHeaders(in: record.id)

@@ -99,8 +99,11 @@ struct LocalMailBackendTests {
         }
         let summary = try await backend.importMessages(messages, into: folder)
         #expect(summary.importedCount == 201)
+        let renamedFolder = try await backend.renameFolder(id: folder.id, name: "Renamed")
+        #expect(renamedFolder.id == folder.id)
         let sourceID = MailSourceID(accountID: backend.account.id, mailboxID: LocalMailBackend.accountID)
 
+        // A folder value retained before rename remains valid by its stable ID.
         let headers = try await backend.cachedMessageHeaders(in: folder, sourceID: sourceID)
 
         #expect(headers.count == 201)
@@ -113,7 +116,7 @@ struct LocalMailBackendTests {
         }
         await #expect(throws: (any Error).self) {
             try await backend.cachedMessageHeaders(
-                in: Folder(id: folder.id, name: "Foreign", role: .custom),
+                in: Folder(id: "unknown", name: "Foreign", role: .custom),
                 sourceID: sourceID
             )
         }
