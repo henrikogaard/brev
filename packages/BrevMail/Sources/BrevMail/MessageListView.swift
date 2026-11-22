@@ -837,6 +837,10 @@ public struct MessageListView: View {
         }
     }
 
+    private var allowsInlineThreadDisclosure: Bool {
+        !(showsPeopleUpdatesBar && activePeopleUpdatesTab == .updates)
+    }
+
     private func renderedSelectableHeaders(
         in presentation: MessageListPresentationSnapshot
     ) -> [MessageHeader] {
@@ -892,7 +896,8 @@ public struct MessageListView: View {
                                 // keep each Updates row flat so messages are never
                                 // duplicated inline or mixed with People thread siblings.
                                 threadChildrenByID: [:],
-                                selectedRowID: selectedRowID
+                                selectedRowID: selectedRowID,
+                                allowsInlineThreading: false
                             )
                         }
                     }
@@ -903,7 +908,8 @@ public struct MessageListView: View {
                         visibleIndex: presentation.visibleIndex(for: singleHeader.id) ?? 0,
                         visibleCount: presentation.headers.count,
                         threadChildrenByID: [:],
-                        selectedRowID: selectedRowID
+                        selectedRowID: selectedRowID,
+                        allowsInlineThreading: false
                     )
                 }
             }
@@ -1284,7 +1290,9 @@ public struct MessageListView: View {
                     extendSelection(by: delta)
                 } else {
                     collapseBulkSelectionToCursor()
-                    if delta < 0 {
+                    if !allowsInlineThreadDisclosure {
+                        moveUpdatesKeyboardSelection(delta: delta)
+                    } else if delta < 0 {
                         navigation.selectPreviousHeader()
                     } else {
                         navigation.selectNextHeader()
@@ -1361,18 +1369,20 @@ public struct MessageListView: View {
         for header: MessageHeader,
         visibleIndex: Int,
         visibleCount: Int,
-        selectedRowID: MessageHeader.ID?
+        selectedRowID: MessageHeader.ID?,
+        allowsInlineThreading: Bool = true
     ) -> some View {
         let followUpReminder = followUpReminderIndex.reminder(for: header.id, sourceID: sourceID)
+        let rowThreadCount = allowsInlineThreading ? threadCount(for: header) : 1
         MessageListRow(
             header: header,
-            threadCount: threadCount(for: header),
+            threadCount: rowThreadCount,
             isSelected: selectedRowID == header.id,
             isFocusedPane: listSelectionIsFocused,
             isChecked: navigation.bulkSelection.contains(header.id),
             isInSelectionMode: navigation.isInSelectionMode,
             isPinned: pinnedMessageIDs.contains(header.id),
-            isThreadExpanded: expandedThreadIDs.contains(header.threadID),
+            isThreadExpanded: allowsInlineThreading && expandedThreadIDs.contains(header.threadID),
             showAvatar: showSenderAvatars,
             previewLineCount: mailboxPreviewLineCount.visibleLineCount,
             isCompactWidth: usesCompactMessageRows,
@@ -1399,12 +1409,14 @@ public struct MessageListView: View {
                     if folder?.role == .drafts, composeActions.openDraft(header, sourceID: sourceID) {
                         return
                     }
-                    MessageListInlineExpansion.expandIfNeeded(
-                        threadID: header.threadID,
-                        threadCount: threadCount(for: header),
-                        isThreadingEnabled: backend.groupsMessagesIntoThreads,
-                        in: &expandedThreadIDs
-                    )
+                    if allowsInlineThreading {
+                        MessageListInlineExpansion.expandIfNeeded(
+                            threadID: header.threadID,
+                            threadCount: rowThreadCount,
+                            isThreadingEnabled: backend.groupsMessagesIntoThreads,
+                            in: &expandedThreadIDs
+                        )
+                    }
                     selectMessage(header, expandsSelectedMessage: false)
                 } else {
                     toggleSelection(for: header)
@@ -1413,8 +1425,9 @@ public struct MessageListView: View {
         ) {
             toggleSelection(for: header)
         } onToggleThread: {
-            guard backend.groupsMessagesIntoThreads,
-                  threadCount(for: header) > 1
+            guard allowsInlineThreading,
+                  backend.groupsMessagesIntoThreads,
+                  rowThreadCount > 1
             else { return }
             withAnimation(.easeInOut(duration: 0.18)) {
                 MessageListInlineExpansion.toggle(
@@ -2027,15 +2040,18 @@ public struct MessageListView: View {
         visibleIndex: Int,
         visibleCount: Int,
         threadChildrenByID: [String: [MessageHeader]],
-        selectedRowID: MessageHeader.ID?
+        selectedRowID: MessageHeader.ID?,
+        allowsInlineThreading: Bool = true
     ) -> some View {
         parentMessageRow(
             for: header,
             visibleIndex: visibleIndex,
             visibleCount: visibleCount,
-            selectedRowID: selectedRowID
+            selectedRowID: selectedRowID,
+            allowsInlineThreading: allowsInlineThreading
         )
-        if backend.groupsMessagesIntoThreads,
+        if allowsInlineThreading,
+           backend.groupsMessagesIntoThreads,
            threadCount(for: header) > 1,
            expandedThreadIDs.contains(header.threadID) {
             // Buckets are pre-grouped and sorted oldest → newest in the
@@ -2595,9 +2611,50 @@ public struct MessageListView: View {
             return .handled
         case .moveToStart, .moveToEnd, .pageUp, .pageDown:
             listKeyboardFocus = true
-            navigation.moveSelection(command)
+            if !allowsInlineThreadDisclosure {
+                moveUpdatesKeyboardSelection(command: command)
+            } else {
+                navigation.moveSelection(command)
+            }
             return .handled
         }
+    }
+
+    private func moveUpdatesKeyboardSelection(delta: Int) {
+        let rows = renderedSelectableHeaders(in: presentationSnapshot)
+        guard !rows.isEmpty else { return }
+        let target: MessageHeader
+        if let currentID = navigation.selectedMessageID,
+           let index = rows.firstIndex(where: { $0.id == currentID }) {
+            let nextIndex = min(max(0, index + delta), rows.count - 1)
+            target = rows[nextIndex]
+        } else {
+            target = delta < 0 ? rows[rows.count - 1] : rows[0]
+        }
+        selectMessage(target, expandsSelectedMessage: false)
+    }
+
+    private func moveUpdatesKeyboardSelection(command: MessageListKeyCommand) {
+        let rows = renderedSelectableHeaders(in: presentationSnapshot)
+        guard !rows.isEmpty else { return }
+        let pageStep = MessageListKeyboardNavigation.pageStep
+        let currentIndex = navigation.selectedMessageID.flatMap { id in
+            rows.firstIndex(where: { $0.id == id })
+        }
+        let targetIndex: Int
+        switch command {
+        case .moveToStart:
+            targetIndex = 0
+        case .moveToEnd:
+            targetIndex = rows.count - 1
+        case .pageUp:
+            targetIndex = max(0, (currentIndex ?? 0) - pageStep)
+        case .pageDown:
+            targetIndex = min(rows.count - 1, (currentIndex ?? 0) + pageStep)
+        case .deleteSelection, .clearSelection:
+            return
+        }
+        selectMessage(rows[targetIndex], expandsSelectedMessage: false)
     }
 
     /// Moves the bulk selection, or the single selected message, to Trash
@@ -2632,7 +2689,8 @@ public struct MessageListView: View {
            composeActions.openDraft(header, sourceID: sourceID) {
             return
         }
-        guard backend.groupsMessagesIntoThreads,
+        guard allowsInlineThreadDisclosure,
+              backend.groupsMessagesIntoThreads,
               threadCount(for: header) > 1 else { return }
         withAnimation(.easeInOut(duration: 0.18)) {
             MessageListInlineExpansion.toggle(

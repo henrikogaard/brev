@@ -93,6 +93,80 @@ struct PeopleUpdatesSnapshotTests {
         )
     }
 
+    @Test("Expanded Updates bundle renders flat selectable child rows", arguments: ["light", "dark"])
+    func peopleUpdatesExpandedBundle(_ mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let source = MailSourceID(accountID: "acct", mailboxID: "box")
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let h1 = MessageHeader(
+            id: "m1",
+            threadID: "t1",
+            folderID: "inbox",
+            from: Correspondent(name: "Linear", email: "notifications@linear.app"),
+            subject: "BREV-42 assigned to you",
+            snippet: "Assigned in Q4 sprint",
+            date: now.addingTimeInterval(-600),
+            isRead: false
+        )
+        let h2 = MessageHeader(
+            id: "m2",
+            threadID: "t1",
+            folderID: "inbox",
+            from: Correspondent(name: "Linear", email: "notifications@linear.app"),
+            subject: "Re: BREV-42 assigned to you",
+            snippet: "Maya commented on your issue",
+            date: now.addingTimeInterval(-3600),
+            isRead: true
+        )
+        let bundle = UpdatesSenderBundle(
+            id: "notifications@linear.app",
+            senderName: "Linear",
+            senderEmail: "notifications@linear.app",
+            sourceID: source,
+            headers: [h1, h2]
+        )
+
+        let view = VStack(alignment: .leading, spacing: 0) {
+            UpdatesBundleRowView(
+                bundle: bundle,
+                isExpanded: true,
+                canArchive: true,
+                onToggleExpanded: {},
+                onArchiveBundle: {},
+                onMoveSenderToPeople: {}
+            ) {
+                ForEach(bundle.headers) { header in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: header.subject)
+                            .brevFont(.callout)
+                            .foregroundStyle(theme.textPrimary.color)
+                        Text(verbatim: header.snippet)
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textSecondary.color)
+                    }
+                    .padding(.vertical, BrevSpacing.xs)
+                }
+            }
+            .padding(.horizontal, BrevSpacing.md)
+            .padding(.vertical, BrevSpacing.xs)
+            Spacer()
+        }
+        .frame(width: 480, height: 220)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .environment(\.locale, Locale(identifier: "en_US"))
+
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 480, height: 220)),
+            named: "people-updates-expanded-bundle-" + mode,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     @Test("Subscriptions list shows sender count, last received, Unsubscribe, and Archive all", arguments: ["light", "dark"])
     func subscriptionsView(_ mode: String) {
         let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
