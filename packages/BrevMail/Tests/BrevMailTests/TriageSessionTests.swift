@@ -147,12 +147,9 @@ struct TriageSessionTests {
                     to: archive,
                     sourceID: item.sourceID
                 )
+                guard let receipt else { return nil }
                 return {
-                    if let receipt {
-                        _ = try await receipt.restore()
-                    } else {
-                        try await backend.move(messageIDs: [item.header.id], to: inbox, sourceID: item.sourceID)
-                    }
+                    try await receipt.restore()
                 }
             }
         )
@@ -314,28 +311,87 @@ struct TriageSessionTests {
                 to: archive,
                 sourceID: item.sourceID
             )
+            guard let receipt else { return nil }
             return {
-                if let receipt { _ = try await receipt.restore() }
+                try await receipt.restore()
             }
         }
         #expect(didArchive)
         #expect(session.currentItem?.header.id == secondID)
 
-        // 2. Skip second conversation
+        // 2. Dedicated reader navigation tracks Triage while main navigation stays intact
+        let readerNav = MailNavigationState()
+        session.syncReaderNavigation(readerNav)
+        #expect(readerNav.selectedMessageID == secondID)
+        #expect(readerNav.selectedSourceID == sourceID)
+        #expect(navigation.selectedMessageID == headers[1].id)
+
+        // 3. Skip second conversation
         session.skipCurrent(registeringUndoIn: undoQueue)
         #expect(session.currentItem?.header.id != secondID)
 
-        // 3. Undo reverses the skip back to the second conversation
+        // 4. Undo reverses the skip back to the second conversation
         let didUndoSkip = await undoQueue.undo()?.value ?? false
         #expect(didUndoSkip)
         #expect(session.currentItem?.header.id == secondID)
 
-        // 4. Exit restores the exact list position captured at start
-        let restored = session.returnPosition
-        #expect(restored.selectedSourceID == sourceID)
-        #expect(restored.selectedFolderID == inbox.id)
-        #expect(restored.selectedMessageID == headers[1].id)
+        // 5. Exit leaves the original mailbox navigation (folder, filter, selection) intact
+        session.cancelPreload()
+        #expect(navigation.selectedSourceID == sourceID)
+        #expect(navigation.selectedFolderID == inbox.id)
+        #expect(navigation.selectedMessageID == headers[1].id)
         #expect(firstID != secondID)
+    }
+
+    @Test("Archive Undo applies restored IMAP UIDs and drops stale preloaded bodies")
+    func archiveUndoRemapsRestoredIMAPIDs() async {
+        let h1 = Self.header(id: "INBOX:42", subject: "Original")
+        let h2 = Self.header(id: "INBOX:43", subject: "Next")
+        let undoQueue = UndoQueue(timeout: 30)
+        let session = TriageSession(
+            items: [
+                TriageItem(sourceID: Self.source, header: h1, threadHeaders: [h1]),
+                TriageItem(sourceID: Self.source, header: h2, threadHeaders: [h2]),
+            ],
+            returnPosition: TriageReturnPosition(
+                selectedSourceID: Self.source,
+                selectedFolderID: "INBOX",
+                selectedMessageID: "INBOX:42",
+                isUnifiedInboxSelected: false,
+                isSmartViewSelected: false
+            )
+        )
+
+        let archived = await session.archiveCurrent(undoQueue: undoQueue) { _ in
+            return { ["INBOX:42": "INBOX:73"] }
+        }
+        #expect(archived)
+        #expect(session.currentItem?.header.id == "INBOX:43")
+
+        let undone = await undoQueue.undo()?.value ?? false
+        #expect(undone)
+        #expect(session.currentItem?.header.id == "INBOX:73")
+        #expect(session.currentItem?.threadHeaders.map(\.id) == ["INBOX:73"])
+    }
+
+    @Test("Archive without a provider undo receipt skips registering a broken undo step")
+    func archiveWithoutReceiptDoesNotRegisterUndo() async {
+        let h1 = Self.header(id: "m1", subject: "One")
+        let undoQueue = UndoQueue(timeout: 30)
+        let session = TriageSession(
+            items: [TriageItem(sourceID: Self.source, header: h1, threadHeaders: [h1])],
+            returnPosition: TriageReturnPosition(
+                selectedSourceID: Self.source,
+                selectedFolderID: "inbox",
+                selectedMessageID: "m1",
+                isUnifiedInboxSelected: false,
+                isSmartViewSelected: false
+            )
+        )
+
+        let archived = await session.archiveCurrent(undoQueue: undoQueue) { _ in nil }
+        #expect(archived)
+        #expect(!undoQueue.canUndo)
     }
 
     @Test("Triage copy has Norwegian localizations")

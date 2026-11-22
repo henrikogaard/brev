@@ -2783,3 +2783,12 @@ private actor Store {
         }
     }
 }
+
+extension MockBackend: CachedMessageBodyProviding {
+    public func cachedBody(for messageID: MessageHeader.ID, sourceID: MailSourceID?) async -> MessageBody? {
+        if let sourceID {
+            return try? await body(for: messageID, sourceID: sourceID)
+        }
+        return try? await body(for: messageID)
+    }
+}

@@ -354,6 +354,7 @@ public struct BrevMailRootView: View {
     @State private var shouldRefreshAfterSheetDismissal = false
     @State private var undoQueue = UndoQueue()
     @State private var triageSession: TriageSession?
+    @State private var triageReaderNavigation = MailNavigationState()
     @State private var folderExportController = MailFolderExportController()
     @State private var showOfflineBanner = false
     @State private var outboxPendingCount = 0
@@ -1072,7 +1073,7 @@ public struct BrevMailRootView: View {
 
     private var mailRootCommandContextContent: some View {
         MailRootRenderStage { mailRootPresentationContent }
-            .focusedSceneValue(\.mailNavigation, navigation)
+            .focusedSceneValue(\.mailNavigation, triageSession == nil ? navigation : triageReaderNavigation)
             .focusedSceneValue(\.mailBackend, selectedBackend)
             .focusedSceneValue(\.mailFolders, folders)
             .focusedSceneValue(\.refreshSelectedMailFolder, mailRefreshAction)
@@ -1272,7 +1273,8 @@ public struct BrevMailRootView: View {
     private var mailTriageAction: MailTriageAction {
         MailTriageAction(
             isActive: triageSession != nil,
-            isAvailable: triageSession != nil || (!sidebarSourceSections.isEmpty && !isCommandMutationBlocked),
+            isAvailable: triageSession != nil
+                || (!sidebarSourceSections.isEmpty && !isCommandMutationBlocked && navigation.inlineReply == nil),
             toggle: {
                 if triageSession != nil {
                     exitTriage()
@@ -1350,7 +1352,7 @@ public struct BrevMailRootView: View {
                     backend: owner,
                     sourceID: item.sourceID,
                     mailboxLabel: sidebarSourceSections.first { $0.id == item.sourceID }?.mailbox.email,
-                    navigation: navigation,
+                    navigation: triageReaderNavigation,
                     isWorkBlocked: isCommandMutationBlocked || isReaderComposeBlocked,
                     allFolders: sourceFolders,
                     canFileLocally: localBackend != nil,
@@ -1362,7 +1364,7 @@ public struct BrevMailRootView: View {
                     backend: owner,
                     sourceID: item.sourceID,
                     header: item.header,
-                    navigation: navigation,
+                    navigation: triageReaderNavigation,
                     allFolders: sourceFolders,
                     isWorkBlocked: isMessageWorkBlocked || isReaderComposeBlocked,
                     isMutationWorkBlocked: isCommandMutationBlocked,
@@ -1375,10 +1377,13 @@ public struct BrevMailRootView: View {
                 )
             }
         }
+        .onChange(of: session.currentItem?.id) { _, _ in
+            session.syncReaderNavigation(triageReaderNavigation)
+        }
     }
 
     private func startTriage() async {
-        guard triageSession == nil else { return }
+        guard triageSession == nil, navigation.inlineReply == nil else { return }
         let returnPosition = TriageReturnPosition(
             selectedSourceID: navigation.selectedSourceID,
             selectedFolderID: navigation.selectedFolderID,
@@ -1394,13 +1399,13 @@ public struct BrevMailRootView: View {
                 ?? MailSourceID(accountID: selectedBackend.account.id, mailboxID: selectedBackend.account.id)
             entries = navigation.currentFolderHeaders.map { (fallbackSource, $0) }
         } else {
+            // Strictly cache-only: entering Triage never triggers unrequested
+            // provider network fetches (ADR-0006).
             for section in sidebarSourceSections {
                 let owner = backend(for: section.id)
                 guard let inbox = section.folders.first(where: { $0.role == .inbox }) else { continue }
                 if let cached = try? await owner.cachedMessageHeaders(in: inbox, sourceID: section.id), !cached.isEmpty {
                     entries.append(contentsOf: cached.map { (section.id, $0) })
-                } else if let page = try? await owner.messages(in: inbox, sourceID: section.id, pageToken: nil) {
-                    entries.append(contentsOf: page.headers.map { (section.id, $0) })
                 }
             }
             entries.sort { lhs, rhs in
@@ -1413,22 +1418,17 @@ public struct BrevMailRootView: View {
             entries: entries,
             workflowState: localMessageWorkflowStateBinding.wrappedValue
         )
-        triageSession = TriageSession(items: items, returnPosition: returnPosition)
+        let session = TriageSession(items: items, returnPosition: returnPosition)
+        session.syncReaderNavigation(triageReaderNavigation)
+        triageSession = session
     }
 
     private func exitTriage() {
         guard let session = triageSession else { return }
         session.cancelPreload()
-        let position = session.returnPosition
+        // Main `navigation` (saved searches, smart views, filters, and list
+        // selection) stayed untouched while Triage used `triageReaderNavigation`.
         triageSession = nil
-        if position.isUnifiedInboxSelected {
-            navigation.selectUnifiedInbox()
-        } else if !position.isSmartViewSelected,
-                  let folderID = position.selectedFolderID,
-                  let sourceID = position.selectedSourceID {
-            navigation.selectFolder(folderID, in: sourceID)
-        }
-        navigation.selectedMessageID = position.selectedMessageID
         navigation.requestReload()
     }
 
@@ -1448,12 +1448,9 @@ public struct BrevMailRootView: View {
                 to: archiveFolder,
                 sourceID: item.sourceID
             )
+            guard let receipt else { return nil }
             return {
-                if let receipt {
-                    _ = try await receipt.restore()
-                } else {
-                    try await owner.move(messageIDs: messageIDs, to: originalFolder, sourceID: item.sourceID)
-                }
+                try await receipt.restore()
             }
         }
         if succeeded {
@@ -1492,10 +1489,11 @@ public struct BrevMailRootView: View {
     private func preloadNextTriageItem(in session: TriageSession) {
         guard let next = session.nextItem else { return }
         let owner = backend(for: next.sourceID)
+        guard let cacheProvider = owner.extensionService(CachedMessageBodyProviding.self) else { return }
         let messageID = next.header.id
         let sourceID = next.sourceID
         session.schedulePreloadNext { _ in
-            try? await owner.body(for: messageID, sourceID: sourceID)
+            await cacheProvider.cachedBody(for: messageID, sourceID: sourceID)
         }
     }
 
@@ -1511,7 +1509,7 @@ public struct BrevMailRootView: View {
     private var mailMessageCommandActions: MailMessageCommandActions {
         MailMessageCommandActions(
             isPerformingMutation: activeCommandMutationRequest != nil,
-            isBlocked: isCommandMutationBlocked,
+            isBlocked: isCommandMutationBlocked || triageSession != nil,
             canFileLocally: localBackend != nil,
             toggleRead: { header in
                 await toggleRead(for: header)
@@ -2105,7 +2103,7 @@ public struct BrevMailRootView: View {
                 navigation.endSelection()
             },
             onAsk: selectedAIBackend == nil ? nil : { isMailContextColumnPresented = true },
-            onStartTriage: {
+            onStartTriage: navigation.inlineReply != nil ? nil : {
                 Task { await startTriage() }
             }
         )

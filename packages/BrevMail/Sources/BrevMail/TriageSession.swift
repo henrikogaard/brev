@@ -25,6 +25,44 @@ struct TriageItem: Identifiable, Equatable, Sendable {
     var id: SourceMessageID {
         SourceMessageID(sourceID: sourceID, messageID: header.id)
     }
+
+    /// Rebuilds the triage item after an IMAP Undo restores messages under new
+    /// UIDs, preserving all header fields while updating restored IDs.
+    func remapped(using idMap: [MessageHeader.ID: MessageHeader.ID]) -> TriageItem {
+        guard !idMap.isEmpty else { return self }
+        func remap(_ original: MessageHeader) -> MessageHeader {
+            guard let restoredID = idMap[original.id], restoredID != original.id else { return original }
+            let restoredThreadID = original.threadID == original.id ? restoredID : original.threadID
+            return MessageHeader(
+                id: restoredID,
+                threadID: restoredThreadID,
+                folderID: original.folderID,
+                from: original.from,
+                replyTo: original.replyTo,
+                to: original.to,
+                cc: original.cc,
+                bcc: original.bcc,
+                subject: original.subject,
+                snippet: original.snippet,
+                date: original.date,
+                isRead: original.isRead,
+                isFlagged: original.isFlagged,
+                isAnswered: original.isAnswered,
+                isForwarded: original.isForwarded,
+                hasAttachments: original.hasAttachments,
+                flagColor: original.flagColor,
+                messageID: original.messageID,
+                inReplyTo: original.inReplyTo,
+                references: original.references,
+                labels: original.labels
+            )
+        }
+        return TriageItem(
+            sourceID: sourceID,
+            header: remap(header),
+            threadHeaders: threadHeaders.map(remap)
+        )
+    }
 }
 
 /// Captures where the user was in the mailbox before entering Triage so
@@ -243,12 +281,22 @@ final class TriageSession {
         })
     }
 
+    /// Synchronizes Triage's dedicated reader navigation to the current item so
+    /// `MessageDetailView` accepts body loads without mutating the hidden list's
+    /// browsing state (#293).
+    func syncReaderNavigation(_ readerNavigation: MailNavigationState) {
+        guard let item = currentItem else { return }
+        readerNavigation.selectMessage(item.header, in: item.sourceID, headers: item.threadHeaders)
+    }
+
     /// Archives the current conversation through the caller's backend mutation,
-    /// removing it from the triage queue and registering a reversible undo action.
+    /// removing it from the triage queue and registering a reversible undo action
+    /// only when the provider returned an undo receipt.
     @discardableResult
     func archiveCurrent(
         undoQueue: UndoQueue,
-        performArchive: @MainActor (TriageItem) async throws -> (@Sendable () async throws -> Void)
+        performArchive: @MainActor (TriageItem) async throws
+            -> (@Sendable () async throws -> [MessageHeader.ID: MessageHeader.ID])?
     ) async -> Bool {
         guard !isPerformingAction, let item = currentItem else { return false }
         let removedIndex = currentIndex
@@ -263,16 +311,23 @@ final class TriageSession {
         items.remove(at: removedIndex)
         do {
             let undoBackend = try await performArchive(item)
-            let restoreItem: @MainActor @Sendable () -> Void = { [weak self] in
-                self?.restore(item, at: removedIndex)
+            if let undoBackend {
+                let restoreItem: @MainActor @Sendable ([MessageHeader.ID: MessageHeader.ID]) -> Void = { [weak self] idMap in
+                    guard let self else { return }
+                    let restored = item.remapped(using: idMap)
+                    if restored.id != item.id {
+                        preloadedBodies.removeValue(forKey: item.id)
+                    }
+                    restore(restored, at: removedIndex)
+                }
+                undoQueue.push(
+                    UndoableMutation(description: String(localized: "Archived", bundle: .module)) {
+                        let idMap = try await undoBackend()
+                        await restoreItem(idMap)
+                    },
+                    lease: lease
+                )
             }
-            undoQueue.push(
-                UndoableMutation(description: String(localized: "Archived", bundle: .module)) {
-                    try await undoBackend()
-                    await restoreItem()
-                },
-                lease: lease
-            )
             return true
         } catch {
             restore(item, at: removedIndex)

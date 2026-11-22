@@ -269,3 +269,10 @@ public protocol CardDAVContactSyncSupporting: AnyObject, Sendable {
     /// Injects the synced contact lookup provider once CardDAV is ready.
     func setContactLookupProvider(_ provider: (any ContactLookupProviding)?)
 }
+
+/// Returns a locally cached message body without performing any network fetch.
+/// Used by surfaces such as Triage preloading (#293, ADR-0006) so cache misses
+/// never trigger unrequested provider requests.
+public protocol CachedMessageBodyProviding: AnyObject, Sendable {
+    func cachedBody(for messageID: MessageHeader.ID, sourceID: MailSourceID?) async -> MessageBody?
+}

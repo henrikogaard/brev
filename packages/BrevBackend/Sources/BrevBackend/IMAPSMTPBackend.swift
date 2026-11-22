@@ -6092,3 +6092,9 @@ private actor IMAPOAuthCredentialRefreshCoordinator {
         return try await task.value
     }
 }
+
+extension IMAPSMTPBackend: CachedMessageBodyProviding {
+    public func cachedBody(for messageID: MessageHeader.ID, sourceID: MailSourceID?) async -> MessageBody? {
+        await cachedParsedBody(messageID: messageID)
+    }
+}
