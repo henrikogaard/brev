@@ -417,6 +417,35 @@ struct TriageSessionTests {
         #expect(readerNav.selectedHeader == nil)
     }
 
+    @Test("Restoring Unified Inbox preserves collection context when a source-owned message was open")
+    func restoreUnifiedInboxPreservesCollectionContext() {
+        let navigation = MailNavigationState()
+        let h1 = Self.header(id: "m1", folderID: "INBOX", subject: "Work note")
+        navigation.selectUnifiedInbox()
+        navigation.selectMessage(h1, in: Self.source, headers: [h1])
+        #expect(navigation.isUnifiedInboxSelected)
+        #expect(navigation.selectedCollectionFolderID == MailNavigationState.unifiedInboxFolderID)
+
+        // Simulate a notification opening a physical folder while Triage was active.
+        let otherSource = MailSourceID(accountID: "other", mailboxID: "primary")
+        navigation.selectFolder("SENT", in: otherSource)
+        #expect(!navigation.isUnifiedInboxSelected)
+
+        // Restoring returns to All Inboxes while keeping the original source-owned selection.
+        navigation.restoreUnifiedInbox(sourceID: Self.source, folderID: "INBOX", messageID: "m1")
+        #expect(navigation.isUnifiedInboxSelected)
+        #expect(navigation.selectedCollectionFolderID == MailNavigationState.unifiedInboxFolderID)
+        #expect(navigation.selectedSourceID == Self.source)
+        #expect(navigation.selectedFolderID == "INBOX")
+        #expect(navigation.selectedMessageID == "m1")
+
+        // Source-less All Inboxes restores without setting a collection or source.
+        navigation.restoreUnifiedInbox(sourceID: nil, folderID: MailNavigationState.unifiedInboxFolderID, messageID: nil)
+        #expect(navigation.isUnifiedInboxSelected)
+        #expect(navigation.selectedCollectionFolderID == nil)
+        #expect(navigation.selectedSourceID == nil)
+    }
+
     @Test("Triage copy has Norwegian localizations")
     func norwegianCopy() throws {
         #expect(TriagePresentation.title(remainingCount: 4, locale: Locale(identifier: "en")) == "Triage, 4 left")

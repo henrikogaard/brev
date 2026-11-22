@@ -1431,9 +1431,11 @@ public struct BrevMailRootView: View {
         // Restore browsing state if a reader context-menu action shifted
         // `navigation` away from Unified Inbox or the original folder during Triage.
         if ret.isUnifiedInboxSelected, !navigation.isUnifiedInboxSelected {
-            navigation.selectUnifiedInbox()
-            navigation.selectedSourceID = ret.selectedSourceID
-            navigation.selectedMessageID = ret.selectedMessageID
+            navigation.restoreUnifiedInbox(
+                sourceID: ret.selectedSourceID,
+                folderID: ret.selectedFolderID,
+                messageID: ret.selectedMessageID
+            )
         } else if !ret.isUnifiedInboxSelected, !ret.isSmartViewSelected,
                   navigation.selectedFolderID != ret.selectedFolderID || navigation.selectedSourceID != ret.selectedSourceID {
             navigation.selectFolder(ret.selectedFolderID, in: ret.selectedSourceID)
