@@ -2703,7 +2703,10 @@ public struct MessageListView: View {
             return true
         }
         guard navigation.bulkSelection.isEmpty, !isMutationActionBlocked,
-              let header = presentation.shortcutTarget(messageID: navigation.selectedMessageID, source: navigation.selectedSourceID),
+              let header = presentation.shortcutTarget(
+                  messageID: navigation.selectedMessageID,
+                  source: navigation.selectedSourceID
+              ),
               contextMenuPresentation(for: header).action(action)?.isEnabled == true else { return false }
         performRowMailAction(action, for: header)
         return true

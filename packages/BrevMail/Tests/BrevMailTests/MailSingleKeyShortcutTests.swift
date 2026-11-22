@@ -12,6 +12,7 @@
 
 #if os(macOS)
 import AppKit
+import BrevBackend
 @testable import BrevMail
 import Testing
 
@@ -92,12 +93,44 @@ struct MailSingleKeyShortcutTests {
         #expect(try MailSingleKeyShortcut.resolve(event(repeating: true), window: window, enabled: true, focused: true) == nil)
     }
 
+    @Test("reader navigation and message actions target only the displayed selection")
+    func readerRouting() {
+        let header = MessageHeader(id: "a", threadID: "t", folderID: "inbox", from: .init(email: "a@example.org"),
+                                   subject: "A", snippet: "", date: .now)
+        // The next header is in another conversation in the same folder.
+        let next = MessageHeader(id: "b", threadID: "u", folderID: "inbox", from: header.from,
+                                 subject: "B", snippet: "", date: .now)
+        let navigation = MailNavigationState(selectedMessageID: header.id, currentFolderHeaders: [header, next])
+        var actions: [MessageContextMenuAction] = []
+        func run(_ key: MailSingleKeyShortcut, header: MessageHeader?, allowed: Bool = true) -> Bool {
+            key.performInReader(navigation: navigation, header: header, sourceID: nil) { action, _ in
+                guard allowed else { return false }
+                actions.append(action)
+                return true
+            }
+        }
+        #expect(run(.archive, header: header))
+        #expect(!run(.delete, header: header, allowed: false))
+        #expect(run(.next, header: header))
+        #expect(navigation.selectedMessageID == next.id)
+        #expect(!run(.delete, header: header))
+        #expect(run(.previous, header: next))
+        navigation.bulkSelection = [header.id, next.id]
+        #expect(!run(.star, header: header))
+        #expect(actions == [.archive])
+    }
+
     @Test("tooltips name the single key only while the setting is on")
     func tooltipHints() throws {
         #expect(MailSingleKeyShortcut.archive.help("Archive", enabled: true) == "Archive (E)")
         #expect(MailSingleKeyShortcut.delete.help("Delete", enabled: true) == "Delete (#)")
         #expect(MailSingleKeyShortcut.snooze.help("Snooze", enabled: false) == "Snooze")
         let strings = try LocalizationCatalogTestSupport.loadCatalogStrings()
+        #expect(MailSingleKeyShortcut
+            .legend == "In the message list or reader: J next · K previous · E archive · R reply · S star · # delete · H snooze.")
+        let legendEntry = try #require(strings[MailSingleKeyShortcut.legend] as? [String: Any])
+        let legendNB = (legendEntry["localizations"] as? [String: Any])?["nb"] as? [String: Any]
+        #expect((legendNB?["stringUnit"] as? [String: Any])?["value"] as? String != nil)
         let entry = try #require(strings["%@ (%@)"] as? [String: Any])
         let nb = (entry["localizations"] as? [String: Any])?["nb"] as? [String: Any]
         #expect((nb?["stringUnit"] as? [String: Any])?["value"] as? String == "%1$@ (%2$@)")

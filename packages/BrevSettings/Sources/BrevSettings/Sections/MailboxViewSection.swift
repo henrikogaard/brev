@@ -301,7 +301,7 @@ struct MailboxViewSection: View {
                     symbolName: "keyboard",
                     title: String(localized: "Single-key shortcuts", bundle: .module),
                     subtitle: String(
-                        localized: "With the message list focused: E archive, R reply, S star, # delete, H snooze, J and K next and previous. Never while typing.",
+                        localized: "Use single-key shortcuts in the message list and reader. Shortcuts pause while you type.",
                         bundle: .module
                     ),
                     isOn: $singleKeyShortcuts

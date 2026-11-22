@@ -20,6 +20,9 @@ import SwiftUI
 /// The reader's empty state (#292): a calm overview of what needs you and
 /// what you are waiting on, in place of "No message selected".
 struct TodayPageView: View {
+    #if os(macOS)
+    @AppStorage(MailKeyboardPreferences.singleKeyShortcuts) private var showsKeyHints = true
+    #endif
     @Environment(\.brevTheme) private var theme
     @Environment(\.locale) private var locale
     @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = 28
@@ -110,6 +113,14 @@ struct TodayPageView: View {
                         )
                     }
                 }
+                #if os(macOS)
+                if showsKeyHints {
+                    Text(verbatim: MailSingleKeyShortcut.legend)
+                        .brevFont(.caption)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                #endif
             }
             .frame(maxWidth: 560, alignment: .leading)
             .padding(.horizontal, BrevSpacing.xl)

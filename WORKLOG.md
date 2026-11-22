@@ -1,5 +1,11 @@
 # Worklog
 
+## 2026-11-22 — Agent — #300 reader shortcuts and exact thread selection
+
+- A shortcut now acts on the message selected in the reader even when a collapsed parent represents it. The unified inbox also checks the account and mailbox before resolving a hidden child. Regression tests cover both inboxes.
+- The focused single-message and thread readers reuse their own context-menu dispatch and availability checks. Today lists the keys while enabled; the Settings description now mentions the reader.
+- Verification: reader routing and legend catalog tests added; Linux formatter, parse, catalog JSON, diff and ADR checks. Native builds and tests run on CI. Today and Mailbox View snapshot needs recording on macOS 26; no PNGs changed. Triage hints depend on #293.
+
 ## 2026-11-22 — Agent — #300 single-key mail shortcuts (slice 1)
 
 - Goal: Mac single keys for the focused message list, safe while typing, with a Settings switch.

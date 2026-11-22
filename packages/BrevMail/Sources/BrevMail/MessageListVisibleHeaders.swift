@@ -178,8 +178,8 @@ struct MessageListPresentationSnapshot {
     /// A collapsed row represents the selection visually, but shortcuts act on the reader's exact message.
     func shortcutTarget(messageID: MessageHeader.ID?, source: MailSourceID?) -> MessageHeader? {
         guard let messageID, let rowID = selectedRowID(selectedMessageID: messageID, selectedSourceID: source,
-                                                      expandedThreadIDs: []),
-              let index = visibleIndex(for: rowID) else { return nil }
+                                                       expandedThreadIDs: []),
+            let index = visibleIndex(for: rowID) else { return nil }
         let row = headers[index]
         return row.id == messageID ? row : headersByThreadID[row.threadID]?.first { $0.id == messageID }
     }

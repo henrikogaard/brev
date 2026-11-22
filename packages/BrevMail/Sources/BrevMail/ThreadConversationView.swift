@@ -273,6 +273,15 @@ public struct ThreadConversationView: View {
             .scrollContentBackground(.hidden)
             #if os(macOS)
                 .scrollClipDisabled()
+                .modifier(ReaderSingleKeyShortcutModifier { key in
+                    let target = visibleHeaders.first { $0.id == navigation.selectedMessageID }
+                    return key.performInReader(navigation: navigation, header: target, sourceID: sourceID) { action, header in
+                        guard readerCommandAction != nil, cardMenuPresentation(for: header).action(action)?.isEnabled == true,
+                              !isCardActionBlocked(action) else { return false }
+                        performCardMenuAction(action, for: header)
+                        return true
+                    }
+                })
             #endif
                 .onAppear {
                     let defaultID = ThreadConversationExpansionPolicy.expandedID(

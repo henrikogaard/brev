@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevSettings
 import Foundation
 
@@ -38,6 +39,13 @@ enum MailSingleKeyShortcut: String {
     /// The key as printed on the keycap.
     var keyLabel: String { rawValue.uppercased() }
 
+    static var legend: String {
+        String(
+            localized: "In the message list or reader: J next · K previous · E archive · R reply · S star · # delete · H snooze.",
+            bundle: .module
+        )
+    }
+
     /// Tooltip text naming the key, or the plain title when single keys are off.
     func help(_ title: String, enabled: Bool) -> String {
         guard enabled else { return title }
@@ -51,6 +59,24 @@ import SwiftUI
 import WebKit
 
 extension MailSingleKeyShortcut {
+    /// Embedded readers act only on the live selection in the same source.
+    /// A detached reader has a fixed message and no adjacent-message context.
+    @MainActor
+    func performInReader(
+        navigation: MailNavigationState?, header: MessageHeader?, sourceID: MailSourceID?,
+        perform: (MessageContextMenuAction, MessageHeader) -> Bool
+    ) -> Bool {
+        guard let header else { return false }
+        if let navigation {
+            guard navigation.selectedSourceID == sourceID, navigation.selectedMessageID == header.id,
+                  navigation.presentedSheet == nil, navigation.bulkSelection.isEmpty else { return false }
+        }
+        if let menuAction { return perform(menuAction, header) }
+        guard let navigation else { return false }
+        if self == .previous { navigation.selectPreviousHeader() } else { navigation.selectNextHeader() }
+        return true
+    }
+
     /// Matches the produced character. Modifier shortcuts belong to menus.
     static func match(_ characters: String, modifiers: NSEvent.ModifierFlags) -> Self? {
         let flags = modifiers.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock)
@@ -92,6 +118,19 @@ struct MailSingleKeyShortcutModifier: ViewModifier {
             ) else { return .ignored }
             return perform(command) ? .handled : .ignored
         }
+    }
+}
+
+/// Gives the reader its own Tab stop without claiming focus from the list or its editors.
+struct ReaderSingleKeyShortcutModifier: ViewModifier {
+    @FocusState private var focused: Bool
+    let perform: (MailSingleKeyShortcut) -> Bool
+
+    func body(content: Content) -> some View {
+        content.focusable()
+            .focused($focused)
+            .focusEffectDisabled()
+            .modifier(MailSingleKeyShortcutModifier(focused: focused, perform: perform))
     }
 }
 #endif

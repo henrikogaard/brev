@@ -3144,7 +3144,10 @@ struct UnifiedInboxListView: View {
             return true
         }
         guard selectedItemIDs.isEmpty, !isMutationActionBlocked, let action = shortcut.menuAction,
-              let item = presentationSnapshot.shortcutTarget(messageID: navigation.selectedMessageID, source: navigation.selectedSourceID),
+              let item = presentationSnapshot.shortcutTarget(
+                  messageID: navigation.selectedMessageID,
+                  source: navigation.selectedSourceID
+              ),
               contextMenuPresentation(for: item).action(action)?.isEnabled == true else { return false }
         performRowMailAction(action, for: item)
         return true

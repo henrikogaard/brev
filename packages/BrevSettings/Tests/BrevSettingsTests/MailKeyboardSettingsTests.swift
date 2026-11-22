@@ -18,7 +18,7 @@ import Testing
 @MainActor
 struct MailKeyboardSettingsTests {
     private static let title = "Single-key shortcuts"
-    private static let subtitle = "With the message list focused: E archive, R reply, S star, # delete, H snooze, J and K next and previous. Never while typing."
+    private static let subtitle = "Use single-key shortcuts in the message list and reader. Shortcuts pause while you type."
 
     @Test("the Mac-only row is searchable on Mac and hidden on iPhone")
     func search() {

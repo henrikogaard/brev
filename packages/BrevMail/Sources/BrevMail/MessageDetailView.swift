@@ -227,94 +227,104 @@ public struct MessageDetailView: View {
         .onChange(of: stripTrackingPixels) { _, _ in
             refreshRenderedHTMLForCurrentTrackingPreference()
         }
-        .task {
-            // This view sits in the detail column from launch on macOS /
-            // iPadOS, so its web view can warm before the first open rather
-            // than at it — leaving only document load + paint on the
-            // measured `ui.body.visible` path.
-            if usesRichHTMLBodyRenderer {
-                htmlWebViewStore.prewarm()
-            }
-        }
-        .focusedSceneValue(\.mailPrintExportActions, printExportActions)
-        .sheet(item: $attachmentController.pendingDriveSave, onDismiss: {
-            attachmentController.pendingDriveSave?.payload.clear()
-            attachmentController.pendingDriveSave = nil
-        }) { pending in
-            if let driveFeature {
-                GoogleDriveSaveSheet(
-                    accountID: backend.account.id,
-                    feature: driveFeature,
-                    payload: pending.payload,
-                    onSaved: { _ in
-                        attachmentController.saveToast = String(
-                            localized: "Saved to Google Drive",
-                            bundle: .module
-                        )
-                    },
-                    onCancel: {
-                        attachmentController.pendingDriveSave = nil
-                    }
-                )
-            }
-        }
-        .confirmationDialog(
-            pendingListUnsubscribeAction?.confirmationTitle ?? "Confirm unsubscribe",
-            isPresented: $isShowingListUnsubscribeConfirmation,
-            titleVisibility: .visible
-        ) {
-            if let action = pendingListUnsubscribeAction {
-                Button(action.confirmButtonTitle) {
-                    confirmListUnsubscribeAction()
+        #if os(macOS)
+            .modifier(ReaderSingleKeyShortcutModifier { key in
+                key.performInReader(navigation: navigation, header: header, sourceID: sourceID) { action, target in
+                    guard readerCommandAction != nil, readerMenuPresentation(for: target).action(action)?.isEnabled == true,
+                          !isReaderActionBlocked(action) else { return false }
+                    performReaderMenuAction(action, for: target)
+                    return true
+                }
+            })
+        #endif
+            .task {
+                // This view sits in the detail column from launch on macOS /
+                // iPadOS, so its web view can warm before the first open rather
+                // than at it — leaving only document load + paint on the
+                // measured `ui.body.visible` path.
+                if usesRichHTMLBodyRenderer {
+                    htmlWebViewStore.prewarm()
                 }
             }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                clearPendingListUnsubscribeAction()
+            .focusedSceneValue(\.mailPrintExportActions, printExportActions)
+            .sheet(item: $attachmentController.pendingDriveSave, onDismiss: {
+                attachmentController.pendingDriveSave?.payload.clear()
+                attachmentController.pendingDriveSave = nil
+            }) { pending in
+                if let driveFeature {
+                    GoogleDriveSaveSheet(
+                        accountID: backend.account.id,
+                        feature: driveFeature,
+                        payload: pending.payload,
+                        onSaved: { _ in
+                            attachmentController.saveToast = String(
+                                localized: "Saved to Google Drive",
+                                bundle: .module
+                            )
+                        },
+                        onCancel: {
+                            attachmentController.pendingDriveSave = nil
+                        }
+                    )
+                }
             }
-        } message: {
-            if let action = pendingListUnsubscribeAction {
-                Text(action.confirmationMessage)
+            .confirmationDialog(
+                pendingListUnsubscribeAction?.confirmationTitle ?? "Confirm unsubscribe",
+                isPresented: $isShowingListUnsubscribeConfirmation,
+                titleVisibility: .visible
+            ) {
+                if let action = pendingListUnsubscribeAction {
+                    Button(action.confirmButtonTitle) {
+                        confirmListUnsubscribeAction()
+                    }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    clearPendingListUnsubscribeAction()
+                }
+            } message: {
+                if let action = pendingListUnsubscribeAction {
+                    Text(action.confirmationMessage)
+                }
             }
-        }
-        .alert(
-            pendingSuspiciousLink?.confirmationTitle ?? "Open suspicious link?",
-            isPresented: suspiciousLinkAlertBinding,
-            presenting: pendingSuspiciousLink
-        ) { warning in
-            Button(warning.openButtonTitle) {
-                openConfirmedSuspiciousLink(warning)
+            .alert(
+                pendingSuspiciousLink?.confirmationTitle ?? "Open suspicious link?",
+                isPresented: suspiciousLinkAlertBinding,
+                presenting: pendingSuspiciousLink
+            ) { warning in
+                Button(warning.openButtonTitle) {
+                    openConfirmedSuspiciousLink(warning)
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    clearPendingSuspiciousLink()
+                }
+            } message: { warning in
+                Text(warning.confirmationMessage)
             }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                clearPendingSuspiciousLink()
+            .onChange(of: isWorkBlocked) { oldValue, newValue in
+                guard MessageDetailWorkResumePolicy.shouldReloadMessage(
+                    wasBlocked: oldValue,
+                    isBlocked: newValue,
+                    hasPendingReload: needsReloadAfterWorkUnblocks
+                ) else { return }
+                needsReloadAfterWorkUnblocks = false
+                Task { await reload() }
             }
-        } message: { warning in
-            Text(warning.confirmationMessage)
-        }
-        .onChange(of: isWorkBlocked) { oldValue, newValue in
-            guard MessageDetailWorkResumePolicy.shouldReloadMessage(
-                wasBlocked: oldValue,
-                isBlocked: newValue,
-                hasPendingReload: needsReloadAfterWorkUnblocks
-            ) else { return }
-            needsReloadAfterWorkUnblocks = false
-            Task { await reload() }
-        }
-        .onChange(of: header?.id) { _, _ in
-            resetHTMLRenderingModeOverride()
-        }
-        .quickLookPreview($attachmentController.quickLookURL)
-        .sheet(item: $participantContactSheet) { sheet in
-            participantContactSheetContent(sheet)
-        }
+            .onChange(of: header?.id) { _, _ in
+                resetHTMLRenderingModeOverride()
+            }
+            .quickLookPreview($attachmentController.quickLookURL)
+            .sheet(item: $participantContactSheet) { sheet in
+                participantContactSheetContent(sheet)
+            }
         #if os(iOS)
-        .sheet(isPresented: Binding(
-            get: { exportShareURL != nil },
-            set: { if !$0 { exportShareURL = nil } }
-        )) {
-            if let url = exportShareURL {
-                MailShareSheet(activityItems: [url])
+            .sheet(isPresented: Binding(
+                get: { exportShareURL != nil },
+                set: { if !$0 { exportShareURL = nil } }
+            )) {
+                if let url = exportShareURL {
+                    MailShareSheet(activityItems: [url])
+                }
             }
-        }
         #endif
     }
 
