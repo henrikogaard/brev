@@ -104,6 +104,7 @@ repository checks.
 | 91 | [Isolated macOS mock validation](0091-isolated-macos-mock-validation.md) | Accepted |
 | 92 | [Opt-in content permissions for isolated mock QA](0092-isolated-mock-content-qa.md) | Accepted |
 | 93 | [Reopening reply, forward and server-sourced Drafts](0093-reopening-reply-and-server-drafts.md) | Accepted |
+| 94 | [On-device AI with Apple Intelligence and user-downloaded local models](0094-on-device-ai-apple-intelligence-and-local-models.md) | Proposed |
 
 ## Conventions
 

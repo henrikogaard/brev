@@ -24,6 +24,7 @@
 - Changes: `MessageRemoteContentDetector.strippingLikelyTrackers` removes `<img>` elements the existing tracker test flags (1x1, hidden, tracker-style URL) plus a bundled `MessageKnownTrackerHosts` list. `HTMLBodyLoadPlan` strips when remote content is allowed; the attributed import path strips too. New `MessageTrackerNote` ("Blocked N trackers") in the reader and thread cards. PRIVACY.md updated; no network call added (the list ships with the app).
 - Red/green: `MessageTrackerStripTests` failed to compile before; 26 cases pass after. A reviewer pass found over-stripping (`opacity:0.8`, `utm_`, `/tracks/`), a missed `data-src`/entity pixel and an unstripped thread-card import path; each got a red test first, then the fix. Tracker URL matching is now path-only. PR review (Devin, Codex) added: whole-segment URL matching (`beacon-hill.jpg` kept), sized hidden images kept as responsive variants, inline-CSS 1px pixels removed, a body whose only tag was a pixel stays HTML, and the note also shows in native (non-rich) mode; each with a red test first. Snapshot of the note still to record on the devbox (unreachable).
 - Skipped: the Privacy setting toggle (slice 2); devbox app run (SSH timed out earlier).
+
 ## 2026-11-21 — Agent — #302 AI Writer nb strings
 
 - Goal: devbox QA showed "Replace Draft" and the Write menu in English in the nb UI.
@@ -208,6 +209,7 @@
 - Verification: TodayDigestTests (9) and both snapshot tests pass; verifier pass
   on the first cut (unsigned BrevMacOS build, lint, catalog, build.yml); today
   light/dark snapshots recorded on macOS 27.0.1.
+
 ## 2026-11-18 — Agent — #306 sidebar refresh, slice 1
 
 - Goal: first slice of the calmer main window (#306), modelled on the Glassmail
@@ -368,27 +370,32 @@
 - Red/green: original focused run failed on ten missing references including two orphaned legacy rows; restored identities passed those existing PNGs unchanged while all eight new references failed without recording. Recorded only the four new reader and four Mono Grey cases (expected record-mode exit 65), visually inspected all eight plus both old helper references, then non-recording `xcodebuild test` passed 16 tests in `ReaderMeasureSnapshotTests`, `MessageListRowSnapshotTests` and `MessageBodyStyleTests` on macOS 26.5.2 / Xcode 26.6. The new PNGs show narrow wrapping, wide leading alignment in light/dark, doubled typography and Mono Grey state inputs. Disabled-selected and active-selected are pixel-identical in the current row implementation; the test title no longer falsely promises all states are visually distinct. No existing PNG was re-recorded or modified.
 - Targeted SwiftFormat 0.58.7 / strict SwiftLint 0.63.0, workflow structural regression check (red before, green after), SwiftLint coverage self-test, ADR check and `git diff --check` pass. Recording classifier accepts the real eight recording assertions and rejects injected unexpected parameterized failures, root/action errors, incomplete and empty results. Full lint found nine inherited cache/navigation/profile files besides the now-fixed reader indentation. `scripts/test.sh --self-tests-only` stops at `test-build-run-env.sh:224`: the local-smoke runner's generated `main.swift:92:39` cannot find `FileBackedIMAPMailboxHeaderCache`. Both wrapper and exact underlying compilation failure reproduce on an untouched archive of immediate parent `6f93873cfb3a2e206f98e20b3d875d0a61627a44`. No cache/smoke-script changes here.
 - Remaining: parent integration and hosted CI/review settlement, including artifact-upload behavior and runner-specific snapshot comparison; parent owns the inherited lint and local-smoke cache API repair. Synthetic image review is not live macOS/iOS/accessibility acceptance. Documentation sweep: this test/workflow plus whitespace-only repair changes no shipped behavior, protected API/config, privacy, packaging or architecture, so no additional CHANGELOG/ADR/README/PRIVACY/AGENTS/release-doc edit is required.
+
 ## 2026-10-29 — Agent — #269 full implementation PR map
 
 - All planned slice outcomes now have open PRs: #270 baseline, #271/#272 transactional storage/dual-write, #273 reads/migration, #274 selective maintenance/retirement, #275 profiling harness, #276 navigation candidate, #277 reader visuals, and existing #265 Settings. Updated the shared plan's states and detailed slice-8 contract.
 - Review/fix pass remains separate from implementation delivery. Profiling harness is not a captured trace, candidate is not a demonstrated optimization, recorded PNGs are not accepted baselines, and #265 still conflicts with main. Host testing remains deferred; no merge/release/issue closure.
 - Documentation-only check: diff and local links before push. No rerun of unchanged app suites is claimed as new evidence.
+
 ## 2026-10-29 — Agent — #269 reader measure and default-theme review coverage
 
 - Slice 7 on `feature/reader-visual-consistency`, based on #276, targeting `feature/navigation-projection`, eventual main. Added one shared native plain-text measure, Detail quoted-text/Thread alignment, and a scoped bare-text HTML wrapper. Sender HTML, print blocks and compose remain unchanged.
 - Added style/HTML ownership assertions, four reader snapshots and Mono Grey unread/selected/inactive/disabled variants. Existing contrast contracts remain authoritative; no arbitrary palette change. Added macOS-26 review-image recording CI and the required older-mac skip/dedicated snapshot-suite registration. Recorded images are review candidates, not accepted baselines.
 - Diff/ADR checks before push. Compilation, lint/format, snapshot recording and image review pending the requested all-PR review pass. No host-native test, locally observed red run or rendered-pass claim. No icons/new external calls. Design and CHANGELOG updated; privacy/README/AGENTS need no change.
+
 ## 2026-10-29 — Agent — #269 navigation projection candidate
 
 - Slice 6 draft on `feature/navigation-projection`, based on #275; target `feature/selection-profiling`, eventual main. Staged per the request to open all implementation PRs before review, not as a measured performance claim.
 - Existing presentation cache now owns reader navigation context too; its key includes backend grouping support. Asynchronous non-current buffers keep their prior derivation. Repeated selection with an unchanged retained buffer preserves the lazy ID index and avoids observable collection reassignment. Existing source, child/parent, generation and cancellation semantics remain unchanged.
 - Added selection/buffer-refresh assertions and updated the opt-in workload to exercise the retained projection. Compilation, trace comparison, frame/RSS and rendered checks remain pending. No locally observed TDD red run or host-native test. The fresh optimized trace must support this candidate before acceptance; revise it if it does not.
 - Updated design and CHANGELOG. No provider/network/privacy/package/public-design-system change; other docs do not need changes. Review/fix and CI follow after all PRs are open; no merge/release.
+
 ## 2026-10-29 — Agent — #269 synthetic optimized selection profiling
 
 - Slice 5 on `feature/selection-profiling`, based on #274, targeting `feature/imap-selective-cache`, eventual main. Added an opt-in Release-only workload over the real navigation projection/selection model, separate signposts/timings and a CI Time Profiler capture script/job.
 - Raw traces stay in ephemeral runner storage; only synthetic aggregate timings enter logs. This does not claim full SwiftUI frame/idle-memory acceptance. Space commands recovered, but local:mac-12gb still lacks Xcode; host tests remain deferred.
 - Verification before push: shell syntax and diff/ADR checks. Swift compilation and actual profile capture await CI; no profile result or bottleneck claim yet. Instrumentation-only change, no TDD red/green claim. No application defaults, external calls, release, account data or versions changed; README/CHANGELOG/privacy docs need no update. Shared design updated.
+
 ## 2026-10-29 — Agent — #269 selective cache consumers and writer retirement
 
 - Branch `feature/imap-selective-cache`, based on #273; target `feature/imap-sqlite-reads`, eventual main. Implementation-first draft stack continues per Henrik's instruction.
@@ -860,6 +867,7 @@
 - Changes: the `release-signing` action takes `widget-profile-base64`, verifies its team and certificate fingerprint, and exports `BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER`; the Release and Nightly workflows pass `BREV_MACOS_WIDGET_PROFILE_{STABLE,NIGHTLY}_BASE64`; release.md gets the portal and secret steps. At Henrik's request the Sparkle key was rotated: the new private key and public key (`bmBu…`) are set in `release-signing`. The original public key (`aFO3…`, embedded in 0.1.0) has no recoverable private half.
 - Verification: actionlint, `scripts/test-developer-id-release-config.sh`, `git diff --check`.
 - Next (Henrik): portal work to create the widget App IDs and profiles and regenerate the app profiles with App Groups; upload the four profiles; re-dispatch Release for `v0.2.0`.
+
 ## 2026-10-07 — Devin — Author name correction
 
 - Henrik's name is "Henrik Øgård": fixed LICENSE, NOTICE, llms.txt and the ADR-0009 account-holder line. Apple signing-identity strings in ADR-0009, docs/release.md and scripts/release-archive.sh are left as-is because they must match the certificate common name.
@@ -1138,6 +1146,7 @@
   (no provider behavior changed).
 - Handoff: PR to `main` for review; no merge, release, or issue closeout
   without Henrik's authorization.
+
 ## 2026-09-30 — Agent — Folder Sync empty scope (follow-up handoff item 2)
 
 - Goal: reproduce and fix the settings-assessment observation that Folder Sync
@@ -1158,6 +1167,7 @@
 - Handoff: macOS native re-check and the zero-account UI state remain
   unexercised natively (the mock backend always has accounts). No tracking
   issue existed for this observation.
+
 ## 2026-09-30 — Agent — Standard folder-name localization (PR #165)
 
 - Goal: the mailbox sidebar showed English standard folder names inside
@@ -1193,6 +1203,7 @@
   they are pre-existing environment-versus-baseline drift, not this branch.
 - Handoff: provider-native labels (for example Gmail "STARRED") and custom
   provider folders intentionally keep their provider names.
+
 ## 2026-09-30 — Codex — fix/gmail-reauth-recovery
 
 - Goal: stop a native Gmail (gmail-api) account from being sent to the IMAP
@@ -1235,6 +1246,7 @@
 - Documentation sweep: CHANGELOG Unreleased `### Fixed` entry and the String
   Catalog updated. No architecture, network, consent, preference-key, or
   agent-workflow change, so no ADR, README, PRIVACY, or AGENTS update.
+
 ## 2026-09-30 — Codex — fix/gmail-delta-tolerate-deleted-message (PR #163)
 
 - Goal: stop Gmail delta sync from wedging permanently when a changed message
@@ -1453,6 +1465,7 @@
 - **Handoff:** Henrik reviews; implementation PR follows acceptance.
 - **Verified:** docs-only — ADR-0083 file added; index rows 0081-0083 all
   backed by ADR files on main. Lint/format not run (no code touched).
+
 ## 2026-09-28 — Agent — WidgetKit mail widget (Phase B, ADR-0083)
 
 - **Goal:** first glanceable surface — Home Screen / Notification
@@ -1502,6 +1515,7 @@ Verified: `swift test --package-path packages/BrevWidgets` 5/5 pass;
 lint.sh + format.sh clean; `tuist generate` reproduces the committed
 xcodeproj.
 Skipped: on-device widget render (needs signed run; deferred).
+
 ## 2026-09-28 — Agent — Store-protection launch cost fix (Codex #145)
 
 - `fix/store-file-protection`: the migration walk over
@@ -1607,6 +1621,7 @@ Skipped: on-device widget render (needs signed run; deferred).
   fields lack accessible names; 23 snapshot mismatches all categorized
   as genuine post-merge UI drift awaiting one baseline-refresh PR.
 - **Handoff:** nav dead-zone fix in progress; baseline refresh to follow.
+
 ## 2026-09-28 — Agent — VoiceOver nav dead zone + composer naming
 
 - **Goal:** Phase A findings — the "Sync interrupted" rail rendered
@@ -1623,6 +1638,7 @@ Skipped: on-device widget render (needs signed run; deferred).
   UITextView/NSTextView get "Message body" labels.
 - **Verified:** macOS + iOS builds green; lint/format clean. Device
   re-verify queued to the testing agent.
+
 ## 2026-09-28 — Agent — fix/deferred-draft-retry-wait
 
 Goal: deflake `deferred remote draft discovery retries after a foreground
@@ -1638,6 +1654,7 @@ deferredRemoteDraftDiscoveryRetriesAfterForegroundRead` — pass.
 Skipped: full BrevBackend suite (timing-only change).
 Next: merge before the other open PRs so subsequent CI runs stop
 hair-triggering.
+
 ## 2026-09-28 — Agent — iOS snapshot baseline refresh (Phase A drift)
 
 - **Goal:** clear the 23 iOS snapshot mismatches the release-readiness
@@ -1652,6 +1669,7 @@ hair-triggering.
 - **Note:** record flag must reach the sim-hosted runner as
   `TEST_RUNNER_RECORD_SNAPSHOTS=YES` (xcodebuild strips the prefix into
   the test process); plain `RECORD_SNAPSHOTS=YES` does not propagate.
+
 ## 2026-09-28 — Agent — ADR-0084 (offline PIM write queue)
 
 - **Goal:** decide how PIM writes behave offline — the one remaining
@@ -1664,6 +1682,7 @@ hair-triggering.
 - **Verification:** docs-only; no code changed.
 - **Handoff:** Henrik reviews; implementation (PIMPendingWriteQueue +
   editor offline path + Outbox surfacing) follows on acceptance.
+
 ## 2026-09-28 — Agent — Check Mail intent triggers real refresh (Codex)
 
 - `feature/app-intents`: Codex found "Check Mail" was a no-op when Brev
@@ -1702,6 +1721,7 @@ hair-triggering.
   Shortcuts UI) — deferred to the Phase A device leg.
 - **Handoff:** watch CI; the `.onChange` handoff drain covers
   already-foreground launches, `.task` drain covers cold launch.
+
 ## 2026-09-28 — Agent — Google PIM source reconnect + 403 copy
 
 - **Goal:** fix two findings from the #147 device verify: "Reconnect…"
@@ -1718,6 +1738,7 @@ hair-triggering.
   tasks) still map every 403 to authenticationRequired — same copy gap
   on post-discovery syncs; scoped to discovery where failures surface
   first.
+
 ## 2026-09-28 — Agent — l10n(nb): first non-English locale
 
 - **Goal:** Phase E — ship Norwegian Bokmål as Brev's second language.
@@ -1733,6 +1754,7 @@ hair-triggering.
 - **Handoff:** native-speaker review pass — Henrik owns the wording;
   especially mail-domain choices (Kopi til/Blindkopi, Utboks,
   smartvisning, oppfølgingspåminnelse).
+
 ## 2026-09-27 — Agent — iOS mail polish (N-M7/P3/P4)
 
 - `fix/ios-mail-polish`: M7 — `brevBottomBarScrollInset()` reserves
@@ -1881,6 +1903,7 @@ hair-triggering.
 - **Handoff:** device re-verify on the sim — rotate portrait/landscape,
   confirm Done is reachable on all three covers.
   calendar defect; iOS VoiceOver row 5.1 still untested.
+
 ## 2026-09-27 — Agent — N-H2 PIM live-refresh on source changes
 
 - **Goal:** UI/UX review N-H2 — macOS Calendar/Contacts/Tasks windows
@@ -1896,6 +1919,7 @@ hair-triggering.
 - **Handoff:** device re-verify — open Calendar window, connect stub
   source in Settings, expect rows without reopen.
   calendar defect; iOS VoiceOver row 5.1 still untested.
+
 ## 2026-09-27 — Agent — N-M1 landscape reader back button covered
 
 - **Goal:** UI/UX review M1 — on iPhone landscape the floating
@@ -1908,6 +1932,7 @@ hair-triggering.
   BUILD SUCCEEDED; lint+format clean.
 - **Handoff:** device re-verify — landscape reader → tap back chevron.
   calendar defect; iOS VoiceOver row 5.1 still untested.
+
 ## 2026-09-27 — Agent — N-M2 dangling demo-account record after removal
 
 - **Goal:** UI/UX review M2 — removing the last account left a persisted
@@ -1926,6 +1951,7 @@ hair-triggering.
 - **Handoff:** device re-verify — sign in demo → remove → relaunch →
   clean onboarding, no alert/banner.
   calendar defect; iOS VoiceOver row 5.1 still untested.
+
 ## 2026-09-27 — Agent — N-M3 add-mail sheet hides connect failure
 
 - **Goal:** UI/UX review M3 — a failed IMAP connect (~80 s timeout)
@@ -2469,6 +2495,7 @@ hair-triggering.
   session 82de84bd); D3 re-verified as already-fixed by #101.
 - **Handoff:** D2 (stale-href 412-forever) remains the one open
   calendar defect; iOS VoiceOver row 5.1 still untested.
+
 ## 2026-09-25 — Agent — AI sidebar assessment + chip/composer polish (#100)
 
 - Assessed the AI sidebar live on macOS mock (sender card, Actions,
@@ -3215,6 +3242,7 @@ the sheet's content laid out wider than the 320–430pt viewport.
 - Real-app rendered verification — the Mac was locked for GUI automation
   and simctl cannot dismiss the system URL-open dialog; maintainer QA on
   #49 covers open/dismiss on device.
+
 ## 2026-09-22 — Agent — Issue #51 (reader stuck at Loading message)
 
 ### Goal
@@ -3784,6 +3812,7 @@ The editor UI is the next slice.
 ### Next
 
 - #7 slice 2: the event editor UI on this write path.
+
 ## 2026-09-21 — Agent — Issue #6 slice 4 (day/week/month grids)
 
 ### Goal
@@ -4010,6 +4039,7 @@ failure. Item sync and browsing views land in later slices.
   pre-existing macOS-27 renderer drift.
 - Next: #8 slice 2 browsing UI (list/detail/group filter) and
   compose-autocomplete migration; live-provider evidence stays the
+
 ## 2026-09-21 — Agent — Issue #6 slice 2 (event sync engine + cache)
 
 - Goal: give connected calendar sources a real sync pass per ADR-0072 —
@@ -5413,6 +5443,7 @@ buttons, and package-aware localization.
   pre-existing macOS-27 renderer drift.
 - Next: #8 slice 2 browsing UI (list/detail/group filter) and
   compose-autocomplete migration; live-provider evidence stays the
+
 ## 2026-09-21 — Agent — Issue #6 slice 2 (event sync engine + cache)
 
 - Goal: give connected calendar sources a real sync pass per ADR-0072 —
@@ -7577,3 +7608,10 @@ buttons, and package-aware localization.
 - Changes: added `SignInCodePanel.swift`, `SignInCodeSurfaces.swift`, `SignInCodePanelTests.swift`, `SignInCodePanelSnapshotTests.swift` (+ 6 light/dark PNG baselines); wired `AppSession`, `BrevMailRootView`, `MessageDetailView`, `TodayPageView`, `NotificationSection`, `SettingsView`, `apps/macOS/Sources/BrevApp.swift`, `apps/iOS/Sources/BrevApp.swift`, and `.github/workflows/build.yml`; added Norwegian catalog strings; updated `ADRs/0088-sign-in-code-and-link-panel.md` (with Proposed iOS amendment), `ADRs/0006-telemetry-and-privacy.md`, `PRIVACY.md`, and `CHANGELOG.md`.
 - Verification: `swift test --package-path packages/BrevMail --filter 'SignInCode|MailStatusCopyLocalizationTests|TodayPageSnapshotTests'` (all unit, localization, and snapshot suites passed), `swift test --package-path packages/BrevSettings --filter 'SignInCodeSettingsTests'`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check`, and `Localizable.xcstrings` JSON check.
 - Skipped: Gmail E1–E5 live trust evidence (blocked on disposable Gmail fixture and per-send maintainer approval), live multi-app focus/Escape runtime QA, and iOS notification implementation (blocked until Proposed ADR-0088 iOS amendment is accepted).
+
+## 2026-11-22 — Issue #304 / ADR-0094 (Proposed)
+
+- Goal: draft Proposed ADR-0094 covering on-device AI via Apple Intelligence (`FoundationModels`, macOS 26+) and the opt-in downloaded local model path, with zero implementation code until accepted.
+- Changes: added `ADRs/0094-on-device-ai-apple-intelligence-and-local-models.md` (`Status: Proposed`) and updated `ADRs/README.md`. Documentation-only PR, so TDD does not apply.
+- Verification: `scripts/check-adr-required.sh origin/main`, `git diff --check`.
+- Handoff: awaiting Henrik's review and acceptance before implementing Slice 1 (`AppleIntelligenceAIBackend`) or Slice 2 (local weight download + ADR-0006 / `PRIVACY.md` entries).
