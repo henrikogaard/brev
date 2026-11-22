@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — #297 per-component snooze rule selection
+
+- Goal: avoid rescanning matching conversation rules for every candidate during projection.
+- Changes: select the newest matching conversation rule once per component, then compare it with each candidate's indexed legacy rule; no behavior or abstraction change.
+- Verification: the actual repository projection, visibility, and wake test files passed in the temporary Linux SwiftPM harness using production workflow-state/parser/projection/mutation/visibility/wake sources: `Test run with 49 tests in 3 suites passed after 0.052 seconds.` Pinned SwiftFormat reported `0/1 files formatted` for the changed projection source.
+- Limits: native SwiftUI typechecking/tests remain unverified on Linux. No CI was started or rerun; native CI remains pending after review.
+
 ## 2026-11-22 — Agent — #297 projection performance/final corrections
 
 - Goal: bound existing conversation projection work and reuse it across visibility, wake ordering, and Unified Snoozed consumers; correct the source-revocation merge and test argument-order defects.

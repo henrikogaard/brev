@@ -229,8 +229,9 @@ struct LocalMessageWorkflowConversationProjection: Sendable {
                 }
                 let matchingConversationRules = component.rfcIdentifiers.first
                     .map { conversationRulesByIdentifierRoot[findIdentifier($0)] ?? [] } ?? []
+                let newestConversationRule = Self.newest(matchingConversationRules)
                 for candidateKey in component.candidateKeys {
-                    let matching = matchingConversationRules + (legacySnoozes[candidateKey.sourceMessageID].map { [$0] } ?? [])
+                    let matching = [newestConversationRule, legacySnoozes[candidateKey.sourceMessageID]].compactMap { $0 }
                     if let newest = Self.newest(matching) {
                         effectiveSnoozes[candidateKey] = newest
                     }
