@@ -1,3 +1,10 @@
+## 2026-11-22 — Agent — PR #324 local-folder conversation snooze
+
+- Goal: let the conversation snooze cache scan read headers from local folders.
+- Changes: `LocalMailBackend` now advertises and returns complete, read-only cached headers from its Maildir store after validating the local account, mailbox, and folder. Added coverage for full-folder results beyond one page, scope rejection, and local-folder conversation scanning. Updated the Unreleased changelog because this makes local-folder snoozing work without network access.
+- Verification: pinned SwiftFormat reports 0/3 files require formatting; `swiftc -frontend -parse` parses all three changed Swift files; diff and ADR-required checks pass. Native tests were not run on this Linux host; the prior BrevMail package attempt stopped before test execution because SwiftUI is unavailable, and native CI is required for these targets.
+- Handoff: commit locally on `feature/snooze-wake-order`; do not push until the review round is complete.
+
 # Worklog
 
 ## 2026-11-22 — Agent — #297 CI lint correction

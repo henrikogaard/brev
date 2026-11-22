@@ -82,6 +82,49 @@ struct LocalMailBackendTests {
         #expect(header.id.hasPrefix("\(folder.id):"))
     }
 
+    @Test("cached headers return the complete local folder and reject foreign scope")
+    func cachedHeadersAreCompleteAndScoped() async throws {
+        let (backend, _) = Self.makeBackend()
+        try await backend.connect()
+        let folder = try await backend.createFolder(name: "Saved", parentID: nil)
+        let messages = (0 ..< 201).map { index in
+            ImportedMessage(
+                headers: [
+                    ("From", "Alice <alice@example.com>"),
+                    ("Subject", "Cached \(index)"),
+                    ("Message-ID", "<cached-\(index)@example.com>"),
+                ],
+                bodyData: Data("body \(index)".utf8)
+            )
+        }
+        let summary = try await backend.importMessages(messages, into: folder)
+        #expect(summary.importedCount == 201)
+        let sourceID = MailSourceID(accountID: backend.account.id, mailboxID: LocalMailBackend.accountID)
+
+        let headers = try await backend.cachedMessageHeaders(in: folder, sourceID: sourceID)
+
+        #expect(headers.count == 201)
+        #expect(headers.allSatisfy { $0.folderID == folder.id })
+        await #expect(throws: (any Error).self) {
+            try await backend.cachedMessageHeaders(
+                in: folder,
+                sourceID: MailSourceID(accountID: "foreign", mailboxID: LocalMailBackend.accountID)
+            )
+        }
+        await #expect(throws: (any Error).self) {
+            try await backend.cachedMessageHeaders(
+                in: Folder(id: folder.id, name: "Foreign", role: .custom),
+                sourceID: sourceID
+            )
+        }
+        await #expect(throws: (any Error).self) {
+            try await backend.cachedMessageHeaders(
+                in: folder,
+                sourceID: MailSourceID(accountID: backend.account.id, mailboxID: "foreign")
+            )
+        }
+    }
+
     @Test("body and rawSource return stored bytes")
     func bodyAndSource() async throws {
         let (backend, _) = Self.makeBackend()

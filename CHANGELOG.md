@@ -4,6 +4,8 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Conversation snoozing now includes messages stored in local folders, using
+  complete local headers without network access (#297).
 - Snoozing a message now covers its RFC-linked conversation using cached mail,
   including newly discovered replies; unrelated messages are not grouped by
   subject or provider thread identifiers (#297).

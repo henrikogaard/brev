@@ -41,6 +41,45 @@ struct LocalMessageWorkflowConversationCacheTests {
         #expect(candidates.allSatisfy { $0.sourceID == source })
     }
 
+    @Test("local folder headers feed the conversation snooze cache scan")
+    func localFolderHeadersFeedConversationScan() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("local-snooze-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let backend = LocalMailBackend(store: LocalMaildirStore(rootURL: root))
+        try await backend.connect()
+        let inboxFolder = try await backend.createFolder(name: "Inbox", parentID: nil)
+        let archiveFolder = try await backend.createFolder(name: "Archive", parentID: nil)
+        let anchorID = try await backend.importRaw(Data("""
+        From: sender@example.org
+        Subject: Reply
+        Message-ID: <reply@example.org>
+        In-Reply-To: <parent@example.org>
+
+        Reply body
+        """.utf8), into: inboxFolder)
+        let parentID = try await backend.importRaw(Data("""
+        From: sender@example.org
+        Subject: Original
+        Message-ID: <parent@example.org>
+
+        Original body
+        """.utf8), into: archiveFolder)
+        let anchor = try #require(try await backend.messages(in: inboxFolder, pageToken: nil).headers.first)
+        let source = MailSourceID(accountID: backend.account.id, mailboxID: LocalMailBackend.accountID)
+
+        let candidates = try await LocalMessageWorkflowConversationCache.candidates(
+            backend: backend,
+            sourceID: source,
+            folders: [inboxFolder, archiveFolder],
+            anchors: [anchor],
+            isCurrent: { true }
+        )
+
+        #expect(anchor.id == anchorID)
+        #expect(candidates.contains { $0.header.id == parentID && $0.sourceID == source })
+    }
+
     @Test("an uncached anchor with a duplicate provider ID in another folder is retained")
     func uncachedAnchorUsesFolderAwareIdentity() async throws {
         let source = MailSourceID(accountID: account.id, mailboxID: "personal")
