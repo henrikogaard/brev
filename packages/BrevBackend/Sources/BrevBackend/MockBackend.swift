@@ -1780,8 +1780,8 @@ private actor Store {
     }
 
     func resume() throws {
+        guard !isPurged else { throw Self.storageError }
         try reloadJournalRecords()
-        isPurged = false
         isPaused = false
         deliverDueScheduledSends()
         startWorkerIfNeeded(restart: true)
@@ -2108,6 +2108,7 @@ private actor Store {
     }
 
     private func reloadJournalRecords() throws {
+        guard !isPurged else { throw Self.storageError }
         guard let journal else { return }
         do {
             let records = try journal.load()
@@ -2148,6 +2149,7 @@ private actor Store {
     }
 
     func purgePersistentState() throws {
+        guard !isPurged else { return }
         stopWorker()
         try journal?.purge()
         isPaused = true
@@ -3185,19 +3187,24 @@ private actor Store {
         let sender = try sender(mailboxID: mailboxID)
         var saved = draft
         saved.remoteID = saved.remoteID ?? "draft-\(saved.id)"
+        let projectionDate: Date
         if let canceled = journalRecords.last(where: {
             $0.sourceID.mailboxID == mailboxID && $0.draftID == saved.id && $0.state == .canceled
         }) {
             let attachmentRecords = try Self.journalAttachments(for: saved, in: data(mailboxID: mailboxID))
-            _ = try transactJournal { records in
+            projectionDate = try transactJournal { records in
                 guard let index = records.firstIndex(where: { $0.recordID == canceled.recordID }) else {
                     throw ScheduledSendEditingError.notFound
                 }
-                if records[index].draft != saved { records[index].draftProjectionDate = now() }
+                if records[index].draft != saved || records[index].draftProjectionDate == nil {
+                    records[index].draftProjectionDate = now()
+                }
                 records[index].draft = saved
                 records[index].attachments = attachmentRecords
-                return ()
+                return records[index].draftProjectionDate ?? now()
             }
+        } else {
+            projectionDate = now()
         }
         let event = try updateData(mailboxID: mailboxID) { data -> MailEvent in
             let draftsFolderID = Self.ensureDraftsFolderID(in: &data)
@@ -3220,7 +3227,7 @@ private actor Store {
                     bcc: draft.bcc,
                     subject: draft.subject,
                     snippet: Self.snippet(from: draft.htmlBody),
-                    date: Date(),
+                    date: projectionDate,
                     isRead: true,
                     hasAttachments: !draft.attachmentIDs.isEmpty
                 )

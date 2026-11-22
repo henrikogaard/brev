@@ -533,6 +533,18 @@ struct MockScheduledSendTests {
         let (canceledHeaders, _) = try await reopened.messages(in: reopenedDrafts, sourceID: Self.sourceA, pageToken: nil)
         let canceled = try #require(canceledHeaders.first { $0.id == queued.id })
         #expect(canceled.date == Self.now.addingTimeInterval(50000))
+
+        var editedCanceledDraft = try #require(try await reopened.draft(for: "projection-date", sourceID: Self.sourceA))
+        editedCanceledDraft.htmlBody = "<p>saved after cancel</p>"
+        _ = try await reopened.save(draft: editedCanceledDraft, sourceID: Self.sourceA)
+        let (savedCanceledHeaders, _) = try await reopened.messages(
+            in: reopenedDrafts,
+            sourceID: Self.sourceA,
+            pageToken: nil
+        )
+        let savedCanceled = try #require(savedCanceledHeaders.first { $0.id == queued.id })
+        #expect(savedCanceled.date == canceled.date)
+
         try await reopened.setFlagged(true, for: [canceled.id], sourceID: Self.sourceA)
         _ = try await reopened.send(
             draft: Draft(id: "unrelated-after-cancel", scheduledFor: Self.now.addingTimeInterval(60000)),
@@ -554,7 +566,7 @@ struct MockScheduledSendTests {
             sourceID: Self.sourceA,
             pageToken: nil
         )
-        #expect(try #require(restoredCanceledHeaders.first { $0.id == queued.id }).date == canceled.date)
+        #expect(try #require(restoredCanceledHeaders.first { $0.id == queued.id }).date == savedCanceled.date)
     }
 
     @Test("persistent writes fail closed before accepting a schedule")
@@ -570,6 +582,42 @@ struct MockScheduledSendTests {
         await #expect(throws: (any Error).self) { try await backend.send(draft: draft, sourceID: Self.sourceA) }
         #expect(scheduler.pendingScheduledSends().isEmpty)
         #expect(try Data(contentsOf: directory) == Data([1]))
+    }
+
+    @Test("a purged Mock cannot reconnect or mutate the next login journal")
+    func purgedStoreCannotAffectFreshLoginJournal() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let oldBackend = Self.backend(persistenceDirectory: directory)
+        _ = try await oldBackend.send(
+            draft: Draft(id: "old-login", scheduledFor: Self.now.addingTimeInterval(3600)),
+            sourceID: Self.sourceA
+        )
+        try await oldBackend.purgePersistentState()
+
+        let freshBackend = Self.backend(persistenceDirectory: directory)
+        _ = try await freshBackend.send(
+            draft: Draft(id: "fresh-login", scheduledFor: Self.now.addingTimeInterval(3600)),
+            sourceID: Self.sourceA
+        )
+        let freshScheduler = try #require(freshBackend.extensionService(ScheduledSendManaging.self))
+        let freshScheduleID = try #require(freshScheduler.pendingScheduledSends().first?.id)
+
+        await #expect(throws: (any Error).self) { try await oldBackend.connect() }
+        await #expect(throws: (any Error).self) {
+            try await oldBackend.send(
+                draft: Draft(id: "stale-send", scheduledFor: Self.now.addingTimeInterval(7200)),
+                sourceID: Self.sourceA
+            )
+        }
+        await #expect(throws: (any Error).self) {
+            try await oldBackend.save(draft: Draft(id: "stale-save"), sourceID: Self.sourceA)
+        }
+        try await oldBackend.purgePersistentState()
+
+        let restored = Self.backend(persistenceDirectory: directory)
+        let restoredScheduler = try #require(restored.extensionService(ScheduledSendManaging.self))
+        #expect(restoredScheduler.pendingScheduledSends().map(\.id) == [freshScheduleID])
     }
 
     @Test("corrupt journal storage is not overwritten")
@@ -1054,7 +1102,7 @@ private final class MockScheduledSendClock: @unchecked Sendable {
 
     var now: Date {
         readCounter.recordRead()
-        lock.withLock { value }
+        return lock.withLock { value }
     }
 
     func advance(to value: Date) {

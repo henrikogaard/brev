@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — Issue #297 / PR #325 Mock purge and Draft projection corrections
+
+- Goal: make successful Mock purge terminal for its Store and keep canceled-Draft live and restored projection dates consistent.
+- Changes: reject resume/reload after purge, make repeated purge a no-op, and use the persisted canceled-Draft projection date (or injected clock for ordinary saves) when building the live header. Added fresh-login isolation and saved-canceled-date regressions; added the explicit clock getter return.
+- Verification: targeted SwiftFormat, Swift parse, diff, and ADR checks. Native tests were not rerun; the known Linux `PDFKit` import failure occurs before compilation.
+- Handoff: local commit only on `feature/compose-later-action`; do not push before review.
+
 ## 2026-11-22 — Agent — Issue #297 / PR #325 Outbox context ordering
 
 - Goal: prevent duplicate Outbox lifecycle callbacks from invalidating the active load generation.
