@@ -13484,6 +13484,28 @@
           }
         }
       }
+    },
+    "Single-key shortcuts": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hurtigtaster med én tast"
+          }
+        }
+      }
+    },
+    "With the message list focused: E archive, R reply, S star, # delete, H snooze, J and K next and previous. Never while typing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Med meldingslisten i fokus: E arkiverer, R svarer, S stjernemerker, # sletter, H utsetter, J og K går til neste og forrige. Aldri mens du skriver."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -436,6 +436,7 @@ struct UnifiedInboxListView: View {
                     .focusable()
                     .focused($listKeyboardFocus)
                     .focusEffectDisabled()
+                    .modifier(MailSingleKeyShortcutModifier(focused: listKeyboardFocus, perform: performSingleKeyShortcut))
                     .onKeyPress(.upArrow) {
                         listKeyboardFocus = true
                         selectAdjacentItem(forward: false)
@@ -1773,6 +1774,29 @@ struct UnifiedInboxListView: View {
         }
     }
 
+    private func performRowMailAction(_ action: MessageContextMenuAction, for item: UnifiedInboxItem) {
+        switch action {
+        case .toggleFlag:
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
+            Task { await setFlagged(!item.header.isFlagged, for: [item]) }
+        case .toggleSnooze:
+            if isSnoozed(item) {
+                clearSnooze(items: [item])
+            } else {
+                pendingSnoozeItems = [item]
+            }
+        case .reply:
+            selectMessage(item)
+            composeActions.reply(item.header, sourceID: item.sourceID)
+        case .archive:
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
+            Task { await archive(item) }
+        case .delete:
+            pendingDeleteItemID = item.id
+        default: break
+        }
+    }
+
     @ViewBuilder
     private func messageContextMenuButton(
         _ presentation: MessageContextMenuActionPresentation,
@@ -1803,19 +1827,14 @@ struct UnifiedInboxListView: View {
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .toggleFlag:
             Button {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
-                Task { await setFlagged(!item.header.isFlagged, for: [item]) }
+                performRowMailAction(.toggleFlag, for: item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .toggleSnooze:
             Button {
-                if isSnoozed(item) {
-                    clearSnooze(items: [item])
-                } else {
-                    pendingSnoozeItems = [item]
-                }
+                performRowMailAction(.toggleSnooze, for: item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -1833,8 +1852,7 @@ struct UnifiedInboxListView: View {
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .reply:
             Button {
-                selectMessage(item)
-                composeActions.reply(item.header, sourceID: item.sourceID)
+                performRowMailAction(.reply, for: item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -1857,8 +1875,7 @@ struct UnifiedInboxListView: View {
             .disabled(!presentation.isEnabled)
         case .archive:
             Button {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
-                Task { await archive(item) }
+                performRowMailAction(.archive, for: item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -1918,7 +1935,7 @@ struct UnifiedInboxListView: View {
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .delete:
             Button(role: .destructive) {
-                pendingDeleteItemID = item.id
+                performRowMailAction(.delete, for: item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -3117,6 +3134,21 @@ struct UnifiedInboxListView: View {
         if items.indices.contains(nextIndex) {
             selectMessage(items[nextIndex], clearsBulkSelection: false)
         }
+    }
+
+    /// Single-key mail actions with the list focused (#300).
+    private func performSingleKeyShortcut(_ shortcut: MailSingleKeyShortcut) -> Bool {
+        guard navigation.presentedSheet == nil else { return false }
+        if shortcut == .previous || shortcut == .next {
+            selectAdjacentItem(forward: shortcut == .next)
+            return true
+        }
+        guard selectedItemIDs.isEmpty, !isMutationActionBlocked, let action = shortcut.menuAction,
+              let item = keyboardNavigableItems.first(where: {
+                  $0.sourceID == navigation.selectedSourceID && $0.header.id == navigation.selectedMessageID
+              }), contextMenuPresentation(for: item).action(action)?.isEnabled == true else { return false }
+        performRowMailAction(action, for: item)
+        return true
     }
 
     /// Return activates the selected row like a click: drafts reopen in

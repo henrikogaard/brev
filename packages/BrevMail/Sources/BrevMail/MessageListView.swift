@@ -1332,6 +1332,9 @@ public struct MessageListView: View {
             .focusable()
             .focused($listKeyboardFocus)
             .focusEffectDisabled()
+            .modifier(MailSingleKeyShortcutModifier(focused: listKeyboardFocus) { shortcut in
+                performSingleKeyShortcut(shortcut, selectedRowID: selectedRowID, presentation: presentation)
+            })
             .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
                 listKeyboardFocus = true
                 let delta = press.key == .upArrow ? -1 : 1
@@ -1754,6 +1757,28 @@ public struct MessageListView: View {
         }
     }
 
+    private func performRowMailAction(_ action: MessageContextMenuAction, for header: MessageHeader) {
+        switch action {
+        case .toggleFlag:
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
+            Task { await toggleFlag(for: header) }
+        case .toggleSnooze:
+            if isSnoozed(header) {
+                clearSnooze(headers: [header])
+            } else {
+                pendingSnoozeHeaders = [header]
+            }
+        case .reply:
+            composeActions.reply(header, sourceID: sourceID)
+        case .archive:
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
+            Task { await archiveRow(header: header) }
+        case .delete:
+            pendingDeleteHeaderID = header.id
+        default: break
+        }
+    }
+
     @ViewBuilder
     private func messageContextMenuButton(
         _ presentation: MessageContextMenuActionPresentation,
@@ -1791,19 +1816,14 @@ public struct MessageListView: View {
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .toggleFlag:
             Button {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
-                Task { await toggleFlag(for: header) }
+                performRowMailAction(.toggleFlag, for: header)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .toggleSnooze:
             Button {
-                if isSnoozed(header) {
-                    clearSnooze(headers: [header])
-                } else {
-                    pendingSnoozeHeaders = [header]
-                }
+                performRowMailAction(.toggleSnooze, for: header)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -1821,7 +1841,7 @@ public struct MessageListView: View {
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .reply:
             Button {
-                composeActions.reply(header, sourceID: sourceID)
+                performRowMailAction(.reply, for: header)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -1842,8 +1862,7 @@ public struct MessageListView: View {
             .disabled(!presentation.isEnabled)
         case .archive:
             Button {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
-                Task { await archiveRow(header: header) }
+                performRowMailAction(.archive, for: header)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -1910,7 +1929,7 @@ public struct MessageListView: View {
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .delete:
             Button(role: .destructive) {
-                pendingDeleteHeaderID = header.id
+                performRowMailAction(.delete, for: header)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -2669,6 +2688,27 @@ public struct MessageListView: View {
             selectedID: navigation.selectedMessageID,
             order: visibleRowIDs
         ))
+    }
+
+    /// Single-key mail actions with the list focused (#300).
+    private func performSingleKeyShortcut(
+        _ shortcut: MailSingleKeyShortcut,
+        selectedRowID: MessageHeader.ID?,
+        presentation: MessageListPresentationSnapshot
+    ) -> Bool {
+        guard navigation.presentedSheet == nil else { return false }
+        guard let action = shortcut.menuAction else {
+            // J and K follow the plain arrow keys exactly.
+            collapseBulkSelectionToCursor()
+            if shortcut == .previous { navigation.selectPreviousHeader() } else { navigation.selectNextHeader() }
+            return true
+        }
+        let candidates = presentation.headers + presentation.headersByThreadID.values.joined()
+        guard navigation.bulkSelection.isEmpty, !isMutationActionBlocked,
+              let header = candidates.first(where: { $0.id == selectedRowID }),
+              contextMenuPresentation(for: header).action(action)?.isEnabled == true else { return false }
+        performRowMailAction(action, for: header)
+        return true
     }
 
     /// Command-A with the list focused.

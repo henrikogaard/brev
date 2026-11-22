@@ -16803,6 +16803,17 @@
           }
         }
       }
+    },
+    "%@ (%@)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ (%2$@)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

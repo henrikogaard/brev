@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — #300 single-key mail shortcuts (slice 1)
+
+- Goal: Mac single keys for the focused message list, safe while typing, with a Settings switch.
+- Changes: new `MailSingleKeyShortcut` matches the produced character (layout-produced `#` with Shift or Option, never `Shift+3`) and resolves an event only when the setting is on, the list owns SwiftUI focus, the event belongs to the key window with no sheet, and the first responder is not an `NSText`/`NSTextField` or inside a `WKWebView`. `MessageListView` and `UnifiedInboxListView` route keys through the same row-action paths their context menus use (J/K mirror the arrow keys). `MailKeyboardPreferences.singleKeyShortcuts` (BrevSettings, device-local, default on) backs a Mac-only Mailbox View toggle and settings search. Reader toolbar tooltips append the key while enabled. nb catalog entries in BrevMail and BrevSettings.
+- Red/green: `MailSingleKeyShortcutTests` and `MailKeyboardSettingsTests` were written first and failed to compile on missing symbols; native runs are on CI (Linux cannot run AppKit tests).
+- Skipped: no XCUITest target exists; the AppKit test types into a real `ComposeRichTextView` and `NSSearchField` instead. Reader-pane focus, the ⌘K palette, and Today/Triage hints are later slices. The macOS 26 `MailboxViewSection` snapshot needs re-recording for the new row.
+
 ## 2026-11-22 — Agent — #297 attachment restoration test compatibility
 
 - The hosted selection-profile build caught two restoration-test assertions still calling the old pre-send persistence policy. Both now pass the follow-up and remote-ID state of the restored draft while retaining the upload assertions. Audited all Swift call sites; formatting and parsing checked on Linux, native tests via CI.

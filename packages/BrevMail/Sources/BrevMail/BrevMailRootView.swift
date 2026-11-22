@@ -401,6 +401,7 @@ public struct BrevMailRootView: View {
     @State private var isInitialMailboxSelectionPresented = false
     @AppStorage(MailProfileStorage.storageKey) private var customProfileStorage = ""
     @AppStorage("mail.profiles.activeID.v1") private var activeProfileID = MailProfile.allMailboxesID
+    @AppStorage(MailKeyboardPreferences.singleKeyShortcuts) private var singleKeyShortcutsEnabled = true
     @AppStorage(MailboxSourcePreferencesStorage.storageKey) private var mailboxSourcePreferencesData = Data()
     @AppStorage(FolderVisibilityPreferencesStorage.storageKey) private var folderVisibilityPreferencesData = Data()
     @AppStorage(FolderAliasPreferencesStorage.storageKey) private var folderAliasPreferencesData = Data()
@@ -3349,7 +3350,10 @@ public struct BrevMailRootView: View {
                         }
                         .disabled(!canPresentCompose())
                         .accessibilityLabel(String(localized: "Reply", bundle: .module))
-                        .help(String(localized: "Reply", bundle: .module))
+                        .help(MailSingleKeyShortcut.reply.help(
+                            String(localized: "Reply", bundle: .module),
+                            enabled: showsSingleKeyHints
+                        ))
                     } else {
                         Button {
                             presentReply(to: header)
@@ -3358,7 +3362,10 @@ public struct BrevMailRootView: View {
                         }
                         .disabled(!canPresentCompose())
                         .accessibilityLabel(String(localized: "Reply", bundle: .module))
-                        .help(String(localized: "Reply", bundle: .module))
+                        .help(MailSingleKeyShortcut.reply.help(
+                            String(localized: "Reply", bundle: .module),
+                            enabled: showsSingleKeyHints
+                        ))
                     }
                     #else
                     Button {
@@ -3368,7 +3375,10 @@ public struct BrevMailRootView: View {
                     }
                     .disabled(!canPresentCompose())
                     .accessibilityLabel(String(localized: "Reply", bundle: .module))
-                    .help(String(localized: "Reply", bundle: .module))
+                    .help(MailSingleKeyShortcut.reply.help(
+                        String(localized: "Reply", bundle: .module),
+                        enabled: showsSingleKeyHints
+                    ))
                     #endif
 
                     if MailRootDetailToolbarPolicy.showsExtendedResponseActions(
@@ -3409,7 +3419,10 @@ public struct BrevMailRootView: View {
                     }
                     .disabled(folder(role: .archive) == nil || !canStartCommandMutation())
                     .accessibilityLabel(String(localized: "Archive", bundle: .module))
-                    .help(String(localized: "Archive", bundle: .module))
+                    .help(MailSingleKeyShortcut.archive.help(
+                        String(localized: "Archive", bundle: .module),
+                        enabled: showsSingleKeyHints
+                    ))
 
                     Button {
                         Task { await trash(header: header) }
@@ -3418,7 +3431,10 @@ public struct BrevMailRootView: View {
                     }
                     .disabled(!canStartCommandMutation())
                     .accessibilityLabel(String(localized: "Delete", bundle: .module))
-                    .help(String(localized: "Delete", bundle: .module))
+                    .help(MailSingleKeyShortcut.delete.help(
+                        String(localized: "Delete", bundle: .module),
+                        enabled: showsSingleKeyHints
+                    ))
 
                     #if os(macOS)
                     if MailRootDetailToolbarPolicy.showsFilingActions(
@@ -3443,7 +3459,7 @@ public struct BrevMailRootView: View {
                         }
                         .disabled(isMessageWorkBlocked || navigation.presentedSheet != nil)
                         .accessibilityLabel(snoozeMenuTitle(for: header))
-                        .help(snoozeMenuTitle(for: header))
+                        .help(MailSingleKeyShortcut.snooze.help(snoozeMenuTitle(for: header), enabled: showsSingleKeyHints))
                     }
                     #endif
 
@@ -3458,7 +3474,9 @@ public struct BrevMailRootView: View {
                         }
                         .disabled(!canStartCommandMutation())
                         .accessibilityLabel(MessageCommandPresentation.flagToggleTitle(for: header))
-                        .help(MessageCommandPresentation.flagToggleTitle(for: header))
+                        .help(MailSingleKeyShortcut.star.help(
+                            MessageCommandPresentation.flagToggleTitle(for: header), enabled: showsSingleKeyHints
+                        ))
                     } else {
                         Menu {
                             #if os(macOS)
@@ -4306,6 +4324,15 @@ public struct BrevMailRootView: View {
             commandMutationID: activeCommandMutationRequest?.id,
             composeCompletionID: activeComposeCompletionRequest?.id
         )
+    }
+
+    /// Toolbar tooltips name the Mac single-key shortcut while the setting is on (#300).
+    private var showsSingleKeyHints: Bool {
+        #if os(macOS)
+        singleKeyShortcutsEnabled
+        #else
+        false
+        #endif
     }
 
     private var isMessageWorkBlocked: Bool {
