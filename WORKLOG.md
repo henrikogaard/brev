@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — #297 CI lint correction
+
+- Goal: clear the new PR #324 lint failure without changing loader behavior.
+- Changes: placed the nested `else` with its matching closing brace in `UnifiedInboxListView.swift`.
+- Evidence: lint job `137080640329` reported `Statement Position Violation` at line 2147; `git blame` attributes that line to `917eda9`, and the feature diff shows it was introduced on this branch. The review-comments and reviews streams contain no events; the only issue comment is the existing Devin monitoring-control bot comment (7068561468), with no review reply requested.
+- Local checks: targeted SwiftFormat lint (`0/1 files require formatting`) and Swift parse pass. Local SwiftLint could not start because the pinned binary requires GLIBC 2.38 while this Ubuntu 22.04 host has GLIBC 2.35. The pre-fix head finished with 22 passed, 1 failed, and 0 pending. Its native BrevMail test job passed 2,435 package tests, 6 ContactsAccessPolicy tests, and 1 release-mode test; both macOS and iOS build checks passed. The lint correction is local; CI for its pushed head is pending.
+
 ## 2026-11-22 — Agent — #297 per-component snooze rule selection
 
 - Goal: avoid rescanning matching conversation rules for every candidate during projection.

@@ -2150,8 +2150,11 @@ struct UnifiedInboxListView: View {
         pageCursors = [:]
         if let firstError {
             let status = MessageListPresentation.partialLoadErrorStatus(for: firstError)
-            if items.isEmpty { errorMessage = MessageListPresentation.loadErrorMessage(for: firstError) }
-            else { partialLoadErrorStatus = status }
+            if items.isEmpty {
+                errorMessage = MessageListPresentation.loadErrorMessage(for: firstError)
+            } else {
+                partialLoadErrorStatus = status
+            }
         } else {
             errorMessage = nil
             partialLoadErrorStatus = nil
