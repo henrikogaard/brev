@@ -126,7 +126,7 @@ struct MockScheduledSendTests {
                     sizeBytes: metadata.sizeBytes,
                     isInline: metadata.isInline,
                     contentID: metadata.contentID,
-                    resource: metadata.resource
+                    resource: firstAttachmentID
                 ),
                 data: attachment.data,
                 draftID: attachment.draftID
@@ -162,6 +162,7 @@ struct MockScheduledSendTests {
         let sentBBody = try await backend.body(for: sentBHeader.id, sourceID: Self.sourceB)
         let sentBAttachment = try #require(sentBBody.attachments.first)
         #expect(sentBAttachment.id == firstAttachmentID)
+        #expect(sentBAttachment.resource == firstAttachmentID)
         #expect(try await backend.downloadAttachment(sentBAttachment, sourceID: Self.sourceB) == Data([2]))
 
         let reopened = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
@@ -174,6 +175,7 @@ struct MockScheduledSendTests {
         let reopenedSentHeader = try #require(reopenedSentHeaders.first { $0.subject == "B" })
         let reopenedSentBody = try await reopened.body(for: reopenedSentHeader.id, sourceID: Self.sourceB)
         let reopenedAttachment = try #require(reopenedSentBody.attachments.first)
+        #expect(reopenedAttachment.resource == firstAttachmentID)
         #expect(try await reopened.downloadAttachment(reopenedAttachment, sourceID: Self.sourceB) == Data([2]))
     }
 

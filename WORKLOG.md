@@ -1,11 +1,18 @@
+# Worklog
+
+## 2026-11-22 — Agent — #297 collision fixture resource identity
+
+- Goal: retain valid attachment lookup metadata when deliberately seeding duplicate IDs across Mock mailboxes.
+- Changes: rename the fixture's attachment resource together with its ID. Mock uploads use the same value for both, journal restoration keys bytes by ID, and downloads look up the resource. Keeping the old resource made the synthetic collision fixture point at nonexistent bytes. Added resource assertions before delivered and restarted download checks; byte-isolation coverage remains intact.
+- Verification: the latest hosted Backend run completed 1,206 tests with the collision scenario as its only failure; its log omits the individual issue detail. The inconsistent fixture was confirmed by tracing upload, journal restoration, and download lookup. Pinned SwiftFormat reports 0/1 files require formatting; Swift parse, diff, and ADR-required checks pass. Native execution remains required because Linux lacks PDFKit.
+- Documentation: no release or privacy change; this only corrects the regression fixture.
+
 ## 2026-11-22 — Agent — PR #325 BrevMail test compile correction
 
 - Goal: unblock native BrevMail tests after hosted CI found invalid filesystem API arguments.
 - Changes: pass `URL.path` to `FileManager.contentsOfDirectory(atPath:)` in the isolated-session cleanup regression.
 - Verification: pinned SwiftFormat requires no changes; `swiftc -frontend -parse` passes; diff and ADR-required checks pass. Hosted CI is pending rerun.
 - Handoff: hosted macOS CI must confirm the Mock/account/Outbox suites execute.
-
-# Worklog
 
 ## 2026-11-22 — Agent — PR #325 scheduled-draft restoration fixture
 
