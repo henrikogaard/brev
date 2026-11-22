@@ -341,6 +341,208 @@ struct MockScheduledSendTests {
         #expect(afterDiscard.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends().isEmpty == true)
     }
 
+    @Test("discarding a queued persistent draft clears its schedule identity")
+    func discardQueuedPersistentDraftClearsScheduleIdentity() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
+        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        let draft = Draft(
+            id: "discard-queued",
+            subject: "Discard queued draft",
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
+        _ = try await backend.send(draft: draft, sourceID: Self.sourceA)
+
+        try await backend.discard(draftID: draft.id, sourceID: Self.sourceA)
+
+        #expect(scheduler.pendingScheduledSends().isEmpty)
+        let records = try journal.load()
+        let record = try #require(records.first)
+        #expect(records.count == 1)
+        #expect(record.state == .canceled)
+        #expect(record.scheduleID == nil)
+        #expect(record.draft == nil)
+        #expect(record.attachments.isEmpty)
+        #expect(record.scheduledFor == nil)
+
+        let restored = Self.backend(
+            persistenceDirectory: directory,
+            now: { Self.now.addingTimeInterval(7200) },
+            automaticDeliveryEnabled: false
+        )
+        let restoredScheduler = try #require(restored.extensionService(ScheduledSendManaging.self))
+        #expect(restoredScheduler.pendingScheduledSends().isEmpty)
+        #expect(try await restored.draft(for: draft.id, sourceID: Self.sourceA) == nil)
+        await restoredScheduler.deliverDueScheduledSends()
+        let sentFolder = try #require(await restored.folders(in: Self.sourceA).first { $0.role == .sent })
+        let (sentHeaders, _) = try await restored.messages(
+            in: sentFolder,
+            sourceID: Self.sourceA,
+            pageToken: nil
+        )
+        #expect(!sentHeaders.contains { $0.subject == draft.subject })
+    }
+
+    @Test("discard persistence failure preserves the queued draft and content")
+    func failedDiscardPreservesQueuedDraft() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
+        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        let draft = Draft(
+            id: "discard-storage-failure",
+            subject: "Keep queued content",
+            htmlBody: "Retain this body",
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
+        _ = try await backend.send(draft: draft, sourceID: Self.sourceA)
+        let scheduleID = try #require(scheduler.pendingScheduledSends().first?.id)
+        let acceptedJournal = try Data(contentsOf: journal.fileURL)
+        try FileManager.default.removeItem(at: directory)
+
+        await #expect(throws: (any Error).self) {
+            try await backend.discard(draftID: draft.id, sourceID: Self.sourceA)
+        }
+        #expect(scheduler.pendingScheduledSends().map(\.id) == [scheduleID])
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try acceptedJournal.write(to: journal.fileURL, options: .atomic)
+        try await backend.connect()
+        #expect(scheduler.pendingScheduledSends().map(\.id) == [scheduleID])
+        let restoredDraft = try #require(try await backend.draft(for: draft.id, sourceID: Self.sourceA))
+        #expect(restoredDraft.htmlBody == draft.htmlBody)
+    }
+
+    @Test("a canceled durable draft upload does not reuse a retained attachment id")
+    func canceledDraftAttachmentIdentityDoesNotCollide() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
+        let editor = try #require(backend.extensionService(ScheduledSendEditing.self))
+        let firstID = try await backend.uploadAttachment(
+            draftID: "attachment-reuse",
+            data: Data([1]),
+            filename: "removed.bin",
+            mimeType: "application/octet-stream",
+            sourceID: Self.sourceA
+        )
+        let retainedID = try await backend.uploadAttachment(
+            draftID: "attachment-reuse",
+            data: Data([2]),
+            filename: "retained.bin",
+            mimeType: "application/octet-stream",
+            sourceID: Self.sourceA
+        )
+        let queuedDraft = Draft(
+            id: "attachment-reuse",
+            subject: "Keep attachment bytes",
+            attachmentIDs: [firstID, retainedID],
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
+        _ = try await backend.send(draft: queuedDraft, sourceID: Self.sourceA)
+        let scheduleID = try #require(editor.pendingScheduledSends().first?.id)
+        let canceled = try #require(try await editor.cancelScheduledSend(id: scheduleID))
+        var edited = canceled
+        edited.attachmentIDs = [retainedID]
+        let saved = try await backend.save(draft: edited, sourceID: Self.sourceA)
+
+        let addedID = try await backend.uploadAttachment(
+            draftID: saved.id,
+            data: Data([3]),
+            filename: "added.bin",
+            mimeType: "application/octet-stream",
+            sourceID: Self.sourceA
+        )
+
+        #expect(addedID != retainedID)
+        #expect(try await backend.localDraftAttachments(for: saved, sourceID: Self.sourceA).map(\.data) == [Data([2])])
+    }
+
+    @Test("trash and permanent deletion remove queued drafts without restoring them")
+    func deletingQueuedDraftsDoesNotResurrectThem() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
+        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        let deletedDraft = Draft(
+            id: "delete-to-trash",
+            subject: "Delete to Trash",
+            htmlBody: "<p>Trash draft content</p>",
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
+        let movedDraft = Draft(
+            id: "move-to-trash",
+            subject: "Move to Trash",
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
+        _ = try await backend.send(draft: deletedDraft, sourceID: Self.sourceA)
+        _ = try await backend.send(draft: movedDraft, sourceID: Self.sourceA)
+        let deletedID = "draft-\(deletedDraft.id)"
+        let movedID = "draft-\(movedDraft.id)"
+        let trash = Folder(id: "trash", name: "Trash", role: .trash)
+
+        try await backend.delete(messageIDs: [deletedID], sourceID: Self.sourceA)
+        #expect(scheduler.pendingScheduledSends().map(\.draftID) == [movedDraft.id])
+        try await backend.move(messageIDs: [movedID], to: trash, sourceID: Self.sourceA)
+        #expect(scheduler.pendingScheduledSends().isEmpty)
+        let (trashed, _) = try await backend.messages(in: trash, sourceID: Self.sourceA, pageToken: nil)
+        #expect(Set(trashed.map(\.id)) == Set([deletedID, movedID]))
+        let trashedBody = try await backend.body(for: deletedID, sourceID: Self.sourceA)
+        #expect(trashedBody.html == deletedDraft.htmlBody)
+
+        try await backend.delete(messageIDs: [deletedID], sourceID: Self.sourceA)
+        let (afterPermanentDelete, _) = try await backend.messages(in: trash, sourceID: Self.sourceA, pageToken: nil)
+        #expect(afterPermanentDelete.map(\.id) == [movedID])
+        #expect(try journal.load().isEmpty)
+
+        let reopened = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
+        let reopenedScheduler = try #require(reopened.extensionService(ScheduledSendManaging.self))
+        #expect(reopenedScheduler.pendingScheduledSends().isEmpty)
+        #expect(try await reopened.draft(for: deletedDraft.id, sourceID: Self.sourceA) == nil)
+        #expect(try await reopened.draft(for: movedDraft.id, sourceID: Self.sourceA) == nil)
+        let drafts = try #require(await reopened.folders(in: Self.sourceA).first { $0.role == .drafts })
+        let (restoredDrafts, _) = try await reopened.messages(in: drafts, sourceID: Self.sourceA, pageToken: nil)
+        #expect(!restoredDrafts.contains { $0.id == deletedID || $0.id == movedID })
+    }
+
+    @Test("delete persistence failure preserves the queued draft and content")
+    func failedDeletePreservesQueuedDraft() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory, automaticDeliveryEnabled: false)
+        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        let draft = Draft(
+            id: "delete-storage-failure",
+            subject: "Keep delete content",
+            htmlBody: "<p>Retain this body</p>",
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
+        _ = try await backend.send(draft: draft, sourceID: Self.sourceA)
+        let scheduleID = try #require(scheduler.pendingScheduledSends().first?.id)
+        let acceptedJournal = try Data(contentsOf: journal.fileURL)
+        try FileManager.default.removeItem(at: directory)
+
+        await #expect(throws: (any Error).self) {
+            try await backend.delete(messageIDs: ["draft-\(draft.id)"], sourceID: Self.sourceA)
+        }
+        #expect(scheduler.pendingScheduledSends().map(\.id) == [scheduleID])
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try acceptedJournal.write(to: journal.fileURL, options: .atomic)
+        try await backend.connect()
+        #expect(scheduler.pendingScheduledSends().map(\.id) == [scheduleID])
+        let drafts = try #require(await backend.folders(in: Self.sourceA).first { $0.role == .drafts })
+        let (headers, _) = try await backend.messages(in: drafts, sourceID: Self.sourceA, pageToken: nil)
+        #expect(headers.contains { $0.id == "draft-\(draft.id)" })
+        let preservedDraft = try #require(try await backend.draft(for: draft.id, sourceID: Self.sourceA))
+        #expect(preservedDraft.htmlBody == draft.htmlBody)
+    }
+
     @Test("due delivery commits exact Sent metadata once and restores it without resending")
     func dueDeliveryPersistsExactSentMessage() async throws {
         let directory = try Self.temporaryDirectory()
