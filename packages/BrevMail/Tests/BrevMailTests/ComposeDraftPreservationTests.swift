@@ -114,28 +114,16 @@ struct ComposeDraftPreservationTests {
         let sourceID = backing.sourceID(for: mailbox)
         let draftID = "server-sourced-follow-up"
         let scheduledFor = Date(timeIntervalSince1970: 2_000_000_000)
-        let attachmentID = try await backing.uploadAttachment(
-            draftID: draftID,
-            data: Data([7, 8, 9]),
-            filename: "retained.bin",
-            mimeType: "application/octet-stream",
-            sourceID: sourceID
-        )
-        let original = try await backing.save(draft: Draft(
+        // Gmail can open an existing remote draft with no local staging copy.
+        let original = Draft(
             id: draftID,
             remoteID: "server-draft-follow-up",
             to: [Correspondent(email: "recipient@example.invalid")],
             subject: "Server draft",
             htmlBody: "<p>Preserved body</p>",
-            attachmentIDs: [attachmentID],
             scheduledFor: scheduledFor
-        ), sourceID: sourceID)
-        #expect(original.remoteID == "server-draft-follow-up")
-        #expect(original.scheduledFor == scheduledFor)
-        let attachments = try await backing.localDraftAttachments(for: original, sourceID: sourceID)
-        let restoredAttachments = ComposeDraftRestoration.pendingAttachments(from: attachments)
-        #expect(restoredAttachments.count == original.attachmentIDs.count)
-        #expect(restoredAttachments.allSatisfy { $0.uploadedAttachmentID != nil })
+        )
+        #expect(try await backing.draft(for: "server-draft-follow-up", sourceID: sourceID) == nil)
         let backend = NormalizingDraftSaveBackend(backing: backing, behavior: .stripIntentFromResponse)
         let probe = ComposeDraftSendProbe()
         backing.sendHandler = { draft, sendSourceID in
@@ -151,7 +139,6 @@ struct ComposeDraftPreservationTests {
             backend: backend,
             original: original,
             sourceID: sourceID,
-            attachments: attachments,
             isServerSourced: true
         )
         defer { harness.dispose() }
@@ -789,7 +776,7 @@ struct ComposeDraftPreservationTests {
         case failed
     }
 
-    private final class NormalizingDraftSaveBackend: MailBackend, LocalDraftAttachmentProviding, @unchecked Sendable {
+    private final class NormalizingDraftSaveBackend: MailBackend, ScheduledSendManaging, @unchecked Sendable {
         enum Behavior: Equatable {
             case stripIntentFromResponse
             case fail
@@ -881,16 +868,12 @@ struct ComposeDraftPreservationTests {
             try await backing.send(draft: draft, sourceID: sourceID)
         }
 
-        func localDraftAttachments(for draft: Draft) async throws -> [MIMEMessageAttachment] {
-            try await backing.localDraftAttachments(for: draft)
-        }
+        func pendingScheduledSends() -> [PendingScheduledSend] { [] }
 
-        func localDraftAttachments(for draft: Draft, sourceID: MailSourceID) async throws -> [MIMEMessageAttachment] {
-            try await backing.localDraftAttachments(for: draft, sourceID: sourceID)
-        }
+        func deliverDueScheduledSends() async {}
 
         func extensionService<Service>(_ type: Service.Type) -> Service? {
-            if ObjectIdentifier(type) == ObjectIdentifier(LocalDraftAttachmentProviding.self) { return self as? Service }
+            if ObjectIdentifier(type) == ObjectIdentifier(ScheduledSendManaging.self) { return self as? Service }
             return backing.extensionService(type)
         }
 

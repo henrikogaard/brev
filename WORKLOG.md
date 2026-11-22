@@ -1,5 +1,10 @@
 # Worklog
 
+## 2026-11-22 — Agent — #297 scheduled follow-up regression fixture
+
+- The mounted regression now opens an attachment-free remote draft with no local copy, as permitted by ADR-0093. Its backend advertises the scheduling service required to enable Send; the send handler observes the requested date after draft save normalizes the response. This exercises the no-reply persistence branch independently of attachment upload and Mock draft-storage semantics.
+- Verification: checked the real compose eligibility and restoration paths; changed-test SwiftFormat, parse, and diff checks run on Linux. Native mounted behavior requires hosted macOS tests. No production or snapshot changes.
+
 ## 2026-11-22 — Agent — PR #326 Waiting search
 
 - Goal: keep Waiting searches inside the source-owned follow-up membership instead of dispatching generic Inbox search.
