@@ -255,74 +255,129 @@ struct AssistantDestinationTests {
         )
     }
 
-    @Test("Archive all stages deterministic typed-confirmation plan for exact cards and supports Gmail All Mail")
-    func archiveAllStagesDeterministicReviewedPlan() async {
-        let now = Date()
-        let c1 = MailboxChatCitation(
-            id: "m1",
-            folderID: "INBOX",
-            sourceID: Self.source,
-            subject: "Weekly newsletter",
-            date: now,
-            senderName: "Digest",
-            senderEmail: "newsletter@example.org",
-            snippet: "Top stories",
-            isRead: false,
-            isFlagged: false,
-            isAnswered: false
-        )
+    @Test("Archive all stages deterministic multi-sender review, rejects non-Archive All Mail, and supports Undo")
+    func archiveAllStagesDeterministicReviewedPlan() async throws {
+        let backend = MockBackend()
+        let folders = try await backend.folders()
+        let inbox = try #require(folders.first { $0.role == .inbox })
+        let archive = try #require(folders.first { $0.role == .archive })
+        let inboxHeaders = try await backend.messages(in: inbox, pageToken: nil).headers
+        let m1 = try #require(inboxHeaders.first)
+        let m2 = try #require(inboxHeaders.dropFirst().first)
+        let sourceID = MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+
         let card1 = AssistantConversationCard(
-            messageID: "m1",
-            folderID: "INBOX",
-            sourceID: Self.source,
-            senderName: "Digest",
-            senderEmail: "newsletter@example.org",
-            subject: "Weekly newsletter",
-            snippet: "Top stories",
-            date: now,
+            messageID: m1.id,
+            folderID: inbox.id,
+            sourceID: sourceID,
+            senderName: m1.from.name ?? m1.from.email,
+            senderEmail: m1.from.email,
+            subject: m1.subject,
+            snippet: m1.snippet,
+            date: m1.date,
             section: .updatesAndNewsletters,
             tags: [],
-            citation: c1
+            citation: MailboxChatCitation(
+                id: m1.id,
+                folderID: inbox.id,
+                sourceID: sourceID,
+                subject: m1.subject,
+                date: m1.date,
+                senderName: m1.from.name,
+                senderEmail: m1.from.email,
+                snippet: m1.snippet,
+                isRead: m1.isRead,
+                isFlagged: m1.isFlagged,
+                isAnswered: m1.isAnswered
+            )
         )
-        let gmailFolders = [
-            Folder(id: "INBOX", name: "Inbox", role: .inbox),
-            Folder(id: "ALL_MAIL", name: "All Mail", role: .allMail),
-        ]
-        var executedIDs: [String] = []
+        let card2 = AssistantConversationCard(
+            messageID: m2.id,
+            folderID: inbox.id,
+            sourceID: sourceID,
+            senderName: m2.from.name ?? m2.from.email,
+            senderEmail: m2.from.email,
+            subject: m2.subject,
+            snippet: m2.snippet,
+            date: m2.date,
+            section: .updatesAndNewsletters,
+            tags: [],
+            citation: MailboxChatCitation(
+                id: m2.id,
+                folderID: inbox.id,
+                sourceID: sourceID,
+                subject: m2.subject,
+                date: m2.date,
+                senderName: m2.from.name,
+                senderEmail: m2.from.email,
+                snippet: m2.snippet,
+                isRead: m2.isRead,
+                isFlagged: m2.isFlagged,
+                isAnswered: m2.isAnswered
+            )
+        )
+
+        let undoQueue = UndoQueue(timeout: 30)
         let controller = MailboxChatController(
             scope: .account,
-            sourceID: Self.source,
+            sourceID: sourceID,
             aiBackend: nil,
-            actionFolders: gmailFolders,
+            actionFolders: folders,
             executeAction: { plan in
-                executedIDs = plan.matchingMessageIDs
-                return "Archived 1 message."
+                guard case .archive(let targetFolder) = plan.operation else { return "unexpected" }
+                try await MailboxActionArchiveExecutor.archive(
+                    plan: plan,
+                    to: targetFolder,
+                    sourceID: sourceID,
+                    folders: folders,
+                    backend: backend,
+                    undoQueue: undoQueue
+                )
+                return MailboxActionAgentCompletionPresentation.message(for: plan)
             },
             search: { _, _ in [] }
         )
 
-        controller.stageArchiveCards([card1])
+        controller.stageArchiveCards([card1, card2])
         guard case .actionReview(let plan, _)? = controller.turns.last else {
             Issue.record("Expected action review turn")
             return
         }
-        #expect(plan.matchingMessageIDs == ["m1"])
-        #expect(plan.operation == .archive(to: gmailFolders[1]))
+        #expect(plan.matchingMessageIDs == [m1.id, m2.id])
+        #expect(plan.operation == .archive(to: archive))
+        // Both distinct senders must be surfaced in the review challenge.
+        #expect(plan.confirmationChallenge.prompt.contains(m1.from.email.lowercased()))
+        #expect(plan.confirmationChallenge.prompt.contains(m2.from.email.lowercased()))
+        #expect(plan.sampleMessages.count == 2)
 
         // Wrong phrase does not execute
         await controller.confirmAction(planID: plan.id, phrase: "wrong")
-        #expect(executedIDs.isEmpty)
+        #expect(!undoQueue.canUndo)
 
-        // Exact phrase executes strictly the displayed card IDs
+        // Exact phrase executes strictly the displayed card IDs and registers Undo
         await controller.confirmAction(planID: plan.id, phrase: plan.confirmationChallenge.requiredPhrase)
-        #expect(executedIDs == ["m1"])
+        #expect(undoQueue.canUndo)
+        let afterArchive = try await backend.messages(in: inbox, pageToken: nil).headers.map(\.id)
+        #expect(!afterArchive.contains(m1.id))
+        #expect(!afterArchive.contains(m2.id))
 
-        // Missing archive/allMail folder produces clarification rather than silent skip
+        // Undo restores both messages to Inbox
+        let undone = await undoQueue.undo()?.value ?? false
+        #expect(undone)
+        let afterUndo = try await backend.messages(in: inbox, pageToken: nil).headers.map(\.id)
+        #expect(afterUndo.contains(m1.id))
+        #expect(afterUndo.contains(m2.id))
+
+        // An ordinary IMAP folder classified as `.allMail` must NOT be treated as an Archive target.
+        let imapAllOnlyFolders = [
+            Folder(id: "INBOX", name: "Inbox", role: .inbox),
+            Folder(id: "All", name: "All", role: .allMail),
+        ]
         let noArchiveController = MailboxChatController(
             scope: .account,
-            sourceID: Self.source,
+            sourceID: sourceID,
             aiBackend: nil,
-            actionFolders: [Folder(id: "INBOX", name: "Inbox", role: .inbox)],
+            actionFolders: imapAllOnlyFolders,
             executeAction: { _ in "never" },
             search: { _, _ in [] }
         )
@@ -330,7 +385,7 @@ struct AssistantDestinationTests {
         if case .clarification? = noArchiveController.turns.last {
             // Expected clarification
         } else {
-            Issue.record("Expected clarification when no archive destination exists")
+            Issue.record("Expected clarification when no dedicated Archive folder exists")
         }
     }
 

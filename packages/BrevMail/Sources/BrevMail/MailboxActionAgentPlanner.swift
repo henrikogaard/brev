@@ -1198,8 +1198,10 @@ struct MailboxActionAgentPlanner: Sendable {
     private static func archiveTarget(
         in folders: [Folder]
     ) -> ArchiveTargetResolution {
-        if let archive = folders.first(where: { $0.role == .archive })
-            ?? folders.first(where: { $0.role == .allMail }) {
+        // Strictly require `.archive`: on IMAP, an ordinary folder named "All"
+        // may be classified `.allMail` without a special-use flag and must not
+        // be treated as an archive target.
+        if let archive = folders.first(where: { $0.role == .archive }) {
             return .resolved(archive)
         }
         return .needsClarification(.unknownFolder("Archive"))
@@ -1224,7 +1226,25 @@ struct MailboxActionAgentPlanner: Sendable {
         guard !eligible.isEmpty else {
             return .clarificationRequired(.unsupportedRequest)
         }
-        let senderEmail = Self.normalizedEmail(eligible[0].senderEmail)
+        // Preserve every distinct sender and count in order so multi-sender
+        // batches are explicitly surfaced in the ADR-0026 confirmation prompt.
+        var senderOrder: [String] = []
+        var senderCounts: [String: Int] = [:]
+        for card in eligible {
+            let email = Self.normalizedEmail(card.senderEmail)
+            if senderCounts[email] == nil {
+                senderOrder.append(email)
+            }
+            senderCounts[email, default: 0] += 1
+        }
+        let senderSummary: String
+        if senderOrder.count == 1 {
+            senderSummary = senderOrder[0]
+        } else {
+            senderSummary = senderOrder
+                .map { "\($0) (\(senderCounts[$0] ?? 1))" }
+                .joined(separator: ", ")
+        }
         let headers = eligible.map { card in
             MessageHeader(
                 id: card.messageID,
@@ -1249,15 +1269,15 @@ struct MailboxActionAgentPlanner: Sendable {
         let operation: MailboxActionAgentOperation = .archive(to: archiveFolder)
         let challenge = Self.confirmationChallenge(
             id: id,
-            senderEmail: senderEmail,
+            senderEmail: senderSummary,
             operation: operation,
             count: messageIDs.count
         )
         return .planned(
             MailboxActionAgentPlan(
                 id: id,
-                request: "Archive \(messageIDs.count) updates",
-                senderEmail: senderEmail,
+                request: String(localized: "Archive all \(messageIDs.count)", bundle: .module),
+                senderEmail: senderSummary,
                 operation: operation,
                 searchQuery: SearchQuery(execution: .cacheOnly),
                 matchingMessageIDs: messageIDs,
@@ -1467,5 +1487,60 @@ struct MailboxActionAgentPlanner: Sendable {
             prompt: prompt,
             requiredPhrase: "\(operation.confirmationVerb) \(count)"
         )
+    }
+}
+
+/// Executes a confirmed archive action plan in source-folder groups using
+/// `moveWithUndo` and registers one combined `UndoQueue` entry (#294, ADR-0026).
+enum MailboxActionArchiveExecutor {
+    @MainActor
+    static func archive(
+        plan: MailboxActionAgentPlan,
+        to archiveFolder: Folder,
+        sourceID: MailSourceID,
+        folders: [Folder],
+        backend: any MailBackend,
+        undoQueue: UndoQueue
+    ) async throws {
+        let grouped: [(Folder.ID, [MessageHeader.ID])]
+        if !plan.matchedMessageStates.isEmpty {
+            let byFolder = Dictionary(grouping: plan.matchedMessageStates, by: \.folderID)
+            grouped = byFolder
+                .keys
+                .sorted()
+                .map { folderID in
+                    (folderID, byFolder[folderID, default: []].map(\.id))
+                }
+        } else {
+            let fallbackFolderID = folders.first(where: { $0.role == .inbox })?.id ?? "INBOX"
+            grouped = [(fallbackFolderID, plan.matchingMessageIDs)]
+        }
+
+        var receipts: [MailMoveUndo?] = []
+        let lease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(lease) }
+
+        for (folderID, messageIDs) in grouped where !messageIDs.isEmpty {
+            let sourceFolder = folders.first { $0.id == folderID }
+                ?? Folder(id: folderID, name: folderID, role: .custom)
+            let receipt = try await backend.moveWithUndo(
+                messageIDs: messageIDs,
+                from: sourceFolder,
+                to: archiveFolder,
+                sourceID: sourceID
+            )
+            receipts.append(receipt)
+        }
+
+        let reversibleReceipts = receipts.compactMap { $0 }
+        if !reversibleReceipts.isEmpty {
+            undoQueue.registerMoves(
+                reversibleReceipts.map { Optional($0) },
+                description: String(localized: "Archived", bundle: .module),
+                lease: lease
+            )
+        } else if !receipts.isEmpty {
+            undoQueue.discardPendingUndo(lease: lease)
+        }
     }
 }

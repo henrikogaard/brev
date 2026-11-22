@@ -7803,12 +7803,23 @@ public struct BrevMailRootView: View {
             } else {
                 try await backend.delete(messageIDs: plan.matchingMessageIDs)
             }
-        case .move(let folder), .archive(let folder):
+        case .move(let folder):
             if let sourceID {
                 try await backend.move(messageIDs: plan.matchingMessageIDs, to: folder, sourceID: sourceID)
             } else {
                 try await backend.move(messageIDs: plan.matchingMessageIDs, to: folder)
             }
+        case .archive(let folder):
+            let resolvedSourceID = sourceID
+                ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+            try await MailboxActionArchiveExecutor.archive(
+                plan: plan,
+                to: folder,
+                sourceID: resolvedSourceID,
+                folders: mailboxActionFolders(for: resolvedSourceID),
+                backend: backend,
+                undoQueue: undoQueue
+            )
         case .markRead:
             if let sourceID {
                 try await backend.setRead(true, for: plan.matchingMessageIDs, sourceID: sourceID)

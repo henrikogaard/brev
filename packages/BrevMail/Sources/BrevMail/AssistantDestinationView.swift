@@ -411,6 +411,16 @@ struct AssistantDestinationView: View {
             Text(verbatim: plan.confirmationChallenge.prompt)
                 .brevFont(.caption)
                 .foregroundStyle(theme.textSecondary.color)
+            if !plan.sampleMessages.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(plan.sampleMessages) { sample in
+                        Text(verbatim: "\(sample.sender) — \(sample.subject)")
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textTertiary.color)
+                            .lineLimit(1)
+                    }
+                }
+            }
             HStack(spacing: BrevSpacing.sm) {
                 TextField(plan.confirmationChallenge.requiredPhrase, text: phraseBinding)
                     .textFieldStyle(.roundedBorder)
