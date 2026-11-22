@@ -4,6 +4,8 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Cached expired snoozed messages outside the loaded Inbox page now reappear
+  on Inbox open and at wake without a timer-triggered provider reload (#297).
 - Conversation snoozing now includes messages stored in local folders, using
   complete local headers without network access (#297).
 - Snoozing a message now covers its RFC-linked conversation using cached mail,

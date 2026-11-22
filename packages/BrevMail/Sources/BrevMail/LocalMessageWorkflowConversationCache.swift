@@ -35,6 +35,36 @@ enum LocalMessageWorkflowConversationCacheError: LocalizedError {
 
 @MainActor
 enum LocalMessageWorkflowConversationCache {
+    static func loadExpiredInboxWakeCandidates(
+        backend: any MailBackend,
+        sourceID: MailSourceID,
+        inboxFolder: Folder,
+        folders: [Folder],
+        loadedHeaders: [MessageHeader],
+        snoozes: [LocalMessageSnooze],
+        now: Date,
+        isEligible: Bool,
+        isCurrent: @MainActor () -> Bool
+    ) async throws -> [MessageHeader] {
+        guard isEligible else { return [] }
+        let candidates = try await candidates(
+            backend: backend,
+            sourceID: sourceID,
+            folders: folders,
+            anchors: loadedHeaders,
+            isCurrent: isCurrent
+        )
+        guard isCurrent() else { throw CancellationError() }
+        return MessageListSnoozeWakePolicy.expiredInboxWakeCandidates(
+            from: candidates,
+            sourceID: sourceID,
+            inboxFolderID: inboxFolder.id,
+            loadedHeaders: loadedHeaders,
+            snoozes: snoozes,
+            now: now
+        )
+    }
+
     static func candidates(
         backend: any MailBackend,
         sourceID: MailSourceID,

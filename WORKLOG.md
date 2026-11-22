@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-22 — Agent — PR #324 expired Inbox snooze wake candidates
+
+- Goal: resurface expired snoozed Inbox messages that are outside the loaded first page.
+- Changes: added a source/folder-scoped cache-only loader that reuses cached headers and the RFC conversation projection, then filters to expired Inbox members absent from loaded rows. Both list views use it after successful first-page loads and at wake timers; timer paths do not reload provider pages. Loaded headers, dates, pins, and pagination cursors remain unchanged except for eligible appended rows. Cache failures retain loaded pages and use partial-load status. Added changelog and candidate regressions.
+- Red/green: the Foundation harness first failed to compile because the tested candidate filter was absent; after implementation, it passed 55 tests in 3 suites, including exact-wake, future/unrelated exclusion, source-collision, and dedup cases.
+- Verification: the Foundation harness passed 55 tests in 3 suites; pinned SwiftFormat reported 0/6 files requiring formatting; swiftc -frontend -parse parsed six changed Swift files; git diff --check and the ADR-required check passed. Native cache-loader tests remain unexecuted on this Linux host because the BrevMail package test path previously stopped before test execution at the unavailable SwiftUI import.
+- Handoff: local commit only; do not push until the full PR #324 review round is complete.
+
 ## 2026-11-22 — Agent — PR #324 local-folder conversation snooze
 
 - Goal: let the conversation snooze cache scan read headers from local folders.

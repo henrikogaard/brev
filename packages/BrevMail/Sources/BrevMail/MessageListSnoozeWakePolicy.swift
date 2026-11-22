@@ -33,6 +33,39 @@ struct MessageListSnoozeWakeEntry: Sendable {
 }
 
 enum MessageListSnoozeWakePolicy {
+    static func expiredInboxWakeCandidates(
+        from candidates: [LocalMessageWorkflowCandidate],
+        sourceID: MailSourceID,
+        inboxFolderID: Folder.ID,
+        loadedHeaders: [MessageHeader],
+        snoozes: [LocalMessageSnooze],
+        now: Date
+    ) -> [MessageHeader] {
+        let projection = LocalMessageWorkflowConversationProjection(
+            candidates: candidates,
+            state: LocalMessageWorkflowState(snoozes: snoozes),
+            now: now
+        )
+        let loadedIDs = Set(loadedHeaders.map(\.id))
+        var seenIDs = Set<MessageHeader.ID>()
+
+        return candidates.compactMap { candidate in
+            let header = candidate.header
+            guard candidate.sourceID == sourceID,
+                  header.folderID == inboxFolderID,
+                  !loadedIDs.contains(header.id),
+                  seenIDs.insert(header.id).inserted,
+                  let snooze = projection.snooze(
+                      for: SourceMessageID(sourceID: sourceID, messageID: header.id),
+                      header: header
+                  ),
+                  snooze.wakeAt <= now else {
+                return nil
+            }
+            return header
+        }
+    }
+
     static func effectiveDateOverrides(
         for entries: [MessageListSnoozeWakeEntry],
         snoozes: [LocalMessageSnooze],

@@ -2874,7 +2874,7 @@ public struct MessageListView: View {
                 headers: page.headers,
                 folder: folder
             )
-            let mergedHeaders = MessageListRefreshMerge.headers(
+            var mergedHeaders = MessageListRefreshMerge.headers(
                 refreshedFirstPage: finalHeaders,
                 previousLoadedHeaders: loadedFolderHeaders,
                 previousFirstPageHeaderIDs: firstPageHeaderIDs,
@@ -2887,6 +2887,35 @@ public struct MessageListView: View {
                 isSameFolder: isSameFolder
             )
             showRefreshArrivals(arrivalIDs)
+            do {
+                let wakeCandidates = try await loadExpiredInboxWakeCandidates(
+                    folder: folder,
+                    loadedHeaders: mergedHeaders,
+                    snoozes: localMessageWorkflowState.snoozes,
+                    now: Date(),
+                    isCurrent: {
+                        guard !Task.isCancelled,
+                              canApplyFolderLoadResponse(request),
+                              snoozeWakePromotionEligible else {
+                            return false
+                        }
+                        let sourceID = workflowSourceID
+                        guard isSourceAvailable?(sourceID) ?? true else { return false }
+                        let currentBackends = currentBackendsProvider?() ?? [backend]
+                        return currentBackends.contains {
+                            $0.account.id == sourceID.accountID
+                                && ObjectIdentifier($0) == ObjectIdentifier(backend)
+                        }
+                    }
+                )
+                guard canApplyFolderLoadResponse(request) else { return }
+                mergedHeaders.append(contentsOf: wakeCandidates)
+            } catch is CancellationError {
+                guard canApplyFolderLoadResponse(request) else { return }
+            } catch {
+                guard canApplyFolderLoadResponse(request), snoozeWakePromotionEligible else { return }
+                loadMoreErrorStatus = MessageListPresentation.partialLoadErrorStatus(for: error)
+            }
             loadedFolderHeaders = mergedHeaders
             headers = mergedHeaders
             // Learn only the refreshed first page. Older loaded rows are
@@ -4196,8 +4225,83 @@ public struct MessageListView: View {
             return
         }
         guard !Task.isCancelled else { return }
+        await appendExpiredInboxWakeCandidates()
+        guard !Task.isCancelled else { return }
         reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
         snoozeWakeScheduleRevision += 1
+    }
+
+    private func loadExpiredInboxWakeCandidates(
+        folder: Folder,
+        loadedHeaders: [MessageHeader],
+        snoozes: [LocalMessageSnooze],
+        now: Date,
+        isCurrent: @MainActor () -> Bool
+    ) async throws -> [MessageHeader] {
+        let folders = allFolders.contains(where: { $0.id == folder.id }) ? allFolders : allFolders + [folder]
+        return try await LocalMessageWorkflowConversationCache.loadExpiredInboxWakeCandidates(
+            backend: backend,
+            sourceID: workflowSourceID,
+            inboxFolder: folder,
+            folders: folders,
+            loadedHeaders: loadedHeaders,
+            snoozes: snoozes,
+            now: now,
+            isEligible: snoozeWakePromotionEligible
+                && backend.capabilities.contains(.cachedMessageHeaders),
+            isCurrent: isCurrent
+        )
+    }
+
+    private func appendExpiredInboxWakeCandidates() async {
+        guard let folder else { return }
+        let sourceID = workflowSourceID
+        let folderID = folder.id
+        let reloadRequestID = navigation.reloadRequestID
+        let scheduleRevision = snoozeWakeScheduleRevision
+        let activeRequest = activeFolderLoadRequest
+        let backendIdentity = ObjectIdentifier(backend)
+        let state = localMessageWorkflowState
+        let now = Date()
+        let isCurrent: @MainActor () -> Bool = {
+            guard !Task.isCancelled,
+                  self.folder?.id == folderID,
+                  workflowSourceID == sourceID,
+                  navigation.reloadRequestID == reloadRequestID,
+                  snoozeWakeScheduleRevision == scheduleRevision,
+                  activeFolderLoadRequest == activeRequest,
+                  activeSearchRequest == nil,
+                  ObjectIdentifier(backend) == backendIdentity,
+                  snoozeWakePromotionEligible,
+                  isSourceAvailable?(sourceID) ?? true else {
+                return false
+            }
+            let currentBackends = currentBackendsProvider?() ?? [backend]
+            return currentBackends.contains {
+                $0.account.id == sourceID.accountID && ObjectIdentifier($0) == backendIdentity
+            }
+        }
+        do {
+            let wakeCandidates = try await loadExpiredInboxWakeCandidates(
+                folder: folder,
+                loadedHeaders: loadedFolderHeaders,
+                snoozes: state.snoozes,
+                now: now,
+                isCurrent: isCurrent
+            )
+            guard isCurrent() else { return }
+            let loadedIDs = Set(loadedFolderHeaders.map(\.id))
+            let additions = wakeCandidates.filter { !loadedIDs.contains($0.id) }
+            guard !additions.isEmpty else { return }
+            loadedFolderHeaders.append(contentsOf: additions)
+            let headerIDs = Set(headers.map(\.id))
+            headers.append(contentsOf: additions.filter { !headerIDs.contains($0.id) })
+        } catch is CancellationError {
+            return
+        } catch {
+            guard isCurrent() else { return }
+            loadMoreErrorStatus = MessageListPresentation.partialLoadErrorStatus(for: error)
+        }
     }
 
     private func navigationHeaders(for headers: [MessageHeader]) -> [MessageHeader] {

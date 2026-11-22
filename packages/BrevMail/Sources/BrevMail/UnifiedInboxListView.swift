@@ -907,8 +907,129 @@ struct UnifiedInboxListView: View {
             return
         }
         guard !Task.isCancelled else { return }
+        await appendExpiredInboxWakeCandidates()
+        guard !Task.isCancelled else { return }
         reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: navigation.selectedMessageID != nil)
         snoozeWakeScheduleRevision += 1
+    }
+
+    private func loadExpiredInboxWakeCandidates(
+        section: MailSourceSection,
+        inboxFolder: Folder,
+        backend: any MailBackend,
+        loadedHeaders: [MessageHeader],
+        snoozes: [LocalMessageSnooze],
+        now: Date,
+        isEligible: Bool,
+        isCurrent: @MainActor () -> Bool
+    ) async throws -> [MessageHeader] {
+        try await LocalMessageWorkflowConversationCache.loadExpiredInboxWakeCandidates(
+            backend: backend,
+            sourceID: section.id,
+            inboxFolder: inboxFolder,
+            folders: section.folders,
+            loadedHeaders: loadedHeaders,
+            snoozes: snoozes,
+            now: now,
+            isEligible: isEligible && backend.capabilities.contains(.cachedMessageHeaders),
+            isCurrent: isCurrent
+        )
+    }
+
+    private func acceptsInboxWakeCandidateLoad(
+        request: UUID,
+        revision: Int,
+        sourceID: MailSourceID,
+        backendIdentity: ObjectIdentifier,
+        folderIDs: Set<Folder.ID>,
+        sourceRevision: Int?
+    ) -> Bool {
+        guard !Task.isCancelled,
+              snoozeWakeScheduleRevision == revision,
+              snoozeWakePromotionEligible else { return false }
+        return acceptsSnoozedCacheLoad(
+            request: request,
+            sourceID: sourceID,
+            backendIdentity: backendIdentity,
+            folderIDs: folderIDs,
+            sourceRevision: sourceRevision
+        )
+    }
+
+    private func appendExpiredInboxWakeCandidates() async {
+        guard snoozeWakePromotionEligible else { return }
+        let request = loadOwnership.current
+        let revision = snoozeWakeScheduleRevision
+        let sourceRevision = sourceSectionsRevisionProvider?()
+        let state = freshWorkflowState()
+        let now = Date()
+        let liveBackends = currentBackendsProvider?() ?? backends
+
+        for section in sourceSections {
+            guard loadOwnership.current == request else { return }
+            guard let inbox = section.folders.first(where: { $0.role == .inbox }),
+                  let backend = liveBackends.first(where: { $0.account.id == section.id.accountID }) else { continue }
+            let backendIdentity = ObjectIdentifier(backend)
+            let folderIDs = Set(section.folders.map(\.id))
+            let loadedHeaders = items.filter { $0.sourceID == section.id }.map(\.header)
+            do {
+                let wakeCandidates = try await loadExpiredInboxWakeCandidates(
+                    section: section,
+                    inboxFolder: inbox,
+                    backend: backend,
+                    loadedHeaders: loadedHeaders,
+                    snoozes: state.snoozes,
+                    now: now,
+                    isEligible: snoozeWakePromotionEligible,
+                    isCurrent: {
+                        acceptsInboxWakeCandidateLoad(
+                            request: request,
+                            revision: revision,
+                            sourceID: section.id,
+                            backendIdentity: backendIdentity,
+                            folderIDs: folderIDs,
+                            sourceRevision: sourceRevision
+                        )
+                    }
+                )
+                guard acceptsInboxWakeCandidateLoad(
+                    request: request,
+                    revision: revision,
+                    sourceID: section.id,
+                    backendIdentity: backendIdentity,
+                    folderIDs: folderIDs,
+                    sourceRevision: sourceRevision
+                ) else { return }
+                let existingIDs = Set(items.filter { $0.sourceID == section.id }.map { $0.header.id })
+                items.append(contentsOf: wakeCandidates.filter { !existingIDs.contains($0.id) }.map {
+                    UnifiedInboxItem(
+                        sourceID: section.id,
+                        folder: inbox,
+                        header: $0,
+                        sourceTitle: section.title,
+                        sourceSubtitle: section.subtitle,
+                        archiveFolder: section.folders.first { $0.role == FolderRole.archive }
+                    )
+                })
+            } catch is CancellationError {
+                return
+            } catch {
+                guard acceptsInboxWakeCandidateLoad(
+                    request: request,
+                    revision: revision,
+                    sourceID: section.id,
+                    backendIdentity: backendIdentity,
+                    folderIDs: folderIDs,
+                    sourceRevision: sourceRevision
+                ) else { return }
+                if items.isEmpty {
+                    errorMessage = MessageListPresentation.loadErrorMessage(for: error)
+                } else {
+                    partialLoadErrorStatus = MessageListPresentation.partialLoadErrorStatus(for: error)
+                }
+            }
+        }
+        items = UnifiedInboxPagination.sortedItems(items)
     }
 
     private var mailboxTextSize: MailboxTextSize {
@@ -1927,6 +2048,7 @@ struct UnifiedInboxListView: View {
         }
         guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }
         let loadRequest = loadOwnership.begin()
+        let loadSourceRevision = sourceSectionsRevisionProvider?()
         defer { if loadOwnership.current == loadRequest { isLoading = false } }
         activeSearchRequest = nil
         activeAttachmentSearchQueries = []
@@ -1952,6 +2074,7 @@ struct UnifiedInboxListView: View {
         let backendsByAccountID = backends.reduce(into: [BrevAccount.ID: any MailBackend]()) {
             $0[$1.account.id] = $1
         }
+        var loadedInboxSourceIDs = Set<MailSourceID>()
         await MailConcurrentWork.forEachResult(sourceSections) { section -> UnifiedInboxInitialLoadResult in
             guard let inbox = section.folders.first(where: { $0.role == .inbox }),
                   let backend = backendsByAccountID[section.account.id]
@@ -1977,6 +2100,7 @@ struct UnifiedInboxListView: View {
             guard loadOwnership.accepts(loadRequest) else { return }
             switch result {
             case .page(let section, let inbox, let headers, let nextPageToken):
+                loadedInboxSourceIDs.insert(section.id)
                 recordRecentRecipients(headers, account: section.account)
                 loadedItems.removeAll { $0.sourceID == section.id }
                 loadedItems.append(contentsOf: headers.map {
@@ -2003,6 +2127,57 @@ struct UnifiedInboxListView: View {
             }
             items = UnifiedInboxPagination.sortedItems(loadedItems)
             reconcileNavigationAfterItemsChanged()
+        }
+
+        let wakeState = freshWorkflowState()
+        let wakeNow = Date()
+        let wakeRevision = snoozeWakeScheduleRevision
+        for section in sourceSections {
+            guard loadOwnership.accepts(loadRequest) else { return }
+            guard loadedInboxSourceIDs.contains(section.id) else { continue }
+            guard let inbox = section.folders.first(where: { $0.role == .inbox }),
+                  let backend = backendsByAccountID[section.account.id] else { continue }
+            let backendIdentity = ObjectIdentifier(backend)
+            let folderIDs = Set(section.folders.map(\.id))
+            let loadedHeaders = loadedItems.filter { $0.sourceID == section.id }.map(\.header)
+            do {
+                let wakeCandidates = try await loadExpiredInboxWakeCandidates(
+                    section: section,
+                    inboxFolder: inbox,
+                    backend: backend,
+                    loadedHeaders: loadedHeaders,
+                    snoozes: wakeState.snoozes,
+                    now: wakeNow,
+                    isEligible: snoozeWakePromotionEligible,
+                    isCurrent: {
+                        acceptsInboxWakeCandidateLoad(
+                            request: loadRequest,
+                            revision: wakeRevision,
+                            sourceID: section.id,
+                            backendIdentity: backendIdentity,
+                            folderIDs: folderIDs,
+                            sourceRevision: loadSourceRevision
+                        )
+                    }
+                )
+                guard loadOwnership.accepts(loadRequest) else { return }
+                let existingIDs = Set(loadedItems.filter { $0.sourceID == section.id }.map { $0.header.id })
+                loadedItems.append(contentsOf: wakeCandidates.filter { !existingIDs.contains($0.id) }.map {
+                    UnifiedInboxItem(
+                        sourceID: section.id,
+                        folder: inbox,
+                        header: $0,
+                        sourceTitle: section.title,
+                        sourceSubtitle: section.subtitle,
+                        archiveFolder: section.folders.first { $0.role == FolderRole.archive }
+                    )
+                })
+            } catch is CancellationError {
+                guard loadOwnership.accepts(loadRequest) else { return }
+            } catch {
+                guard loadOwnership.accepts(loadRequest) else { return }
+                firstError = firstError ?? error
+            }
         }
 
         guard loadOwnership.accepts(loadRequest) else { return }

@@ -73,6 +73,193 @@ struct MessageListSnoozeWakePolicyTests {
         #expect(overrides[otherID] == nil)
     }
 
+    @Test("an expired cached Inbox conversation member resurfaces at the exact wake time")
+    func expiredCachedInboxConversationMemberResurfaces() {
+        let wakeAt = Self.now
+        let anchor = Self.header(
+            id: "snoozed-anchor",
+            rfcID: "anchor@example.org",
+            date: wakeAt.addingTimeInterval(-172_800),
+            folderID: "Sent"
+        )
+        let oldInboxHeader = Self.header(
+            id: "old-inbox-message",
+            rfcID: "reply@example.org",
+            date: wakeAt.addingTimeInterval(-86400),
+            inReplyTo: "anchor@example.org"
+        )
+        let firstPageHeader = Self.header(
+            id: "newest-page-one",
+            rfcID: "newest@example.org",
+            date: wakeAt.addingTimeInterval(-60)
+        )
+        let candidates = [
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: anchor),
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: oldInboxHeader),
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: firstPageHeader),
+        ]
+        let rule = LocalMessageSnooze(
+            messageID: SourceMessageID(sourceID: Self.source, messageID: anchor.id),
+            wakeAt: wakeAt,
+            conversationMetadata: .init(rfcIdentifiers: ["anchor@example.org"])
+        )
+
+        #expect(MessageListSnoozeWakePolicy.expiredInboxWakeCandidates(
+            from: candidates,
+            sourceID: Self.source,
+            inboxFolderID: "Inbox",
+            loadedHeaders: [firstPageHeader],
+            snoozes: [rule],
+            now: wakeAt.addingTimeInterval(-1)
+        ).isEmpty)
+
+        let awakened = MessageListSnoozeWakePolicy.expiredInboxWakeCandidates(
+            from: candidates,
+            sourceID: Self.source,
+            inboxFolderID: "Inbox",
+            loadedHeaders: [firstPageHeader],
+            snoozes: [rule],
+            now: wakeAt
+        )
+        #expect(awakened == [oldInboxHeader])
+        #expect(awakened.first?.date == oldInboxHeader.date)
+    }
+
+    @Test("future snoozes and unrelated cached Inbox headers are not wake candidates")
+    func futureAndUnrelatedCachedHeadersAreExcluded() {
+        let anchor = Self.header(
+            id: "future-anchor",
+            rfcID: "future@example.org",
+            date: Self.now.addingTimeInterval(-86400),
+            folderID: "Sent"
+        )
+        let futureMember = Self.header(
+            id: "future-member",
+            rfcID: "future-reply@example.org",
+            date: Self.now.addingTimeInterval(-172_800),
+            inReplyTo: "future@example.org"
+        )
+        let unrelated = Self.header(
+            id: "unrelated",
+            rfcID: "unrelated@example.org",
+            date: Self.now.addingTimeInterval(-172_800)
+        )
+        let candidates = [
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: anchor),
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: futureMember),
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: unrelated),
+        ]
+        let rule = LocalMessageSnooze(
+            messageID: SourceMessageID(sourceID: Self.source, messageID: anchor.id),
+            wakeAt: Self.now.addingTimeInterval(60),
+            conversationMetadata: .init(rfcIdentifiers: ["future@example.org"])
+        )
+
+        #expect(MessageListSnoozeWakePolicy.expiredInboxWakeCandidates(
+            from: candidates,
+            sourceID: Self.source,
+            inboxFolderID: "Inbox",
+            loadedHeaders: [],
+            snoozes: [rule],
+            now: Self.now
+        ).isEmpty)
+    }
+
+    @Test("cached wake candidates remain isolated across colliding source message IDs")
+    func cachedWakeCandidateSourceIsolation() {
+        let otherSource = MailSourceID(accountID: "other-account", mailboxID: "other-mailbox")
+        let firstAnchor = Self.header(
+            id: "anchor",
+            rfcID: "shared@example.org",
+            date: Self.now.addingTimeInterval(-172_800),
+            folderID: "Sent"
+        )
+        let otherAnchor = Self.header(
+            id: "anchor",
+            rfcID: "shared@example.org",
+            date: Self.now.addingTimeInterval(-172_800),
+            folderID: "Sent"
+        )
+        let firstInbox = Self.header(
+            id: "collision",
+            rfcID: "first@example.org",
+            date: Self.now.addingTimeInterval(-86400),
+            inReplyTo: "shared@example.org"
+        )
+        let otherInbox = Self.header(
+            id: "collision",
+            rfcID: "other@example.org",
+            date: Self.now.addingTimeInterval(-86400),
+            inReplyTo: "shared@example.org"
+        )
+        let candidates = [
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: firstAnchor),
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: firstInbox),
+            LocalMessageWorkflowCandidate(sourceID: otherSource, header: otherAnchor),
+            LocalMessageWorkflowCandidate(sourceID: otherSource, header: otherInbox),
+        ]
+        let rule = LocalMessageSnooze(
+            messageID: SourceMessageID(sourceID: Self.source, messageID: firstAnchor.id),
+            wakeAt: Self.now,
+            conversationMetadata: .init(rfcIdentifiers: ["shared@example.org"])
+        )
+
+        #expect(MessageListSnoozeWakePolicy.expiredInboxWakeCandidates(
+            from: candidates,
+            sourceID: Self.source,
+            inboxFolderID: "Inbox",
+            loadedHeaders: [],
+            snoozes: [rule],
+            now: Self.now
+        ) == [firstInbox])
+        #expect(MessageListSnoozeWakePolicy.expiredInboxWakeCandidates(
+            from: candidates,
+            sourceID: otherSource,
+            inboxFolderID: "Inbox",
+            loadedHeaders: [],
+            snoozes: [rule],
+            now: Self.now
+        ).isEmpty)
+    }
+
+    @Test("loaded rows and duplicate cached headers are not appended again")
+    func cachedWakeCandidatesDeduplicateAgainstLoadedRows() {
+        let loaded = Self.header(
+            id: "loaded",
+            rfcID: "loaded@example.org",
+            date: Self.now.addingTimeInterval(-86400)
+        )
+        let cached = Self.header(
+            id: "cached",
+            rfcID: "cached@example.org",
+            date: Self.now.addingTimeInterval(-172_800)
+        )
+        let candidates = [
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: loaded),
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: cached),
+            LocalMessageWorkflowCandidate(sourceID: Self.source, header: cached),
+        ]
+        let snoozes = [
+            LocalMessageSnooze(
+                messageID: SourceMessageID(sourceID: Self.source, messageID: loaded.id),
+                wakeAt: Self.now
+            ),
+            LocalMessageSnooze(
+                messageID: SourceMessageID(sourceID: Self.source, messageID: cached.id),
+                wakeAt: Self.now
+            ),
+        ]
+
+        #expect(MessageListSnoozeWakePolicy.expiredInboxWakeCandidates(
+            from: candidates,
+            sourceID: Self.source,
+            inboxFolderID: "Inbox",
+            loadedHeaders: [loaded],
+            snoozes: snoozes,
+            now: Self.now
+        ) == [cached])
+    }
+
     @Test("a threaded representative inherits the latest effective date of loaded members")
     func threadRepresentativeUsesLatestMemberWake() {
         let representative = SourceMessageID(sourceID: Self.source, messageID: "representative")
@@ -292,12 +479,13 @@ struct MessageListSnoozeWakePolicyTests {
         rfcID: String,
         date: Date,
         inReplyTo: String? = nil,
-        references: [String]? = nil
+        references: [String]? = nil,
+        folderID: String = "Inbox"
     ) -> MessageHeader {
         MessageHeader(
             id: id,
             threadID: "same-thread",
-            folderID: "Inbox",
+            folderID: folderID,
             from: Correspondent(email: "ada@example.org"),
             to: [],
             subject: "Wake order",
