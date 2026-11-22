@@ -229,9 +229,11 @@ struct BrevApp: App {
                 // An App Intent can enqueue a compose request while the
                 // app was still launching; drain it once accounts exist.
                 consumeIntentHandoff()
-                await session.restoreAllAccounts()
+                await session.ensureAccountsRestored()
                 sessionRestoreAttempted = true
                 session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
+                session.startReconnectMutationReplay(monitor: networkMonitor)
+                session.syncBackgroundPanelSubscriptions()
                 BrevMacOSAppDelegate.currentSession = session
                 if !session.accountRestoreErrors.isEmpty,
                    !session.visibleBackends.isEmpty {
@@ -240,15 +242,7 @@ struct BrevApp: App {
             }
             .onChange(of: session.visibleBackends.map(\.account.id)) { _, _ in
                 BrevMacOSAppDelegate.currentSession = session
-            }
-            .onChange(of: networkMonitor.isOnline) { wasOnline, isOnline in
-                guard isOnline, !wasOnline else { return }
-                let backends = session.visibleBackends
-                Task {
-                    for backend in backends {
-                        await backend.replayOfflineMutations()
-                    }
-                }
+                session.syncBackgroundPanelSubscriptions()
             }
             .onReceive(
                 NotificationCenter.default.publisher(for: .brevDidReceiveMailtoURL)

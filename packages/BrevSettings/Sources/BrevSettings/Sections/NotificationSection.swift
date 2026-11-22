@@ -223,7 +223,7 @@ struct NotificationSection: View {
                         localized: "Drop a compact alert from the top of the screen with Archive, Mark as read, and Reply actions. Auto-dismisses.",
                         bundle: .module
                     ),
-                    isOn: binding(for: \.newMailPanelEnabled)
+                    isOn: newMailPanelEnabledBinding
                 )
                 #endif
 
@@ -683,6 +683,22 @@ struct NotificationSection: View {
             get: { settings.backgroundMailEnabled },
             set: { newValue in
                 settings.backgroundMailEnabled = newValue
+                settingsStore.save(settings)
+                NotificationCenter.default.post(
+                    name: .brevNotificationSettingsDidChange,
+                    object: nil
+                )
+            }
+        )
+    }
+
+    /// Persists the macOS drop-down panel toggle and notifies listeners so any
+    /// visible panel dismisses immediately when disabled (#307).
+    private var newMailPanelEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { settings.newMailPanelEnabled },
+            set: { newValue in
+                settings.newMailPanelEnabled = newValue
                 settingsStore.save(settings)
                 NotificationCenter.default.post(
                     name: .brevNotificationSettingsDidChange,

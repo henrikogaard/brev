@@ -48,9 +48,14 @@ public struct NewMailPanelPayload: Equatable, Sendable {
 /// Pure policy deciding whether an incoming message may appear in the optional
 /// macOS new-mail drop-down panel (#307, ADR-0088).
 public enum NewMailPanelPolicy {
+    /// Maximum age of an arriving message eligible for the drop-down alert.
+    /// Prevents cached backfill or older paged messages from popping a
+    /// "new mail" panel (#307).
+    public static let maxFreshnessAge: TimeInterval = 900
+
     /// Returns a payload when the opt-in drop-down panel is enabled, the
-    /// account is not muted or in quiet hours, and the message is not a
-    /// sign-in code or magic-link message (ADR-0088).
+    /// account is not muted or in quiet hours, the message is a fresh arrival,
+    /// and the message is not a sign-in code or magic-link message (ADR-0088).
     public static func payload(
         settings: NotificationSettings,
         route: NotificationMailRoute,
@@ -64,6 +69,7 @@ public enum NewMailPanelPolicy {
         guard settings.newMailPanelEnabled else { return nil }
         guard settings.accountOverride(for: route.accountID).notificationsEnabled else { return nil }
         guard !isQuietHour(settings: settings, now: now, calendar: calendar) else { return nil }
+        guard now.timeIntervalSince(receivedAt) <= maxFreshnessAge else { return nil }
 
         // ADR-0088: sign-in codes stay out of notifications and the new-mail
         // drop-down panel until the dedicated privacy design settles.
@@ -106,13 +112,36 @@ public enum NewMailPanelPolicy {
     }
 
     private static func containsSignInCandidate(subject: String, snippet: String) -> Bool {
-        if SignInCodeDetector.detect(in: subject) != nil { return true }
-        if SignInCodeDetector.detect(in: snippet) != nil { return true }
-        if !subject.isEmpty, !snippet.isEmpty,
-           SignInCodeDetector.detect(in: "\(subject)\n\(snippet)") != nil {
+        // Strip URLs before checking `SignInCodeDetector`: the detector
+        // intentionally rejects link-bearing mail for auto-presenting sign-in
+        // panels, whereas preview suppression must fail closed even when a
+        // verification-code email also includes a support or help URL (#307).
+        let sanitizedSubject = strippingURLs(from: subject)
+        let sanitizedSnippet = strippingURLs(from: snippet)
+        if SignInCodeDetector.detect(in: subject) != nil
+            || SignInCodeDetector.detect(in: sanitizedSubject) != nil {
+            return true
+        }
+        if SignInCodeDetector.detect(in: snippet) != nil
+            || SignInCodeDetector.detect(in: sanitizedSnippet) != nil {
+            return true
+        }
+        if !sanitizedSubject.isEmpty, !sanitizedSnippet.isEmpty,
+           SignInCodeDetector.detect(in: "\(sanitizedSubject)\n\(sanitizedSnippet)") != nil {
             return true
         }
         return false
+    }
+
+    private static func strippingURLs(from text: String) -> String {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"https?://\S+|www\.\S+"#,
+            options: [.caseInsensitive]
+        ) else {
+            return text
+        }
+        let range = NSRange(text.startIndex ..< text.endIndex, in: text)
+        return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: " ")
     }
 
     private static func isQuietHour(
@@ -182,6 +211,7 @@ struct NewMailDropDownPanelView: View {
     @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = 28
 
     let payload: NewMailPanelPayload
+    var canArchive = true
     let onArchive: () -> Void
     let onMarkRead: () -> Void
     let onReply: () -> Void
@@ -230,11 +260,13 @@ struct NewMailDropDownPanelView: View {
             }
 
             HStack(spacing: BrevSpacing.xs) {
-                actionButton(
-                    title: String(localized: "Archive", bundle: .module),
-                    systemImage: "archivebox",
-                    action: onArchive
-                )
+                if canArchive {
+                    actionButton(
+                        title: String(localized: "Archive", bundle: .module),
+                        systemImage: "archivebox",
+                        action: onArchive
+                    )
+                }
                 actionButton(
                     title: String(localized: "Mark as Read", bundle: .module),
                     systemImage: "envelope.open",
@@ -301,6 +333,8 @@ public final class NewMailDropDownPanelController {
     private var panel: NSPanel?
     private var settingsObserver: NSObjectProtocol?
     private var watchTask: Task<Void, Never>?
+    private var lastPresentedRouteKey: String?
+    private var lastPresentedAt: Date?
     #endif
 
     public init(autoDismissDelay: Duration = .seconds(6)) {
@@ -331,14 +365,25 @@ public final class NewMailDropDownPanelController {
     public func present(
         payload: NewMailPanelPayload,
         theme: BrevTheme,
+        canArchive: Bool = true,
         onArchive: @escaping @MainActor () -> Void,
         onMarkRead: @escaping @MainActor () -> Void,
         onReply: @escaping @MainActor () -> Void
     ) {
         #if os(macOS)
+        let routeKey = "\(payload.route.accountID)::\(payload.route.messageID)"
+        let now = Date()
+        if lastPresentedRouteKey == routeKey,
+           let lastPresentedAt,
+           now.timeIntervalSince(lastPresentedAt) < 5 {
+            return
+        }
+        lastPresentedRouteKey = routeKey
+        lastPresentedAt = now
         stateController.present(payload)
         let rootView = NewMailDropDownPanelView(
             payload: payload,
+            canArchive: canArchive,
             onArchive: { [weak self] in
                 self?.dismiss()
                 onArchive()

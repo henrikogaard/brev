@@ -15,6 +15,7 @@ import AppKit
 import BrevBackend
 import BrevDesign
 @testable import BrevMail
+@testable import BrevSettings
 import BrevThemes
 import SnapshotTesting
 import SwiftUI
@@ -56,6 +57,38 @@ struct NewMailDropDownPanelSnapshotTests {
             of: host,
             as: .image(size: CGSize(width: 412, height: 136)),
             named: "new-mail-panel-" + mode,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    @Test("Notification settings section displays macOS new-mail drop-down panel toggle")
+    func macNotificationSectionDropDownToggle() throws {
+        let suite = "NewMailPanelSettingsSnap-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var settings = NotificationSettings.defaults
+        settings.newMailPanelEnabled = true
+        let store = SettingsPersistenceStore(defaults: defaults)
+        store.save(settings)
+
+        let theme = BrevTheme.brevMonoLight
+        let view = NotificationSection(
+            settingsStore: store,
+            accounts: [.preview],
+            authorizationStatus: { .authorized }
+        )
+        .frame(width: 620, height: 680)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, .light)
+        .environment(\.locale, Locale(identifier: "en_US"))
+
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: .aqua)
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 620, height: 680)),
+            named: "mac-notification-section-panel-toggle",
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }

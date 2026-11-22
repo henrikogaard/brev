@@ -364,7 +364,8 @@ actor IMAPSMTPBackendState {
     func recordListedMessageIDs(
         _ messageIDs: [MessageHeader.ID],
         folderID: Folder.ID,
-        isCompleteFolderWindow: Bool = false
+        isCompleteFolderWindow: Bool = false,
+        emitAddedEvents: Bool = true
     ) {
         let currentIDs = Set(messageIDs)
         guard let knownIDs = knownMessageIDsByFolderID[folderID] else {
@@ -375,7 +376,7 @@ actor IMAPSMTPBackendState {
         knownMessageIDsByFolderID[folderID] = isCompleteFolderWindow
             ? currentIDs
             : knownIDs.union(currentIDs)
-        guard !addedIDs.isEmpty else { return }
+        guard emitAddedEvents, !addedIDs.isEmpty else { return }
         emit(.messagesAdded(folderID: folderID, messageIDs: addedIDs))
     }
 

@@ -71,7 +71,7 @@ struct BrevApp: App {
         // Opt-in iCloud preference sync (ADR-0056); a no-op until the
         // user enables it in Settings → Privacy.
         PreferenceSyncController.standard.activate()
-        let session = AppSession.makeDefault()
+        let session = BrevIOSAppDelegate.sharedSession
         _session = State(initialValue: session)
         _calendarBrowsingModel = State(
             initialValue: CalendarBrowsingModel(
@@ -367,7 +367,7 @@ struct BrevApp: App {
                 // silently falls back to the primary while the preference
                 // still names the migrated variant. No-op when in sync.
                 applyIOSAppIcon(appIconVariant)
-                await session.restoreAllAccounts()
+                await session.ensureAccountsRestored()
                 sessionRestoreAttempted = true
                 session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
                 BrevIOSAppDelegate.currentBackends = session.visibleBackends
@@ -551,6 +551,15 @@ struct BrevApp: App {
 }
 
 final class BrevIOSAppDelegate: NSObject, UIApplicationDelegate {
+    /// Process-wide `AppSession` shared between `BrevApp` and scene-less
+    /// background notification wakes so Mark-as-read and Archive actions drain
+    /// even when iOS launches the process without connecting a SwiftUI scene (#307).
+    @MainActor
+    static let sharedSession: AppSession = {
+        BrevStoreProtection.applyProtection()
+        return AppSession.makeDefault()
+    }()
+
     /// The most-recently-known set of connected backends.
     ///
     /// Updated by `BrevApp` when the scene transitions to `.background`
@@ -572,6 +581,7 @@ final class BrevIOSAppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = notificationDelegate
+        Self.sharedSession.installNotificationActionHandlers(on: notificationDelegate)
         BrevPluginRegistry.shared.register(BrevExamplePlugin())
         BrevBackgroundRefreshCoordinator.register()
         return true

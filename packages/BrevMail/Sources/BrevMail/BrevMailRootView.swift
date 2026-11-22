@@ -887,6 +887,12 @@ public struct BrevMailRootView: View {
                 navigation.requestReload()
                 updateUnreadBadge()
             }
+            .onReceive(NotificationCenter.default.publisher(for: AppSession.didRequestPanelReplyNotification)) { note in
+                guard let route = note.object as? NotificationMailRoute else { return }
+                Task { @MainActor in
+                    await openReplyComposer(for: route, cachedHeader: nil, fallbackSourceID: route.sourceID)
+                }
+            }
             .onChange(of: navigation.selectedSourceID) {
                 handleSelectedSourceChange()
                 onSettingsMailboxContextChange?(settingsMailboxContext)
@@ -8253,9 +8259,20 @@ public struct BrevMailRootView: View {
                 let executor = notificationActionExecutor ?? NotificationActionExecutor(
                     backendsProvider: { backends }
                 )
+                let accountFolders: [Folder]
+                if let cached = sourceSections.first(where: { $0.account.id == backend.account.id })?.folders {
+                    accountFolders = cached
+                } else {
+                    accountFolders = await (try? backend.folders()) ?? []
+                }
+                let canArchive = NotificationActionExecutor.archiveDestinationFolder(in: accountFolders) != nil
+                let resolvedSourceID = sourceSections
+                    .first { $0.account.id == backend.account.id }?
+                    .id ?? route.sourceID
                 panelController.present(
                     payload: payload,
                     theme: theme,
+                    canArchive: canArchive,
                     onArchive: {
                         Task { _ = await executor.archive(route: route) }
                     },
@@ -8264,12 +8281,47 @@ public struct BrevMailRootView: View {
                     },
                     onReply: {
                         NSApplication.shared.activate()
-                        openNotificationRoute(route)
+                        Task { @MainActor in
+                            await openReplyComposer(for: route, cachedHeader: preview, fallbackSourceID: resolvedSourceID)
+                        }
                     }
                 )
             }
         }
         #endif
+    }
+
+    @MainActor
+    private func openReplyComposer(
+        for route: NotificationMailRoute,
+        cachedHeader: MessageHeader?,
+        fallbackSourceID: MailSourceID?
+    ) async {
+        let resolvedSourceID = fallbackSourceID
+            ?? sourceSections.first { $0.account.id == route.accountID }?.id
+            ?? route.sourceID
+        if let header = cachedHeader {
+            presentReply(to: header, sourceID: resolvedSourceID)
+            return
+        }
+        if let owner = backends.first(where: { $0.account.id == route.accountID }) {
+            if let header = await owner
+                .extensionService(CachedMessageHeaderProviding.self)?
+                .cachedMessageHeader(messageID: route.messageID, folderID: route.folderID) {
+                presentReply(to: header, sourceID: resolvedSourceID)
+                return
+            }
+            if let resolvedSourceID,
+               let folder = sourceSections
+               .first(where: { $0.account.id == route.accountID })?
+               .folders.first(where: { $0.id == route.folderID }),
+               let cached = try? await owner.cachedMessageHeaders(in: folder, sourceID: resolvedSourceID),
+               let header = cached.first(where: { $0.id == route.messageID }) {
+                presentReply(to: header, sourceID: resolvedSourceID)
+                return
+            }
+        }
+        openNotificationRoute(route)
     }
 
     private func folderDisplayName(

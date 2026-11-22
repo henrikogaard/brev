@@ -38,7 +38,8 @@ struct NewMailDropDownPanelTests {
             correspondent: Correspondent(name: "Maya Okafor", email: "maya@example.com"),
             subject: "Launch checklist",
             snippet: "Ready for Thursday?",
-            receivedAt: Self.sampleDate
+            receivedAt: Self.sampleDate,
+            now: Self.sampleDate
         )
         #expect(payload == nil)
     }
@@ -55,7 +56,8 @@ struct NewMailDropDownPanelTests {
             correspondent: Correspondent(name: "Maya Okafor", email: "maya@example.com"),
             subject: "Launch checklist",
             snippet: "Ready for Thursday?",
-            receivedAt: Self.sampleDate
+            receivedAt: Self.sampleDate,
+            now: Self.sampleDate
         ))
 
         #expect(payload.senderName == "Maya Okafor")
@@ -77,7 +79,8 @@ struct NewMailDropDownPanelTests {
             correspondent: Correspondent(name: "Maya Okafor", email: "maya@example.com"),
             subject: "Confidential offer",
             snippet: "Salary details attached",
-            receivedAt: Self.sampleDate
+            receivedAt: Self.sampleDate,
+            now: Self.sampleDate
         ))
 
         #expect(!payload.previewLine.contains("Confidential"))
@@ -148,5 +151,77 @@ struct NewMailDropDownPanelTests {
             let value = (nb["stringUnit"] as? [String: Any])?["value"] as? String
             #expect(value?.isEmpty == false, "Missing nb localization for \(key)")
         }
+    }
+
+    @Test("Verification code alongside a support URL is still suppressed from drop-down previews")
+    func suppressesVerificationCodeWithSupportURL() {
+        var settings = NotificationSettings.defaults
+        settings.newMailPanelEnabled = true
+        settings.showPreviews = true
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let route = NotificationMailRoute(accountID: "acct-1", folderID: "inbox", messageID: "msg-otp")
+        let payload = NewMailPanelPolicy.payload(
+            settings: settings,
+            route: route,
+            correspondent: Correspondent(name: "GitHub", email: "noreply@github.com"),
+            subject: "Security verification",
+            snippet: "Your verification code is 482913. Need help? https://support.github.com/help",
+            receivedAt: now.addingTimeInterval(-10),
+            now: now
+        )
+        #expect(payload == nil)
+    }
+
+    @Test("Historical cached backfill messages older than freshness window do not pop drop-down panel")
+    func suppressesStaleMessages() {
+        var settings = NotificationSettings.defaults
+        settings.newMailPanelEnabled = true
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let route = NotificationMailRoute(accountID: "acct-1", folderID: "inbox", messageID: "msg-old")
+        let payload = NewMailPanelPolicy.payload(
+            settings: settings,
+            route: route,
+            correspondent: Correspondent(name: "Maya", email: "maya@example.org"),
+            subject: "Last month's notes",
+            snippet: "Here is the summary",
+            receivedAt: now.addingTimeInterval(-3600),
+            now: now
+        )
+        #expect(payload == nil)
+    }
+
+    @Test("Archive destination falls back to All Mail for label-based providers like Gmail")
+    func archiveDestinationResolvesAllMailFallback() {
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let allMail = Folder(id: "ALL_MAIL", name: "All Mail", role: .allMail)
+        let archive = Folder(id: "Archive", name: "Archive", role: .archive)
+
+        #expect(NotificationActionExecutor.archiveDestinationFolder(in: [inbox, allMail])?.id == "ALL_MAIL")
+        #expect(NotificationActionExecutor.archiveDestinationFolder(in: [inbox, allMail, archive])?.id == "Archive")
+        #expect(NotificationActionExecutor.archiveDestinationFolder(in: [inbox]) == nil)
+    }
+
+    @Test("Cold notification action awaits prepareBackends before resolving account")
+    func coldActionAwaitsPrepareBackends() async throws {
+        let backend = MockBackend(account: .preview)
+        try await backend.connect()
+        let inbox = try await #require(backend.folders().first { $0.role == .inbox })
+        let header = try await #require(backend.messages(in: inbox, pageToken: nil).headers.first)
+        try await backend.setRead(false, for: [header.id])
+
+        var restored: [any MailBackend] = []
+        let executor = NotificationActionExecutor(
+            backendsProvider: { restored },
+            prepareBackends: { restored = [backend] }
+        )
+        let route = NotificationMailRoute(
+            accountID: backend.account.id,
+            folderID: inbox.id,
+            messageID: header.id
+        )
+        let ok = await executor.markRead(route: route)
+        #expect(ok)
+        let updated = try await backend.messages(in: inbox, pageToken: nil).headers.first { $0.id == header.id }
+        #expect(updated?.isRead == true)
     }
 }

@@ -29,21 +29,32 @@ public final class NotificationActionExecutor {
     )
 
     public var backendsProvider: @MainActor () -> [any MailBackend]
+    public var prepareBackends: (@MainActor () async -> Void)?
     private let onMutated: (@MainActor (NotificationMailRoute) -> Void)?
 
     public init(
         backendsProvider: @escaping @MainActor () -> [any MailBackend] = { [] },
+        prepareBackends: (@MainActor () async -> Void)? = nil,
         onMutated: (@MainActor (NotificationMailRoute) -> Void)? = nil
     ) {
         self.backendsProvider = backendsProvider
+        self.prepareBackends = prepareBackends
         self.onMutated = onMutated
+    }
+
+    /// Resolves the provider-neutral archive destination from `folders`.
+    /// Prefers an explicit `.archive` folder and falls back to `.allMail`
+    /// (which removes `\Inbox` on label-based providers like Gmail).
+    public static func archiveDestinationFolder(in folders: [Folder]) -> Folder? {
+        folders.first { $0.role == .archive }
+            ?? folders.first { $0.role == .allMail }
     }
 
     /// Marks the targeted message as read on the exact account named in `route`.
     /// Fails closed when that account is not currently connected.
     @discardableResult
     public func markRead(route: NotificationMailRoute) async -> Bool {
-        guard let backend = backend(for: route.accountID) else { return false }
+        guard let backend = await resolveBackend(for: route.accountID) else { return false }
         do {
             if let sourceID = route.sourceID {
                 try await backend.setRead(true, for: [route.messageID], sourceID: sourceID)
@@ -57,11 +68,12 @@ public final class NotificationActionExecutor {
         }
     }
 
-    /// Moves the targeted message to the account's Archive folder.
-    /// Fails closed when the account is disconnected or has no Archive folder.
+    /// Moves the targeted message to the account's Archive destination
+    /// (`.archive` or `.allMail` on label-based providers).
+    /// Fails closed when the account is disconnected or has no Archive destination.
     @discardableResult
     public func archive(route: NotificationMailRoute) async -> Bool {
-        guard let backend = backend(for: route.accountID) else { return false }
+        guard let backend = await resolveBackend(for: route.accountID) else { return false }
         guard let archiveFolder = await resolveArchiveFolder(for: backend, sourceID: route.sourceID) else {
             return false
         }
@@ -76,6 +88,14 @@ public final class NotificationActionExecutor {
         } catch {
             return false
         }
+    }
+
+    private func resolveBackend(for accountID: String) async -> (any MailBackend)? {
+        if let existing = backend(for: accountID) {
+            return existing
+        }
+        await prepareBackends?()
+        return backend(for: accountID)
     }
 
     private func backend(for accountID: String) -> (any MailBackend)? {
@@ -96,7 +116,7 @@ public final class NotificationActionExecutor {
         } catch {
             return nil
         }
-        return folders.first { $0.role == .archive }
+        return Self.archiveDestinationFolder(in: folders)
     }
 
     private func notifyMutated(_ route: NotificationMailRoute) {
