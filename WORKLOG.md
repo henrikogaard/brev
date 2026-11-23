@@ -8137,3 +8137,9 @@ buttons, and package-aware localization.
 - Goal: rebase `feature/search-folder-phrases` onto `origin/main` (`a1a8be0f`), record macOS 26+ snapshots for English/Norwegian folder phrase chips, register the suite in `.github/workflows/build.yml`, and verify locally on macOS.
 - Changes: rebased onto `origin/main`; added `SearchFolderPhraseSnapshotTests.swift` + light/dark PNG baselines; registered `SearchFolderPhraseSnapshotTests` in `.github/workflows/build.yml`.
 - Verification: `swift test --package-path packages/BrevMail --filter 'SearchFolderPhraseSnapshotTests|NaturalLanguageSearchPlannerTests|MailSearchTokensTests|MailboxSearchScopeTests'` (21 tests in 4 suites passed), visually inspected both PNGs, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check`.
+
+## 2026-11-23 — Agent — PR #332 / Issue #296 (rebase + macOS snapshots)
+
+- Goal: rebase `feature/cached-file-search` onto `origin/main` (`a1a8be0f`), record macOS 26+ snapshots for cached-PDF search chips, register the suite in `.github/workflows/build.yml`, and verify locally on macOS.
+- Changes: rebased onto `origin/main`; added `CachedPDFSearchSnapshotTests.swift` + light/dark PNG baselines covering English combined sender+PDF and Norwegian PDF queries; registered `CachedPDFSearchSnapshotTests` in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'CachedPDFSearchSnapshotTests|NaturalLanguageSearchPlannerTests|MailSearchTokensTests|MailboxSearchScopeTests|UnifiedInboxSearch'` (21 tests in 4 suites passed), `swift test --package-path packages/BrevBackend --filter 'Attachment|PDF|Search'` passed, `swift test --package-path packages/BrevGmail --filter 'Attachment|PDF|Search'` (15/15 passed), visually inspected PNGs, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`.
