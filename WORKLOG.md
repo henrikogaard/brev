@@ -1,5 +1,38 @@
 # Worklog
 
+## 2026-11-23 — Agent — PR #327 (#300 single-key shortcuts rebase and macOS snapshots)
+
+- Goal: rebase PR #327 onto `origin/main`, verify zero conflicts with merged #293 Triage mode (Triage owns its own local key monitor and renders key hints on its action bar), refresh Today snapshots for the shortcut legend, and record the Mailbox View shortcuts toggle snapshot.
+- Changes: resolved `CHANGELOG.md`, `WORKLOG.md`, and `Localizable.xcstrings` rebase conflicts (removing stale `%@ (%@)` catalog key superseded by `mail.shortcut.tooltip`); refreshed `TodayPageSnapshotTests` and `SignInCodePanelSnapshotTests` Today baselines; added `MailboxViewShortcutsSnapshotTests` (light/dark) and registered it in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'MailSingleKeyShortcutTests|TodayPageSnapshotTests|SignInCodePanelSnapshotTests'`, `swift test --package-path packages/BrevSettings --filter 'MailboxViewShortcutsSnapshotTests|MailKeyboardSettingsTests'`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`; visually inspected recorded Today and Mailbox View PNGs.
+- Handoff: pushed and marked ready for review; awaiting green CI to merge.
+
+## 2026-11-22 — Agent — #300 reader navigation
+
+- Reader J/K use the same source-scoped row sequence as the merged list and preserve reader focus. Hiding a selected card with Unread only still allows navigation, but no message action can operate on the hidden card.
+- Added cross-account duplicate-ID and hidden-card regressions. SwiftFormat, parse and diff checks run on Linux; macOS CI and focus QA remain outstanding.
+
+## 2026-11-22 — Agent — #300 typing in the mounted compose and search controls
+
+- The keyboard UI regression now mounts the actual compose editor and list search field inside the enabled shortcut modifier. It sends events through AppKit and checks both the typed text and the action callback, even when the pane still reports keyboard focus. This is an in-process native UI test; full app keyboard QA remains on the issue. Swift parse, format and diff checks ran on Linux; the macOS package suite executes the test.
+
+## 2026-11-22 — Agent — #300 tooltip catalog build
+
+- Xcode could not generate a Swift symbol for a key made entirely of placeholders and punctuation. Gave the shortcut tooltip a named key with the same English and Norwegian format. The catalog regression checks that key; native catalog compilation runs on CI.
+
+## 2026-11-22 — Agent — #300 reader shortcuts and exact thread selection
+
+- A shortcut now acts on the message selected in the reader even when a collapsed parent represents it. The unified inbox also checks the account and mailbox before resolving a hidden child. Regression tests cover both inboxes.
+- The focused single-message and thread readers reuse their own context-menu dispatch and availability checks. Today lists the keys while enabled; the Settings description now mentions the reader.
+- Verification: reader routing and legend catalog tests added; Linux formatter, parse, catalog JSON, diff and ADR checks. Native builds and tests run on CI. Today and Mailbox View snapshot needs recording on macOS 26; no PNGs changed. Triage hints depend on #293.
+
+## 2026-11-22 — Agent — #300 single-key mail shortcuts (slice 1)
+
+- Goal: Mac single keys for the focused message list, safe while typing, with a Settings switch.
+- Changes: new `MailSingleKeyShortcut` matches the produced character (layout-produced `#` with Shift or Option, never `Shift+3`) and resolves an event only when the setting is on, the list owns SwiftUI focus, the event belongs to the key window with no sheet, and the first responder is not an `NSText`/`NSTextField` or inside a `WKWebView`. `MessageListView` and `UnifiedInboxListView` route keys through the same row-action paths their context menus use (J/K mirror the arrow keys). `MailKeyboardPreferences.singleKeyShortcuts` (BrevSettings, device-local, default on) backs a Mac-only Mailbox View toggle and settings search. Reader toolbar tooltips append the key while enabled. nb catalog entries in BrevMail and BrevSettings.
+- Red/green: `MailSingleKeyShortcutTests` and `MailKeyboardSettingsTests` were written first and failed to compile on missing symbols; native runs are on CI (Linux cannot run AppKit tests).
+- Skipped: no XCUITest target exists; the AppKit test types into a real `ComposeRichTextView` and `NSSearchField` instead. Reader-pane focus, the ⌘K palette, and Today/Triage hints are later slices. The macOS 26 `MailboxViewSection` snapshot needs re-recording for the new row.
+
 ## 2026-11-22 — Agent — #297 attachment restoration test compatibility
 
 - The hosted selection-profile build caught two restoration-test assertions still calling the old pre-send persistence policy. Both now pass the follow-up and remote-ID state of the restored draft while retaining the upload assertions. Audited all Swift call sites; formatting and parsing checked on Linux, native tests via CI.

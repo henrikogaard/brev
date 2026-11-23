@@ -436,6 +436,7 @@ struct UnifiedInboxListView: View {
                     .focusable()
                     .focused($listKeyboardFocus)
                     .focusEffectDisabled()
+                    .modifier(MailSingleKeyShortcutModifier(focused: listKeyboardFocus, perform: performSingleKeyShortcut))
                     .onKeyPress(.upArrow) {
                         listKeyboardFocus = true
                         selectAdjacentItem(forward: false)
@@ -509,101 +510,106 @@ struct UnifiedInboxListView: View {
             await refreshAtNextSnoozeWake()
         }
         .onAppear { refreshPinnedMessageIDSet() }
-        .onDisappear {
-            invalidatePendingSnoozeLookup()
-            loadOwnership.invalidate()
-            activeSearchRequest = nil
-            isLoading = false
-            isLoadingMore = false
-        }
-        .onChange(of: reloadKey) {
-            expandedThreadKeys.removeAll()
-            isSearchOptionsExpanded = false
-        }
-        .onChange(of: sourceSections.map(\.id)) {
-            invalidatePendingSnoozeLookup()
-            snoozeWakeScheduleRevision += 1
-        }
-        .onChange(of: pinnedMessageIDsRaw) { refreshPinnedMessageIDSet() }
-        .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
-            followUpReminderIndex = FollowUpReminderIndex(settings: .load())
-            if smartView?.id == MailboxSmartView.waiting.id {
-                Task { await reload() }
+        #if os(macOS)
+            .onReceive(navigation.unifiedReaderStep) { forward in
+                selectAdjacentItem(forward: forward, claimsKeyboardFocus: false)
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .brevNoReplyFollowUpCacheDidChange)) { _ in
-            if smartView?.id == MailboxSmartView.waiting.id {
-                Task { await reload() }
+        #endif
+            .onDisappear {
+                invalidatePendingSnoozeLookup()
+                loadOwnership.invalidate()
+                activeSearchRequest = nil
+                isLoading = false
+                isLoadingMore = false
             }
-        }
-        .onChange(of: searchCapabilityKey) {
-            reconcileSearchExecutionWithVisibleSources()
-        }
-        .alert(String(localized: "Delete Message?", bundle: .module), isPresented: isDeleteUnifiedItemAlertPresented) {
-            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
-                Task { await confirmUnifiedItemDelete() }
+            .onChange(of: reloadKey) {
+                expandedThreadKeys.removeAll()
+                isSearchOptionsExpanded = false
             }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                pendingDeleteItemID = nil
+            .onChange(of: sourceSections.map(\.id)) {
+                invalidatePendingSnoozeLookup()
+                snoozeWakeScheduleRevision += 1
             }
-        } message: {
-            if let item = pendingDeleteItem {
-                if isPermanentDelete(for: item) {
-                    Text(MailUndoableDelete.permanentDeleteMessage(
-                        count: 1, folders: foldersForPermanentDelete(of: item)
-                    ))
-                } else {
-                    Text("Delete \"\(item.header.subject)\"?", bundle: .module)
+            .onChange(of: pinnedMessageIDsRaw) { refreshPinnedMessageIDSet() }
+            .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
+                followUpReminderIndex = FollowUpReminderIndex(settings: .load())
+                if smartView?.id == MailboxSmartView.waiting.id {
+                    Task { await reload() }
                 }
-            } else {
-                Text("Delete this message?", bundle: .module)
             }
-        }
-        .alert(String(localized: "Permanently Delete?", bundle: .module),
-               isPresented: $isBulkPermanentDeletePresented) {
-            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
-                Task { await delete(selectedItems, confirmedPermanent: true) }
+            .onReceive(NotificationCenter.default.publisher(for: .brevNoReplyFollowUpCacheDidChange)) { _ in
+                if smartView?.id == MailboxSmartView.waiting.id {
+                    Task { await reload() }
+                }
             }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
-        } message: {
-            Text(MailUndoableDelete.permanentDeleteMessage(
-                count: selectedItems.count,
-                folders: selectedItems.first(where: { isPermanentDelete(for: $0) })
-                    .map { foldersForPermanentDelete(of: $0) } ?? []
-            ))
-        }
-        .alert(String(localized: "Block Sender?", bundle: .module), isPresented: isBlockSenderAlertPresented) {
-            Button(String(localized: "blockSender.action", bundle: .module), role: .destructive) {
-                Task { await confirmBlockSender() }
+            .onChange(of: searchCapabilityKey) {
+                reconcileSearchExecutionWithVisibleSources()
             }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                pendingBlockSenderItemID = nil
-            }
-        } message: {
-            if let item = pendingBlockSenderItem {
-                Text(
-                    "Block \"\(item.header.from.email)\"? Future messages from this address will be marked as junk.",
-                    bundle: .module
-                )
-            } else {
-                Text("Block this sender?", bundle: .module)
-            }
-        }
-        .sheet(isPresented: isUnifiedSnoozePickerPresented) {
-            if let item = pendingSnoozeItems.first {
-                SnoozePickerView(
-                    header: item.header,
-                    sourceID: item.sourceID,
-                    onConfirm: { wakeAt in
-                        snoozePendingItems(until: wakeAt)
-                    },
-                    onCancel: {
-                        pendingSnoozeItems = []
+            .alert(String(localized: "Delete Message?", bundle: .module), isPresented: isDeleteUnifiedItemAlertPresented) {
+                Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                    Task { await confirmUnifiedItemDelete() }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    pendingDeleteItemID = nil
+                }
+            } message: {
+                if let item = pendingDeleteItem {
+                    if isPermanentDelete(for: item) {
+                        Text(MailUndoableDelete.permanentDeleteMessage(
+                            count: 1, folders: foldersForPermanentDelete(of: item)
+                        ))
+                    } else {
+                        Text("Delete \"\(item.header.subject)\"?", bundle: .module)
                     }
-                )
-                .brevSheetAppearance(theme)
+                } else {
+                    Text("Delete this message?", bundle: .module)
+                }
             }
-        }
+            .alert(String(localized: "Permanently Delete?", bundle: .module),
+                   isPresented: $isBulkPermanentDeletePresented) {
+                Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                    Task { await delete(selectedItems, confirmedPermanent: true) }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+            } message: {
+                Text(MailUndoableDelete.permanentDeleteMessage(
+                    count: selectedItems.count,
+                    folders: selectedItems.first(where: { isPermanentDelete(for: $0) })
+                        .map { foldersForPermanentDelete(of: $0) } ?? []
+                ))
+            }
+            .alert(String(localized: "Block Sender?", bundle: .module), isPresented: isBlockSenderAlertPresented) {
+                Button(String(localized: "blockSender.action", bundle: .module), role: .destructive) {
+                    Task { await confirmBlockSender() }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    pendingBlockSenderItemID = nil
+                }
+            } message: {
+                if let item = pendingBlockSenderItem {
+                    Text(
+                        "Block \"\(item.header.from.email)\"? Future messages from this address will be marked as junk.",
+                        bundle: .module
+                    )
+                } else {
+                    Text("Block this sender?", bundle: .module)
+                }
+            }
+            .sheet(isPresented: isUnifiedSnoozePickerPresented) {
+                if let item = pendingSnoozeItems.first {
+                    SnoozePickerView(
+                        header: item.header,
+                        sourceID: item.sourceID,
+                        onConfirm: { wakeAt in
+                            snoozePendingItems(until: wakeAt)
+                        },
+                        onCancel: {
+                            pendingSnoozeItems = []
+                        }
+                    )
+                    .brevSheetAppearance(theme)
+                }
+            }
     }
 
     private var isUnifiedSnoozePickerPresented: Binding<Bool> {
@@ -1773,6 +1779,29 @@ struct UnifiedInboxListView: View {
         }
     }
 
+    private func performRowMailAction(_ action: MessageContextMenuAction, for item: UnifiedInboxItem) {
+        switch action {
+        case .toggleFlag:
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
+            Task { await setFlagged(!item.header.isFlagged, for: [item]) }
+        case .toggleSnooze:
+            if isSnoozed(item) {
+                clearSnooze(items: [item])
+            } else {
+                pendingSnoozeItems = [item]
+            }
+        case .reply:
+            selectMessage(item)
+            composeActions.reply(item.header, sourceID: item.sourceID)
+        case .archive:
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
+            Task { await archive(item) }
+        case .delete:
+            pendingDeleteItemID = item.id
+        default: break
+        }
+    }
+
     @ViewBuilder
     private func messageContextMenuButton(
         _ presentation: MessageContextMenuActionPresentation,
@@ -1803,19 +1832,14 @@ struct UnifiedInboxListView: View {
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .toggleFlag:
             Button {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
-                Task { await setFlagged(!item.header.isFlagged, for: [item]) }
+                performRowMailAction(.toggleFlag, for: item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .toggleSnooze:
             Button {
-                if isSnoozed(item) {
-                    clearSnooze(items: [item])
-                } else {
-                    pendingSnoozeItems = [item]
-                }
+                performRowMailAction(.toggleSnooze, for: item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -1833,8 +1857,7 @@ struct UnifiedInboxListView: View {
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .reply:
             Button {
-                selectMessage(item)
-                composeActions.reply(item.header, sourceID: item.sourceID)
+                performRowMailAction(.reply, for: item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -1857,8 +1880,7 @@ struct UnifiedInboxListView: View {
             .disabled(!presentation.isEnabled)
         case .archive:
             Button {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
-                Task { await archive(item) }
+                performRowMailAction(.archive, for: item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -1918,7 +1940,7 @@ struct UnifiedInboxListView: View {
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .delete:
             Button(role: .destructive) {
-                pendingDeleteItemID = item.id
+                performRowMailAction(.delete, for: item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -3103,20 +3125,38 @@ struct UnifiedInboxListView: View {
     /// across sources, matching the merged timeline. The bulk set is
     /// preserved (MessageListView's contract) so Return can keep toggling
     /// rows into a selection after moving.
-    private func selectAdjacentItem(forward: Bool) {
-        let items = keyboardNavigableItems
-        guard !items.isEmpty else { return }
+    private func selectAdjacentItem(forward: Bool, claimsKeyboardFocus: Bool = true) {
+        if let item = Self.adjacentItem(in: keyboardNavigableItems, navigation: navigation, forward: forward) {
+            selectMessage(item, claimsKeyboardFocus: claimsKeyboardFocus, clearsBulkSelection: false)
+        }
+    }
+
+    static func adjacentItem(in items: [UnifiedInboxItem], navigation: MailNavigationState, forward: Bool) -> UnifiedInboxItem? {
         guard let index = items.firstIndex(where: {
             $0.header.id == navigation.selectedMessageID
                 && $0.sourceID == navigation.selectedSourceID
         }) else {
-            selectMessage(forward ? items[0] : items[items.count - 1], clearsBulkSelection: false)
-            return
+            return forward ? items.first : items.last
         }
         let nextIndex = index + (forward ? 1 : -1)
-        if items.indices.contains(nextIndex) {
-            selectMessage(items[nextIndex], clearsBulkSelection: false)
+        return items.indices.contains(nextIndex) ? items[nextIndex] : nil
+    }
+
+    /// Single-key mail actions with the list focused (#300).
+    private func performSingleKeyShortcut(_ shortcut: MailSingleKeyShortcut) -> Bool {
+        guard navigation.presentedSheet == nil else { return false }
+        if shortcut == .previous || shortcut == .next {
+            selectAdjacentItem(forward: shortcut == .next)
+            return true
         }
+        guard selectedItemIDs.isEmpty, !isMutationActionBlocked, let action = shortcut.menuAction,
+              let item = presentationSnapshot.shortcutTarget(
+                  messageID: navigation.selectedMessageID,
+                  source: navigation.selectedSourceID
+              ),
+              contextMenuPresentation(for: item).action(action)?.isEnabled == true else { return false }
+        performRowMailAction(action, for: item)
+        return true
     }
 
     /// Return activates the selected row like a click: drafts reopen in

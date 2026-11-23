@@ -22,7 +22,8 @@ enum SettingsSearchPlatformAdjustment {
             String(localized: "Cache location", bundle: .module),
             String(localized: "Capabilities and roadmap", bundle: .module),
             String(localized: "Available now", bundle: .module),
-            String(localized: "Import mail", bundle: .module)
+            String(localized: "Import mail", bundle: .module),
+            String(localized: "Single-key shortcuts", bundle: .module)
         ]
     }
 
@@ -122,6 +123,7 @@ extension SettingsSection {
                 String(localized: "Show folder stats", bundle: .module),
                 String(localized: "Inbox classification", bundle: .module),
                 String(localized: "Stats detail", bundle: .module),
+                String(localized: "Single-key shortcuts", bundle: .module),
             ]
         case .compose: return [
                 String(localized: "Compose", bundle: .module),

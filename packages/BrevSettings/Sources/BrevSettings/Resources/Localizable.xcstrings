@@ -13484,6 +13484,28 @@
           }
         }
       }
+    },
+    "Single-key shortcuts": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hurtigtaster med én tast"
+          }
+        }
+      }
+    },
+    "Use single-key shortcuts in the message list and reader. Shortcuts pause while you type.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruk hurtigtaster med én tast i meldingslisten og leseområdet. Hurtigtastene er inaktive mens du skriver."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

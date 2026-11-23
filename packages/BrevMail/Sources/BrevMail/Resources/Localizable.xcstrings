@@ -16803,6 +16803,34 @@
           }
         }
       }
+    },
+    "In the message list or reader: J next · K previous · E archive · R reply · S star · # delete · H snooze.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I meldingslisten eller leseområdet: J neste · K forrige · E arkiver · R svar · S stjernemerk · # slett · H utsett."
+          }
+        }
+      }
+    },
+    "mail.shortcut.tooltip": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ (%2$@)"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ (%2$@)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

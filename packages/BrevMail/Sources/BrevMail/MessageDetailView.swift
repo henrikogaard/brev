@@ -227,6 +227,16 @@ public struct MessageDetailView: View {
         .onChange(of: stripTrackingPixels) { _, _ in
             refreshRenderedHTMLForCurrentTrackingPreference()
         }
+        #if os(macOS)
+        .modifier(ReaderSingleKeyShortcutModifier { key in
+            key.performInReader(navigation: navigation, header: header, sourceID: sourceID) { action, target in
+                guard readerCommandAction != nil, readerMenuPresentation(for: target).action(action)?.isEnabled == true,
+                      !isReaderActionBlocked(action) else { return false }
+                performReaderMenuAction(action, for: target)
+                return true
+            }
+        })
+        #endif
         .task {
             // This view sits in the detail column from launch on macOS /
             // iPadOS, so its web view can warm before the first open rather

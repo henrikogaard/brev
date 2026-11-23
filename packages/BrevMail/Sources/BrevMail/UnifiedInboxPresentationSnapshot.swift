@@ -190,6 +190,18 @@ struct UnifiedInboxPresentationSnapshot {
         visibleIndexesByItemID[itemID]
     }
 
+    /// Resolve a represented selection without substituting its parent or a colliding provider ID.
+    func shortcutTarget(messageID: MessageHeader.ID?, source: MailSourceID?) -> UnifiedInboxItem? {
+        guard let messageID, let source, let rowID = selectedRowID(selectedMessageID: messageID, selectedSourceID: source,
+                                                                   expandedThreadIDs: []),
+            let index = visibleIndex(for: rowID) else { return nil }
+        let row = visibleItems[index]
+        if row.sourceID == source, row.header.id == messageID { return row }
+        return itemsByThreadKey[UnifiedInboxThreadGrouping.key(for: row)]?.first {
+            $0.sourceID == source && $0.header.id == messageID
+        }
+    }
+
     private static func makeDateSections(
         items: [UnifiedInboxItem],
         pinnedMessageIDs: Set<MessageHeader.ID>,

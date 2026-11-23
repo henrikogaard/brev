@@ -18,6 +18,9 @@ import SwiftUI
 struct MailboxViewSection: View {
     @Environment(\.brevTheme) private var theme
     @State private var mailboxSettings: MailboxViewSettings
+    #if os(macOS)
+    @AppStorage(MailKeyboardPreferences.singleKeyShortcuts) private var singleKeyShortcuts = true
+    #endif
     #if os(iOS)
     @SectionFontFamily(.reader) private var readerFamily
     #endif
@@ -292,6 +295,18 @@ struct MailboxViewSection: View {
                         Text(detail.title).tag(detail)
                     }
                 }
+
+                #if os(macOS)
+                SettingsToggleRow(
+                    symbolName: "keyboard",
+                    title: String(localized: "Single-key shortcuts", bundle: .module),
+                    subtitle: String(
+                        localized: "Use single-key shortcuts in the message list and reader. Shortcuts pause while you type.",
+                        bundle: .module
+                    ),
+                    isOn: $singleKeyShortcuts
+                )
+                #endif
             }
         }
     }

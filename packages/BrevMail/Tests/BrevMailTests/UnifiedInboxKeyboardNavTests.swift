@@ -13,6 +13,7 @@
 #if os(macOS)
 import BrevBackend
 @testable import BrevMail
+import Combine
 import Foundation
 import Testing
 
@@ -62,6 +63,30 @@ struct UnifiedInboxKeyboardNavTests {
         )
 
         #expect(sequence.map(\.id) == [parent.id])
+    }
+
+    @Test("reader J and K use the merged timeline even when two sources share the same message ID")
+    @MainActor
+    func readerStepsAcrossAccounts() {
+        let first = Self.item(id: "42", threadID: "a", sourceID: .init(accountID: "one", mailboxID: "a"))
+        let second = Self.item(id: "42", threadID: "b", sourceID: .init(accountID: "two", mailboxID: "b"))
+        let items = [first, second]
+        let navigation = MailNavigationState()
+        navigation.selectUnifiedInbox()
+        navigation.selectMessage(first.header, in: first.sourceID, headers: [first.header])
+        let subscription = navigation.unifiedReaderStep.sink { forward in
+            if let next = UnifiedInboxListView.adjacentItem(in: items, navigation: navigation, forward: forward) {
+                navigation.selectMessage(next.header, in: next.sourceID, headers: [next.header])
+            }
+        }
+        defer { subscription.cancel() }
+        for (key, current, expected) in [(MailSingleKeyShortcut.next, first, second), (.previous, second, first)] {
+            #expect(key.performInReader(navigation: navigation, header: current.header, sourceID: current.sourceID) { _, _ in
+                false
+            })
+            #expect(navigation.selectedSourceID == expected.sourceID)
+            #expect(navigation.currentFolderHeaders == [expected.header])
+        }
     }
 
     private static func item(

@@ -42,6 +42,9 @@ struct UnifiedInboxPresentationSnapshotTests {
                                    expandedThreadIDs: expanded)
         }
         #expect(row(child) == (grouped ? parent.id : nil))
+        #expect(snapshot.shortcutTarget(messageID: child.header.id, source: child.sourceID)?.id == (grouped ? child.id : nil))
+        #expect(snapshot.shortcutTarget(messageID: foreign.header.id, source: foreign.sourceID)?.id == foreign.id)
+        #expect(snapshot.shortcutTarget(messageID: otherMailbox.header.id, source: otherMailbox.sourceID) == nil)
         #expect(row(child, expanded: [key]) == (grouped ? child.id : nil))
         #expect(row(parent) == parent.id)
         #expect(row(parent, expanded: [key]) == parent.id)
