@@ -1734,25 +1734,11 @@ public struct ComposeView: View {
     }
 
     private var scheduleSendButton: some View {
-        Button(action: presentScheduleSendSheet) {
-            Label(String(localized: "Later", bundle: .module), systemImage: "clock")
-                .brevFont(.footnote)
-                .brevChip(selected: scheduledSendDate != nil)
-                .frame(minHeight: toolbarMetrics.hitTargetSize)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!canPresentScheduleSend)
-        .accessibilityLabel(
-            scheduledSendDate == nil
-                ? String(localized: "Later", bundle: .module)
-                : String(localized: "Edit scheduled send", bundle: .module)
-        )
-        .accessibilityAddTraits(scheduledSendDate != nil ? .isSelected : [])
-        .help(
-            scheduledSendDate == nil
-                ? ComposeToolbarAction.scheduleSend.accessibilityLabel
-                : String(localized: "Edit scheduled send", bundle: .module)
+        ComposeLaterButtonView(
+            isScheduled: scheduledSendDate != nil,
+            isEnabled: canPresentScheduleSend,
+            hitTargetSize: toolbarMetrics.hitTargetSize,
+            action: presentScheduleSendSheet
         )
     }
 
