@@ -261,6 +261,20 @@ struct NaturalLanguageSearchPlannerTests {
         #expect(quotedDate.query.dateRange == nil)
         #expect(quotedDate.query.isUnread == true)
 
+        // Removing a separate date chip preserves matching words inside a quoted sender name.
+        let quotedSenderWithDate = try NaturalLanguageSearchPlanner.plan(
+            for: #"from "USA TODAY" today"#,
+            execution: .cacheOnly,
+            now: date(year: 2026, month: 6, day: 5, hour: 12),
+            calendar: calendar
+        )
+        #expect(quotedSenderWithDate.query.from == "USA TODAY")
+        let dateChip = try #require(quotedSenderWithDate.chips.first { $0.kind == .date })
+        #expect(
+            NaturalLanguageSearchChipEditing.removing(dateChip, from: quotedSenderWithDate.originalText)
+                == #"from "USA TODAY""#
+        )
+
         // Padded quoted sender chips remove cleanly.
         let padded = NaturalLanguageSearchPlanner.plan(for: #"from " Maya Patel " invoice"#, execution: .cacheOnly)
         #expect(padded.query.from == "Maya Patel")

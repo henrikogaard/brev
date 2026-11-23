@@ -501,14 +501,33 @@ enum NaturalLanguageSearchChipEditing {
                 from: text
             )
         case .date:
-            return removingPattern(NaturalLanguageSearchPlanner.datePattern(chip.value), from: text)
+            return removingPatternOutsideQuotedSender(NaturalLanguageSearchPlanner.datePattern(chip.value), from: text)
         case .unread:
-            return removingPattern(NaturalLanguageSearchPlanner.unreadPattern, from: text)
+            return removingPatternOutsideQuotedSender(NaturalLanguageSearchPlanner.unreadPattern, from: text)
         case .attachment:
-            return removingPattern(NaturalLanguageSearchPlanner.attachmentPattern, from: text)
+            return removingPatternOutsideQuotedSender(NaturalLanguageSearchPlanner.attachmentPattern, from: text)
         case .flagged:
-            return removingPattern(NaturalLanguageSearchPlanner.flaggedPattern, from: text)
+            return removingPatternOutsideQuotedSender(NaturalLanguageSearchPlanner.flaggedPattern, from: text)
         }
+    }
+
+    private static func removingPatternOutsideQuotedSender(_ pattern: String, from text: String) -> String {
+        let quotedSenderPattern = NaturalLanguageSearchPlanner.senderPrefix + #""[^"]+"(?=\s|$)"#
+        guard let quotedExpr = try? NSRegularExpression(pattern: quotedSenderPattern, options: [.caseInsensitive]),
+              let match = quotedExpr.firstMatch(
+                  in: text,
+                  range: NSRange(text.startIndex ..< text.endIndex, in: text)
+              ),
+              let quotedRange = Range(match.range(at: 0), in: text)
+        else {
+            return removingPattern(pattern, from: text)
+        }
+        let prefix = String(text[..<quotedRange.lowerBound])
+        let preserved = String(text[quotedRange])
+        let suffix = String(text[quotedRange.upperBound...])
+        let editedPrefix = removingPattern(pattern, from: prefix)
+        let editedSuffix = removingPattern(pattern, from: suffix)
+        return cleaned([editedPrefix, preserved, editedSuffix].filter { !$0.isEmpty }.joined(separator: " "))
     }
 
     private static func removingLiteral(_ literal: String, from text: String) -> String {
