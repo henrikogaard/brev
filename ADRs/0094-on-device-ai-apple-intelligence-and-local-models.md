@@ -27,9 +27,9 @@ Extend ADR-0051's provider model with two first-class on-device `AIBackend` impl
 
 - Add `AppleIntelligenceAIBackend: AIBackend` behind `#if canImport(FoundationModels)` and `@available(macOS 26.0, iOS 26.0, *)`.
 - **Zero network:** Uses `SystemLanguageModel.default` strictly on-device; never invokes Private Cloud Compute or external endpoints.
-- **Availability gating:** Check `SystemLanguageModel.default.availability` at runtime. In Settings → AI, list `"On this Mac (Apple Intelligence)"`:
-  - Selectable when the system model is available.
-  - Shown with a plain-language reason (for example, macOS 26 required, Apple Intelligence turned off in System Settings, or model assets still preparing) when unavailable, rather than a broken switch.
+- **Availability gating:** Check `SystemLanguageModel.default.availability` at runtime. In Settings → AI, list `"On this Mac (Apple Intelligence)"` on macOS (and `"On this iPhone (Apple Intelligence)"` / `"On this iPad (Apple Intelligence)"` on iOS):
+  - Selectable when the system model is `.available`.
+  - Shown disabled with a plain-language explanation when unavailable — including older OS versions (`< macOS 26` / `< iOS 26`), `.unavailable(.deviceNotEligible)`, `.unavailable(.appleIntelligenceNotEnabled)`, or `.unavailable(.modelNotReady)` — rather than a broken switch.
 - **Transparency label:** Reports `"On this Mac"` on macOS (and `"On this iPhone"` / `"On this iPad"` on iOS), localized through String Catalogs (ADR-0058).
 - **Context budget:** Expose a provider-neutral token/byte context budget on `AIBackend` (defaulting to existing limits for cloud backends and a conservative budget for `FoundationModels` ~4k-token sessions) so `MailboxChatController` and summary builders bound input cleanly instead of hitting runtime context-window errors.
 
@@ -48,7 +48,7 @@ Extend ADR-0051's provider model with two first-class on-device `AIBackend` impl
   1. **On this Mac (Apple Intelligence)**
   2. **On this Mac (download a model)** (Slice 2, macOS first)
   3. **Existing ADR-0051 OpenAI-compatible providers** (Ollama / LM Studio / user-configured OpenAI Chat Completions endpoints)
-- On **iOS**, Settings → AI presents **On this iPhone / On this iPad (Apple Intelligence)** (Slice 1) alongside existing ADR-0051 OpenAI-compatible providers; the macOS-first weight-download option is omitted on iOS until a dedicated mobile memory/storage slice is proposed. On iOS, the Apple Intelligence option applies the same `SystemLanguageModel.default.availability` gating as macOS (hiding the choice when `.unavailable(.deviceNotEligible)`, and showing an inline disabled explanation when `.unavailable(.appleIntelligenceNotEnabled)` or `.unavailable(.modelNotReady)`).
+- On **iOS**, Settings → AI presents **On this iPhone / On this iPad (Apple Intelligence)** (Slice 1) alongside existing ADR-0051 OpenAI-compatible providers; the macOS-first weight-download option is omitted on iOS until a dedicated mobile memory/storage slice is proposed. On iOS, the Apple Intelligence option applies the same `SystemLanguageModel.default.availability` gating as macOS (selectable when `.available`, and shown disabled with a plain-language explanation for older OS versions or `.unavailable(.deviceNotEligible)`, `.unavailable(.appleIntelligenceNotEnabled)`, and `.unavailable(.modelNotReady)`).
 - AI remains **off by default** on fresh installs, and upgrading to macOS 26 / iOS 26 never silently turns AI on for users who left it off. Existing saved `AIWriterSettings` enablement, provider profiles, and consent choices are preserved unchanged across upgrades.
 - Every AI output surface (AI Writer preview, thread summary, Assistant sidebar, mailbox chat) displays the active backend's `transparencyLabel`: on-device backends introduced by this ADR report `"On this Mac"` (macOS) or `"On this iPhone"` / `"On this iPad"` (iOS), while existing ADR-0051 OpenAI-compatible providers continue to display their configured provider destination label.
 
