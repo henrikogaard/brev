@@ -11,6 +11,7 @@
  */
 
 import BrevBackend
+import BrevDesign
 @testable import BrevMail
 import Foundation
 import Testing
@@ -153,6 +154,225 @@ struct UnifiedInboxPresentationSnapshotTests {
         #expect(pinnedSection.isCollapsed)
         #expect(pinnedSection.visibleItems.isEmpty)
         #expect(regularSection.visibleItems.map(\.id) == [regular.id])
+    }
+
+    @Test("wake date overrides group by the effective date without changing message timestamps")
+    func wakeDateOverridesDriveUnifiedDateSections() throws {
+        let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let oldDate = referenceDate.addingTimeInterval(-16 * 86400)
+        let folder = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let woken = Self.item(
+            accountID: "personal",
+            mailboxID: "primary",
+            folder: folder,
+            messageID: "woken",
+            subject: "Woken message",
+            date: oldDate
+        )
+        let sourceMessageID = SourceMessageID(sourceID: woken.sourceID, messageID: woken.header.id)
+        let snapshot = UnifiedInboxPresentationSnapshot(
+            visibleItems: [woken],
+            pinnedMessageIDs: [],
+            groupByDate: true,
+            collapsedDateSectionIDs: [],
+            referenceDate: referenceDate,
+            effectiveDateOverrides: [sourceMessageID: referenceDate]
+        )
+        let section = try #require(snapshot.dateSections.first)
+
+        #expect(section.title == "Today")
+        #expect(section.visibleItems.map(\.id) == [woken.id])
+        #expect(snapshot.visibleItems.first?.header.date == oldDate)
+    }
+
+    @Test("collapsed provider threads use visible wake priority without spreading RFC snooze state")
+    func collapsedThreadWakePriorityIsAggregatedOnlyForDisplayedRows() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let wakeAt = now.addingTimeInterval(-1800)
+        let newerWakeAt = now.addingTimeInterval(-300)
+        let singletonWakeAt = now.addingTimeInterval(-900)
+        let folder = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let sourceA = MailSourceID(accountID: "personal", mailboxID: "primary")
+        let sourceB = MailSourceID(accountID: "work", mailboxID: "primary")
+
+        func item(
+            sourceID: MailSourceID,
+            id: String,
+            rfcID: String,
+            threadID: String,
+            date: Date
+        ) -> UnifiedInboxItem {
+            UnifiedInboxItem(
+                sourceID: sourceID,
+                folder: folder,
+                header: MessageHeader(
+                    id: id,
+                    threadID: threadID,
+                    folderID: folder.id,
+                    from: Correspondent(email: "sender@example.org"),
+                    subject: id,
+                    snippet: "",
+                    date: date,
+                    messageID: rfcID
+                ),
+                sourceTitle: sourceID.accountID,
+                sourceSubtitle: "\(sourceID.accountID)@example.org",
+                archiveFolder: nil
+            )
+        }
+
+        let representative = item(
+            sourceID: sourceA,
+            id: "representative",
+            rfcID: "representative@example.org",
+            threadID: "provider-thread",
+            date: now.addingTimeInterval(-600)
+        )
+        let wakeMember = item(
+            sourceID: sourceA,
+            id: "shared-provider-id",
+            rfcID: "wake-member@example.org",
+            threadID: "provider-thread",
+            date: now.addingTimeInterval(-86400)
+        )
+        let sourceCollision = item(
+            sourceID: sourceB,
+            id: "shared-provider-id",
+            rfcID: "foreign@example.org",
+            threadID: "provider-thread",
+            date: now.addingTimeInterval(-2400)
+        )
+        let newerWakeRepresentative = item(
+            sourceID: sourceA,
+            id: "newer-wake-representative",
+            rfcID: "newer-wake-representative@example.org",
+            threadID: "newer-wake-thread",
+            date: now.addingTimeInterval(-100_000)
+        )
+        let newerWakeMember = item(
+            sourceID: sourceA,
+            id: "newer-wake-member",
+            rfcID: "newer-wake-member@example.org",
+            threadID: "newer-wake-thread",
+            date: now.addingTimeInterval(-200_000)
+        )
+        let singleton = item(
+            sourceID: sourceA,
+            id: "singleton",
+            rfcID: "singleton@example.org",
+            threadID: "singleton-thread",
+            date: now.addingTimeInterval(-300_000)
+        )
+        let ordinary = item(
+            sourceID: sourceA,
+            id: "ordinary",
+            rfcID: "ordinary@example.org",
+            threadID: "ordinary-thread",
+            date: now.addingTimeInterval(-1200)
+        )
+        let pinned = item(
+            sourceID: sourceA,
+            id: "pinned",
+            rfcID: "pinned@example.org",
+            threadID: "pinned-thread",
+            date: now.addingTimeInterval(-100_000)
+        )
+        let allVisibleItems = [
+            representative, wakeMember, sourceCollision, ordinary, pinned,
+            newerWakeRepresentative, newerWakeMember, singleton,
+        ]
+        let wakeMemberID = SourceMessageID(sourceID: sourceA, messageID: wakeMember.header.id)
+        let representativeID = SourceMessageID(sourceID: sourceA, messageID: representative.header.id)
+        let sourceCollisionID = SourceMessageID(sourceID: sourceB, messageID: sourceCollision.header.id)
+        let individualWakeDates = MessageListSnoozeWakePolicy.effectiveDateOverrides(
+            for: allVisibleItems.map { item in
+                MessageListSnoozeWakeEntry(
+                    sourceMessageID: SourceMessageID(sourceID: item.sourceID, messageID: item.header.id),
+                    headerDate: item.header.date,
+                    threadID: item.header.threadID,
+                    header: item.header
+                )
+            },
+            snoozes: [
+                LocalMessageSnooze(
+                    messageID: wakeMemberID,
+                    wakeAt: wakeAt,
+                    conversationMetadata: .init(rfcIdentifiers: ["wake-member@example.org"])
+                ),
+                LocalMessageSnooze(
+                    messageID: SourceMessageID(sourceID: sourceA, messageID: newerWakeMember.header.id),
+                    wakeAt: newerWakeAt,
+                    conversationMetadata: .init(rfcIdentifiers: ["newer-wake-member@example.org"])
+                ),
+                LocalMessageSnooze(
+                    messageID: SourceMessageID(sourceID: sourceA, messageID: singleton.header.id),
+                    wakeAt: singletonWakeAt,
+                    conversationMetadata: .init(rfcIdentifiers: ["singleton@example.org"])
+                )
+            ],
+            now: now
+        )
+        let pinnedIDs: Set<MessageHeader.ID> = [pinned.pinID]
+        let sortedItems = MessageListSortPolicy.sortedItems(
+            allVisibleItems,
+            by: .newestFirst,
+            pinnedIDs: pinnedIDs,
+            dateOverrides: individualWakeDates
+        )
+        let threadCounts = UnifiedInboxThreadGrouping.counts(for: sortedItems) { _ in true }
+        let collapsedRows = UnifiedInboxThreadGrouping.sortedParents(
+            from: sortedItems,
+            counts: threadCounts,
+            by: .newestFirst,
+            pinnedIDs: pinnedIDs,
+            effectiveDateOverrides: individualWakeDates
+        )
+        let snapshot = UnifiedInboxPresentationSnapshot(
+            visibleItems: collapsedRows.items,
+            pinnedMessageIDs: pinnedIDs,
+            groupByDate: true,
+            collapsedDateSectionIDs: [],
+            referenceDate: now,
+            threadCounts: threadCounts,
+            sourceItems: allVisibleItems,
+            effectiveDateOverrides: individualWakeDates,
+            displayDateOverrides: collapsedRows.dateOverrides
+        )
+        let representativeThreadKey = UnifiedInboxThreadGrouping.key(for: representative)
+        let sourceCollisionThreadKey = UnifiedInboxThreadGrouping.key(for: sourceCollision)
+
+        #expect(snapshot.visibleItems.map(\.id) == [
+            pinned.id,
+            newerWakeMember.id,
+            representative.id,
+            singleton.id,
+            ordinary.id,
+            sourceCollision.id,
+        ])
+        #expect(individualWakeDates[wakeMemberID] == wakeAt)
+        #expect(individualWakeDates[representativeID] == nil)
+        #expect(individualWakeDates[sourceCollisionID] == nil)
+        #expect(snapshot.itemsByThreadKey[representativeThreadKey]?.map(\.id) == [
+            wakeMember.id,
+            representative.id,
+        ])
+        #expect(snapshot.itemsByThreadKey[sourceCollisionThreadKey]?.map(\.id) == [sourceCollision.id])
+        #expect(individualWakeDates[SourceMessageID(sourceID: sourceA, messageID: newerWakeRepresentative.header.id)] == nil)
+        #expect(individualWakeDates[SourceMessageID(sourceID: sourceA, messageID: newerWakeMember.header.id)] == newerWakeAt)
+
+        let senderSorted = MessageListSortPolicy.sortedItems(
+            allVisibleItems,
+            by: .sender,
+            pinnedIDs: pinnedIDs
+        )
+        let senderCounts = UnifiedInboxThreadGrouping.counts(for: senderSorted) { _ in true }
+        #expect(UnifiedInboxThreadGrouping.sortedParents(
+            from: senderSorted,
+            counts: senderCounts,
+            by: .sender,
+            pinnedIDs: pinnedIDs,
+            effectiveDateOverrides: individualWakeDates
+        ).items.map(\.id) == UnifiedInboxThreadGrouping.parents(from: senderSorted, counts: senderCounts).map(\.id))
     }
 
     @Test("unread and pinned tallies are derived over the source items")

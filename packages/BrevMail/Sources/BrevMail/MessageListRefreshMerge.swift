@@ -41,4 +41,19 @@ enum MessageListRefreshMerge {
         }
         return merged
     }
+
+    static func preservingConcurrentAppends(
+        refreshedHeaders: [MessageHeader],
+        currentLoadedHeaders: [MessageHeader],
+        baselineHeaderIDs: Set<MessageHeader.ID>
+    ) -> [MessageHeader] {
+        var seenIDs = Set(refreshedHeaders.map(\.id))
+        var merged = refreshedHeaders
+        for header in currentLoadedHeaders
+            where !baselineHeaderIDs.contains(header.id)
+            && seenIDs.insert(header.id).inserted {
+            merged.append(header)
+        }
+        return merged
+    }
 }

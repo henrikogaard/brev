@@ -327,13 +327,16 @@ struct UpdatesSenderBundle: Identifiable, Equatable, Sendable {
 enum UpdatesSenderBundler {
     static func bundle(
         _ headers: [MessageHeader],
-        sourceID: MailSourceID?
+        sourceID: MailSourceID?,
+        effectiveDateOverrides: [MessageHeader.ID: Date] = [:]
     ) -> [UpdatesSenderBundle] {
         var grouped: [String: [MessageHeader]] = [:]
         var orderedKeys: [String] = []
 
         let sorted = headers.sorted { lhs, rhs in
-            if lhs.date != rhs.date { return lhs.date > rhs.date }
+            let lhsDate = effectiveDateOverrides[lhs.id] ?? lhs.date
+            let rhsDate = effectiveDateOverrides[rhs.id] ?? rhs.date
+            if lhsDate != rhsDate { return lhsDate > rhsDate }
             return lhs.id < rhs.id
         }
 
@@ -369,9 +372,14 @@ enum UpdatesSenderBundler {
     static func selectableHeaders(
         from headers: [MessageHeader],
         sourceID: MailSourceID?,
-        expandedBundleIDs: Set<String>
+        expandedBundleIDs: Set<String>,
+        effectiveDateOverrides: [MessageHeader.ID: Date] = [:]
     ) -> [MessageHeader] {
-        let bundles = bundle(headers, sourceID: sourceID)
+        let bundles = bundle(
+            headers,
+            sourceID: sourceID,
+            effectiveDateOverrides: effectiveDateOverrides
+        )
         var result: [MessageHeader] = []
         for entry in bundles where entry.headers.count == 1 || expandedBundleIDs.contains(entry.id) {
             result.append(contentsOf: entry.headers)

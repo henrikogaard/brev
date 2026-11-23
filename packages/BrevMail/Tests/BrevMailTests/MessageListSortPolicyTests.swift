@@ -163,6 +163,81 @@ struct MessageListSortPolicyTests {
         #expect(sorted.map(\.header.id) == ["pinned", "a", "z"])
     }
 
+    @Test("newer arrivals stay above woken older mail and pins keep precedence")
+    func snoozeWakeDatesRespectNewestFirstAndPins() {
+        let wokenDate = Date(timeIntervalSince1970: 100)
+        let arrivalDate = Date(timeIntervalSince1970: 200)
+        let wakeAt = Date(timeIntervalSince1970: 150)
+        let woken = Self.makeHeader(id: "woken", date: wokenDate)
+        let arrival = Self.makeHeader(id: "arrival", date: arrivalDate)
+        let sorted = MessageListSortPolicy.sorted(
+            [woken, arrival],
+            by: .newestFirst,
+            pinnedIDs: [],
+            dateOverrides: [woken.id: wakeAt]
+        )
+        #expect(sorted.map(\.id) == ["arrival", "woken"])
+
+        let pinned = Self.makeHeader(id: "pinned", date: wokenDate.addingTimeInterval(-50))
+        let pinnedSorted = MessageListSortPolicy.sorted(
+            [woken, arrival, pinned],
+            by: .newestFirst,
+            pinnedIDs: [pinned.id],
+            dateOverrides: [woken.id: arrivalDate.addingTimeInterval(100)]
+        )
+        #expect(pinnedSorted.first?.id == pinned.id)
+    }
+
+    @Test("wake date overrides do not change other sort orders")
+    func wakeDateOverridesDoNotChangeOtherSortOrders() {
+        let older = Self.makeHeader(id: "older", date: Date(timeIntervalSince1970: 100))
+        let newer = Self.makeHeader(id: "newer", date: Date(timeIntervalSince1970: 200))
+        let sorted = MessageListSortPolicy.sorted(
+            [newer, older],
+            by: .oldestFirst,
+            pinnedIDs: [],
+            dateOverrides: [newer.id: Date(timeIntervalSince1970: 50)]
+        )
+
+        #expect(sorted.map(\.id) == ["older", "newer"])
+    }
+
+    @Test("equal wake dates prefer the newer original message as thread parent")
+    func wakeDateTiesPreferNewestThreadMember() {
+        let oldDate = Date(timeIntervalSince1970: 100)
+        let newDate = Date(timeIntervalSince1970: 200)
+        let wakeAt = Date(timeIntervalSince1970: 300)
+        let older = Self.makeHeader(id: "a", date: oldDate, threadID: "thread")
+        let newer = Self.makeHeader(id: "z", date: newDate, threadID: "thread")
+        let sorted = MessageListSortPolicy.sorted(
+            [older, newer],
+            by: .newestFirst,
+            pinnedIDs: [],
+            dateOverrides: [older.id: wakeAt, newer.id: wakeAt]
+        )
+        #expect(sorted.map(\.id) == ["z", "a"])
+
+        let items = [
+            Self.makeItem(id: "a", from: "Older", date: oldDate, threadID: "thread"),
+            Self.makeItem(id: "z", from: "Newer", date: newDate, threadID: "thread"),
+        ]
+        let sourceID = items[0].sourceID
+        let dateOverrides = Dictionary(
+            uniqueKeysWithValues: ["a", "z"].map {
+                (SourceMessageID(sourceID: sourceID, messageID: $0), wakeAt)
+            }
+        )
+        let sortedItems = MessageListSortPolicy.sortedItems(
+            items,
+            by: .newestFirst,
+            pinnedIDs: [],
+            dateOverrides: dateOverrides
+        )
+        let counts = UnifiedInboxThreadGrouping.counts(for: sortedItems) { _ in true }
+        let parents = UnifiedInboxThreadGrouping.parents(from: sortedItems, counts: counts)
+        #expect(parents.map(\.header.id) == ["z"])
+    }
+
     @Test("filter excludes non-matching headers")
     func filterExcludesNonMatching() {
         let headers = [
@@ -182,11 +257,12 @@ struct MessageListSortPolicyTests {
         hasAttachments: Bool = false,
         date: Date = Date(),
         from name: String = "Test",
-        subject: String = "Subject"
+        subject: String = "Subject",
+        threadID: String? = nil
     ) -> MessageHeader {
         MessageHeader(
             id: id,
-            threadID: "thread-\(id)",
+            threadID: threadID ?? "thread-\(id)",
             folderID: "inbox",
             from: Correspondent(name: name, email: "\(name.lowercased())@example.org"),
             subject: subject,
@@ -200,14 +276,16 @@ struct MessageListSortPolicyTests {
 
     private static func makeItem(
         id: String,
-        from name: String
+        from name: String,
+        date: Date = Date(),
+        threadID: String? = nil
     ) -> UnifiedInboxItem {
         let sourceID = MailSourceID(accountID: "account", mailboxID: "mailbox")
         let folder = Folder(id: "inbox", name: "Inbox", role: .inbox)
         return UnifiedInboxItem(
             sourceID: sourceID,
             folder: folder,
-            header: makeHeader(id: id, from: name),
+            header: makeHeader(id: id, date: date, from: name, threadID: threadID),
             sourceTitle: "Mailbox",
             sourceSubtitle: "mailbox@example.org",
             archiveFolder: nil

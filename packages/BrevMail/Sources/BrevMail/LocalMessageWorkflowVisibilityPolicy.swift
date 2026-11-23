@@ -267,20 +267,95 @@ final class LocalMessageWorkflowLookupCache {
     }
 }
 
+final class LocalMessageWorkflowConversationProjectionCache {
+    private var headers: [MessageHeader]?
+    private var headerSourceID: MailSourceID?
+    private var headerState: LocalMessageWorkflowState?
+    private var headerProjection: LocalMessageWorkflowConversationProjection?
+    private var items: [UnifiedInboxItem]?
+    private var itemState: LocalMessageWorkflowState?
+    private var itemProjection: LocalMessageWorkflowConversationProjection?
+
+    func projection(
+        for headers: [MessageHeader],
+        sourceID: MailSourceID,
+        state: LocalMessageWorkflowState,
+        now: Date = Date()
+    ) -> LocalMessageWorkflowConversationProjection {
+        if headerSourceID == sourceID,
+           headerState == state,
+           let storedHeaders = self.headers,
+           headers.sharesRetainedBuffer(with: storedHeaders),
+           let headerProjection {
+            return headerProjection
+        }
+        self.headers = headers
+        headerSourceID = sourceID
+        headerState = state
+        let projection = LocalMessageWorkflowConversationProjection(
+            candidates: headers.map { .init(sourceID: sourceID, header: $0) },
+            state: state,
+            now: now
+        )
+        headerProjection = projection
+        return projection
+    }
+
+    func projection(
+        for items: [UnifiedInboxItem],
+        state: LocalMessageWorkflowState,
+        now: Date = Date()
+    ) -> LocalMessageWorkflowConversationProjection {
+        if itemState == state,
+           let storedItems = self.items,
+           items.sharesRetainedBuffer(with: storedItems),
+           let itemProjection {
+            return itemProjection
+        }
+        self.items = items
+        itemState = state
+        let projection = LocalMessageWorkflowConversationProjection(
+            candidates: items.map { .init(sourceID: $0.sourceID, header: $0.header) },
+            state: state,
+            now: now
+        )
+        itemProjection = projection
+        return projection
+    }
+}
+
+private struct LocalMessageWorkflowSnoozedPhysicalCopyKey: Hashable {
+    let sourceID: MailSourceID
+    let identifier: String
+    let sender: String
+    let recipients: [String]
+    let date: Date
+    let subject: String
+}
+
 enum LocalMessageWorkflowVisibilityPolicy {
     static func headers(
         _ headers: [MessageHeader],
+        candidates: [MessageHeader]? = nil,
         sourceID: MailSourceID,
         mode: LocalMessageWorkflowVisibilityMode,
         state: LocalMessageWorkflowState,
-        now: Date = Date()
+        now: Date = Date(),
+        projection: LocalMessageWorkflowConversationProjection? = nil
     ) -> [MessageHeader] {
         let lookup = LocalMessageWorkflowLookup(state: state)
+        let workflowProjection = projection ?? LocalMessageWorkflowConversationProjection(
+            candidates: (candidates ?? headers).map { .init(sourceID: sourceID, header: $0) },
+            state: state,
+            now: now
+        )
         return headers.filter { header in
             matches(
                 SourceMessageID(sourceID: sourceID, messageID: header.id),
+                header: header,
                 mode: mode,
                 lookup: lookup,
+                projection: workflowProjection,
                 now: now
             )
         }
@@ -288,37 +363,83 @@ enum LocalMessageWorkflowVisibilityPolicy {
 
     static func items(
         _ items: [UnifiedInboxItem],
+        candidates: [UnifiedInboxItem]? = nil,
         mode: LocalMessageWorkflowVisibilityMode,
         state: LocalMessageWorkflowState,
-        now: Date = Date()
+        now: Date = Date(),
+        projection: LocalMessageWorkflowConversationProjection? = nil
     ) -> [UnifiedInboxItem] {
         let lookup = LocalMessageWorkflowLookup(state: state)
+        let workflowProjection = projection ?? LocalMessageWorkflowConversationProjection(
+            candidates: (candidates ?? items).map { .init(sourceID: $0.sourceID, header: $0.header) },
+            state: state,
+            now: now
+        )
         return items.filter { item in
             matches(
                 SourceMessageID(sourceID: item.sourceID, messageID: item.header.id),
+                header: item.header,
                 mode: mode,
                 lookup: lookup,
+                projection: workflowProjection,
                 now: now
             )
         }
     }
 
+    static func snoozedCacheItems(
+        _ items: [UnifiedInboxItem],
+        state: LocalMessageWorkflowState,
+        now: Date = Date(),
+        projection: LocalMessageWorkflowConversationProjection? = nil
+    ) -> [UnifiedInboxItem] {
+        let workflowProjection = projection ?? LocalMessageWorkflowConversationProjection(
+            candidates: items.map { .init(sourceID: $0.sourceID, header: $0.header) },
+            state: state,
+            now: now
+        )
+        var seenIDs: Set<UnifiedInboxItem.ID> = []
+        var seenPhysicalCopies: Set<LocalMessageWorkflowSnoozedPhysicalCopyKey> = []
+        return items.filter { item in
+            let messageID = SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
+            guard workflowProjection.isSnoozed(messageID, header: item.header, at: now),
+                  seenIDs.insert(item.id).inserted else { return false }
+            guard let key = physicalCopyKey(for: item) else { return true }
+            return seenPhysicalCopies.insert(key).inserted
+        }
+    }
+
     private static func matches(
         _ messageID: SourceMessageID,
+        header: MessageHeader,
         mode: LocalMessageWorkflowVisibilityMode,
         lookup: LocalMessageWorkflowLookup,
+        projection: LocalMessageWorkflowConversationProjection,
         now: Date
     ) -> Bool {
         switch mode {
         case .active:
             return !lookup.isDone(messageID)
-                && !lookup.isSnoozed(messageID, at: now)
+                && !projection.isSnoozed(messageID, header: header, at: now)
         case .snoozed:
-            return lookup.isSnoozed(messageID, at: now)
+            return projection.isSnoozed(messageID, header: header, at: now)
         case .done:
             return lookup.isDone(messageID)
         case .search:
             return true
         }
+    }
+
+    private static func physicalCopyKey(for item: UnifiedInboxItem) -> LocalMessageWorkflowSnoozedPhysicalCopyKey? {
+        guard let identifiers = try? ConversationMembershipResolver.identifiers(in: item.header.messageID),
+              identifiers.count == 1 else { return nil }
+        return LocalMessageWorkflowSnoozedPhysicalCopyKey(
+            sourceID: item.sourceID,
+            identifier: identifiers[0],
+            sender: item.header.from.email.lowercased(),
+            recipients: item.header.to.map { $0.email.lowercased() }.sorted(),
+            date: item.header.date,
+            subject: item.header.subject
+        )
     }
 }

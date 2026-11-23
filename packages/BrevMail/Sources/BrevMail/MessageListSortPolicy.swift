@@ -18,30 +18,28 @@ enum MessageListSortPolicy {
     static func sorted(
         _ headers: [MessageHeader],
         by order: MailboxSortOrder,
-        pinnedIDs: Set<MessageHeader.ID>
+        pinnedIDs: Set<MessageHeader.ID>,
+        dateOverrides: [MessageHeader.ID: Date] = [:]
     ) -> [MessageHeader] {
         let unpinned = headers.filter { !pinnedIDs.contains($0.id) }
         let pinned = headers.filter { pinnedIDs.contains($0.id) }
 
-        let sortedPinned = sortHeaders(pinned, by: order)
-        let sorted = sortHeaders(unpinned, by: order)
+        let sortedPinned = sortHeaders(pinned, by: order, dateOverrides: dateOverrides)
+        let sorted = sortHeaders(unpinned, by: order, dateOverrides: dateOverrides)
         return sortedPinned + sorted
     }
 
     static func sortedItems(
         _ items: [UnifiedInboxItem],
         by order: MailboxSortOrder,
-        pinnedIDs: Set<MessageHeader.ID>
+        pinnedIDs: Set<MessageHeader.ID>,
+        dateOverrides: [SourceMessageID: Date] = [:]
     ) -> [UnifiedInboxItem] {
         let unpinned = items.filter { !pinnedIDs.contains($0.pinID) }
         let pinned = items.filter { pinnedIDs.contains($0.pinID) }
 
-        let sortedPinned = pinned.sorted {
-            areHeadersInSortOrder($0.header, $1.header, order: order)
-        }
-        let sorted = unpinned.sorted {
-            areHeadersInSortOrder($0.header, $1.header, order: order)
-        }
+        let sortedPinned = pinned.sorted { areItemsInSortOrder($0, $1, order: order, dateOverrides: dateOverrides) }
+        let sorted = unpinned.sorted { areItemsInSortOrder($0, $1, order: order, dateOverrides: dateOverrides) }
         return sortedPinned + sorted
     }
 
@@ -56,11 +54,19 @@ enum MessageListSortPolicy {
 
     private static func sortHeaders(
         _ headers: [MessageHeader],
-        by order: MailboxSortOrder
+        by order: MailboxSortOrder,
+        dateOverrides: [MessageHeader.ID: Date]
     ) -> [MessageHeader] {
         switch order {
         case .newestFirst:
-            return headers.sorted { areHeadersInSortOrder($0, $1, order: order) }
+            return headers.sorted {
+                newestThenID(
+                    $0,
+                    $1,
+                    leftDate: dateOverrides[$0.id],
+                    rightDate: dateOverrides[$1.id]
+                )
+            }
         case .oldestFirst:
             return headers.sorted { areHeadersInSortOrder($0, $1, order: order) }
         case .sender:
@@ -74,6 +80,23 @@ enum MessageListSortPolicy {
         case .attachmentFirst:
             return headers.sorted { areHeadersInSortOrder($0, $1, order: order) }
         }
+    }
+
+    private static func areItemsInSortOrder(
+        _ lhs: UnifiedInboxItem,
+        _ rhs: UnifiedInboxItem,
+        order: MailboxSortOrder,
+        dateOverrides: [SourceMessageID: Date]
+    ) -> Bool {
+        guard order == .newestFirst else {
+            return areHeadersInSortOrder(lhs.header, rhs.header, order: order)
+        }
+        return newestThenID(
+            lhs.header,
+            rhs.header,
+            leftDate: dateOverrides[SourceMessageID(sourceID: lhs.sourceID, messageID: lhs.header.id)],
+            rightDate: dateOverrides[SourceMessageID(sourceID: rhs.sourceID, messageID: rhs.header.id)]
+        )
     }
 
     private static func areHeadersInSortOrder(
@@ -114,7 +137,17 @@ enum MessageListSortPolicy {
         }
     }
 
-    private static func newestThenID(_ lhs: MessageHeader, _ rhs: MessageHeader) -> Bool {
+    private static func newestThenID(
+        _ lhs: MessageHeader,
+        _ rhs: MessageHeader,
+        leftDate: Date? = nil,
+        rightDate: Date? = nil
+    ) -> Bool {
+        let lhsDate = leftDate ?? lhs.date
+        let rhsDate = rightDate ?? rhs.date
+        if lhsDate != rhsDate {
+            return lhsDate > rhsDate
+        }
         if lhs.date != rhs.date {
             return lhs.date > rhs.date
         }

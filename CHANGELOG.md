@@ -4,6 +4,15 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Cached expired snoozed messages outside the loaded Inbox page now reappear
+  on Inbox open and at wake without a timer-triggered provider reload (#297).
+- Conversation snoozing now includes messages stored in local folders, using
+  complete local headers without network access (#297).
+- Snoozing a message now covers its RFC-linked conversation using cached mail,
+  including newly discovered replies; unrelated messages are not grouped by
+  subject or provider thread identifiers (#297).
+- Snoozed messages return to newest-first Inbox ordering when they wake;
+  message timestamps and provider data remain unchanged (#297).
 - Assistant sidebar destination (#294): clicking Assistant in the sidebar or
   "Ask about my mail" on Today now opens a full Assistant view beside the
   sidebar with grounded conversation cards grouped into Needs you, Worth a

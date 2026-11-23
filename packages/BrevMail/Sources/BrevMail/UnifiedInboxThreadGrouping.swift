@@ -11,6 +11,8 @@
  */
 
 import BrevBackend
+import BrevDesign
+import Foundation
 
 /// Groups unified-inbox items into threads the same way `MessageListView`
 /// groups a single folder, with one difference: a unified list mixes
@@ -56,6 +58,36 @@ enum UnifiedInboxThreadGrouping {
             guard counts[key, default: 1] > 1 else { return true }
             return seen.insert(key).inserted
         }
+    }
+
+    static func sortedParents(
+        from items: [UnifiedInboxItem],
+        counts: [String: Int],
+        by order: MailboxSortOrder,
+        pinnedIDs: Set<MessageHeader.ID>,
+        effectiveDateOverrides: [SourceMessageID: Date]
+    ) -> (items: [UnifiedInboxItem], dateOverrides: [SourceMessageID: Date]) {
+        let parents = parents(from: items, counts: counts)
+        let rowDateOverrides = MessageListRowDatePolicy.overrides(
+            for: parents,
+            from: items,
+            groupKey: { item in
+                let threadKey = key(for: item)
+                return counts[threadKey] == nil ? nil : threadKey
+            },
+            itemID: { SourceMessageID(sourceID: $0.sourceID, messageID: $0.header.id) },
+            date: { $0.header.date },
+            effectiveDateOverrides: effectiveDateOverrides
+        )
+        return (
+            MessageListSortPolicy.sortedItems(
+                parents,
+                by: order,
+                pinnedIDs: pinnedIDs,
+                dateOverrides: rowDateOverrides
+            ),
+            rowDateOverrides
+        )
     }
 
     /// Returns the other messages in `key`'s thread, oldest → newest.

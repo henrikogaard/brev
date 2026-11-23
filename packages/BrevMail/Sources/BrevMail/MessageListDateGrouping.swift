@@ -25,7 +25,8 @@ enum MessageListDateGrouping {
         for headers: [MessageHeader],
         pinnedIDs: Set<MessageHeader.ID> = [],
         referenceDate: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        dateOverrides: [MessageHeader.ID: Date] = [:]
     ) -> [MessageListDateSection] {
         var sections: [MessageListDateSection] = []
         let pinned = headers.filter { pinnedIDs.contains($0.id) }
@@ -39,7 +40,11 @@ enum MessageListDateGrouping {
         var currentTitle: String?
         var currentHeaders: [MessageHeader] = []
         for header in headers where !pinnedIDs.contains(header.id) {
-            let title = sectionTitle(for: header.date, referenceDate: referenceDate, calendar: calendar)
+            let title = sectionTitle(
+                for: dateOverrides[header.id] ?? header.date,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
             if currentTitle == title {
                 currentHeaders.append(header)
             } else {

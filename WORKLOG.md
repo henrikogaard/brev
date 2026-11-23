@@ -1,5 +1,177 @@
 # Worklog
 
+## 2026-11-22 — Sidekick — #324 date-section compile correction
+
+- Goal: fix the second native test-target compile failure in the collapsed-row wake regression and audit the added presentation/cache test APIs.
+- Changes: changed the single-folder snapshot assertion to use `MessageListVisibleDateSection.visibleHeaders`, the actual section property. No production code or PNGs changed.
+- Audit: confirmed the unified section API uses `visibleItems`; the cache tests call the actual `LocalMessageWorkflowConversationCache.candidates` signature; and `MessageHeader` requires `subject` and `snippet`, present in all 24 audited constructors across 14 changed test files. The two CI logs show only the `.headers` error and its consequent key-path inference error in `MessageListPresentationSnapshotTests.swift`.
+- Verification: pinned SwiftFormat reported 0/1 changed Swift files needing formatting; Swift parse passed. Native tests are Apple/CI-only on this Linux host. Diff and ADR-required checks are run for this correction.
+- Handoff: separate correction commit and normal push authorized; do not wait for CI.
+
+## 2026-11-22 — Agent — PR #324 unified Inbox fixture CI repair
+
+- Goal: fix the `record-review-images` test-target compile error in the collapsed-row wake regression.
+- Changes: supplied the required `subject` and `snippet` in the `MessageHeader` fixture. Audited 24 `MessageHeader` constructors across 14 changed test files; this was the only missing pair. No release scripts or snapshot assets changed.
+- Verification: pinned SwiftFormat reported 0/1 changed Swift files needing formatting; Swift parse passed for the changed test source. The native target and hosted harness could not be run locally on Linux; no standalone Foundation harness was present to strengthen.
+- Handoff: the failed self-test job could not be rerun while its workflow was active (`gh run rerun` returned `job 137193330711 cannot be rerun`). This narrow push starts a fresh CI run; do not wait for it.
+
+## 2026-11-22 — Agent — PR #324 unused helper cleanup
+
+- Goal: remove only confirmed-unused helpers introduced during the review round.
+- Changes: removed the unused `conversationMetadata` projection helpers, headerless `overlappingSnoozes` and `metadataForReschedule` overloads, and the uncalled `MessageListView.visibleHeaders(for:)` wrapper. Kept the called header-aware overlap/reschedule paths.
+- Verification: repository `rg` confirmed the wrapper had no callsites and the header-aware methods remain called; the focused Foundation harness passed 80 tests in 9 suites; SwiftFormat reported 0/2 files needing formatting; Swift parse passed for 2 changed Swift files; all 3 new Swift files across the review round match `file-header-template.txt`; diff and ADR-required checks passed.
+- Handoff: separate local cleanup commit only; no push. Ready for the full-round push when authorized.
+
+## 2026-11-22 — Agent — PR #324 Snoozed cache scan scope
+
+- Goal: avoid reading cached folders for visible sources without an active future snooze.
+- Changes: capture fresh workflow state before scanning folders and restrict the Snoozed cache loop to visible source IDs with `wakeAt > now`. Relevant sources still scan all their folders and retain source/backend/request validation and partial-load handling.
+- Regressions: cover empty, expired, and invisible-source states selecting no reads and producing no Snoozed results; verify per-source read counts and RFC conversation expansion across Inbox and Archive.
+- Red/green: the Foundation harness failed source selection for inactive states and selected unrelated visible sources before the policy fix; after the fix it passed 80 tests in 9 suites.
+- Verification: focused Foundation harness passed 80 tests in 9 suites; SwiftFormat reported 0/4 files needing formatting; Swift parse passed for 4 changed Swift files; staged diff and ADR-required checks passed. Native cache-read tests were not run because this Linux host lacks SwiftUI.
+- Handoff: separate local correction commit only; do not push until requested. The remaining unused projection helper cleanup is deferred.
+
+## 2026-11-22 — Agent — PR #324 row-date aggregation scope
+
+- Goal: avoid changing unrelated collapsed rows when no wake override applies to their visible group.
+- Changes: aggregate visible-member dates only for groups containing an individual effective-date override; preserve per-row fallback dates for untouched groups. Singleton overrides and maximum-original-date no-demotion remain covered. Corrected the new row-date policy and test headers to match `file-header-template.txt`.
+- Red/green: direct helper tests failed before the fix for empty overrides and an untouched group beside a woken group; after the fix, all three direct tests passed, including singleton retention and no-demotion.
+- Verification: focused Foundation harness passed 78 tests in 9 suites; SwiftFormat reported 0/2 files needing formatting; Swift parse passed for 2 changed Swift files; production header matched the template; `git diff --check` and `scripts/check-adr-required.sh origin/feature/snooze-wake-order` exited successfully.
+- Limits: native SwiftUI tests were not run because this Linux host lacks SwiftUI; no visual render was performed. Existing Unreleased notes already cover Inbox wake ordering; this correction only removes an unrelated side effect.
+- Handoff: separate local correction commit only; do not push until requested.
+
+## 2026-11-22 — Agent — PR #324 nil-source folder-load ownership
+
+- Goal: let unscoped `MessageListView` first-page responses publish while retaining stale-backend rejection.
+- Changes: backend identity selection uses the selected source account when scoped and otherwise this view's backend account. The current-backend provider remains authoritative, so same-account replacement and removal still reject the captured request; source and revision guards are unchanged.
+- Regressions: exercise account-to-`ObjectIdentifier` selection itself, unscoped success/replacement/removal, and selected-source precedence for scoped loads.
+- Red/green: the focused harness first failed the unscoped selection and publication assertions with a nil current identity; after the fix it passed 75 tests in 8 suites.
+- Verification: Foundation harness passed 75 tests in 8 suites; SwiftFormat reported 0/3 files needing formatting; Swift parse passed for 3 changed Swift files; `git diff --check` and `scripts/check-adr-required.sh origin/feature/snooze-wake-order` exited successfully.
+- Limits: native SwiftUI tests were not run because this Linux host lacks SwiftUI; no visual render was performed. This restores expected unscoped loading rather than adding a new user-facing feature, so no changelog entry was added.
+- Handoff: local correction commit only; do not push until requested.
+
+## 2026-11-22 — Devin — PR #324 collapsed wake-order correction
+
+- Goal: complete collapsed-row wake ordering on both the single-folder and Unified Inbox surfaces without changing individual RFC-scoped message state.
+- Changes: added a shared row-date policy that uses the newest effective date among the actual visible group members, preserving the parent's original date against older wakes and retaining singleton overrides. Single-folder and Unified Inbox sorting now use row-display dates; Unified Inbox date sections receive the same row map separately from per-message overrides. Navigation and expanded thread buckets continue to use original members and dates.
+- Red/green: the prior Unified Inbox production helper failed the no-demotion regression by placing an ordinary row ahead of a representative whose original date was newer than its member's wake. The Foundation harness passed after correction, including newer wake promotion, no demotion, singleton preservation, source collisions, pin precedence, and ordinary sort behavior.
+- Verification: Foundation harness passed 73 tests in 8 suites; SwiftFormat lint reported 0/8 files needing formatting; Swift parse passed for 8 changed Swift files; `git diff --check` and `scripts/check-adr-required.sh origin/feature/snooze-wake-order` exited successfully.
+- Limits: native SwiftUI BrevMail tests were not run on this Linux host. The harness compiled the production row-date, sort, and Unified grouping sources; no snapshot PNGs changed.
+- Handoff: separate local correction commit only; do not push until requested.
+
+## 2026-11-22 — Devin — Issue #297 / PR #324 collapsed Inbox wake priority
+
+- Goal: prioritize collapsed Inbox thread rows when a visible member has an expired conversation snooze, without changing RFC-scoped membership.
+- Changes: aggregate per-message effective wake dates across visible members sharing the existing source/thread key, then sort collapsed parents with the selected newest-first order and the existing pin policy. Expanded thread buckets and individual wake overrides remain unchanged.
+- Red/green: the focused rendered-row regression failed before the fix because the newer unrelated representative sorted ahead of the ordinary row; it passed after aggregation. It also covers source-ID collisions, expanded member state, pins, and a non-date sort.
+- Verification: the Foundation harness red case failed on the old collapsed ordering, then passed with 72 tests in 8 suites. SwiftFormat reported 0/3 files needing format after formatting; Swift parse passed for 3 changed Swift files; `git diff --check` and `scripts/check-adr-required.sh origin/feature/snooze-wake-order` exited successfully.
+- Limits: native BrevMail tests and visual UI verification were not run on this Linux host because SwiftUI is unavailable. No snapshots changed.
+- Handoff: separate local commit only; do not push until the PR #324 review round is complete. Existing Unreleased entries already describe Snoozed Inbox wake ordering, so no changelog edit was needed.
+
+## 2026-11-22 — Agent — PR #324 wake-cache lifecycle correction
+
+- Goal: correct cache wake-scan cost, first-page ownership, and concurrent timer publication.
+- Changes: use the extended cached-header capability; skip cache reads unless the source has an expired snooze; validate captured source/backend/revision on page publication; preserve wake rows appended during first-page loads without changing pagination cursors. No network behavior was added.
+- Regressions: cover no-read snooze cases, source/backend replacement, two-stage first-page merge, and Unified Inbox concurrent wake retention with its cursor.
+- Verification: focused Foundation harness passed 71 tests in 7 suites, including cache no-read, first-page ownership/merge, and cursor cases; pinned SwiftFormat reported 0/12 files requiring formatting; Swift parse passed for 12 changed Swift files; ADR-required and diff checks passed. The harness shims only localized cache-error descriptions for Linux.
+- Limits: the native BrevMail target and its new integration tests were not run because this Linux host lacks SwiftUI; no visual check was performed. The existing Unreleased changelog entries already describe the user-facing wake behavior, so no changelog edit was needed.
+- Handoff: local correction commit only; do not push until the full PR #324 review round is complete. Existing Unreleased changelog entries already describe the user-facing wake behavior.
+
+## 2026-11-22 — Agent — PR #324 expired Inbox snooze wake candidates
+
+- Goal: resurface expired snoozed Inbox messages that are outside the loaded first page.
+- Changes: added a source/folder-scoped cache-only loader that reuses cached headers and the RFC conversation projection, then filters to expired Inbox members absent from loaded rows. Both list views use it after successful first-page loads and at wake timers; timer paths do not reload provider pages. Loaded headers, dates, pins, and pagination cursors remain unchanged except for eligible appended rows. Cache failures retain loaded pages and use partial-load status. Added changelog and candidate regressions.
+- Red/green: the Foundation harness first failed to compile because the tested candidate filter was absent; after implementation, it passed 55 tests in 3 suites, including exact-wake, future/unrelated exclusion, source-collision, and dedup cases.
+- Verification: the Foundation harness passed 55 tests in 3 suites; pinned SwiftFormat reported 0/6 files requiring formatting; swiftc -frontend -parse parsed six changed Swift files; git diff --check and the ADR-required check passed. Native cache-loader tests remain unexecuted on this Linux host because the BrevMail package test path previously stopped before test execution at the unavailable SwiftUI import.
+- Handoff: local commit only; do not push until the full PR #324 review round is complete.
+
+## 2026-11-22 — Agent — PR #324 local-folder conversation snooze
+
+- Goal: let the conversation snooze cache scan read headers from local folders.
+- Changes: `LocalMailBackend` advertises and returns complete, read-only cached headers from Maildir by source ownership and stable folder ID, so pre-rename folder values remain valid. Regressions cover more than one page, rename-safe lookup, invalid scope, and conversation scanning across local folders. Updated the Unreleased changelog; no network access is used.
+- Verification: pinned SwiftFormat reported 0/3 files requiring formatting; `swiftc -frontend -parse` parsed the three changed Swift files; diff and ADR-required checks passed. Native tests were not run on this Linux host; a prior BrevMail package attempt stopped before test execution because SwiftUI is unavailable, and native CI is required for these targets.
+- Handoff: locally committed on `feature/snooze-wake-order`; do not push until the review round is complete.
+
+## 2026-11-22 — Agent — PR #324 legacy unsnooze scope
+
+- Goal: prevent unsnoozing one legacy message schedule from clearing a linked message's independent schedule.
+- Changes: legacy-only clears now target the exact source-message ID; when an explicit conversation rule overlaps the selection, the full overlap set still clears. Added separate-linked-legacy and mixed conversation/legacy regressions; existing reschedule-conversion and no-resurrection cases remain.
+- Red/green: the focused Foundation harness regression failed before the mutation change because both schedules were removed. After the fix, `/home/ubuntu/.cache/brev-final-projection-spm` passed 51 tests in 3 suites, including the new legacy-only and mixed-overlap cases.
+- Verification: pinned SwiftFormat reported `0/2 files require formatting`; `swiftc -frontend -parse` parsed both changed Swift files; `git diff --check` and `scripts/check-adr-required.sh` passed. The focused Foundation harness passed 51 tests in 3 suites; native SwiftUI tests were not run on this Linux host.
+- Handoff: local commit only; do not push until the review round is complete.
+
+## 2026-11-22 — Agent — #297 CI lint correction
+
+- Goal: clear the new PR #324 lint failure without changing loader behavior.
+- Changes: placed the nested `else` with its matching closing brace in `UnifiedInboxListView.swift`.
+- Evidence: lint job `137080640329` reported `Statement Position Violation` at line 2147; `git blame` attributes that line to `917eda9`, and the feature diff shows it was introduced on this branch. The review-comments and reviews streams contain no events; the only issue comment is the existing Devin monitoring-control bot comment (7068561468), with no review reply requested.
+- Local checks: targeted SwiftFormat lint (`0/1 files require formatting`) and Swift parse pass. Local SwiftLint could not start because the pinned binary requires GLIBC 2.38 while this Ubuntu 22.04 host has GLIBC 2.35. The pre-fix head finished with 22 passed, 1 failed, and 0 pending. Its native BrevMail test job passed 2,435 package tests, 6 ContactsAccessPolicy tests, and 1 release-mode test; both macOS and iOS build checks passed. The lint correction is local; CI for its pushed head is pending.
+
+## 2026-11-22 — Agent — #297 per-component snooze rule selection
+
+- Goal: avoid rescanning matching conversation rules for every candidate during projection.
+- Changes: select the newest matching conversation rule once per component, then compare it with each candidate's indexed legacy rule; no behavior or abstraction change.
+- Verification: the actual repository projection, visibility, and wake test files passed in the temporary Linux SwiftPM harness using production workflow-state/parser/projection/mutation/visibility/wake sources: `Test run with 49 tests in 3 suites passed after 0.052 seconds.` Pinned SwiftFormat reported `0/1 files formatted` for the changed projection source.
+- Limits: native SwiftUI typechecking/tests remain unverified on Linux. No CI was started or rerun; native CI remains pending after review.
+
+## 2026-11-22 — Agent — #297 projection performance/final corrections
+
+- Goal: bound existing conversation projection work and reuse it across visibility, wake ordering, and Unified Snoozed consumers; correct the source-revocation merge and test argument-order defects.
+- Changes: kept one representative candidate per canonical RFC root and added identifier path compression; indexed canonical conversation seeds once per source and legacy snoozes once by `SourceMessageID`; exposed canonical seed validation to Root reconciliation. List visibility/wake policies accept the cached projection, while Unified Snoozed uses its complete retained candidate buffer throughout reprojection. Successful snapshot merges and final publication now both filter through live available sources.
+- Tests: added a 512-member linked-component regression, state/buffer cache invalidation coverage, prebuilt-projection visibility/wake coverage, source revocation after a successful scan, and canonical invalid/empty seed validation. Corrected reconciliation argument order. The actual repository projection, visibility, and wake test files ran unmodified in a temporary Linux SwiftPM shim harness using production state/parser/projection/mutation/visibility/wake sources: 49 tests in 3 suites passed. The first compile exposed mutating coordinator calls inside `#expect`; assertions now capture those results before evaluating them.
+- Verification: pinned SwiftFormat reported `0/8 files formatted`; `swiftc -frontend -parse` parsed all 8 changed Swift files. The BrevMail catalog JSON is valid, no catalogs changed and no new nb entries are needed; changed Swift headers match the template; `scripts/check-adr-required.sh` passed; `git diff --check` passed.
+- Limits/handoff: Root/list SwiftUI code is syntax-checked but not natively typechecked; native BrevMail/SwiftUI tests remain CI-only on Linux. No CI, push, PR/issue edits, or visual QA. Keep the commit local for review; after approval publish the accumulated fixes together and run native CI.
+
+## 2026-11-22 — Agent — #297 reconciliation/cache correction
+
+- Goal: coalesce Root conversation-cache reconciliation and make the Unified Snoozed cache resilient to concurrent state changes, backend replacement, and partial sources.
+- Changes: added a generation-owned dirty-pass coordinator; Root now takes a fresh state/source snapshot on each pass, skips unavailable/empty/failed sources independently, revalidates each owner, and commits successful source expansions independently against persisted rules. Unified Snoozed now keys reloads by snooze rules and source revision, retains complete per-source cache candidates, preserves prior complete snapshots for failed sources, reprojects from those candidates with fresh state, and filters publication against all current source/backend/folder identities. Fixed the new test transaction tuple labels to `value:`.
+- Tests: added coordinator burst/lifetime tests, source-independent reconciliation and snapshot owner/partial-source tests, and a bridge-candidate reprojection regression. The focused production-source harness passed 52 checks. Its first compile attempt caught a result-inference error in the new candidate filter; fixed and reran successfully.
+- Verification: pinned SwiftFormat via `mise exec` reported `0/4 files require formatting`; `swiftc -frontend -parse` on all 4 changed Swift files exited 0; `git diff --check` exited 0.
+- Limits: native Swift Testing/typechecking was not run on Linux; the repository CI/native lane is the required check for those tests. The harness compiles the production parser/model/projection/mutation/wake sources but does not execute the new native Root/Unified tests. No CI, PR, issue, or visual QA actions were performed.
+- Handoff: commit locally only, no push. Reader source isolation, search-folder validation, bulk copy, injected account cleanup, and final projection-cache reuse remain deferred as requested.
+
+## 2026-11-22 — Agent — #297 ownership/state correction
+
+- Goal: make asynchronous snooze work validate live backend ownership and commit against freshly persisted workflow state.
+- Changes: added the PR #326-compatible Root backend-provider seam and wired both app sessions; passed live backends and injected-store workflow-state providers to child lists; added a shared affected-snooze transaction for list, unified, reader, and reconciliation mutations; removed unrelated-workflow-change cancellation while retaining request/lifetime guards; added a suspendable MockBackend cache-read hook.
+- Tests: added regressions first for same-ID backend replacement during a suspended cache read, externally persisted notes/Done edits, and removed/rescheduled rule rejection. The focused Linux harness passed 52 checks using the production parser/model/projection/mutation/wake sources.
+- Verification: SwiftFormat 0.58.7 reported `0/9 files require formatting`; Swift parsing of all 9 changed Swift files exited 0; `git diff --check` exited 0.
+- Native/CI limits: native BrevMail typechecking/tests were not run on Linux per handoff. I inspected the existing PR #324 macOS build log (remote head `7e06f60`): `/Users/runner/work/brev/brev/packages/BrevMail/Sources/BrevMail/LocalMessageWorkflowConversationCache.swift:67:45: error: 'nil' cannot be used in context expecting type 'LocalMessageWorkflowCandidate'`. The current local source has the explicit `compactMap` return added in `a7e701d`; this old log does not report on the current unpushed code. PR snapshot was 17 passed / 6 failed; no CI was started or rerun, and other failing logs were not inspected.
+- Handoff: local commit only; do not push in this step. Coalescing, Snoozed-loader refresh, and reader candidate isolation remain deferred as requested.
+
+## 2026-11-22 — Agent — #297 projection review correction
+
+- Goal: complete the pure RFC projection, cache-anchor identity, and wake-order corrections from the PR #324 review.
+- Changes: RFC union-find parents are initialized only once, preserving transitive persisted-seed unions regardless of rule/candidate order; legacy thread aggregation now combines original header dates and legacy wake dates, then takes the maximum with each row's own effective date; selected cache anchors use source/folder/provider identity. Added regression tests for overlapping seed chains/order, mixed legacy/conversation wake dates, and duplicate provider IDs across folders.
+- Red/green: the complete production-source conversation harness first failed `overlapping persisted seed chain is order independent`, then (after the graph fix) failed `own conversation wake survives legacy aggregation`; after both fixes it passed 44 checks.
+- Verification: pinned SwiftFormat 0.58.7 formatted the seven changed Swift paths (`3/7 files formatted`); `swiftc -frontend -parse` parsed those seven paths; `git diff --check` passed.
+- Native test attempt: `swift test --filter LocalMessageWorkflowConversation` stopped before tests because Linux lacks SwiftUI (`BrevPluginRegistry.swift:14:8: error: no such module 'SwiftUI'`). No CI or visual QA was run. This is a local-only commit; do not push until the remaining review corrections are completed.
+
+## 2026-11-22 — Agent — #297
+
+- Goal: extend PR #324 snoozing to cached RFC-linked conversations without guessing from subjects or provider thread IDs.
+- Changes: added optional normalized RFC seed metadata, an indexed source-scoped conversation projection and mutation policy, cache-only folder scans for snooze actions, stale-work guards, root reconciliation, derived wake ordering, and cached cross-folder Snoozed loading. Preferences remain on the existing workflow-state key and iCloud opt-in; no mail content or network requests were added.
+- Verification: the actual-source Linux conversation harness passed 33 checks; pinned SwiftFormat required no changes across 19 Swift files; `swiftc -frontend -parse` parsed 19 changed Swift files; all 6 added catalog keys have `nb` entries; all 5 new Swift files match the exact header template; ADR-required and diff checks passed.
+- Skipped: native BrevMail tests/typechecking and visual QA require macOS. The earlier Linux package-test attempt stopped at `BrevPluginRegistry.swift:14:8: error: no such module 'SwiftUI'`. No hosted CI, PR, or issue edits were made.
+
+## 2026-11-21 — Agent — #297 snooze-wake review corrections
+
+- Goal: address the pre-PR review findings without broadening the message-scoped wake slice.
+- Changes: equal effective wake dates now tie-break by original header date before ID; the single-list wake task restarts when its source changes; eligible Inbox navigation headers and fallback navigation use the same promoted newest-first ordering as visible headers; corrected the snapshot initializer argument order and both new-file MIT headers.
+- Red/green: the external Swift Testing harness compiled the actual MessageListSortPolicy.swift, UnifiedInboxThreadGrouping.swift, and sort test file; the new tie regression failed before the comparator change with ordered IDs ["a", "z"] and parent ["a"], then all 16 sort tests passed. The policy harness compiled the actual policy source and test file; all 7 tests passed, including active-source deadline selection.
+- Verification: pinned SwiftFormat reported 0/6 files require formatting; git diff --check passed.
+- Skipped: native BrevMail/SwiftUI compilation and presentation-snapshot tests are unavailable on Linux. No PR or hosted CI action was performed.
+
+## 2026-11-21 — Agent — #297 snooze wake ordering
+
+- Goal: promote expired, source-scoped snoozes in Inbox ordering and refresh lists at the nearest wake deadline without changing provider timestamps or persisted models.
+- Changes: added a pure wake-date projection and deadline selector; newest-first regular/unified Inbox lists apply overrides to sorting and date sections only, preserve pin precedence, and aggregate loaded thread members only for capable sources. A view-owned cancellable task refreshes navigation and snoozed views at expiry, after workflow-state changes, and on scene activation. The feature remains message-scoped; unloaded/new conversation replies are not included.
+- Red/green: the external SwiftPM harness compiled the actual policy test file; the baseline failed with the missing MessageListSnoozeWakeEntry type, then the production policy and six Swift Testing cases passed on Swift 6.4.3.
+- Verification: pinned SwiftFormat reported 0/11 files require formatting; git diff --check and scripts/check-adr-required.sh passed.
+- Skipped: native BrevMail tests/build and visual QA require macOS; no existing snapshot PNGs were changed. Persisted-state round-trip/account-cleanup regressions already exist in LocalMessageWorkflowStateTests and were not rerun.
+- Handoff: no PR was created and hosted CI was not monitored, as requested. Project board #9 remains unavailable in this environment; no board change was made. Full persisted conversation snooze scope remains a later slice.
+
 ## 2026-11-23 — Agent — PR #323 (#297 undo-send rebase and macOS snapshots)
 
 - Goal: rebase PR #323 onto `origin/main`, extract `ComposeUndoSendToastView` for direct snapshot verification, record macOS 26+ snapshots, and resolve the Devin Review snapshot finding.
@@ -7639,3 +7811,17 @@ buttons, and package-aware localization.
 - Changes: updated `ADRs/0095-local-mcp-agent-access.md` and `ADRs/README.md` from `Proposed` to `Accepted` (`Accepted: 2026-11-23`). Documentation-only PR, so TDD does not apply.
 - Verification: `scripts/check-adr-required.sh origin/main`, `git diff --check`.
 - Handoff: once PR #340 merges, implement Issue #305 (`brev-mcp` stdio bridge + `0600` peer-UID Unix socket, macOS `Settings → Agent access`, cache-only read tools, per-call in-app archive/label approvals, bounded local audit log, `PRIVACY.md` + ADR-0006 updates, tests, and snapshots) on a fresh branch from `origin/main`.
+
+## 2026-11-22 — Devin — Issue #297 / PR #324 review corrections
+
+- Goal: finish the remaining source-safety/UI consumer corrections on `feature/snooze-wake-order`; keep the change local and retain the established snooze projection approach.
+- Changes: detached-reader candidates now retain explicit source ownership; loaded headers are included only for the main selected source. Search-result snoozes validate every target against known source folders, and bulk limited snoozes use the existing plural message. Account cleanup removes workflow state from the injected settings suite. Final Snoozed publication checks cancellation and live source availability. Reviewed native test setup was corrected, and the cache-anchor `compactMap` now has an explicit optional result and concrete candidate construction.
+- Verification: pinned SwiftFormat completed with `1/9 files formatted`; pinned lint then reported `0/9 files require formatting`. `swiftc -frontend -parse` parsed all 9 changed Swift files. `git diff --check` passed. The reused focused conversation harness passed 56 checks using production projection, mutation, wake, parser and model code; it also compiled the explicit optional cache-anchor compaction expression.
+- Limits: the Linux harness could not typecheck all of `LocalMessageWorkflowConversationCache.swift` because Linux Foundation lacks the package `String(localized:bundle:)` overload. Native BrevMail/BrevSettings tests and full macOS typechecking remain unrun on this Linux host; the pinned repo blueprint targets macOS. No CI was started. The full cache-file native build is still required to close the prior CI compiler finding.
+- Documentation/handoff: no CHANGELOG or ADR update was needed for these corrections to the existing feature and no public architecture/schema changed. The next bounded step is the final projection-cache/performance pass, followed by actual native CI. No PR/issue edits or push were made.
+
+## 2026-11-23 — Agent — PR #324 / Issue #297 (rebase + macOS snapshots)
+
+- Goal: rebase `feature/snooze-wake-order` onto `origin/main` (`a1a8be0f`), record macOS 26+ snapshots for collapsed conversation wake ordering, register the suite in `.github/workflows/build.yml`, and verify locally on macOS.
+- Changes: rebased onto `origin/main` (keeping `filteredUngroupedHeaders: workflowHeaders` and `projectedNavigationHeaders` in `MessageListView.swift`); added `SnoozeWakeOrderSnapshotTests.swift` + light/dark PNG baselines; registered `SnoozeWakeOrderSnapshotTests` in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'SnoozeWakeOrderSnapshotTests|MessageListSortPolicyTests|MessageListDateSectionGroupingTests|Snooze'` (54 tests in 11 suites passed), visually inspected PNGs, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`.

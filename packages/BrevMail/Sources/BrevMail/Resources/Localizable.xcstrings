@@ -16726,6 +16726,72 @@
           }
         }
       }
+    },
+    "Messages without usable reply identifiers were snoozed individually.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldinger uten brukbare svaridentifikatorer ble utsatt hver for seg."
+          }
+        }
+      }
+    },
+    "No cached folders are available to verify this conversation.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen bufrede mapper er tilgjengelige for å bekrefte denne samtalen."
+          }
+        }
+      }
+    },
+    "Only this message was snoozed because it has no usable reply identifiers.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bare denne meldingen ble utsatt fordi den mangler brukbare svaridentifikatorer."
+          }
+        }
+      }
+    },
+    "Snooze state changed in another window. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utsettelsen ble endret i et annet vindu. Prøv igjen."
+          }
+        }
+      }
+    },
+    "The cached conversation could not be verified. Try again when mail is available.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den bufrede samtalen kunne ikke bekreftes. Prøv igjen når e-post er tilgjengelig."
+          }
+        }
+      }
+    },
+    "The mailbox is no longer available.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Postkassen er ikke lenger tilgjengelig."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

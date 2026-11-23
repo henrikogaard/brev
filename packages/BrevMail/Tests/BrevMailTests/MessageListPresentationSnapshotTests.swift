@@ -88,6 +88,95 @@ struct MessageListPresentationSnapshotTests {
                                        expandedThreadIDs: []) == nil)
     }
 
+    @Test("wake ordering is shared by visible and navigable message projections")
+    func wakeOrderingMatchesNavigableHeaders() {
+        let older = Self.header(id: "a", threadID: "thread", date: Date(timeIntervalSince1970: 100))
+        let newer = Self.header(id: "z", threadID: "thread", date: Date(timeIntervalSince1970: 200))
+        let wakeAt = Date(timeIntervalSince1970: 300)
+        let visible = MessageListSortPolicy.sorted(
+            [older, newer],
+            by: .newestFirst,
+            pinnedIDs: [],
+            dateOverrides: [older.id: wakeAt, newer.id: wakeAt]
+        )
+        let navigable = MessageListNavigationHeaders.headers(
+            from: visible,
+            threadContext: [older, newer]
+        )
+
+        #expect(visible.map(\.id) == ["z", "a"])
+        #expect(navigable.map(\.id) == ["z", "a"])
+    }
+
+    @Test("collapsed row sorting and date sections use the newest visible member date")
+    func collapsedRowsUseNewestVisibleMemberDate() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let today = calendar.startOfDay(for: referenceDate)
+        let representative = Self.header(
+            id: "representative",
+            threadID: "provider-thread",
+            date: today.addingTimeInterval(-1800)
+        )
+        let wakeMember = Self.header(
+            id: "wake-member",
+            threadID: "provider-thread",
+            date: today.addingTimeInterval(-86400)
+        )
+        let ordinary = Self.header(
+            id: "ordinary",
+            threadID: "ordinary-thread",
+            date: today.addingTimeInterval(-1200)
+        )
+        let singleton = Self.header(
+            id: "singleton",
+            threadID: "singleton-thread",
+            date: today.addingTimeInterval(-172_800)
+        )
+        let wakeAt = today.addingTimeInterval(300)
+        let singletonWakeAt = today.addingTimeInterval(600)
+        let individualDates = [wakeMember.id: wakeAt, singleton.id: singletonWakeAt]
+        let sourceRows = [representative, wakeMember, ordinary, singleton]
+        let listed = MessageListVisibleHeaders.sortedRows(
+            from: sourceRows,
+            by: .newestFirst,
+            groupByThread: true,
+            pinnedIDs: [],
+            effectiveDateOverrides: individualDates
+        )
+        let snapshot = MessageListPresentationSnapshot(
+            headers: listed.headers,
+            pinnedMessageIDs: [],
+            groupByDate: true,
+            collapsedDateSectionIDs: [],
+            referenceDate: referenceDate,
+            calendar: calendar,
+            sourceHeaders: sourceRows,
+            groupsThreads: true,
+            dateOverrides: listed.dateOverrides
+        )
+        let todayTitle = MessageListDateGrouping.sectionTitle(
+            for: wakeAt,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        #expect(listed.headers.map(\.id) == [singleton.id, representative.id, ordinary.id])
+        #expect(listed.dateOverrides[representative.id] == wakeAt)
+        #expect(listed.dateOverrides[singleton.id] == singletonWakeAt)
+        #expect(snapshot.dateSections.first(where: { $0.title == todayTitle })?.visibleHeaders.map(\.id) == [
+            singleton.id,
+            representative.id,
+        ])
+        #expect(snapshot.headersByThreadID[representative.threadID]?.map(\.id) == [
+            wakeMember.id,
+            representative.id,
+        ])
+        #expect(individualDates[representative.id] == nil)
+        #expect(individualDates[wakeMember.id] == wakeAt)
+    }
+
     @Test("selection follows filtered representative, date visibility and current header membership")
     func filteredSelectionRepresentative() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)

@@ -112,6 +112,31 @@ struct LocalMessageWorkflowStateTests {
         #expect(LocalMessageWorkflowStateStorage.load(from: defaults) == state)
     }
 
+    @Test("snooze conversation metadata round trips with normalized RFC identifiers")
+    func snoozeConversationMetadataRoundTrips() throws {
+        let defaults = try Self.makeDefaults()
+        let now = Date(timeIntervalSince1970: 3500)
+        let message = SourceMessageID(sourceID: work, messageID: "message-1")
+        let metadata = LocalMessageSnoozeConversationMetadata(rfcIdentifiers: [
+            "<z@example.org>",
+            "a@example.org",
+            "a@example.org",
+            "malformed identifier"
+        ])
+        let state = LocalMessageWorkflowState(snoozes: [LocalMessageSnooze(
+            messageID: message,
+            wakeAt: now.addingTimeInterval(3600),
+            createdAt: now,
+            conversationMetadata: metadata
+        )])
+
+        LocalMessageWorkflowStateStorage.save(state, to: defaults)
+
+        let decoded = try #require(LocalMessageWorkflowStateStorage.load(from: defaults).snoozes.first)
+        #expect(decoded.conversationMetadata?.rfcIdentifiers == ["a@example.org", "z@example.org"])
+        #expect(decoded == state.snoozes[0])
+    }
+
     @Test("storage removes workflow state for signed out accounts")
     func storageRemovesWorkflowStateForSignedOutAccounts() throws {
         let defaults = try Self.makeDefaults()
@@ -146,7 +171,16 @@ struct LocalMessageWorkflowStateTests {
         let message = SourceMessageID(sourceID: work, messageID: "message-1")
         let json = """
         {
-          "snoozes": [],
+          "snoozes": [
+            {
+              "messageID": {
+                "sourceID": { "accountID": "\(message.sourceID.accountID)", "mailboxID": "\(message.sourceID.mailboxID)" },
+                "messageID": "\(message.messageID)"
+              },
+              "wakeAt": 4000,
+              "createdAt": 3000
+            }
+          ],
           "doneMessages": [
             {
               "messageID": {
@@ -162,6 +196,7 @@ struct LocalMessageWorkflowStateTests {
 
         #expect(state.isDone(message))
         #expect(state.notes.isEmpty)
+        #expect(state.snoozes.first?.conversationMetadata == nil)
     }
 
     private static func makeDefaults() throws -> UserDefaults {

@@ -87,7 +87,7 @@ public final class LocalMailBackend: MailBackend, MailImporting, @unchecked Send
             .count ?? 0
         cachedHasFolders = count > 0
         var extended: BackendExtendedCapabilities = [
-            .clientSideThreading, .messageCopy, .rawMessageSource, .rawMessageBytes,
+            .cachedMessageHeaders, .clientSideThreading, .messageCopy, .rawMessageSource, .rawMessageBytes,
         ]
         if localSearchIndex != nil {
             extended.insert(.localAttachmentIndex)
@@ -277,6 +277,18 @@ public final class LocalMailBackend: MailBackend, MailImporting, @unchecked Send
         let end = Swift.min(offset + Self.pageSize, headers.count)
         let next = end < headers.count ? String(end) : nil
         return (Array(headers[offset ..< end]), next)
+    }
+
+    /// Returns all headers stored for one validated local folder without paging or network access.
+    public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
+        guard sourceID.accountID == account.id, sourceID.mailboxID == Self.accountID else {
+            throw MailBackendError.notFound(id: sourceID.mailboxID)
+        }
+        let records = try await store.folders()
+        guard let record = records.first(where: { $0.id == folder.id }) else {
+            throw MailBackendError.notFound(id: folder.id)
+        }
+        return try await sortedHeaders(in: record.id)
     }
 
     public func enumerateMessages(

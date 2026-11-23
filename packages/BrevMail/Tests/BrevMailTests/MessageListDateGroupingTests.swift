@@ -89,6 +89,22 @@ struct MessageListDateGroupingTests {
         #expect(sections.map { $0.headers.map(\.id) } == [[olderPinned.id], [today.id]])
     }
 
+    @Test("wake date override groups by today without changing the header date")
+    func wakeDateOverrideUsesEffectiveDate() {
+        let reference = Self.date(year: 2026, month: 5, day: 29, hour: 12)
+        let calendar = Calendar(identifier: .gregorian)
+        let oldHeader = Self.makeHeader(id: "woken", daysBefore: 16, reference: reference, calendar: calendar)
+        let sections = MessageListDateGrouping.sections(
+            for: [oldHeader],
+            referenceDate: reference,
+            calendar: calendar,
+            dateOverrides: [oldHeader.id: reference]
+        )
+
+        #expect(sections.map(\.title) == ["Today"])
+        #expect(oldHeader.date == calendar.date(byAdding: .day, value: -16, to: reference))
+    }
+
     private static func makeHeader(
         id: String,
         daysBefore: Int,

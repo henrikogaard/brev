@@ -44,6 +44,7 @@ final class MessageListPresentationSnapshotCache {
         let workflowVisibilityMode: LocalMessageWorkflowVisibilityMode
         let workflowState: LocalMessageWorkflowState
         let sourceID: MailSourceID?
+        var snoozeWakePromotionEligible = false
         let activeInboxCategory: InboxCategory
         var showsPeopleUpdatesBar = false
         var activePeopleUpdatesTab: InboxSplitTab = .all
@@ -90,6 +91,9 @@ struct MessageListPresentationSnapshot {
     /// Ungrouped headers matching the active filter/tab BEFORE thread-context
     /// expansion adds non-matching conversation siblings (#295).
     let filteredUngroupedHeaders: [MessageHeader]
+    /// Per-message effective-date overrides (for example woken snoozes) for
+    /// ungrouped projections such as the Updates sender-bundle tab (#297).
+    let ungroupedDateOverrides: [MessageHeader.ID: Date]
     /// Ungrouped filtered reader/navigation context, derived once with the list projection.
     let navigationHeaders: [MessageHeader]
     let dateSections: [MessageListVisibleDateSection]
@@ -118,11 +122,14 @@ struct MessageListPresentationSnapshot {
         filteredUngroupedHeaders: [MessageHeader]? = nil,
         navigationHeaders: [MessageHeader]? = nil,
         sourceID: MailSourceID? = nil,
-        groupsThreads: Bool = false
+        groupsThreads: Bool = false,
+        dateOverrides: [MessageHeader.ID: Date] = [:],
+        ungroupedDateOverrides: [MessageHeader.ID: Date]? = nil
     ) {
         self.headers = headers
         self.sourceID = sourceID
         self.filteredUngroupedHeaders = filteredUngroupedHeaders ?? headers
+        self.ungroupedDateOverrides = ungroupedDateOverrides ?? dateOverrides
         self.navigationHeaders = navigationHeaders ?? headers
         let sourceHeaders = sourceHeaders ?? headers
         unreadHeaderCount = sourceHeaders.reduce(into: 0) { count, header in
@@ -143,7 +150,8 @@ struct MessageListPresentationSnapshot {
                     for: headers,
                     pinnedIDs: pinnedMessageIDs,
                     referenceDate: referenceDate,
-                    calendar: calendar
+                    calendar: calendar,
+                    dateOverrides: dateOverrides
                 ),
                 collapsedIDs: collapsedDateSectionIDs
             )
@@ -169,6 +177,33 @@ struct MessageListPresentationSnapshot {
 }
 
 enum MessageListVisibleHeaders {
+    static func sortedRows(
+        from visibleHeaders: [MessageHeader],
+        by order: MailboxSortOrder,
+        groupByThread: Bool,
+        pinnedIDs: Set<MessageHeader.ID>,
+        effectiveDateOverrides: [MessageHeader.ID: Date]
+    ) -> (headers: [MessageHeader], dateOverrides: [MessageHeader.ID: Date]) {
+        let parents = headers(from: visibleHeaders, groupByThread: groupByThread, pinnedIDs: pinnedIDs)
+        let rowDateOverrides = MessageListRowDatePolicy.overrides(
+            for: parents,
+            from: visibleHeaders,
+            groupKey: { groupByThread ? $0.threadID : nil },
+            itemID: \.id,
+            date: \.date,
+            effectiveDateOverrides: effectiveDateOverrides
+        )
+        return (
+            MessageListSortPolicy.sorted(
+                parents,
+                by: order,
+                pinnedIDs: pinnedIDs,
+                dateOverrides: rowDateOverrides
+            ),
+            rowDateOverrides
+        )
+    }
+
     static func headers(
         from headers: [MessageHeader],
         groupByThread: Bool,

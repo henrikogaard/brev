@@ -33,6 +33,7 @@ final class UnifiedInboxPresentationSnapshotCache {
         var savedSearchText = ""
         let savedSearchQuery: SmartMailbox.SavedQuery?
         let mailboxSortOrder: MailboxSortOrder
+        var snoozeWakePromotionEligible = false
         let temporalInvalidationKey: MailboxListTemporalInvalidationKey
         let calendarDay: Date
         let calendarIdentifier: Calendar.Identifier
@@ -100,7 +101,9 @@ struct UnifiedInboxPresentationSnapshot {
         referenceDate: Date = Date(),
         calendar: Calendar = .current,
         threadCounts: [String: Int] = [:],
-        sourceItems: [UnifiedInboxItem]? = nil
+        sourceItems: [UnifiedInboxItem]? = nil,
+        effectiveDateOverrides: [SourceMessageID: Date] = [:],
+        displayDateOverrides: [SourceMessageID: Date]? = nil
     ) {
         self.init(
             visibleItems: visibleItems,
@@ -110,7 +113,9 @@ struct UnifiedInboxPresentationSnapshot {
             referenceDate: referenceDate,
             calendar: calendar,
             threadCounts: threadCounts,
-            sourceItems: sourceItems
+            sourceItems: sourceItems,
+            effectiveDateOverrides: effectiveDateOverrides,
+            displayDateOverrides: displayDateOverrides
         )
     }
 
@@ -122,7 +127,9 @@ struct UnifiedInboxPresentationSnapshot {
         referenceDate: Date = Date(),
         calendar: Calendar = .current,
         threadCounts: [String: Int] = [:],
-        sourceItems: [UnifiedInboxItem]? = nil
+        sourceItems: [UnifiedInboxItem]? = nil,
+        effectiveDateOverrides: [SourceMessageID: Date] = [:],
+        displayDateOverrides: [SourceMessageID: Date]? = nil
     ) {
         self.visibleItems = visibleItems
         self.pinnedMessageIDs = pinnedMessageIDs
@@ -147,7 +154,8 @@ struct UnifiedInboxPresentationSnapshot {
                 pinnedMessageIDs: pinnedMessageIDs,
                 collapsedDateSectionIDs: collapsedDateSectionIDs,
                 referenceDate: referenceDate,
-                calendar: calendar
+                calendar: calendar,
+                effectiveDateOverrides: displayDateOverrides ?? effectiveDateOverrides
             )
             : []
         selectionProjection = MessageListSelectionProjection(
@@ -187,7 +195,8 @@ struct UnifiedInboxPresentationSnapshot {
         pinnedMessageIDs: Set<MessageHeader.ID>,
         collapsedDateSectionIDs: Set<MessageListDateSection.ID>,
         referenceDate: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        effectiveDateOverrides: [SourceMessageID: Date]
     ) -> [UnifiedInboxDateSection] {
         var groupedItems: [(title: String, items: [UnifiedInboxItem])] = []
         let pinnedItems = items.filter { pinnedMessageIDs.contains($0.pinID) }
@@ -199,7 +208,9 @@ struct UnifiedInboxPresentationSnapshot {
         var currentItems: [UnifiedInboxItem] = []
         for item in items where !pinnedMessageIDs.contains(item.pinID) {
             let title = MessageListDateGrouping.sectionTitle(
-                for: item.header.date,
+                for: effectiveDateOverrides[
+                    SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
+                ] ?? item.header.date,
                 referenceDate: referenceDate,
                 calendar: calendar
             )

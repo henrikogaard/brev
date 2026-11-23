@@ -51,6 +51,12 @@ struct MailStatusCopyLocalizationTests {
         "Couldn't update message.",
         "Some mailboxes couldn't load. %@",
         "That action is taking too long. The view has been unblocked — refresh to confirm the result.",
+        "The mailbox is no longer available.",
+        "No cached folders are available to verify this conversation.",
+        "The cached conversation could not be verified. Try again when mail is available.",
+        "Snooze state changed in another window. Try again.",
+        "Only this message was snoozed because it has no usable reply identifiers.",
+        "Messages without usable reply identifiers were snoozed individually.",
         // Reader statuses
         "Couldn't load message body.",
         "Couldn't load message",
