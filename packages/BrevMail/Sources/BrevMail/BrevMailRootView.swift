@@ -442,6 +442,7 @@ public struct BrevMailRootView: View {
     private let currentBackendsProvider: @MainActor () -> [any MailBackend]
     private let aiBackend: (any AIBackend)?
     private let aiBackends: [BrevAccount.ID: any AIBackend]
+    private let aiBackendsGeneration: Int
     private let settingsStore: SettingsPersistenceStore
     private let onSignOut: (() async -> Void)?
     private let onChangeTheme: (BrevTheme) -> Void
@@ -602,6 +603,7 @@ public struct BrevMailRootView: View {
         currentBackendsProvider: (@MainActor () -> [any MailBackend])? = nil,
         aiBackend: (any AIBackend)? = nil,
         aiBackends: [BrevAccount.ID: any AIBackend] = [:],
+        aiBackendsGeneration: Int = 0,
         settingsStore: SettingsPersistenceStore = .standard,
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
@@ -645,6 +647,7 @@ public struct BrevMailRootView: View {
         } else {
             self.aiBackends = aiBackends
         }
+        self.aiBackendsGeneration = aiBackendsGeneration
         self.settingsStore = settingsStore
         let workflowStateData = settingsStore.data(forKey: LocalMessageWorkflowStateStorage.storageKey) ?? Data()
         _localMessageWorkflowStateData = State(initialValue: workflowStateData)
@@ -1825,6 +1828,7 @@ public struct BrevMailRootView: View {
         return AssistantDestinationView(
             sourceID: resolvedSource,
             aiBackend: resolvedAIBackend,
+            aiRouteRevision: aiBackendsGeneration,
             actionFolders: mailboxActionFolders(for: resolvedSource),
             focusedFolder: selectedFolder,
             actionSourceScope: mailboxActionSourceScope(for: resolvedSource),

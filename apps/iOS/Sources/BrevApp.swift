@@ -187,6 +187,7 @@ struct BrevApp: App {
                         backends: session.visibleBackends,
                         currentBackendsProvider: { session.visibleBackends },
                         aiBackends: session.aiBackends,
+                        aiBackendsGeneration: session.aiBackendsGeneration,
                         onSignOut: { await session.signOut() },
                         onChangeTheme: { newTheme in
                             session.theme = newTheme

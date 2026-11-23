@@ -59,6 +59,7 @@ struct AssistantDestinationView: View {
 
     let sourceID: MailSourceID?
     let aiBackend: (any AIBackend)?
+    let aiRouteRevision: Int
     let actionFolders: [Folder]
     let focusedFolder: Folder?
     let actionSourceScope: MailboxActionAgentSourceScope
@@ -83,6 +84,7 @@ struct AssistantDestinationView: View {
     init(
         sourceID: MailSourceID?,
         aiBackend: (any AIBackend)?,
+        aiRouteRevision: Int = 0,
         actionFolders: [Folder] = [],
         focusedFolder: Folder? = nil,
         actionSourceScope: MailboxActionAgentSourceScope = .currentMailbox,
@@ -97,6 +99,7 @@ struct AssistantDestinationView: View {
     ) {
         self.sourceID = sourceID
         self.aiBackend = aiBackend
+        self.aiRouteRevision = aiRouteRevision
         self.actionFolders = actionFolders
         self.focusedFolder = focusedFolder
         self.actionSourceScope = actionSourceScope
@@ -167,11 +170,22 @@ struct AssistantDestinationView: View {
         .onChange(of: sourceID) { _, _ in
             reconfigureController()
         }
+        .onChange(of: aiRouteIdentity) { _, _ in
+            reconfigureController()
+        }
         .modifier(MailboxChatAIConsentAlert(
             showAIConsent: $showAIConsent,
             aiEnabled: $aiEnabled,
             aiConsentGiven: $aiConsentGiven
         ))
+    }
+
+    private var aiRouteIdentity: String {
+        Self.routeIdentity(revision: aiRouteRevision, backend: aiBackend)
+    }
+
+    static func routeIdentity(revision: Int, backend: (any AIBackend)?) -> String {
+        "\(revision)|\(backend?.identifier ?? "none")|\(backend?.transparencyLabel ?? "")"
     }
 
     private func reconfigureController() {

@@ -580,4 +580,53 @@ struct AssistantDestinationTests {
             #expect((unitValue?.isEmpty == false) || hasVariations, "Missing nb localization for \(key)")
         }
     }
+
+    @Test("Assistant refreshes controller route across disable and replacement key without mailbox change")
+    func assistantRefreshesRouteAcrossDisableAndKeyReplacement() async {
+        let oldCounter = InvocationCounter()
+        let newCounter = InvocationCounter()
+        let oldBackend = MockAssistantAI(replyText: "Old key reply") {
+            Task { await oldCounter.increment() }
+        }
+        let replacementBackend = MockAssistantAI(replyText: "New key reply") {
+            Task { await newCounter.increment() }
+        }
+
+        let initialIdentity = AssistantDestinationView.routeIdentity(revision: 1, backend: oldBackend)
+        let disabledIdentity = AssistantDestinationView.routeIdentity(revision: 2, backend: nil)
+        let replacedIdentity = AssistantDestinationView.routeIdentity(revision: 3, backend: replacementBackend)
+        #expect(initialIdentity != disabledIdentity)
+        #expect(disabledIdentity != replacedIdentity)
+        #expect(initialIdentity != replacedIdentity)
+
+        let referenceDate = Self.now
+        let searchClosure: MailboxChatController.Search = { _, _ in
+            [MessageHeader(
+                id: "m1",
+                threadID: "t1",
+                folderID: "inbox",
+                from: Correspondent(name: "Alex", email: "alex@example.org"),
+                subject: "Status",
+                snippet: "Ready",
+                date: referenceDate
+            )]
+        }
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: Self.source,
+            aiBackend: oldBackend,
+            search: searchClosure
+        )
+
+        // Transition to unavailable (provider disabled) without changing sourceID.
+        controller.configure(scope: .account, sourceID: Self.source, aiBackend: nil, search: searchClosure)
+        await controller.send(userText: "Summarize status")
+        #expect(await oldCounter.count == 0)
+
+        // Transition back to configured with replacement credentials for the same provider ID.
+        controller.configure(scope: .account, sourceID: Self.source, aiBackend: replacementBackend, search: searchClosure)
+        await controller.send(userText: "Summarize status")
+        #expect(await oldCounter.count == 0)
+        #expect(await newCounter.count == 1)
+    }
 }

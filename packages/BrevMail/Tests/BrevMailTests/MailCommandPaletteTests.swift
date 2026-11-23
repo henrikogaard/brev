@@ -41,6 +41,7 @@ struct MailCommandPaletteTests {
 
     @Test("nested commands follow menu validation and cannot run after removal")
     func commands() throws {
+        _ = NSApplication.shared
         let root = NSMenu()
         let group = root.addItem(withTitle: "Message", action: nil, keyEquivalent: "")
         let submenu = NSMenu()

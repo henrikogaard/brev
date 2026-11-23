@@ -39,7 +39,14 @@ public enum IMAPOAuthProvider: Sendable, Hashable {
 public final class AppSession {
     public var backend: (any MailBackend)?
     public private(set) var backends: [BrevAccount.ID: any MailBackend] = [:]
-    public private(set) var aiBackends: [BrevAccount.ID: any AIBackend] = [:]
+    public private(set) var aiBackends: [BrevAccount.ID: any AIBackend] = [:] {
+        didSet { aiBackendsGeneration &+= 1 }
+    }
+
+    /// Monotonic generation incremented whenever `aiBackends` reloads or changes, so
+    /// long-lived AI surfaces (such as Assistant) refresh credentials even when the
+    /// provider identifier stays the same.
+    public private(set) var aiBackendsGeneration = 0
     public var aiBackend: (any AIBackend)?
     public var theme: BrevTheme {
         didSet {
