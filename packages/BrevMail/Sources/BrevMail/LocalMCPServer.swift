@@ -199,11 +199,12 @@ public struct MCPApprovalSheetView: View {
                     .background(theme.bgSecondary.color)
                     .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
                 }
-                if request.messageCount > 5 {
+                let shownPreviewCount = min(request.previews.count, 5)
+                if request.messageCount > shownPreviewCount {
                     Text(
                         String(
                             format: String(localized: "and %d more messages", bundle: .module),
-                            request.messageCount - 5
+                            request.messageCount - shownPreviewCount
                         )
                     )
                     .brevFont(.caption)
@@ -524,6 +525,13 @@ public final class LocalMCPBroker {
         client: MCPClientContext
     ) async -> [String: Any] {
         guard let accountID = arguments["account_id"] as? String, !accountID.isEmpty else {
+            recordAudit(
+                client: client,
+                toolName: "search_messages",
+                accountID: "none",
+                parameterSummary: "missing_account_id",
+                outcome: .denied
+            )
             return errorResponse(id: id, code: -32602, message: "Missing required argument 'account_id'.")
         }
         guard let backend = resolveOptedInBackend(accountID: accountID, settings: settings) else {
@@ -565,8 +573,21 @@ public final class LocalMCPBroker {
                     message: "Searching Trash or Spam is permanently excluded from MCP."
                 )
             }
+            let excludedMessageIDs = await excludedMessageIDs(in: folders, backend: backend)
             let headers = try await backend.search(query)
-            let allowedHeaders = headers.filter { !excludedFolderIDs.contains($0.folderID) }
+            guard settingsProvider().isAccountEnabled(accountID) else {
+                recordAudit(
+                    client: client,
+                    toolName: "search_messages",
+                    accountID: "none",
+                    parameterSummary: "consent_revoked",
+                    outcome: .blockedDisabled
+                )
+                return errorResponse(id: id, code: -32001, message: "Agent access was disabled before completion.")
+            }
+            let allowedHeaders = headers.filter {
+                !excludedFolderIDs.contains($0.folderID) && !excludedMessageIDs.contains($0.id)
+            }
             let formatter = ISO8601DateFormatter()
             let boundedHeaders = Array(allowedHeaders.prefix(limit))
             let results = boundedHeaders.map { header -> [String: Any] in
@@ -595,6 +616,13 @@ public final class LocalMCPBroker {
                 "truncated": allowedHeaders.count > limit
             ])
         } catch {
+            recordAudit(
+                client: client,
+                toolName: "search_messages",
+                accountID: accountID,
+                parameterSummary: "search_failed",
+                outcome: .denied
+            )
             return errorResponse(id: id, code: -32003, message: "Local search failed.")
         }
     }
@@ -608,6 +636,13 @@ public final class LocalMCPBroker {
         guard let accountID = arguments["account_id"] as? String, !accountID.isEmpty,
               let messageID = arguments["message_id"] as? String, !messageID.isEmpty
         else {
+            recordAudit(
+                client: client,
+                toolName: "read_message",
+                accountID: "none",
+                parameterSummary: "missing_arguments",
+                outcome: .denied
+            )
             return errorResponse(id: id, code: -32602, message: "Missing required arguments 'account_id' and 'message_id'.")
         }
         guard let backend = resolveOptedInBackend(accountID: accountID, settings: settings) else {
@@ -623,9 +658,8 @@ public final class LocalMCPBroker {
 
         do {
             let folders = try await backend.folders()
-            let excludedFolderIDs = Set(folders.filter { $0.role == .trash || $0.role == .spam }.map(\.id))
-            let header = try await findHeader(messageID: messageID, in: backend)
-            if let header, excludedFolderIDs.contains(header.folderID) {
+            let excludedMessageIDs = await excludedMessageIDs(in: folders, backend: backend)
+            if excludedMessageIDs.contains(messageID) {
                 recordAudit(
                     client: client,
                     toolName: "read_message",
@@ -637,6 +671,21 @@ public final class LocalMCPBroker {
                     id: id,
                     code: -32602,
                     message: "Reading messages in Trash or Spam is permanently excluded from MCP."
+                )
+            }
+            let matchedHeaders = try await findHeaders(messageIDs: [messageID], in: backend, folders: folders)
+            guard let header = matchedHeaders[messageID] else {
+                recordAudit(
+                    client: client,
+                    toolName: "read_message",
+                    accountID: accountID,
+                    parameterSummary: "header_cache_miss message_id=\(messageID)",
+                    outcome: .denied
+                )
+                return errorResponse(
+                    id: id,
+                    code: -32004,
+                    message: "Message not found in local cache."
                 )
             }
             // ADR-0095 §2: read_message must stay strictly cache-only and never trigger
@@ -657,6 +706,16 @@ public final class LocalMCPBroker {
                     message: "Message body is not in Brev's local cache."
                 )
             }
+            guard settingsProvider().isAccountEnabled(accountID) else {
+                recordAudit(
+                    client: client,
+                    toolName: "read_message",
+                    accountID: "none",
+                    parameterSummary: "consent_revoked message_id=\(messageID)",
+                    outcome: .blockedDisabled
+                )
+                return errorResponse(id: id, code: -32001, message: "Agent access was disabled before completion.")
+            }
             let rawText = Self.sanitizedPlainText(from: body)
             let safeBody = Self.redactedForSignInCodes(rawText)
             let attachments = body.attachments.map { attachment -> [String: Any] in
@@ -667,19 +726,17 @@ public final class LocalMCPBroker {
                 ]
             }
             let formatter = ISO8601DateFormatter()
-            var payload: [String: Any] = [
+            let payload: [String: Any] = [
                 "message_id": messageID,
                 "body_text": safeBody,
-                "attachments": attachments
+                "attachments": attachments,
+                "from": Self.formatCorrespondent(header.from),
+                "to": header.to.map(Self.formatCorrespondent),
+                "cc": header.cc.map(Self.formatCorrespondent),
+                "subject": Self.redactedForSignInCodes(header.subject),
+                "date": formatter.string(from: header.date),
+                "folder_id": header.folderID
             ]
-            if let header {
-                payload["from"] = Self.formatCorrespondent(header.from)
-                payload["to"] = header.to.map(Self.formatCorrespondent)
-                payload["cc"] = header.cc.map(Self.formatCorrespondent)
-                payload["subject"] = Self.redactedForSignInCodes(header.subject)
-                payload["date"] = formatter.string(from: header.date)
-                payload["folder_id"] = header.folderID
-            }
             recordAudit(
                 client: client,
                 toolName: "read_message",
@@ -689,6 +746,13 @@ public final class LocalMCPBroker {
             )
             return toolSuccessResponse(id: id, payload: payload)
         } catch {
+            recordAudit(
+                client: client,
+                toolName: "read_message",
+                accountID: accountID,
+                parameterSummary: "read_failed message_id=\(messageID)",
+                outcome: .denied
+            )
             return errorResponse(id: id, code: -32004, message: "Message not found in local cache.")
         }
     }
@@ -703,10 +767,24 @@ public final class LocalMCPBroker {
         guard let accountID = arguments["account_id"] as? String, !accountID.isEmpty,
               let rawIDs = arguments["message_ids"] as? [String]
         else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: "none",
+                parameterSummary: "missing_arguments",
+                outcome: .denied
+            )
             return errorResponse(id: id, code: -32602, message: "Missing required arguments 'account_id' and 'message_ids'.")
         }
         let messageIDs = Array(NSOrderedSet(array: rawIDs.filter { !$0.isEmpty })) as? [String] ?? []
         guard !messageIDs.isEmpty else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: settings.isAccountEnabled(accountID) ? accountID : "none",
+                parameterSummary: "empty_message_ids",
+                outcome: .denied
+            )
             return errorResponse(id: id, code: -32602, message: "'message_ids' must contain at least one message ID.")
         }
         guard messageIDs.count <= Self.maxChangeBatchSize else {
@@ -734,19 +812,41 @@ public final class LocalMCPBroker {
             return errorResponse(id: id, code: -32002, message: "Account not found.")
         }
 
+        let folders: [Folder]
         let targetFolder: Folder
         do {
-            let folders = try await backend.folders()
+            folders = try await backend.folders()
             if toolName == "archive_messages" {
                 guard let archive = NotificationActionExecutor.archiveDestinationFolder(in: folders) else {
+                    recordAudit(
+                        client: client,
+                        toolName: toolName,
+                        accountID: accountID,
+                        parameterSummary: "no_archive_folder",
+                        outcome: .denied
+                    )
                     return errorResponse(id: id, code: -32005, message: "No Archive folder available on this account.")
                 }
                 targetFolder = archive
             } else {
                 guard let folderID = arguments["folder_id"] as? String, !folderID.isEmpty else {
+                    recordAudit(
+                        client: client,
+                        toolName: toolName,
+                        accountID: accountID,
+                        parameterSummary: "missing_folder_id",
+                        outcome: .denied
+                    )
                     return errorResponse(id: id, code: -32602, message: "Missing required argument 'folder_id'.")
                 }
                 guard let matched = folders.first(where: { $0.id == folderID }) else {
+                    recordAudit(
+                        client: client,
+                        toolName: toolName,
+                        accountID: accountID,
+                        parameterSummary: "folder_not_found folder=\(folderID)",
+                        outcome: .denied
+                    )
                     return errorResponse(id: id, code: -32005, message: "Target folder not found.")
                 }
                 // ADR-0095 §3: permanently exclude Trash and Spam moves over MCP.
@@ -767,24 +867,35 @@ public final class LocalMCPBroker {
                 targetFolder = matched
             }
         } catch {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "folders_load_failed",
+                outcome: .denied
+            )
             return errorResponse(id: id, code: -32003, message: "Couldn't inspect account folders.")
         }
 
-        var previews: [MCPApprovalRequest.MessagePreview] = []
-        for messageID in messageIDs.prefix(5) {
-            if let header = try? await findHeader(messageID: messageID, in: backend) {
-                previews.append(MCPApprovalRequest.MessagePreview(
+        let previewIDs = Array(messageIDs.prefix(5))
+        let previewHeaders = await (try? findHeaders(
+            messageIDs: Set(previewIDs),
+            in: backend,
+            folders: folders
+        )) ?? [:]
+        let previews: [MCPApprovalRequest.MessagePreview] = previewIDs.map { messageID in
+            if let header = previewHeaders[messageID] {
+                return MCPApprovalRequest.MessagePreview(
                     id: messageID,
                     sender: Self.formatCorrespondent(header.from),
-                    subject: header.subject
-                ))
-            } else {
-                previews.append(MCPApprovalRequest.MessagePreview(
-                    id: messageID,
-                    sender: accountID,
-                    subject: messageID
-                ))
+                    subject: Self.redactedForSignInCodes(header.subject)
+                )
             }
+            return MCPApprovalRequest.MessagePreview(
+                id: messageID,
+                sender: accountID,
+                subject: messageID
+            )
         }
 
         let accountLabel = backend.account.displayName.isEmpty
@@ -890,19 +1001,46 @@ public final class LocalMCPBroker {
         return backendsProvider().first { $0.account.id == accountID }
     }
 
-    private func findHeader(messageID: String, in backend: any MailBackend) async throws -> MessageHeader? {
-        let folders = try await backend.folders()
-        for folder in folders {
+    private func excludedMessageIDs(
+        in folders: [Folder],
+        backend: any MailBackend
+    ) async -> Set<MessageHeader.ID> {
+        var excluded: Set<MessageHeader.ID> = []
+        for folder in folders where folder.role == .trash || folder.role == .spam {
+            if let matches = try? await backend.search(SearchQuery(
+                text: "",
+                folderID: folder.id,
+                execution: .cacheOnly
+            )) {
+                for header in matches {
+                    excluded.insert(header.id)
+                }
+            }
+        }
+        return excluded
+    }
+
+    private func findHeaders(
+        messageIDs: Set<String>,
+        in backend: any MailBackend,
+        folders: [Folder]
+    ) async throws -> [String: MessageHeader] {
+        guard !messageIDs.isEmpty else { return [:] }
+        var remaining = messageIDs
+        var resolved: [String: MessageHeader] = [:]
+        for folder in folders where folder.role != .trash && folder.role != .spam {
             let matches = try await backend.search(SearchQuery(
                 text: "",
                 folderID: folder.id,
                 execution: .cacheOnly
             ))
-            if let found = matches.first(where: { $0.id == messageID }) {
-                return found
+            for header in matches where remaining.contains(header.id) {
+                resolved[header.id] = header
+                remaining.remove(header.id)
             }
+            if remaining.isEmpty { break }
         }
-        return nil
+        return resolved
     }
 
     private func recordAudit(
@@ -1093,6 +1231,7 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
     private let lock = NSLock()
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
+    private var activeClientFDs: Set<Int32> = []
 
     public init(socketURL: URL = AgentAccessSocketConfiguration.defaultSocketURL(), broker: LocalMCPBroker) {
         self.socketURL = socketURL
@@ -1180,16 +1319,35 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
         source.resume()
     }
 
-    /// Stops listening and unlinks the Unix domain socket file.
+    /// Stops listening, terminates any active client sockets, and unlinks the Unix domain socket file.
     public func stop() {
         lock.lock()
         let source = acceptSource
         acceptSource = nil
         listenFD = -1
+        let clientsToClose = activeClientFDs
+        activeClientFDs.removeAll()
         lock.unlock()
 
         source?.cancel()
+        for clientFD in clientsToClose {
+            _ = shutdown(clientFD, SHUT_RDWR)
+        }
         unlink(socketURL.path)
+    }
+
+    private func registerClientFD(_ clientFD: Int32) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard listenFD >= 0 else { return false }
+        activeClientFDs.insert(clientFD)
+        return true
+    }
+
+    private func unregisterClientFD(_ clientFD: Int32) {
+        lock.lock()
+        activeClientFDs.remove(clientFD)
+        lock.unlock()
     }
 
     private func acceptNextConnection() {
@@ -1222,7 +1380,13 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
             pid: peerPID > 0 ? peerPID : nil
         )
 
-        queue.async { [broker] in
+        guard registerClientFD(clientFD) else {
+            close(clientFD)
+            return
+        }
+
+        queue.async { [weak self, broker] in
+            defer { self?.unregisterClientFD(clientFD) }
             Self.serveClient(fd: clientFD, client: clientContext, broker: broker)
         }
     }

@@ -82,6 +82,16 @@ public struct AgentAccessSettings: Equatable, Sendable {
             NotificationCenter.default.post(name: .brevAgentAccessSettingsDidChange, object: nil)
         }
     }
+
+    /// Revokes any stored agent-access grant for a removed account so re-adding the
+    /// same email address later requires explicit opt-in again (ADR-0095).
+    public static func removeAccount(_ accountID: String, from defaults: UserDefaults = .standard) {
+        let trimmed = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var settings = load(from: defaults)
+        guard settings.enabledAccountIDs.remove(trimmed) != nil else { return }
+        settings.save(to: defaults)
+    }
 }
 
 /// Permission tier shown in Settings → Agent access for each MCP tool (ADR-0095).

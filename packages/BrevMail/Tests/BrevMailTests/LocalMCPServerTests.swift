@@ -458,23 +458,242 @@ struct LocalMCPServerTests {
         #expect(responseText.contains("archive_messages"))
         #expect(!responseText.contains("send_message"))
         #expect(!responseText.contains("delete_message"))
+
+        // Stopping the server must terminate active client connections immediately.
+        let closedOnStop: Bool = try await Task.detached {
+            let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+            guard fd >= 0 else { throw POSIXError(.EIO) }
+            defer { close(fd) }
+
+            var addr = sockaddr_un()
+            addr.sun_family = sa_family_t(AF_UNIX)
+            let pathBytes = Array(socketURL.path.utf8)
+            withUnsafeMutableBytes(of: &addr.sun_path) { raw in
+                raw.initializeMemory(as: UInt8.self, repeating: 0)
+                for (i, b) in pathBytes.enumerated() {
+                    raw[i] = b
+                }
+            }
+            let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+            let connected = withUnsafePointer(to: &addr) { ptr in
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+                    connect(fd, sockPtr, addrLen)
+                }
+            }
+            guard connected == 0 else { throw POSIXError(.ECONNREFUSED) }
+
+            // Perform one request so the server has definitely accepted and registered the fd.
+            let ping = Data("{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/list\"}\n".utf8)
+            ping.withUnsafeBytes { raw in
+                _ = write(fd, raw.baseAddress!, ping.count)
+            }
+            var buf = [UInt8](repeating: 0, count: 4096)
+            _ = read(fd, &buf, buf.count)
+
+            server.stop()
+
+            let afterStop = read(fd, &buf, buf.count)
+            return afterStop <= 0
+        }.value
+        #expect(closedOnStop)
     }
     #endif
+
+    @Test(
+        "validation failures are audited, previews scan folders once, Trash/Spam overrides inbox, and mid-flight revocation fails closed"
+    )
+    func auditValidationBatchPreviewTrashMembershipAndMidFlightRevocation() async throws {
+        let account = BrevAccount(id: "acct-sec", displayName: "Security", emailAddress: "sec@example.org")
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let archive = Folder(id: "archive", name: "Archive", role: .archive)
+        let trash = Folder(id: "trash", name: "Trash", role: .trash)
+        let msg1 = MessageHeader(
+            id: "m1",
+            threadID: "t1",
+            folderID: "inbox",
+            from: Correspondent(name: "Alice", email: "alice@example.org"),
+            subject: "First",
+            snippet: "Hello",
+            date: Date(timeIntervalSince1970: 1_735_689_600)
+        )
+        let msg2 = MessageHeader(
+            id: "m2",
+            threadID: "t2",
+            folderID: "inbox",
+            from: Correspondent(name: "Bob", email: "bob@example.org"),
+            subject: "Second",
+            snippet: "Hello",
+            date: Date(timeIntervalSince1970: 1_735_689_610)
+        )
+        let msg3 = MessageHeader(
+            id: "m3",
+            threadID: "t3",
+            folderID: "inbox",
+            from: Correspondent(name: "Cara", email: "cara@example.org"),
+            subject: "Third",
+            snippet: "Hello",
+            date: Date(timeIntervalSince1970: 1_735_689_620)
+        )
+        // Simulates a multi-label message present in both Inbox and Trash.
+        let dualInboxCopy = MessageHeader(
+            id: "m-dual",
+            threadID: "t4",
+            folderID: "inbox",
+            from: Correspondent(name: "Dual", email: "dual@example.org"),
+            subject: "In both inbox and trash",
+            snippet: "Hidden",
+            date: Date(timeIntervalSince1970: 1_735_689_630)
+        )
+        let dualTrashCopy = MessageHeader(
+            id: "m-dual",
+            threadID: "t4",
+            folderID: "trash",
+            from: Correspondent(name: "Dual", email: "dual@example.org"),
+            subject: "In both inbox and trash",
+            snippet: "Hidden",
+            date: Date(timeIntervalSince1970: 1_735_689_630)
+        )
+
+        @MainActor
+        final class RevocationState {
+            var settings: AgentAccessSettings
+            var revokeOnBodyRead = false
+            init(settings: AgentAccessSettings) { self.settings = settings }
+        }
+        let state = RevocationState(settings: AgentAccessSettings(isEnabled: true, enabledAccountIDs: [account.id]))
+        let auditStore = AgentAccessAuditLogStore(fileURL: nil, postsChangeNotification: false)
+        let coordinator = MCPApprovalCoordinator(canDisplayUI: true)
+
+        let backend = MCPBodyStubBackend(
+            wrapped: MockBackend(
+                account: account,
+                folders: [inbox, archive, trash],
+                messagesByFolder: [
+                    "inbox": [msg1, msg2, msg3, dualInboxCopy],
+                    "archive": [],
+                    "trash": [dualTrashCopy]
+                ]
+            ),
+            bodies: [
+                "m1": MessageBody(messageID: "m1", plainText: "Secret body"),
+                "m-dual": MessageBody(messageID: "m-dual", plainText: "Deleted dual body")
+            ],
+            onCachedBodyRead: { @MainActor in
+                if state.revokeOnBodyRead {
+                    state.settings.isEnabled = false
+                }
+            }
+        )
+        let broker = LocalMCPBroker(
+            backendsProvider: { [backend] },
+            settingsProvider: { state.settings },
+            auditStore: auditStore,
+            approvalCoordinator: coordinator,
+            approvalTimeoutSeconds: 2
+        )
+
+        // 1. Multi-label Trash message is excluded from both search_messages and read_message.
+        let searchResp = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 201,
+            "method": "tools/call",
+            "params": ["name": "search_messages", "arguments": ["account_id": account.id, "query": ""]]
+        ])
+        let searchPayload = try parseToolTextPayload(searchResp)
+        let listedIDs = Set((searchPayload["messages"] as? [[String: Any]] ?? []).compactMap { $0["message_id"] as? String })
+        #expect(!listedIDs.contains("m-dual"))
+
+        let dualRead = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 202,
+            "method": "tools/call",
+            "params": ["name": "read_message", "arguments": ["account_id": account.id, "message_id": "m-dual"]]
+        ])
+        #expect((dualRead["error"] as? [String: Any])?["code"] as? Int == -32602)
+
+        // 2. Rejected validation calls in handleChangeMessages are recorded in audit history.
+        let emptyBatch = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 203,
+            "method": "tools/call",
+            "params": ["name": "archive_messages", "arguments": ["account_id": account.id, "message_ids": []]]
+        ])
+        #expect((emptyBatch["error"] as? [String: Any])?["code"] as? Int == -32602)
+        #expect(auditStore.entries().first?.parameterSummary == "empty_message_ids")
+        #expect(auditStore.entries().first?.outcome == .denied)
+
+        let missingFolder = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 204,
+            "method": "tools/call",
+            "params": [
+                "name": "label_messages",
+                "arguments": ["account_id": account.id, "message_ids": ["m1"], "folder_id": "nonexistent"]
+            ]
+        ])
+        #expect((missingFolder["error"] as? [String: Any])?["code"] as? Int == -32005)
+        #expect(auditStore.entries().first?.parameterSummary == "folder_not_found folder=nonexistent")
+
+        // 3. Approval preview for 3 messages scans Inbox only once instead of repeating per message.
+        backend.resetSearchCallCount()
+        let approveTask = Task {
+            try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": 205,
+                "method": "tools/call",
+                "params": ["name": "archive_messages", "arguments": ["account_id": account.id, "message_ids": ["m1", "m2", "m3"]]]
+            ])
+        }
+        while coordinator.activeRequest == nil {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        #expect(coordinator.activeRequest?.previews.count == 3)
+        #expect(backend.searchCallCount == 1)
+        coordinator.denyActiveRequest()
+        _ = try await approveTask.value
+
+        // 4. Mid-flight revocation during read_message fails closed instead of returning the body.
+        state.revokeOnBodyRead = true
+        let revokedRead = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 206,
+            "method": "tools/call",
+            "params": ["name": "read_message", "arguments": ["account_id": account.id, "message_id": "m1"]]
+        ])
+        #expect((revokedRead["error"] as? [String: Any])?["code"] as? Int == -32001)
+        #expect(revokedRead["result"] == nil)
+        #expect(auditStore.entries().first?.outcome == .blockedDisabled)
+    }
 }
 
 private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding, @unchecked Sendable {
     private let wrapped: MockBackend
     private let bodies: [String: MessageBody]
+    private let onCachedBodyRead: (@MainActor @Sendable () -> Void)?
     private let lock = NSLock()
     private var fetchCount = 0
+    private var searchCount = 0
 
     var networkBodyFetchCount: Int {
         lock.withLock { fetchCount }
     }
 
-    init(wrapped: MockBackend, bodies: [String: MessageBody]) {
+    var searchCallCount: Int {
+        lock.withLock { searchCount }
+    }
+
+    func resetSearchCallCount() {
+        lock.withLock { searchCount = 0 }
+    }
+
+    init(
+        wrapped: MockBackend,
+        bodies: [String: MessageBody],
+        onCachedBodyRead: (@MainActor @Sendable () -> Void)? = nil
+    ) {
         self.wrapped = wrapped
         self.bodies = bodies
+        self.onCachedBodyRead = onCachedBodyRead
     }
 
     var account: BrevAccount { wrapped.account }
@@ -489,7 +708,10 @@ private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding,
     }
 
     func cachedBody(for messageID: MessageHeader.ID, sourceID _: MailSourceID?) async -> MessageBody? {
-        bodies[messageID]
+        if let onCachedBodyRead {
+            await onCachedBodyRead()
+        }
+        return bodies[messageID]
     }
 
     func connect() async throws { try await wrapped.connect() }
@@ -529,7 +751,10 @@ private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding,
     func save(draft: Draft) async throws -> Draft { try await wrapped.save(draft: draft) }
     func discard(draftID: String) async throws { try await wrapped.discard(draftID: draftID) }
     func send(draft: Draft) async throws -> SendResult { try await wrapped.send(draft: draft) }
-    func search(_ query: SearchQuery) async throws -> [MessageHeader] { try await wrapped.search(query) }
+    func search(_ query: SearchQuery) async throws -> [MessageHeader] {
+        lock.withLock { searchCount += 1 }
+        return try await wrapped.search(query)
+    }
 
     func calendarEvent(from attachmentID: String) async throws -> CalendarEvent {
         try await wrapped.calendarEvent(from: attachmentID)

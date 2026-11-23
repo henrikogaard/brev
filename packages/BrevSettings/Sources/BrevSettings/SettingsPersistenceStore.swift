@@ -310,5 +310,6 @@ public struct SettingsPersistenceStore: Equatable {
             followUps.save(to: defaults)
             NotificationCenter.default.post(name: .brevFollowUpDidChange, object: nil)
         }
+        AgentAccessSettings.removeAccount(accountID, from: defaults)
     }
 }

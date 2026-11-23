@@ -127,4 +127,25 @@ struct AgentAccessSettingsTests {
         #expect(codexSnippet.contains("command = \"/Applications/Brev.app/Contents/Helpers/brev-mcp\""))
         #expect(AgentAccessSocketConfiguration.defaultSocketURL().path.utf8.count <= 100)
     }
+
+    @Test("removing an account revokes its agent-access grant so re-adding requires fresh opt-in")
+    func removeAccountRevokesAgentGrant() {
+        let suiteName = "eu.brevmail.tests.agent-access-revoke.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            Issue.record("Failed to create isolated UserDefaults suite")
+            return
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AgentAccessSettings(isEnabled: true, enabledAccountIDs: ["imap:alice@example.org", "acct-keep"])
+        settings.save(to: defaults)
+        #expect(AgentAccessSettings.load(from: defaults).isAccountEnabled("imap:alice@example.org"))
+
+        SettingsPersistenceStore(defaults: defaults).removeAccountScopedState(accountID: "imap:alice@example.org")
+
+        let afterRemoval = AgentAccessSettings.load(from: defaults)
+        #expect(afterRemoval.isEnabled)
+        #expect(!afterRemoval.isAccountEnabled("imap:alice@example.org"))
+        #expect(afterRemoval.isAccountEnabled("acct-keep"))
+    }
 }
