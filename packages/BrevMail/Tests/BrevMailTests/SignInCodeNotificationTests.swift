@@ -346,6 +346,59 @@ struct SignInCodeNotificationTests {
         #expect(pasteboard.written.isEmpty)
     }
 
+    @Test("cold-launch delivered provenance persists non-secret message identity and expires after 10 minutes")
+    func coldLaunchDeliveredProvenancePersistsWithoutSecrets() async throws {
+        let suiteName = "SignInProvenance-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
+        var currentNow = baseDate
+        let scheduler1 = MockSignInNotificationScheduler()
+        let presenter1 = SignInCodeNotificationPresenter(
+            scheduler: scheduler1,
+            pasteboard: RecordingSignInPasteboard(),
+            settings: { SignInCodeSettings() },
+            now: { currentNow },
+            provenanceDefaults: defaults
+        )
+        presenter1.present(SignInCodePresentation(
+            accountID: "acct-gmail",
+            messageID: "msg-cold-1",
+            folderID: "INBOX",
+            sender: "SecretSenderName",
+            content: .code("918273"),
+            timeout: 60,
+            receivedAt: baseDate
+        ))
+        await Task.yield()
+
+        // Payload includes non-secret receipt timestamp for relaunch cleanup and never includes code.
+        let posted = try #require(scheduler1.posted.last)
+        #expect(posted.payload
+            .userInfo[SignInCodeNotificationPolicy.receivedAtUserInfoKey] == String(baseDate.timeIntervalSince1970))
+        // Stored defaults must never contain codes, links, or sender names.
+        let rawDump = String(describing: defaults.dictionaryRepresentation())
+        #expect(!rawDump.contains("918273"))
+        #expect(!rawDump.contains("SecretSenderName"))
+
+        // Fresh presenter (simulating process restart 2 minutes later) still recognizes delivered provenance.
+        currentNow = baseDate.addingTimeInterval(120)
+        let presenter2 = SignInCodeNotificationPresenter(
+            scheduler: MockSignInNotificationScheduler(),
+            pasteboard: RecordingSignInPasteboard(),
+            settings: { SignInCodeSettings() },
+            now: { currentNow },
+            provenanceDefaults: defaults
+        )
+        #expect(presenter2.hasValidDeliveredProvenance(accountID: "acct-gmail", messageID: "msg-cold-1"))
+        #expect(!presenter2.hasValidDeliveredProvenance(accountID: "acct-gmail", messageID: "msg-unseen-backfill"))
+
+        // After 10 minutes, provenance expires and fails closed.
+        currentNow = baseDate.addingTimeInterval(605)
+        #expect(!presenter2.hasValidDeliveredProvenance(accountID: "acct-gmail", messageID: "msg-cold-1"))
+    }
+
     @Test("delegate buffers cold-launch Copy code and Open link actions until handlers install")
     func delegateBuffersSignInActions() async {
         let delegate = BrevNotificationDelegate()

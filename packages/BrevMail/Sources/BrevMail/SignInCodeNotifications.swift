@@ -40,6 +40,10 @@ public enum SignInCodeNotificationPolicy {
     /// Maximum freshness age (10 minutes) matching ADR-0088 Decision 3 and the iOS amendment.
     public static let freshnessWindow: TimeInterval = 600
 
+    /// Non-secret userInfo key storing the message's anchor receipt timestamp (epoch seconds)
+    /// so relaunch cleanup expires notifications by message age rather than post time.
+    public static let receivedAtUserInfoKey = "brev.signInReceivedAt"
+
     /// Lock-screen-safe notification payload carrying only generic copy and an opaque mail route.
     public struct Payload: Equatable, Sendable {
         /// Whether this notification announces a code or a sign-in link.
@@ -125,7 +129,8 @@ public enum SignInCodeNotificationPolicy {
     /// Builds a lock-screen-safe notification payload for `presentation`.
     /// Never writes the extracted code or magic-link URL into any field.
     public static func contentPayload(
-        for presentation: SignInCodePresentation
+        for presentation: SignInCodePresentation,
+        receivedAt: Date? = nil
     ) -> Payload {
         let trimmedSender = presentation.sender.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = trimmedSender.isEmpty ? "Brev" : trimmedSender
@@ -150,6 +155,9 @@ public enum SignInCodeNotificationPolicy {
         ]
         if let folderID = presentation.folderID {
             userInfo["folderID"] = folderID
+        }
+        if let anchorDate = receivedAt ?? presentation.receivedAt {
+            userInfo[receivedAtUserInfoKey] = String(anchorDate.timeIntervalSince1970)
         }
 
         return Payload(
@@ -282,6 +290,17 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
         let identifier: String
     }
 
+    /// Non-secret device-local record of sign-in notifications posted by this process so cold-launch
+    /// biometric actions can verify prior fresh delivery without persisting codes, links, or senders.
+    private struct ProvenanceRecord: Codable, Equatable {
+        let accountID: String
+        let messageID: String
+        let recordedAt: Date
+    }
+
+    private static let provenanceStorageKey = "brev.signInNotificationProvenance.v1"
+    private static let maxProvenanceRecords = 16
+
     /// Async callback used when a biometric-gated notification action wakes the app
     /// without an in-memory entry; must re-verify trust, consent, and freshness.
     public typealias BackgroundReextractor = @MainActor (NotificationMailRoute) async -> SignInCodePresentation?
@@ -294,6 +313,7 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
     private let pasteboard: any SignInCodePasteboardWriting
     private let settings: () -> SignInCodeSettings
     private let now: () -> Date
+    private let provenanceDefaults: UserDefaults
     /// Optional re-extractor for cold background notification wakes.
     public var backgroundReextractor: BackgroundReextractor?
 
@@ -304,16 +324,27 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
     ///   - pasteboard: Concealed/expiring pasteboard writer (defaults to `SystemSignInCodePasteboard`).
     ///   - settings: Reads current device-local consent before performing any action.
     ///   - now: Clock provider for deterministic freshness tests.
+    ///   - provenanceDefaults: Device-local store for non-secret delivered notification provenance.
     public init(
         scheduler: (any SignInCodeNotificationScheduling)? = nil,
         pasteboard: any SignInCodePasteboardWriting = SystemSignInCodePasteboard(),
         settings: @escaping () -> SignInCodeSettings = { SignInCodeSettings.load(from: .standard) },
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        provenanceDefaults: UserDefaults = .standard
     ) {
         self.scheduler = scheduler ?? BrevLocalNotificationCenter()
         self.pasteboard = pasteboard
         self.settings = settings
         self.now = now
+        self.provenanceDefaults = provenanceDefaults
+    }
+
+    /// Returns `true` when Brev previously posted a sign-in notification for `(accountID, messageID)`
+    /// whose freshness window has not yet elapsed. Stores no codes, links, or sender text.
+    public func hasValidDeliveredProvenance(accountID: String, messageID: String) -> Bool {
+        let current = now()
+        let active = loadActiveProvenance(at: current)
+        return active.contains { $0.accountID == accountID && $0.messageID == messageID }
     }
 
     /// Stores `presentation` in memory only and posts a lock-screen-safe local notification.
@@ -351,7 +382,8 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
             recordedAt: anchorDate,
             identifier: identifier
         )
-        let payload = SignInCodeNotificationPolicy.contentPayload(for: presentation)
+        recordProvenance(accountID: presentation.accountID, messageID: presentation.messageID, recordedAt: anchorDate)
+        let payload = SignInCodeNotificationPolicy.contentPayload(for: presentation, receivedAt: anchorDate)
         Task { [scheduler] in
             await scheduler.postSignInNotification(identifier: identifier, payload: payload)
         }
@@ -365,6 +397,7 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
             identifiersToRemove.append(entry.identifier)
         }
         entries = entries.filter { $0.key.accountID != accountID }
+        removeProvenance(forAccountID: accountID)
         if pendingLinkConfirmation?.accountID == accountID {
             pendingLinkConfirmation = nil
         }
@@ -393,6 +426,7 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
         if !expiredIdentifiers.isEmpty {
             scheduler.removeSignInNotifications(withIdentifiers: expiredIdentifiers)
         }
+        saveProvenance(loadActiveProvenance(at: current))
         let cutoff = current.addingTimeInterval(-SignInCodeNotificationPolicy.freshnessWindow)
         Task { [scheduler] in
             await scheduler.removeExpiredSignInNotifications(olderThan: cutoff)
@@ -412,6 +446,7 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
         )
         defer {
             entries.removeValue(forKey: key)
+            removeProvenance(accountID: route.accountID, messageID: route.messageID)
             scheduler.removeSignInNotifications(withIdentifiers: [identifier])
         }
 
@@ -454,6 +489,7 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
         )
         defer {
             entries.removeValue(forKey: key)
+            removeProvenance(accountID: route.accountID, messageID: route.messageID)
             scheduler.removeSignInNotifications(withIdentifiers: [identifier])
         }
 
@@ -495,6 +531,45 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
     /// Clears the pending foreground link confirmation after the user opens or cancels it.
     public func clearPendingLinkConfirmation() {
         pendingLinkConfirmation = nil
+    }
+
+    private func loadActiveProvenance(at referenceDate: Date) -> [ProvenanceRecord] {
+        guard let data = provenanceDefaults.data(forKey: Self.provenanceStorageKey),
+              let records = try? JSONDecoder().decode([ProvenanceRecord].self, from: data)
+        else { return [] }
+        return records.filter {
+            referenceDate.timeIntervalSince($0.recordedAt) < SignInCodeNotificationPolicy.freshnessWindow
+        }
+    }
+
+    private func saveProvenance(_ records: [ProvenanceRecord]) {
+        if records.isEmpty {
+            provenanceDefaults.removeObject(forKey: Self.provenanceStorageKey)
+            return
+        }
+        let bounded = Array(records.suffix(Self.maxProvenanceRecords))
+        if let data = try? JSONEncoder().encode(bounded) {
+            provenanceDefaults.set(data, forKey: Self.provenanceStorageKey)
+        }
+    }
+
+    private func recordProvenance(accountID: String, messageID: String, recordedAt: Date) {
+        var active = loadActiveProvenance(at: now())
+        active.removeAll { $0.accountID == accountID && $0.messageID == messageID }
+        active.append(ProvenanceRecord(accountID: accountID, messageID: messageID, recordedAt: recordedAt))
+        saveProvenance(active)
+    }
+
+    private func removeProvenance(accountID: String, messageID: String) {
+        var active = loadActiveProvenance(at: now())
+        active.removeAll { $0.accountID == accountID && $0.messageID == messageID }
+        saveProvenance(active)
+    }
+
+    private func removeProvenance(forAccountID accountID: String) {
+        var active = loadActiveProvenance(at: now())
+        active.removeAll { $0.accountID == accountID }
+        saveProvenance(active)
     }
 
     public nonisolated var description: String { "SignInCodeNotificationPresenter(redacted)" }

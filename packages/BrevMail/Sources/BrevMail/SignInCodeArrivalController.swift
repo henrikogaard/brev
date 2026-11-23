@@ -195,7 +195,7 @@ public final class SignInCodeArrivalController {
                 sender: metadata.sender,
                 content: content,
                 timeout: SignInCodeSettings.panelTimeout,
-                receivedAt: metadata.receivedAt
+                receivedAt: Date()
             )
         )
     }

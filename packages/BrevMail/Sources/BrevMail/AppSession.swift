@@ -502,7 +502,17 @@ public final class AppSession {
               backend.extendedCapabilities.contains(.trustedSignInAssessment),
               let assessor = backend as? any SignInTrustAssessing
         else { return nil }
-        guard case .pass = await assessor.signInTrustAssessment(for: route.messageID) else {
+        let hasDeliveredProvenance = signInCodeNotificationPresenter.hasValidDeliveredProvenance(
+            accountID: route.accountID,
+            messageID: route.messageID
+        )
+        let assessment: SignInTrustAssessment
+        if hasDeliveredProvenance {
+            assessment = await assessor.signInTrustAssessmentForDeliveredNotification(for: route.messageID)
+        } else {
+            assessment = await assessor.signInTrustAssessment(for: route.messageID)
+        }
+        guard case .pass = assessment else {
             return nil
         }
         guard let body = try? await backend.body(for: route.messageID),

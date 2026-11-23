@@ -730,9 +730,15 @@ extension BrevLocalNotificationCenter: SignInCodeNotificationScheduling {
     public func removeExpiredSignInNotifications(olderThan cutoff: Date) async {
         guard let center else { return }
         let expired = await center.deliveredNotifications()
-            .filter {
-                $0.request.identifier.hasPrefix(SignInCodeNotificationPolicy.identifierPrefix)
-                    && $0.date <= cutoff
+            .filter { notification in
+                guard notification.request.identifier.hasPrefix(SignInCodeNotificationPolicy.identifierPrefix) else {
+                    return false
+                }
+                if let raw = notification.request.content.userInfo[SignInCodeNotificationPolicy.receivedAtUserInfoKey] as? String,
+                   let seconds = Double(raw) {
+                    return Date(timeIntervalSince1970: seconds) <= cutoff
+                }
+                return notification.date <= cutoff
             }
             .map(\.request.identifier)
         if !expired.isEmpty {
