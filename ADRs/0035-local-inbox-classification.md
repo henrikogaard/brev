@@ -63,3 +63,47 @@ designed carelessly.
 - ADR-0028 (roadmap and invariants)
 - The related feature request (inbox classification and category tabs)
 - The related feature request (provider-backed workflow state)
+- Issue #295 (Inbox split into People and Updates, with a Subscriptions view)
+
+## Amendment (2026-11-22): Two-way People/Updates split, sender overrides, and Updates bundling
+
+Issue #295 extends local inbox classification with a calm two-way split
+(`People`, `Updates`, `All`) alongside the existing five-category mode and off
+mode, plus sender bundling in `Updates` and a `Subscriptions` view.
+
+1. **Two-way People/Updates mode.** `InboxClassificationMode` adds
+   `.peopleAndUpdates` alongside `.off` and `.categories` in `BrevDesign`, and
+   adds `InboxSplitTab` (`.people`, `.updates`, `.all`). Opening an Inbox in
+   People & Updates mode defaults to **People** with pill tabs showing live
+   counts (`People N · Updates M · All`). Existing `.off` and `.categories`
+   preferences continue to decode and behave unchanged.
+2. **Deterministic local signals.** `PeopleUpdatesClassifier` stays 100% local
+   with no AI or external network calls. Signals are evaluated in priority
+   order:
+   - Explicit sender override (always wins).
+   - `List-Unsubscribe` header or `Precedence: bulk`/`list`/`junk` -> `Updates`.
+   - Automated sender address patterns (`no-reply`, `noreply`,
+     `notifications@`, `newsletter@`, `updates@`, `receipts@`, `billing@`,
+     `mailer-daemon`) -> `Updates`.
+   - Known replied-to sender (the user has sent mail to that address in locally
+     cached Sent headers) -> `People`.
+   - Known transactional/receipt/newsletter/notification subject or snippet
+     patterns -> `Updates`.
+   - Direct sender fallback -> `People`.
+3. **Sender-level overrides.** `InboxSenderCategoryOverrideStore` persists
+   per-sender (`from.email.lowercased()`) People/Updates assignments locally so
+   moving any sender to People or Updates remembers across all messages from
+   that sender.
+4. **Sender bundling in Updates.** Multiple Updates messages from the same
+   normalized sender collapse into one bundle row showing sender name, message
+   count, unread count, and remaining count (`"Linear 2 · 2 new · 1 more from
+   Linear"`) with a disclosure chevron to expand individual rows. Archiving a
+   bundle archives all of its messages through the existing undoable move queue
+   so a single `⌘Z` restores the entire bundle.
+5. **Subscriptions view.** A built-in **Subscriptions** sidebar destination
+   groups locally cached `List-Unsubscribe` senders into one row per sender
+   with message count, last received date, **Unsubscribe** (always showing an
+   explicit confirmation describing the exact HTTPS/RFC 8058 or `mailto:`
+   action before doing anything; never automatic), and **Archive all**
+   (reversible via `UndoQueue`). Privacy disclosure is updated in `PRIVACY.md`
+   and ADR-0006.

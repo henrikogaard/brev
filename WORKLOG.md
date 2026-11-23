@@ -9,6 +9,15 @@
 - Skipped: interactive macOS/iOS app run and live provider acceptance remain for Henrik's native QA.
 - Handoff: draft PR opened targeting `main`; Triage mode works against MockBackend and existing local workflow snooze.
 
+## 2026-11-22 — Agent — Issue #295
+
+- Goal: implement two-way People/Updates inbox split, remembered per-sender overrides, expandable Updates sender bundles with undoable archive, and Subscriptions sidebar view with confirmed unsubscribe and undoable Archive all, plus ADR-0035 amendment and privacy updates (PRIVACY.md, ADR-0006).
+- Changes: amended `ADRs/0035-local-inbox-classification.md`, updated `ADRs/0006-telemetry-and-privacy.md` and `PRIVACY.md`; added `InboxClassificationMode.peopleAndUpdates` and `InboxSplitTab` in `BrevDesign`; added `CachedListUnsubscribeProviding` in `BrevBackend` and conformed `MockBackend` (with RFC 8058 one-click + HTTPS/mailto mock fixtures); added `PeopleUpdatesClassifier`, `InboxSenderCategoryOverrideStore`, `UpdatesSenderBundler`, `PeopleUpdatesTabBar`, `UpdatesBundleRowView`, `SubscriptionsCatalogBuilder`, `SubscriptionsActions`, and `SubscriptionsView` in `BrevMail`; wired Subscriptions built-in smart view in `SmartViewDisplay`, `MailNavigationState`, `FolderSidebar`, and `BrevMailRootView` (strictly cache-only, zero network); wired People/Updates pill bar, Updates bundling, bundle archive + undo, and sender override context menu in `MessageListView`; added English and Norwegian (`nb`) catalog entries across `BrevMail`, `BrevDesign`, and `BrevSettings`.
+- Red/green: `PeopleUpdatesClassifierTests` failed to compile before implementation; all tests across `PeopleUpdatesClassifierTests`, `PeopleUpdatesSnapshotTests`, `InboxClassificationPolicyTests`, `MailStatusCopyLocalizationTests`, `BrevDesign`, `BrevBackend`, and `BrevSettings` pass after.
+- Verification: focused Swift package tests, `scripts/lint.sh`, `scripts/format.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check`, and catalog JSON validation across all three packages.
+- Skipped: interactive macOS/iOS app QA and macOS 26 snapshot confirmation (new `PeopleUpdatesSnapshotTests` baselines recorded on macOS 27.0.1 / Xcode 27.2; existing PNG baselines untouched).
+- Handoff: draft PR opened targeting `main`.
+
 ## 2026-11-21 — Agent — #299 strip tracking pixels (slice 1)
 
 - Goal: remove tracking images even when remote content is allowed, and show the count.

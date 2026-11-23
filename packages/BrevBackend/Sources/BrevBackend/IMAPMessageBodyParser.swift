@@ -26,15 +26,58 @@ public struct IMAPMessageBodyParser: Sendable {
         let readReceiptRequest = part.headers.value(named: "Disposition-Notification-To").map {
             ReadReceiptRequest(notificationTo: $0)
         }
+        let parsedUnsubscribe = ListUnsubscribeOptions.parse(
+            listUnsubscribe: part.headers.value(named: "List-Unsubscribe"),
+            listUnsubscribePost: part.headers.value(named: "List-Unsubscribe-Post")
+        )
+        let isBulk = ListUnsubscribeOptions.isBulkPrecedence(
+            precedence: part.headers.value(named: "Precedence"),
+            autoSubmitted: part.headers.value(named: "Auto-Submitted")
+        )
         return MessageBody(
             messageID: messageID,
             html: collector.html,
             plainText: collector.plainText,
             attachments: collector.attachments,
+            listUnsubscribe: parsedUnsubscribe.methods.isEmpty ? nil : parsedUnsubscribe,
+            isBulkPrecedence: isBulk,
             readReceiptRequest: readReceiptRequest,
             readReceiptNotification: collector.readReceiptNotification,
             authenticationResults: authResults
         )
+    }
+
+    /// Parses only the top-level MIME headers of `rawMessage` for cached
+    /// `List-Unsubscribe` metadata without decoding body parts.
+    func cachedListUnsubscribe(rawMessage: String) -> ListUnsubscribeOptions? {
+        let headers = topLevelHeaders(in: rawMessage)
+        let parsed = ListUnsubscribeOptions.parse(
+            listUnsubscribe: headers.value(named: "List-Unsubscribe"),
+            listUnsubscribePost: headers.value(named: "List-Unsubscribe-Post")
+        )
+        return parsed.methods.isEmpty ? nil : parsed
+    }
+
+    /// Parses only the top-level MIME headers of `rawMessage` for cached
+    /// bulk-precedence signals without decoding body parts.
+    func cachedIsBulkPrecedence(rawMessage: String) -> Bool {
+        let headers = topLevelHeaders(in: rawMessage)
+        return ListUnsubscribeOptions.isBulkPrecedence(
+            precedence: headers.value(named: "Precedence"),
+            autoSubmitted: headers.value(named: "Auto-Submitted")
+        )
+    }
+
+    private func topLevelHeaders(in rawMessage: String) -> [MIMEHeader] {
+        let normalized = rawMessage
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let headerBlock: String = if let range = normalized.range(of: "\n\n") {
+            String(normalized[..<range.lowerBound])
+        } else {
+            normalized
+        }
+        return MIMEHeader.parse(headerBlock)
     }
 
     public func rawMessageString(from data: Data) -> String {
@@ -81,11 +124,21 @@ public struct IMAPMessageBodyParser: Sendable {
                 .replacingOccurrences(of: "\r\n", with: "\n")
                 .replacingOccurrences(of: "\r", with: "\n")
         )
+        let parsedUnsubscribe = ListUnsubscribeOptions.parse(
+            listUnsubscribe: headers.value(named: "List-Unsubscribe"),
+            listUnsubscribePost: headers.value(named: "List-Unsubscribe-Post")
+        )
+        let isBulk = ListUnsubscribeOptions.isBulkPrecedence(
+            precedence: headers.value(named: "Precedence"),
+            autoSubmitted: headers.value(named: "Auto-Submitted")
+        )
         return MessageBody(
             messageID: messageID,
             html: html,
             plainText: plainText,
             attachments: attachments,
+            listUnsubscribe: parsedUnsubscribe.methods.isEmpty ? nil : parsedUnsubscribe,
+            isBulkPrecedence: isBulk,
             readReceiptRequest: headers.value(named: "Disposition-Notification-To").map {
                 ReadReceiptRequest(notificationTo: $0)
             },

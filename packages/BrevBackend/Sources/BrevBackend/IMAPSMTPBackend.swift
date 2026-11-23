@@ -3543,7 +3543,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         case ObjectIdentifier(ProgressiveMailSearching.self):
             return self as? Service
         case ObjectIdentifier(CachedMessageHeaderProviding.self),
-             ObjectIdentifier(CachedMessageBodyProviding.self):
+             ObjectIdentifier(CachedMessageBodyProviding.self),
+             ObjectIdentifier(CachedListUnsubscribeProviding.self):
             return self as? Service
         case ObjectIdentifier(CachedConversationProviding.self):
             guard localSearchIndex is any MailConversationIndex else { return nil }
@@ -6098,5 +6099,34 @@ private actor IMAPOAuthCredentialRefreshCoordinator {
 extension IMAPSMTPBackend: CachedMessageBodyProviding {
     public func cachedBody(for messageID: MessageHeader.ID, sourceID: MailSourceID?) async -> MessageBody? {
         await cachedParsedBody(messageID: messageID)
+    }
+}
+
+extension IMAPSMTPBackend: CachedListUnsubscribeProviding {
+    public func cachedListUnsubscribe(
+        for messageID: MessageHeader.ID,
+        sourceID _: MailSourceID
+    ) async -> ListUnsubscribeOptions? {
+        if let options = await cachedParsedBody(messageID: messageID)?.listUnsubscribe,
+           !options.methods.isEmpty {
+            return options
+        }
+        guard let source = await sourceCache?.source(accountID: account.id, messageID: messageID) else {
+            return nil
+        }
+        return IMAPMessageBodyParser().cachedListUnsubscribe(rawMessage: source.rawMessage)
+    }
+
+    public func cachedIsBulkPrecedence(
+        for messageID: MessageHeader.ID,
+        sourceID _: MailSourceID
+    ) async -> Bool {
+        if await cachedParsedBody(messageID: messageID)?.isBulkPrecedence == true {
+            return true
+        }
+        guard let source = await sourceCache?.source(accountID: account.id, messageID: messageID) else {
+            return false
+        }
+        return IMAPMessageBodyParser().cachedIsBulkPrecedence(rawMessage: source.rawMessage)
     }
 }

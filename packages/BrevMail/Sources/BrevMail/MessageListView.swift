@@ -162,8 +162,16 @@ public struct MessageListView: View {
     @AppStorage(LocalRulesSettings.Key.isAutomaticExecutionEnabled)
     private var isAutomaticLocalRulesEnabled = false
     @State private var activeInboxCategory: InboxCategory = .all
+    @State private var activePeopleUpdatesTab: InboxSplitTab = .people
     @State private var inboxCategoryOverrideRevision = 0
     @State private var inboxCategoryOverrideStore = InboxCategoryOverrideStore()
+    @State private var senderCategoryOverrideStore = InboxSenderCategoryOverrideStore.shared
+    @State private var peopleUpdatesSignalsByMessageID: [MessageHeader.ID: PeopleUpdatesHeaderSignals] = [:]
+    @State private var peopleUpdatesScannedScopeKey = ""
+    @State private var peopleUpdatesScannedMessageIDs: Set<MessageHeader.ID> = []
+    @State private var peopleUpdatesRepliedSenders: Set<String> = []
+    @State private var peopleUpdatesSignalsRevision = 0
+    @State private var expandedUpdateBundleIDs: Set<String> = []
     /// Lowercased blocklist materialized once per load so each rendered row's
     /// `isBlockedSender` check is a Set hit instead of a scan.
     @State private var blockedSenderEmailSet = Set(
@@ -258,7 +266,7 @@ public struct MessageListView: View {
                 Task { await reloadForSearchChange() }
             }
         #if os(iOS)
-            .toolbar { selectionToolbar(visibleHeaders: presentationSnapshot.headers) }
+            .toolbar { selectionToolbar(visibleHeaders: renderedSelectableHeaders(in: presentationSnapshot)) }
         #endif
             .confirmationDialog(
                 swipeMoreHeader?.subject ?? "",
@@ -301,6 +309,23 @@ public struct MessageListView: View {
             .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
                 followUpReminderIndex = FollowUpReminderIndex(settings: .load())
             }
+            .modifier(
+                PeopleUpdatesObserverModifier(
+                    activeTab: activePeopleUpdatesTab,
+                    signalRefreshKey: peopleUpdatesSignalRefreshKey,
+                    selectedMessageID: navigation.selectedMessageID,
+                    onOverridesChanged: { inboxCategoryOverrideRevision += 1 },
+                    onTabChanged: {
+                        let selectable = renderedSelectableHeaders(in: presentationSnapshot)
+                        navigation.bulkSelection.formIntersection(Set(selectable.map(\.id)))
+                        reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+                    },
+                    onMessageOpened: { openedID in
+                        peopleUpdatesScannedMessageIDs.remove(openedID)
+                    },
+                    onRefreshSignals: { await refreshPeopleUpdatesSignals() }
+                )
+            )
             .onReceive(
                 NotificationCenter.default.publisher(for: BlockedSendersSettings.Key.didChangeNotification)
             ) { _ in
@@ -424,7 +449,7 @@ public struct MessageListView: View {
             LegacyPinNotice()
             #if os(macOS)
             if !navigation.bulkSelection.isEmpty {
-                bulkActionBar(visibleHeaders: presentation.headers)
+                bulkActionBar(visibleHeaders: renderedSelectableHeaders(in: presentation))
             }
             #endif
             if let mutationErrorStatus {
@@ -481,7 +506,15 @@ public struct MessageListView: View {
                                     )
                                 }
                                 #endif
-                                if showsInboxCategoryBar {
+                                if showsPeopleUpdatesBar {
+                                    PeopleUpdatesTabBar(
+                                        activeTab: $activePeopleUpdatesTab,
+                                        counts: peopleUpdatesCounts
+                                    )
+                                    .onChange(of: activePeopleUpdatesTab) {
+                                        reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+                                    }
+                                } else if showsInboxCategoryBar {
                                     InboxCategoryBar(activeCategory: $activeInboxCategory)
                                 }
                             }
@@ -663,6 +696,257 @@ public struct MessageListView: View {
         inboxClassificationSettings.mode == .categories && folder?.role == .inbox
     }
 
+    private var showsPeopleUpdatesBar: Bool {
+        inboxClassificationSettings.mode == .peopleAndUpdates && folder?.role == .inbox
+    }
+
+    private var peopleUpdatesSignalRefreshKey: String {
+        guard showsPeopleUpdatesBar else { return "off" }
+        let ids = headers.map { $0.isAnswered ? "\($0.id):1" : $0.id }.joined(separator: ",")
+        let src = sourceID.map { "\($0.accountID)/\($0.mailboxID)" } ?? ""
+        let sentCount = allFolders.first(where: { $0.role == .sent })?.totalCount ?? -1
+        return "\(src):\(folder?.id ?? ""):\(navigation.reloadRequestID):\(sentCount):\(ids)"
+    }
+
+    /// Loads cache-only `List-Unsubscribe`, bulk-precedence, and Sent-recipient
+    /// signals for the visible Inbox headers with zero network calls (ADR-0006, #295).
+    /// Scans per-message cache entries incrementally during pagination so older
+    /// pages do not re-parse already-inspected headers.
+    private func refreshPeopleUpdatesSignals() async {
+        guard showsPeopleUpdatesBar else {
+            if !peopleUpdatesSignalsByMessageID.isEmpty || !peopleUpdatesRepliedSenders.isEmpty {
+                peopleUpdatesSignalsByMessageID = [:]
+                peopleUpdatesScannedScopeKey = ""
+                peopleUpdatesScannedMessageIDs = []
+                peopleUpdatesRepliedSenders = []
+                peopleUpdatesSignalsRevision += 1
+            }
+            return
+        }
+        let resolvedSourceID = sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        let scopeKey = "\(resolvedSourceID.accountID)/\(resolvedSourceID.mailboxID):\(folder?.id ?? ""):\(navigation.reloadRequestID)"
+        let currentIDs = Set(headers.map(\.id))
+        var scannedIDs: Set<MessageHeader.ID>
+        var signals: [MessageHeader.ID: PeopleUpdatesHeaderSignals]
+        if scopeKey == peopleUpdatesScannedScopeKey {
+            scannedIDs = peopleUpdatesScannedMessageIDs.intersection(currentIDs)
+            signals = peopleUpdatesSignalsByMessageID.filter { currentIDs.contains($0.key) }
+        } else {
+            scannedIDs = []
+            signals = [:]
+        }
+        if let provider = backend.extensionService(CachedListUnsubscribeProviding.self) {
+            for header in headers where !scannedIDs.contains(header.id) {
+                guard !Task.isCancelled else { return }
+                let options = await provider.cachedListUnsubscribe(for: header.id, sourceID: resolvedSourceID)
+                let isBulk = await provider.cachedIsBulkPrecedence(for: header.id, sourceID: resolvedSourceID)
+                scannedIDs.insert(header.id)
+                let hasUnsubscribe = options?.methods.isEmpty == false
+                if hasUnsubscribe || isBulk {
+                    signals[header.id] = PeopleUpdatesHeaderSignals(
+                        hasListUnsubscribe: hasUnsubscribe,
+                        isBulkPrecedence: isBulk
+                    )
+                }
+            }
+        }
+
+        var replied = Set<String>()
+        for header in headers where header.isAnswered {
+            let email = header.from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !email.isEmpty { replied.insert(email) }
+        }
+        if let sentFolder = allFolders.first(where: { $0.role == .sent }),
+           let sentHeaders = try? await backend.cachedMessageHeaders(in: sentFolder, sourceID: resolvedSourceID) {
+            for sent in sentHeaders {
+                guard !Task.isCancelled else { return }
+                for recipient in sent.to + sent.cc {
+                    let email = recipient.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if !email.isEmpty { replied.insert(email) }
+                }
+            }
+        }
+
+        guard !Task.isCancelled else { return }
+        peopleUpdatesScannedScopeKey = scopeKey
+        peopleUpdatesScannedMessageIDs = scannedIDs
+        if signals != peopleUpdatesSignalsByMessageID || replied != peopleUpdatesRepliedSenders {
+            peopleUpdatesSignalsByMessageID = signals
+            peopleUpdatesRepliedSenders = replied
+            peopleUpdatesSignalsRevision += 1
+            let selectable = renderedSelectableHeaders(in: presentationSnapshot)
+            navigation.bulkSelection.formIntersection(Set(selectable.map(\.id)))
+            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+        }
+    }
+
+    private var peopleUpdatesCounts: PeopleUpdatesCounts {
+        _ = inboxCategoryOverrideRevision
+        _ = peopleUpdatesSignalsRevision
+        return PeopleUpdatesCounts.compute(
+            headers: headers,
+            signalsByMessageID: peopleUpdatesSignalsByMessageID,
+            repliedSenderEmails: peopleUpdatesRepliedSenders,
+            senderOverrideStore: senderCategoryOverrideStore
+        )
+    }
+
+    private func peopleUpdatesFilteredHeaders(from candidates: [MessageHeader]) -> [MessageHeader] {
+        guard showsPeopleUpdatesBar, activePeopleUpdatesTab != .all else { return candidates }
+        _ = inboxCategoryOverrideRevision
+        _ = peopleUpdatesSignalsRevision
+        let desired: PeopleUpdatesBucket = activePeopleUpdatesTab == .people ? .people : .updates
+        return candidates.filter { header in
+            PeopleUpdatesClassifier.classify(
+                header: header,
+                signals: peopleUpdatesSignalsByMessageID[header.id] ?? PeopleUpdatesHeaderSignals(),
+                repliedSenderEmails: peopleUpdatesRepliedSenders,
+                senderOverrideStore: senderCategoryOverrideStore
+            ).bucket == desired
+        }
+    }
+
+    private func archiveUpdateBundle(_ bundle: UpdatesSenderBundle) async {
+        guard let archiveFolder, !isMutationActionBlocked else { return }
+        let sourceFolder = folder ?? Folder(
+            id: bundle.latestHeader.folderID,
+            name: bundle.latestHeader.folderID,
+            role: .custom
+        )
+        let bundleSource = sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        let removedIDs = Set(bundle.headers.map(\.id))
+        headers.removeAll { removedIDs.contains($0.id) }
+        navigation.removeHeaders(ids: removedIDs)
+        let lease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let lease { undoQueue?.endMutation(lease) } }
+        do {
+            let receipt = try await backend.moveWithUndo(
+                messageIDs: bundle.headers.map(\.id),
+                from: sourceFolder,
+                to: archiveFolder,
+                sourceID: bundleSource
+            )
+            undoQueue?.registerMoves(
+                [receipt],
+                description: String(localized: "Archived", bundle: .module),
+                lease: lease
+            )
+            navigation.requestReload()
+        } catch {
+            navigation.requestReload()
+        }
+    }
+
+    private var allowsInlineThreadDisclosure: Bool {
+        !(showsPeopleUpdatesBar && activePeopleUpdatesTab == .updates)
+    }
+
+    private func renderedSelectableHeaders(
+        in presentation: MessageListPresentationSnapshot
+    ) -> [MessageHeader] {
+        guard showsPeopleUpdatesBar, activePeopleUpdatesTab == .updates else {
+            return presentation.headers
+        }
+        return UpdatesSenderBundler.selectableHeaders(
+            from: presentation.filteredUngroupedHeaders,
+            sourceID: sourceID,
+            expandedBundleIDs: expandedUpdateBundleIDs
+        )
+    }
+
+    @ViewBuilder
+    private func peopleUpdatesListRows(
+        presentation: MessageListPresentationSnapshot,
+        selectedRowID: MessageHeader.ID?
+    ) -> some View {
+        if activePeopleUpdatesTab == .updates {
+            // Build bundles strictly from filtered ungrouped Updates headers
+            // before thread-context expansion adds non-Updates conversation
+            // siblings, so archiving a bundle never moves People messages (#295).
+            let bundles = UpdatesSenderBundler.bundle(presentation.filteredUngroupedHeaders, sourceID: sourceID)
+            ForEach(bundles) { bundle in
+                if bundle.headers.count > 1 {
+                    UpdatesBundleRowView(
+                        bundle: bundle,
+                        isExpanded: expandedUpdateBundleIDs.contains(bundle.id),
+                        canArchive: archiveFolder != nil && !isMutationActionBlocked,
+                        onToggleExpanded: {
+                            if expandedUpdateBundleIDs.contains(bundle.id) {
+                                expandedUpdateBundleIDs.remove(bundle.id)
+                                let selectable = renderedSelectableHeaders(in: presentation)
+                                navigation.bulkSelection.formIntersection(Set(selectable.map(\.id)))
+                            } else {
+                                expandedUpdateBundleIDs.insert(bundle.id)
+                            }
+                        },
+                        onArchiveBundle: {
+                            Task { await archiveUpdateBundle(bundle) }
+                        },
+                        onMoveSenderToPeople: {
+                            senderCategoryOverrideStore.set(.people, forSenderEmail: bundle.senderEmail)
+                            inboxCategoryOverrideRevision += 1
+                        }
+                    ) {
+                        ForEach(bundle.headers) { childHeader in
+                            messageRow(
+                                for: childHeader,
+                                visibleIndex: presentation.visibleIndex(for: childHeader.id) ?? 0,
+                                visibleCount: presentation.headers.count,
+                                // Sender bundles already group related Updates messages;
+                                // keep each Updates row flat so messages are never
+                                // duplicated inline or mixed with People thread siblings.
+                                threadChildrenByID: [:],
+                                selectedRowID: selectedRowID,
+                                allowsInlineThreading: false
+                            )
+                        }
+                    }
+                    .messageListThemedRowBackground()
+                } else if let singleHeader = bundle.headers.first {
+                    messageRow(
+                        for: singleHeader,
+                        visibleIndex: presentation.visibleIndex(for: singleHeader.id) ?? 0,
+                        visibleCount: presentation.headers.count,
+                        threadChildrenByID: [:],
+                        selectedRowID: selectedRowID,
+                        allowsInlineThreading: false
+                    )
+                }
+            }
+        } else {
+            ForEach(presentation.headers) { header in
+                messageRow(
+                    for: header,
+                    visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
+                    visibleCount: presentation.headers.count,
+                    threadChildrenByID: presentation.headersByThreadID,
+                    selectedRowID: selectedRowID
+                )
+            }
+        }
+        if hasMore,
+           !isLoadingMore,
+           loadMoreErrorStatus == nil,
+           navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            HStack {
+                Spacer()
+                Button(String(localized: "Load older messages", bundle: .module)) {
+                    Task { await loadMore() }
+                }
+                .buttonStyle(.borderless)
+                .brevFont(.caption)
+                .foregroundStyle(theme.accent.color)
+                Spacer()
+            }
+            .padding(.vertical, BrevSpacing.sm)
+            .listRowSeparator(.hidden)
+            .messageListThemedRowBackground()
+            .onAppear {
+                Task { await loadMore() }
+            }
+        }
+    }
+
     private var mailboxFolderStatsDetail: MailboxFolderStatsDetail {
         MailboxFolderStatsDetail(rawValue: folderStatsDetailRaw) ?? .compact
     }
@@ -677,6 +961,7 @@ public struct MessageListView: View {
             MailSelectionToolbar(
                 selectionCount: navigation.bulkSelection.count,
                 allSelected: !allVisible.isEmpty && allVisible.isSubset(of: navigation.bulkSelection),
+                canSelectAll: !allVisible.isEmpty,
                 isDisabled: isMutationActionBlocked,
                 showsArchive: archiveFolder != nil,
                 isArchiveEnabled: true,
@@ -893,20 +1178,40 @@ public struct MessageListView: View {
             BrevSkeletonList(rowCount: 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if presentation.headers.isEmpty {
-            MessageListEmptyStateView(
-                status: MessageListPresentation.emptyStatus(
-                    searchText: navigation.searchText,
-                    filtersActive: navigation.mailboxFilter.isActive
-                )
-            ) {
-                navigation.searchText = ""
-                navigation.mailboxFilter.clear()
+            VStack(spacing: BrevSpacing.md) {
+                MessageListEmptyStateView(
+                    status: MessageListPresentation.emptyStatus(
+                        searchText: navigation.searchText,
+                        filtersActive: navigation.mailboxFilter.isActive
+                    )
+                ) {
+                    navigation.searchText = ""
+                    navigation.mailboxFilter.clear()
+                }
+                if showsPeopleUpdatesBar,
+                   activePeopleUpdatesTab != .all,
+                   hasMore,
+                   navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if isLoadingMore {
+                        ProgressView()
+                            .padding(.bottom, BrevSpacing.md)
+                    } else {
+                        Button(String(localized: "Load older messages", bundle: .module)) {
+                            Task { await loadMore() }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .padding(.bottom, BrevSpacing.md)
+                    }
+                }
             }
         } else {
             Group {
                 ScrollViewReader { proxy in
                     List {
-                        if groupByDate {
+                        if showsPeopleUpdatesBar && activePeopleUpdatesTab != .all {
+                            peopleUpdatesListRows(presentation: presentation, selectedRowID: selectedRowID)
+                        } else if groupByDate {
                             ForEach(presentation.dateSections) { section in
                                 dateSectionHeaderRow(section)
                                 ForEach(section.visibleHeaders) { header in
@@ -985,7 +1290,9 @@ public struct MessageListView: View {
                     extendSelection(by: delta)
                 } else {
                     collapseBulkSelectionToCursor()
-                    if delta < 0 {
+                    if !allowsInlineThreadDisclosure {
+                        moveUpdatesKeyboardSelection(delta: delta)
+                    } else if delta < 0 {
                         navigation.selectPreviousHeader()
                     } else {
                         navigation.selectNextHeader()
@@ -1062,18 +1369,20 @@ public struct MessageListView: View {
         for header: MessageHeader,
         visibleIndex: Int,
         visibleCount: Int,
-        selectedRowID: MessageHeader.ID?
+        selectedRowID: MessageHeader.ID?,
+        allowsInlineThreading: Bool = true
     ) -> some View {
         let followUpReminder = followUpReminderIndex.reminder(for: header.id, sourceID: sourceID)
+        let rowThreadCount = allowsInlineThreading ? threadCount(for: header) : 1
         MessageListRow(
             header: header,
-            threadCount: threadCount(for: header),
+            threadCount: rowThreadCount,
             isSelected: selectedRowID == header.id,
             isFocusedPane: listSelectionIsFocused,
             isChecked: navigation.bulkSelection.contains(header.id),
             isInSelectionMode: navigation.isInSelectionMode,
             isPinned: pinnedMessageIDs.contains(header.id),
-            isThreadExpanded: expandedThreadIDs.contains(header.threadID),
+            isThreadExpanded: allowsInlineThreading && expandedThreadIDs.contains(header.threadID),
             showAvatar: showSenderAvatars,
             previewLineCount: mailboxPreviewLineCount.visibleLineCount,
             isCompactWidth: usesCompactMessageRows,
@@ -1100,12 +1409,14 @@ public struct MessageListView: View {
                     if folder?.role == .drafts, composeActions.openDraft(header, sourceID: sourceID) {
                         return
                     }
-                    MessageListInlineExpansion.expandIfNeeded(
-                        threadID: header.threadID,
-                        threadCount: threadCount(for: header),
-                        isThreadingEnabled: backend.groupsMessagesIntoThreads,
-                        in: &expandedThreadIDs
-                    )
+                    if allowsInlineThreading {
+                        MessageListInlineExpansion.expandIfNeeded(
+                            threadID: header.threadID,
+                            threadCount: rowThreadCount,
+                            isThreadingEnabled: backend.groupsMessagesIntoThreads,
+                            in: &expandedThreadIDs
+                        )
+                    }
                     selectMessage(header, expandsSelectedMessage: false)
                 } else {
                     toggleSelection(for: header)
@@ -1114,8 +1425,9 @@ public struct MessageListView: View {
         ) {
             toggleSelection(for: header)
         } onToggleThread: {
-            guard backend.groupsMessagesIntoThreads,
-                  threadCount(for: header) > 1
+            guard allowsInlineThreading,
+                  backend.groupsMessagesIntoThreads,
+                  rowThreadCount > 1
             else { return }
             withAnimation(.easeInOut(duration: 0.18)) {
                 MessageListInlineExpansion.toggle(
@@ -1274,6 +1586,28 @@ public struct MessageListView: View {
     private func contextMenuExtras(for header: MessageHeader) -> some View {
         if let sourceID {
             Divider()
+            if showsPeopleUpdatesBar {
+                let currentBucket = PeopleUpdatesClassifier.classify(
+                    header: header,
+                    signals: peopleUpdatesSignalsByMessageID[header.id] ?? PeopleUpdatesHeaderSignals(),
+                    repliedSenderEmails: peopleUpdatesRepliedSenders,
+                    senderOverrideStore: senderCategoryOverrideStore
+                ).bucket
+                Button {
+                    senderCategoryOverrideStore.set(
+                        currentBucket == .people ? .updates : .people,
+                        forSenderEmail: header.from.email
+                    )
+                    inboxCategoryOverrideRevision += 1
+                } label: {
+                    Label(
+                        currentBucket == .people
+                            ? String(localized: "Move sender to Updates", bundle: .module)
+                            : String(localized: "Move sender to People", bundle: .module),
+                        systemImage: currentBucket == .people ? "tray.2" : "person.2"
+                    )
+                }
+            }
             inboxCategoryMenu(for: header, sourceID: sourceID)
         }
         // Capability-driven (ADR-0028 invariant 2): the label menu appears only
@@ -1706,15 +2040,18 @@ public struct MessageListView: View {
         visibleIndex: Int,
         visibleCount: Int,
         threadChildrenByID: [String: [MessageHeader]],
-        selectedRowID: MessageHeader.ID?
+        selectedRowID: MessageHeader.ID?,
+        allowsInlineThreading: Bool = true
     ) -> some View {
         parentMessageRow(
             for: header,
             visibleIndex: visibleIndex,
             visibleCount: visibleCount,
-            selectedRowID: selectedRowID
+            selectedRowID: selectedRowID,
+            allowsInlineThreading: allowsInlineThreading
         )
-        if backend.groupsMessagesIntoThreads,
+        if allowsInlineThreading,
+           backend.groupsMessagesIntoThreads,
            threadCount(for: header) > 1,
            expandedThreadIDs.contains(header.threadID) {
             // Buckets are pre-grouped and sorted oldest → newest in the
@@ -1958,6 +2295,9 @@ public struct MessageListView: View {
             workflowState: localMessageWorkflowState,
             sourceID: sourceID,
             activeInboxCategory: activeInboxCategory,
+            showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+            activePeopleUpdatesTab: activePeopleUpdatesTab,
+            peopleUpdatesSignalsRevision: peopleUpdatesSignalsRevision,
             inboxClassificationModeRaw: inboxClassificationModeRaw,
             inboxCategoryOverrideRevision: inboxCategoryOverrideRevision,
             mailboxSortOrder: mailboxSortOrder,
@@ -1987,6 +2327,7 @@ public struct MessageListView: View {
                 referenceDate: now,
                 calendar: calendar,
                 sourceHeaders: headers,
+                filteredUngroupedHeaders: workflowHeaders,
                 navigationHeaders: MessageListNavigationHeaders.headers(
                     from: workflowHeaders,
                     threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
@@ -2021,13 +2362,14 @@ public struct MessageListView: View {
             state: localMessageWorkflowState,
             now: now
         )
-        return InboxClassificationVisibilityPolicy.headers(
+        let categoryFiltered = InboxClassificationVisibilityPolicy.headers(
             workflowVisible,
             sourceID: sourceID,
             selectedCategory: activeInboxCategory,
             settings: inboxClassificationSettings,
             overrideStore: inboxCategoryOverrideStore
         )
+        return peopleUpdatesFilteredHeaders(from: categoryFiltered)
     }
 
     private var pinnedMessageIDs: Set<MessageHeader.ID> {
@@ -2177,6 +2519,9 @@ public struct MessageListView: View {
     /// sections; the order Shift ranges and Select All work in.
     private var visibleRowIDs: [MessageHeader.ID] {
         let snapshot = presentationSnapshot
+        if showsPeopleUpdatesBar && activePeopleUpdatesTab == .updates {
+            return renderedSelectableHeaders(in: snapshot).map(\.id)
+        }
         return groupByDate
             ? snapshot.dateSections.flatMap(\.visibleHeaders).map(\.id)
             : snapshot.headers.map(\.id)
@@ -2266,9 +2611,29 @@ public struct MessageListView: View {
             return .handled
         case .moveToStart, .moveToEnd, .pageUp, .pageDown:
             listKeyboardFocus = true
-            navigation.moveSelection(command)
+            if !allowsInlineThreadDisclosure {
+                moveUpdatesKeyboardSelection(command: command)
+            } else {
+                navigation.moveSelection(command)
+            }
             return .handled
         }
+    }
+
+    private func moveUpdatesKeyboardSelection(delta: Int) {
+        UpdatesSenderBundler.applyKeyboardSelection(
+            delta: delta,
+            rows: renderedSelectableHeaders(in: presentationSnapshot),
+            navigation: navigation
+        )
+    }
+
+    private func moveUpdatesKeyboardSelection(command: MessageListKeyCommand) {
+        UpdatesSenderBundler.applyKeyboardSelection(
+            command: command,
+            rows: renderedSelectableHeaders(in: presentationSnapshot),
+            navigation: navigation
+        )
     }
 
     /// Moves the bulk selection, or the single selected message, to Trash
@@ -2303,7 +2668,8 @@ public struct MessageListView: View {
            composeActions.openDraft(header, sourceID: sourceID) {
             return
         }
-        guard backend.groupsMessagesIntoThreads,
+        guard allowsInlineThreadDisclosure,
+              backend.groupsMessagesIntoThreads,
               threadCount(for: header) > 1 else { return }
         withAnimation(.easeInOut(duration: 0.18)) {
             MessageListInlineExpansion.toggle(
@@ -2525,7 +2891,9 @@ public struct MessageListView: View {
     }
 
     private func loadMore() async {
-        guard let folder, let token = nextPageToken else { return }
+        guard navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let folder,
+              let token = nextPageToken else { return }
         let request = MessageListPageRequest(
             folderID: folder.id,
             sourceID: sourceID,

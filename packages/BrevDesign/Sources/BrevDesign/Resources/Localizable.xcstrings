@@ -1,6 +1,39 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "People": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folk"
+          }
+        }
+      }
+    },
+    "People & Updates": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folk og oppdateringer"
+          }
+        }
+      }
+    },
+    "Split the inbox locally into People, bundled Updates, and All.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Del innboksen lokalt i Folk, samlede oppdateringer og Alle."
+          }
+        }
+      }
+    },
     "1 line": {
       "extractionState": "manual",
       "localizations": {

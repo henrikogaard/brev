@@ -500,6 +500,9 @@ public struct MessageBody: Sendable, Hashable, Codable {
     public let plainText: String?
     public let attachments: [Attachment]
     public let listUnsubscribe: ListUnsubscribeOptions?
+    /// True when the message's RFC 5322 headers indicate bulk/automated mail
+    /// (`Precedence: bulk|list|junk` or `Auto-Submitted: auto-generated|auto-replied`).
+    public let isBulkPrecedence: Bool
     /// Sender-requested read receipt target from `Disposition-Notification-To`,
     /// if the message asks for one. The reader must ask before sending.
     public let readReceiptRequest: ReadReceiptRequest?
@@ -516,6 +519,7 @@ public struct MessageBody: Sendable, Hashable, Codable {
         plainText: String? = nil,
         attachments: [Attachment] = [],
         listUnsubscribe: ListUnsubscribeOptions? = nil,
+        isBulkPrecedence: Bool = false,
         readReceiptRequest: ReadReceiptRequest? = nil,
         readReceiptNotification: ReadReceiptNotification? = nil,
         authenticationResults: String? = nil
@@ -525,9 +529,38 @@ public struct MessageBody: Sendable, Hashable, Codable {
         self.plainText = plainText
         self.attachments = attachments
         self.listUnsubscribe = listUnsubscribe
+        self.isBulkPrecedence = isBulkPrecedence
         self.readReceiptRequest = readReceiptRequest
         self.readReceiptNotification = readReceiptNotification
         self.authenticationResults = authenticationResults
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case messageID
+        case html
+        case plainText
+        case attachments
+        case listUnsubscribe
+        case isBulkPrecedence
+        case readReceiptRequest
+        case readReceiptNotification
+        case authenticationResults
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        messageID = try container.decode(String.self, forKey: .messageID)
+        html = try container.decodeIfPresent(String.self, forKey: .html)
+        plainText = try container.decodeIfPresent(String.self, forKey: .plainText)
+        attachments = try container.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
+        listUnsubscribe = try container.decodeIfPresent(ListUnsubscribeOptions.self, forKey: .listUnsubscribe)
+        isBulkPrecedence = try container.decodeIfPresent(Bool.self, forKey: .isBulkPrecedence) ?? false
+        readReceiptRequest = try container.decodeIfPresent(ReadReceiptRequest.self, forKey: .readReceiptRequest)
+        readReceiptNotification = try container.decodeIfPresent(
+            ReadReceiptNotification.self,
+            forKey: .readReceiptNotification
+        )
+        authenticationResults = try container.decodeIfPresent(String.self, forKey: .authenticationResults)
     }
 }
 

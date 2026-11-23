@@ -294,6 +294,7 @@ public struct FolderSidebar: View {
                 let settings = smartViewSettings
                 let selectedHidden = !settings.showInSidebar && hasSelectedSmartView
                     || MailboxSmartView.builtIns.contains { $0.isSelected(in: navigation) && !settings.isBuiltInEnabled($0.id) }
+                    || navigation.isSubscriptionsSelected && !settings.isBuiltInEnabled(Self.subscriptionsSmartViewVisibilityID)
                     || navigation.isAllAttachmentsSelected && !settings.isBuiltInEnabled(Self.allAttachmentsSmartViewVisibilityID)
                     || SavedSearchSidebarPresentation.shouldLeaveSelection(
                         selectedID: navigation.selectedSavedSearchID, mailboxes: settings.mailboxes
@@ -714,7 +715,15 @@ public struct FolderSidebar: View {
             if isExpanded {
                 ForEach(settings.orderedEntries.filter(\.isEnabled)) { entry in
                     if let builtInID = entry.builtInID {
-                        if builtInID == Self.allAttachmentsSmartViewVisibilityID {
+                        if builtInID == Self.subscriptionsSmartViewVisibilityID {
+                            destinationRow(
+                                title: String(localized: "Subscriptions", bundle: .module),
+                                systemImage: "newspaper",
+                                isSelected: navigation.isSubscriptionsSelected
+                            ) {
+                                activateDestination { navigation.selectSubscriptionsSmartView() }
+                            }
+                        } else if builtInID == Self.allAttachmentsSmartViewVisibilityID {
                             destinationRow(
                                 title: String(localized: "All Attachments", bundle: .module),
                                 systemImage: "paperclip",
@@ -1408,7 +1417,9 @@ public struct FolderSidebar: View {
         if isExpanded {
             ForEach(settings.orderedEntries.filter(\.isEnabled)) { entry in
                 if let builtInID = entry.builtInID {
-                    if builtInID == Self.allAttachmentsSmartViewVisibilityID {
+                    if builtInID == Self.subscriptionsSmartViewVisibilityID {
+                        subscriptionsButton
+                    } else if builtInID == Self.allAttachmentsSmartViewVisibilityID {
                         allAttachmentsButton
                     } else if let smartView = MailboxSmartView.builtIns.first(where: { $0.id == builtInID }) {
                         smartViewButton(smartView)
@@ -1425,6 +1436,7 @@ public struct FolderSidebar: View {
         sourceSections.map { SettingsMailbox(account: $0.account, mailbox: $0.mailbox, folders: $0.folders) }
     }
 
+    private static let subscriptionsSmartViewVisibilityID = "subscriptions"
     private static let allAttachmentsSmartViewVisibilityID = "all-attachments"
 
     private var smartViewSettings: SmartMailboxSettings {
@@ -1434,6 +1446,7 @@ public struct FolderSidebar: View {
 
     private var hasSelectedSmartView: Bool {
         MailboxSmartView.builtIns.contains { $0.isSelected(in: navigation) }
+            || navigation.isSubscriptionsSelected
             || navigation.isAllAttachmentsSelected
             || navigation.selectedSavedSearchID != nil
     }
@@ -1493,6 +1506,29 @@ public struct FolderSidebar: View {
     #endif
 
     #if os(macOS)
+    private var subscriptionsButton: some View {
+        Button {
+            activateDestination { navigation.selectSubscriptionsSmartView() }
+        } label: {
+            sidebarActionRow(
+                title: String(localized: "Subscriptions", bundle: .module),
+                isSelected: navigation.isSubscriptionsSelected,
+                leading: {
+                    Image(systemName: "newspaper")
+                        .foregroundStyle(theme.textSecondary.color)
+                        .imageScale(.small)
+                        .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                },
+                trailing: {
+                    EmptyView()
+                }
+            )
+        }
+        .buttonStyle(.plain)
+        .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
+        .id(SidebarKeyboardItem.subscriptions)
+    }
+
     private var allAttachmentsButton: some View {
         Button {
             activateDestination { navigation.selectAllAttachmentsSmartView() }
@@ -2331,6 +2367,7 @@ public struct FolderSidebar: View {
     private enum SidebarKeyboardItem: Hashable {
         case favorite(MailboxFavoriteID)
         case smartView(String)
+        case subscriptions
         case allAttachments
         case savedSearch(SmartMailbox.ID)
         case outbox
@@ -2361,9 +2398,13 @@ public struct FolderSidebar: View {
             for entry in smartViewSettings.orderedEntries.filter(\.isEnabled) {
                 if let builtInID = entry.builtInID {
                     let item: SidebarKeyboardItem =
-                        builtInID == Self.allAttachmentsSmartViewVisibilityID
-                            ? .allAttachments
-                            : .smartView(builtInID)
+                        if builtInID == Self.subscriptionsSmartViewVisibilityID {
+                            .subscriptions
+                        } else if builtInID == Self.allAttachmentsSmartViewVisibilityID {
+                            .allAttachments
+                        } else {
+                            .smartView(builtInID)
+                        }
                     targets.append(
                         SidebarKeyboardTarget(item: item, row: nil, sourceID: nil)
                     )
@@ -2434,6 +2475,7 @@ public struct FolderSidebar: View {
     /// the selection is one of the reachable destinations.
     private var sidebarKeyboardSelectionItem: SidebarKeyboardItem? {
         if let id = activeDesktopFavoriteID { return .favorite(id) }
+        if navigation.isSubscriptionsSelected { return .subscriptions }
         if navigation.isAllAttachmentsSelected { return .allAttachments }
         if let searchID = navigation.selectedSavedSearchID {
             return .savedSearch(searchID)
@@ -2535,6 +2577,8 @@ public struct FolderSidebar: View {
                 .first(where: { $0.id == builtInID }) {
                 activateDestination(opensMessages: false) { smartView.select(in: navigation) }
             }
+        case .subscriptions:
+            activateDestination(opensMessages: false) { navigation.selectSubscriptionsSmartView() }
         case .allAttachments:
             activateDestination(opensMessages: false) { navigation.selectAllAttachmentsSmartView() }
         case .savedSearch(let id):

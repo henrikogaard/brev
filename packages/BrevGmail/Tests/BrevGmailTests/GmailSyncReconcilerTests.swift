@@ -312,6 +312,71 @@ struct GmailSyncReconcilerTests {
         #expect(try await store.accountState(accountID: "acct")?.historyID == "10")
         #expect(try await store.messages(accountID: "acct").map(\.id) == ["old"])
     }
+
+    @Test("delta sync backfills older cached messages once when metadataHeadersVersion upgrades")
+    func metadataHeadersVersionBackfillsOlderCachedRowsOnce() async throws {
+        let oldMessage = GmailMessage(
+            id: "m-old",
+            threadID: "t1",
+            labelIDs: ["INBOX"],
+            payload: GmailMessagePart(
+                mimeType: "multipart/mixed",
+                headers: [GmailMessageHeader(name: "From", value: "news@example.org")],
+                parts: [
+                    GmailMessagePart(
+                        partID: "1",
+                        mimeType: "application/pdf",
+                        filename: "invoice.pdf",
+                        body: GmailMessageBody(size: 1024, attachmentID: "att-1")
+                    ),
+                ]
+            )
+        )
+        let refreshedMessage = GmailMessage(
+            id: "m-old",
+            threadID: "t1",
+            labelIDs: ["INBOX"],
+            payload: GmailMessagePart(headers: [
+                GmailMessageHeader(name: "From", value: "news@example.org"),
+                GmailMessageHeader(name: "List-Unsubscribe", value: "<https://example.org/unsub>"),
+            ])
+        )
+        let client = FakeGmailClient(
+            profile: GmailProfile(emailAddress: "user@example.com", historyID: "25"),
+            historyPages: [GmailHistoryPage(history: [], historyID: "25")],
+            messages: ["m-old": refreshedMessage]
+        )
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(GmailAccountSnapshot(
+            accountID: "acct",
+            state: GmailAccountState(
+                accountID: "acct",
+                emailAddress: "user@example.com",
+                historyID: "20",
+                metadataHeadersVersion: 0
+            ),
+            labels: [],
+            messages: [oldMessage]
+        ))
+
+        let reconciler = GmailSyncReconciler(client: client, store: store, accountID: "acct")
+        let updated = try await reconciler.deltaSync()
+        #expect(updated.metadataHeadersVersion == GmailAPIClient.metadataHeadersVersion)
+        #expect(await client.requestedMessageIDs() == ["m-old"])
+        let stored = try await store.message(accountID: "acct", messageID: "m-old")
+        #expect(stored?.payload?.headers.contains { $0.name == "List-Unsubscribe" } == true)
+        #expect(stored?.payload?.parts.first?.filename == "invoice.pdf")
+
+        // A second delta sync does not re-fetch already-backfilled rows.
+        let secondClient = FakeGmailClient(
+            profile: GmailProfile(emailAddress: "user@example.com", historyID: "26"),
+            historyPages: [GmailHistoryPage(history: [], historyID: "26")],
+            messages: ["m-old": refreshedMessage]
+        )
+        let secondReconciler = GmailSyncReconciler(client: secondClient, store: store, accountID: "acct")
+        _ = try await secondReconciler.deltaSync()
+        #expect(await secondClient.requestedMessageIDs().isEmpty)
+    }
 }
 
 private final class FakeGmailClient: GmailAPIClientProtocol, @unchecked Sendable {

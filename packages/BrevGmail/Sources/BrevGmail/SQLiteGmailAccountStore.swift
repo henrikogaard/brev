@@ -17,7 +17,7 @@ import SQLite3
 /// SQLite-backed canonical Gmail account store.
 public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagingStore, GmailScheduledSendStore,
     GmailMessageSummaryScanning, @unchecked Sendable {
-    private static let currentSchemaVersion = 5
+    private static let currentSchemaVersion = 6
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private let lock = NSLock()
@@ -355,6 +355,18 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
     /// checks keep the migration idempotent and skip the ALTER on fresh
     /// schemas that already declare the columns.
     private func migrateMaterializedColumns() throws {
+        var accountColumns = Set<String>()
+        let accountInfo = try prepare("PRAGMA table_info(gmail_accounts);")
+        while sqlite3_step(accountInfo) == SQLITE_ROW {
+            if let name = string(accountInfo, column: 1) { accountColumns.insert(name) }
+        }
+        sqlite3_finalize(accountInfo)
+        if !accountColumns.contains("metadata_headers_version") {
+            try execute(
+                "ALTER TABLE gmail_accounts ADD COLUMN metadata_headers_version INTEGER NOT NULL DEFAULT 0;"
+            )
+        }
+
         var existing = Set<String>()
         let statement = try prepare("PRAGMA table_info(gmail_messages);")
         while sqlite3_step(statement) == SQLITE_ROW {
@@ -457,7 +469,12 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
                         bindings: [.text(delta.accountID), .text(messageID)]
                     )
                 }
-                try updateState(accountID: delta.accountID, historyID: delta.historyID, lastDeltaSyncAt: delta.lastDeltaSyncAt)
+                try updateState(
+                    accountID: delta.accountID,
+                    historyID: delta.historyID,
+                    lastDeltaSyncAt: delta.lastDeltaSyncAt,
+                    metadataHeadersVersion: delta.metadataHeadersVersion
+                )
                 try commit()
             } catch {
                 try? rollback()
@@ -469,7 +486,7 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
     private func readAccountState(accountID: String) throws -> GmailAccountState? {
         try lock.withLock {
             let statement = try prepare("""
-            SELECT email_address, history_id, last_full_sync_at, last_delta_sync_at
+            SELECT email_address, history_id, last_full_sync_at, last_delta_sync_at, metadata_headers_version
             FROM gmail_accounts WHERE account_id = ?;
             """)
             defer { sqlite3_finalize(statement) }
@@ -480,7 +497,8 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
                 emailAddress: string(statement, column: 0) ?? "",
                 historyID: string(statement, column: 1),
                 lastFullSyncAt: date(statement, column: 2),
-                lastDeltaSyncAt: date(statement, column: 3)
+                lastDeltaSyncAt: date(statement, column: 3),
+                metadataHeadersVersion: Int(sqlite3_column_int64(statement, 4))
             )
         }
     }
@@ -580,26 +598,39 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
     private func insertState(_ state: GmailAccountState) throws {
         try execute("""
         INSERT INTO gmail_accounts
-            (account_id, email_address, history_id, last_full_sync_at, last_delta_sync_at)
-        VALUES (?, ?, ?, ?, ?)
+            (account_id, email_address, history_id, last_full_sync_at, last_delta_sync_at, metadata_headers_version)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
             email_address = excluded.email_address,
             history_id = excluded.history_id,
             last_full_sync_at = excluded.last_full_sync_at,
-            last_delta_sync_at = excluded.last_delta_sync_at;
+            last_delta_sync_at = excluded.last_delta_sync_at,
+            metadata_headers_version = excluded.metadata_headers_version;
         """, bindings: [
             .text(state.accountID), .text(state.emailAddress), .optionalText(state.historyID),
-            .optionalDate(state.lastFullSyncAt), .optionalDate(state.lastDeltaSyncAt)
+            .optionalDate(state.lastFullSyncAt), .optionalDate(state.lastDeltaSyncAt),
+            .optionalInt(state.metadataHeadersVersion)
         ])
     }
 
-    private func updateState(accountID: String, historyID: String?, lastDeltaSyncAt: Date?) throws {
+    private func updateState(
+        accountID: String,
+        historyID: String?,
+        lastDeltaSyncAt: Date?,
+        metadataHeadersVersion: Int?
+    ) throws {
         try execute("""
         UPDATE gmail_accounts SET
             history_id = COALESCE(?, history_id),
-            last_delta_sync_at = COALESCE(?, last_delta_sync_at)
+            last_delta_sync_at = COALESCE(?, last_delta_sync_at),
+            metadata_headers_version = COALESCE(?, metadata_headers_version)
         WHERE account_id = ?;
-        """, bindings: [.optionalText(historyID), .optionalDate(lastDeltaSyncAt), .text(accountID)])
+        """, bindings: [
+            .optionalText(historyID),
+            .optionalDate(lastDeltaSyncAt),
+            .optionalInt(metadataHeadersVersion),
+            .text(accountID)
+        ])
     }
 
     private func insertLabel(_ label: GmailLabel, accountID: String) throws {
@@ -944,7 +975,8 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
         email_address TEXT NOT NULL,
         history_id TEXT,
         last_full_sync_at REAL,
-        last_delta_sync_at REAL
+        last_delta_sync_at REAL,
+        metadata_headers_version INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS gmail_labels (
         account_id TEXT NOT NULL,
@@ -1042,7 +1074,7 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
     CREATE INDEX IF NOT EXISTS gmail_conversation_idx ON gmail_messages (
         account_id, COALESCE(NULLIF(thread_id, ''), message_id), message_id
     );
-    PRAGMA user_version = 5;
+    PRAGMA user_version = 6;
     """
 
     /// Indexes over the materialized columns run after migrateMaterializedColumns:

@@ -26,6 +26,9 @@ public struct GmailAccountState: Sendable, Equatable {
     public let lastFullSyncAt: Date?
     /// Time of the most recent successful history delta.
     public let lastDeltaSyncAt: Date?
+    /// Version of `GmailAPIClient.requiredMetadataHeaders` last reconciled for
+    /// this account's cached messages (`0` on pre-upgrade SQLite rows).
+    public let metadataHeadersVersion: Int
 
     /// Creates account sync state.
     public init(
@@ -33,13 +36,15 @@ public struct GmailAccountState: Sendable, Equatable {
         emailAddress: String,
         historyID: String? = nil,
         lastFullSyncAt: Date? = nil,
-        lastDeltaSyncAt: Date? = nil
+        lastDeltaSyncAt: Date? = nil,
+        metadataHeadersVersion: Int = GmailAPIClient.metadataHeadersVersion
     ) {
         self.accountID = accountID
         self.emailAddress = emailAddress
         self.historyID = historyID
         self.lastFullSyncAt = lastFullSyncAt
         self.lastDeltaSyncAt = lastDeltaSyncAt
+        self.metadataHeadersVersion = metadataHeadersVersion
     }
 }
 
@@ -80,6 +85,8 @@ public struct GmailStoreDelta: Sendable, Equatable {
     public let historyID: String?
     /// Delta completion timestamp.
     public let lastDeltaSyncAt: Date?
+    /// Updated metadata headers version when this delta completes a backfill.
+    public let metadataHeadersVersion: Int?
 
     /// Creates a history delta.
     public init(
@@ -89,7 +96,8 @@ public struct GmailStoreDelta: Sendable, Equatable {
         upsertedMessages: [GmailMessage] = [],
         removedMessageIDs: [String] = [],
         historyID: String? = nil,
-        lastDeltaSyncAt: Date? = nil
+        lastDeltaSyncAt: Date? = nil,
+        metadataHeadersVersion: Int? = nil
     ) {
         self.accountID = accountID
         self.upsertedLabels = upsertedLabels
@@ -98,6 +106,7 @@ public struct GmailStoreDelta: Sendable, Equatable {
         self.removedMessageIDs = removedMessageIDs
         self.historyID = historyID
         self.lastDeltaSyncAt = lastDeltaSyncAt
+        self.metadataHeadersVersion = metadataHeadersVersion
     }
 }
 
@@ -278,7 +287,8 @@ public actor InMemoryGmailAccountStore: GmailAccountStore {
                 emailAddress: current.state.emailAddress,
                 historyID: delta.historyID ?? current.state.historyID,
                 lastFullSyncAt: current.state.lastFullSyncAt,
-                lastDeltaSyncAt: delta.lastDeltaSyncAt ?? current.state.lastDeltaSyncAt
+                lastDeltaSyncAt: delta.lastDeltaSyncAt ?? current.state.lastDeltaSyncAt,
+                metadataHeadersVersion: delta.metadataHeadersVersion ?? current.state.metadataHeadersVersion
             ),
             labels: labels.values.sorted { $0.id < $1.id },
             messages: messages.values.sorted { $0.id < $1.id }

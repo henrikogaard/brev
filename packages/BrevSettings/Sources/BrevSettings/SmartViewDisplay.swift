@@ -31,6 +31,7 @@ public extension SmartMailboxSettings {
             ("snoozed", String(localized: "Snoozed", bundle: .module), "clock"),
             ("done", String(localized: "Done", bundle: .module), "checkmark.circle"),
             ("vip", String(localized: "VIP", bundle: .module), "star"),
+            ("subscriptions", String(localized: "Subscriptions", bundle: .module), "newspaper"),
             ("all-attachments", String(localized: "All Attachments", bundle: .module), "paperclip")
         ]
         let entries = builtIns.map { id, title, symbol in

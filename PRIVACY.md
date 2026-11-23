@@ -160,21 +160,26 @@ domain, or enable "Always load remote images" in Settings.
 or remove sender/domain allowances from the remote-content policy.
 Defaults to blocked.
 
-### List-Unsubscribe actions
+### List-Unsubscribe actions and Subscriptions view
 
 If a message includes standard `List-Unsubscribe` headers, Brev can
-show an unsubscribe banner. Header detection is local and does not send
-any network request.
+show an unsubscribe banner in the reader and list the sender in the
+**Subscriptions** sidebar view. Header detection and sender grouping are
+local-only using already-cached mail and never send any network request
+or follow unsubscribe links automatically.
 
-If you choose an unsubscribe action, Brev asks for confirmation first:
-- HTTPS actions open the unsubscribe URL in your browser. If the
-  message advertises one-click unsubscribe, the list provider may treat
-  opening that URL as an unsubscribe request.
+If you choose an unsubscribe action (from a message banner or from the
+**Subscriptions** view), Brev shows exactly what it will do and asks for
+confirmation first:
+- HTTPS actions open the unsubscribe URL in your browser (or, when a
+  sender advertises RFC 8058 one-click unsubscribe, confirm that the
+  list provider will receive a direct unsubscribe request). The site may
+  learn your IP address and request time.
 - `mailto:` actions open a draft addressed to the list provider. You
   review and send the message yourself.
 
 **How to disable:** Do not choose the unsubscribe action. Detection
-itself is passive and local.
+and the Subscriptions list are passive and local.
 
 ### Server-side filters (ManageSieve)
 

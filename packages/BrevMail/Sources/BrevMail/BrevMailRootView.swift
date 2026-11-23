@@ -218,6 +218,7 @@ private final class ReaderPaneWidthSettleTaskBox {
 
 public struct BrevMailRootView: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.networkMonitor) private var monitor
     #if os(iOS)
@@ -2304,6 +2305,52 @@ public struct BrevMailRootView: View {
     }
     #endif
 
+    /// Builds the Subscriptions catalog strictly from locally cached headers
+    /// and cached `List-Unsubscribe` metadata — zero network calls (#295, ADR-0006).
+    private func loadSubscriptionsCatalog(_ sections: [MailSourceSection]) async -> [SubscriptionSenderGroup] {
+        var candidates: [SubscriptionsCandidate] = []
+        for section in sections {
+            let owner = backend(for: section.id)
+            guard let unsubscribeProvider = owner.extensionService(CachedListUnsubscribeProviding.self) else {
+                continue
+            }
+            for folder in section.folders
+                where folder.role != .trash && folder.role != .spam && folder.role != .drafts && folder.role != .sent {
+                guard !Task.isCancelled,
+                      let headers = try? await owner.cachedMessageHeaders(in: folder, sourceID: section.id)
+                else { continue }
+                for header in headers {
+                    guard !Task.isCancelled else { return [] }
+                    if let options = await unsubscribeProvider.cachedListUnsubscribe(for: header.id, sourceID: section.id),
+                       !options.methods.isEmpty {
+                        candidates.append(SubscriptionsCandidate(
+                            sourceID: section.id,
+                            header: header,
+                            listUnsubscribe: options
+                        ))
+                    }
+                }
+            }
+        }
+        return SubscriptionsCatalogBuilder.build(candidates: candidates)
+    }
+
+    private func archiveAllSubscriptionMessages(in group: SubscriptionSenderGroup) async -> Bool {
+        guard let section = sidebarSourceSections.first(where: { $0.id == group.sourceID }) else {
+            return false
+        }
+        let owner = backend(for: group.sourceID)
+        let succeeded = await SubscriptionsActions.archiveAllMessages(
+            in: group,
+            folders: section.folders,
+            backend: owner,
+            undoQueue: undoQueue
+        )
+        await loadFolders()
+        navigation.requestReload()
+        return succeeded
+    }
+
     /// The split view's detail column. On iPhone it is the pushed reader; at
     /// regular width it is the reading pane.
     @ViewBuilder
@@ -2490,10 +2537,52 @@ public struct BrevMailRootView: View {
         }
     }
 
+    private static func subscriptionsRefreshKey(_ sections: [MailSourceSection]) -> Int {
+        var hasher = Hasher()
+        for section in sections {
+            hasher.combine(section.id)
+            for folder in section.folders where folder.role == .inbox {
+                hasher.combine(folder.id)
+                hasher.combine(folder.unreadCount)
+                hasher.combine(folder.totalCount)
+            }
+        }
+        return hasher.finalize()
+    }
+
+    @ViewBuilder
+    private var subscriptionsPane: some View {
+        SubscriptionsView(
+            refreshKey: Self.subscriptionsRefreshKey(sidebarSourceSections),
+            load: { await loadSubscriptionsCatalog(sidebarSourceSections) },
+            canArchive: { group in
+                sidebarSourceSections
+                    .first { $0.id == group.sourceID }?
+                    .folders.contains { $0.role == .archive } == true
+            },
+            onArchiveAll: { group in
+                await archiveAllSubscriptionMessages(in: group)
+            },
+            onConfirmedUnsubscribe: { _, method in
+                switch method {
+                case .https(let url, _), .mailto(let url):
+                    openURL(url)
+                }
+            },
+            onSelectMessage: { sourceID, header in
+                navigation.selectFolder(header.folderID, in: sourceID)
+                navigation.selectedMessageID = header.id
+                navigation.endSelection()
+            }
+        )
+    }
+
     @ViewBuilder
     private var messageListPane: some View {
         Group {
-            if navigation.isAllAttachmentsSelected {
+            if navigation.isSubscriptionsSelected {
+                subscriptionsPane
+            } else if navigation.isAllAttachmentsSelected {
                 AllAttachmentsView(
                     provider: CachedAttachmentSearchRecordProvider(
                         enumerator: BackendCachedAttachmentEnumerator(
@@ -2718,6 +2807,7 @@ public struct BrevMailRootView: View {
             || navigation.isUnifiedInboxSelected
             || navigation.isSmartViewSelected
             || navigation.selectedSavedSearchID != nil
+            || navigation.isSubscriptionsSelected
             || navigation.isAllAttachmentsSelected
     }
 
@@ -2727,6 +2817,9 @@ public struct BrevMailRootView: View {
         }
         if let smartView = MailboxSmartView.selected(for: navigation) {
             return smartView.title
+        }
+        if navigation.isSubscriptionsSelected {
+            return String(localized: "Subscriptions", bundle: .module)
         }
         if navigation.isAllAttachmentsSelected {
             return String(localized: "All Attachments", bundle: .module)
