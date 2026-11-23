@@ -354,7 +354,8 @@ jobs:
             -only-testing:BrevMailTests/TodayPageSnapshotTests \
             -only-testing:BrevMailTests/TriageViewSnapshotTests \
             -only-testing:BrevMailTests/NewMailDropDownPanelSnapshotTests \
-            -only-testing:BrevMailTests/AssistantDestinationSnapshotTests|SignInCodePanelSnapshotTests \
+            -only-testing:BrevMailTests/AssistantDestinationSnapshotTests \
+            -only-testing:BrevMailTests/SignInCodePanelSnapshotTests \
             -only-testing:BrevMailTests/MessageListRefreshSnapshotTests \
             -only-testing:BrevMailTests/ReaderToolbarSnapshotTests \
             -only-testing:BrevMailTests/ThreadHeaderSnapshotTests \
