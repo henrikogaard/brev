@@ -1450,6 +1450,10 @@ public struct BrevMailRootView: View {
     private func triageWorkspace(_ session: TriageSession) -> some View {
         let current = session.currentItem
         let currentOwner = current.map { backend(for: $0.sourceID) } ?? selectedBackend
+        let currentUnfilteredSection = current.flatMap { item in
+            visibleSourceSections.first { $0.id == item.sourceID }
+        }
+        let currentUnfilteredFolders = currentUnfilteredSection?.folders ?? folders
         let canArchive = current.map { item in
             guard let archive = triageArchiveFolder(for: item) else { return false }
             return item.header.folderID != archive.id
@@ -1523,13 +1527,13 @@ public struct BrevMailRootView: View {
                     )
                 }
             }
-            .modifier(SenderWarningHistoryModifier(
-                backend: owner,
-                sourceID: item.sourceID,
-                folders: sourceFolders,
-                mailboxEmail: sourceSection?.mailbox.email
-            ))
         }
+        .modifier(SenderWarningHistoryModifier(
+            backend: currentOwner,
+            sourceID: current?.sourceID,
+            folders: currentUnfilteredFolders,
+            mailboxEmail: currentUnfilteredSection?.mailbox.email
+        ))
         .onChange(of: session.currentItem?.id) { _, _ in
             session.syncReaderNavigation(triageReaderNavigation)
         }
