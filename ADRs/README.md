@@ -105,6 +105,7 @@ repository checks.
 | 92 | [Opt-in content permissions for isolated mock QA](0092-isolated-mock-content-qa.md) | Accepted |
 | 93 | [Reopening reply, forward and server-sourced Drafts](0093-reopening-reply-and-server-drafts.md) | Accepted |
 | 94 | [On-device AI with Apple Intelligence and user-downloaded local models](0094-on-device-ai-apple-intelligence-and-local-models.md) | Proposed |
+| 95 | [Local MCP server for read-only and user-approved agent mail access](0095-local-mcp-agent-access.md) | Accepted |
 
 ## Conventions
 
