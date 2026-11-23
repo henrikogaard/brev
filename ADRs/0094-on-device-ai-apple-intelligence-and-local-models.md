@@ -1,7 +1,8 @@
 # ADR-0094: On-device AI with Apple Intelligence and user-downloaded local models
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-22
+- **Accepted:** 2026-11-23
 - **Deciders:** Henrik
 - **Relates to:** [ADR-0006](0006-telemetry-and-privacy.md) (telemetry and privacy), [ADR-0008](0008-ai-writer.md) (AI Writer), [ADR-0026](0026-supervised-mailbox-action-agent.md) (supervised mailbox actions), [ADR-0028](0028-mail-provider-architecture.md) (mail provider architecture), [ADR-0047](0047-mailbox-chat-q-and-a-ai.md) (mailbox chat Q&A), [ADR-0051](0051-user-controlled-ai-providers.md) (user-controlled AI providers), [ADR-0058](0058-localization-via-string-catalogs.md) (string catalogs)
 - **Issue:** #304
