@@ -90,6 +90,8 @@ struct CountPluralLocalizationTests {
         "Remote content blocked",
         "Brev blocked %@ and %@.",
         "Brev blocked %@.",
+        "1 likely tracker may load",
+        "%lld likely trackers may load",
         "the remote hosts",
         "%@ and %@",
         "%@, %@, and %@",

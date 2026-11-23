@@ -16693,6 +16693,28 @@
           }
         }
       }
+    },
+    "1 likely tracker may load": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 sannsynlig sporer kan lastes inn"
+          }
+        }
+      }
+    },
+    "%lld likely trackers may load": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sannsynlige sporere kan lastes inn"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

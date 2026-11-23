@@ -13440,6 +13440,39 @@
           }
         }
       }
+    },
+    "Remove tracking pixels": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern sporingspiksler"
+          }
+        }
+      }
+    },
+    "Remove likely tracking images before they render, even when remote content is allowed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern sannsynlige sporingsbilder før de vises, også når eksternt innhold er tillatt."
+          }
+        }
+      }
+    },
+    "Images and web fonts stay blocked until you allow remote content; likely tracking images are removed by default.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder og nettfonter holdes blokkert til du tillater eksternt innhold; sannsynlige sporingsbilder fjernes som standard."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

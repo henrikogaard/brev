@@ -41,6 +41,8 @@ struct ThreadMessageCard: View {
 
     @State private var renderedBody: RenderedBody?
     @State private var renderedHTML: AttributedString?
+    @State private var nativeHTMLImportGeneration = 0
+    @State private var nativeHTMLImportRefreshPending = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var parsedInvite: ICSParser.ParsedEvent?
@@ -75,6 +77,8 @@ struct ThreadMessageCard: View {
 
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
+    @AppStorage(MessageTrackingPixelPreference.storageKey)
+    private var stripTrackingPixels = MessageTrackingPixelPreference.enabledByDefault
     @SectionFontFamily(.reader) private var mailboxFontFamily
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
 
@@ -204,6 +208,14 @@ struct ThreadMessageCard: View {
                 await loadBody()
             } else {
                 await updateDerivedBodyState()
+            }
+        }
+        .onChange(of: stripTrackingPixels) { _, _ in
+            guard !usesRichHTMLBodyRenderer, isExpanded, renderedBody != nil else { return }
+            if isLoading {
+                nativeHTMLImportRefreshPending = true
+            } else {
+                Task { await updateDerivedBodyState() }
             }
         }
         .alert(
@@ -505,9 +517,10 @@ struct ThreadMessageCard: View {
 
         case .attributedHTML(let html):
             VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                // Shown even when stripping left nothing to import.
+                // Keep the count visible if tracker removal leaves nothing to import.
                 MessageTrackerNote(
-                    removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+                    trackerCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount,
+                    strippingEnabled: stripTrackingPixels
                 )
                 if let renderedHTML {
                     Text(messageBodyStyle.nativeAttributedBody(renderedHTML))
@@ -546,13 +559,15 @@ struct ThreadMessageCard: View {
                     )
                 } else if allowRemoteContent {
                     MessageTrackerNote(
-                        removedCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+                        trackerCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount,
+                        strippingEnabled: stripTrackingPixels
                     )
                 }
                 HTMLBodyWebView(
                     store: htmlWebViewStore,
                     html: html,
                     allowRemoteContent: allowRemoteContent,
+                    stripTrackingPixels: stripTrackingPixels,
                     fontFamily: mailboxFontFamily,
                     textSize: mailboxTextSize,
                     renderingMode: htmlRenderingMode,
@@ -666,15 +681,25 @@ struct ThreadMessageCard: View {
     // MARK: - Body loading
 
     private func loadBody() async {
+        let messageID = header.id
+        nativeHTMLImportGeneration &+= 1
+        let loadGeneration = nativeHTMLImportGeneration
+        nativeHTMLImportRefreshPending = false
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let raw = try await bodyWithReaderTimeout(for: header.id)
+            let raw = try await bodyWithReaderTimeout(for: messageID)
             let rendered = await bodyRenderer.render(raw)
-            renderedBody = await resolvingInlineCIDImages(in: rendered)
-            inlineCIDResolvedMessageID = header.id
+            let resolved = await resolvingInlineCIDImages(in: rendered)
+            guard nativeHTMLImportGeneration == loadGeneration, header.id == messageID else { return }
+            renderedBody = resolved
+            inlineCIDResolvedMessageID = messageID
             await updateDerivedBodyState()
+            while nativeHTMLImportRefreshPending {
+                nativeHTMLImportRefreshPending = false
+                await updateDerivedBodyState()
+            }
         } catch is CancellationError {
             // Task cancelled — normal during scroll off-screen.
         } catch {
@@ -705,24 +730,50 @@ struct ThreadMessageCard: View {
     }
 
     private func updateDerivedBodyState() async {
+        let request = nextNativeHTMLImportRequest()
         if inlineCIDResolvedMessageID != header.id,
            let currentBody = renderedBody {
-            renderedBody = await resolvingInlineCIDImages(in: currentBody)
+            let resolved = await resolvingInlineCIDImages(in: currentBody)
+            guard canApplyNativeHTMLImport(request), renderedBody?.html == currentBody.html else { return }
+            renderedBody = resolved
             inlineCIDResolvedMessageID = header.id
         }
+        guard canApplyNativeHTMLImport(request) else { return }
         switch ThreadMessageBodyPresentation.resolve(
             bodyPresentationContext
         ) {
         case .attributedHTML(let html):
-            // This path runs with remote content allowed (or none present),
-            // so tracking pixels go before import (#299).
-            renderedHTML = await MessageHTMLImporter.importAttributedHTML(
-                MessageRemoteContentDetector.strippingLikelyTrackers(html).html
+            // This path runs with remote content allowed (or none present).
+            let importHTML = MessageHTMLImportPolicy.prepareForNativeImport(
+                html,
+                stripTrackingPixels: request.stripTrackingPixels
             )
+            let importedHTML = await MessageHTMLImporter.importAttributedHTML(
+                importHTML
+            )
+            guard canApplyNativeHTMLImport(request) else { return }
+            renderedHTML = importedHTML
         default:
             renderedHTML = nil
         }
         await loadInviteIfNeeded()
+    }
+
+    private func nextNativeHTMLImportRequest() -> MessageHTMLImportRequest {
+        nativeHTMLImportGeneration &+= 1
+        return MessageHTMLImportRequest(
+            generation: nativeHTMLImportGeneration,
+            messageKey: String(describing: header.id),
+            stripTrackingPixels: stripTrackingPixels
+        )
+    }
+
+    private func canApplyNativeHTMLImport(_ request: MessageHTMLImportRequest) -> Bool {
+        request.matchesCurrent(
+            generation: nativeHTMLImportGeneration,
+            messageKey: String(describing: header.id),
+            stripTrackingPixels: stripTrackingPixels
+        )
     }
 
     private func resolvingInlineCIDImages(in rendered: RenderedBody) async -> RenderedBody {

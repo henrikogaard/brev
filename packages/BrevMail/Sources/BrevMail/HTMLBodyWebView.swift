@@ -228,6 +228,7 @@ struct HTMLBodyWebView: View {
     @ObservedObject var store: HTMLBodyWebViewStore
     let html: String
     let allowRemoteContent: Bool
+    let stripTrackingPixels: Bool
     let fontFamily: MailboxFontFamily
     let textSize: MailboxTextSize
     let renderingMode: HTMLBodyRenderingMode
@@ -264,6 +265,7 @@ struct HTMLBodyWebView: View {
                     store: store,
                     html: html,
                     allowRemoteContent: allowRemoteContent,
+                    stripTrackingPixels: stripTrackingPixels,
                     style: style,
                     measuredHeight: $measuredHeight,
                     onOpenURL: onOpenURL,
@@ -327,6 +329,7 @@ private struct WebViewRepresentable {
     let store: HTMLBodyWebViewStore
     let html: String
     let allowRemoteContent: Bool
+    let stripTrackingPixels: Bool
     let style: MessageBodyStyle
     @Binding var measuredHeight: CGFloat
     let onOpenURL: (URL) -> Void
@@ -352,6 +355,7 @@ private struct WebViewRepresentable {
             into: webView,
             html: html,
             allowRemoteContent: allowRemoteContent,
+            stripTrackingPixels: stripTrackingPixels,
             style: style
         )
     }
@@ -361,11 +365,13 @@ private struct WebViewRepresentable {
         coordinator.parent = self
         if coordinator.lastHTML != html
             || coordinator.lastAllowRemote != allowRemoteContent
+            || coordinator.lastStripTrackingPixels != stripTrackingPixels
             || coordinator.lastStyle != style {
             coordinator.load(
                 into: webView,
                 html: html,
                 allowRemoteContent: allowRemoteContent,
+                stripTrackingPixels: stripTrackingPixels,
                 style: style
             )
         }
@@ -405,6 +411,7 @@ extension WebViewRepresentable {
         var parent: WebViewRepresentable
         var lastHTML: String?
         var lastAllowRemote: Bool?
+        var lastStripTrackingPixels: Bool?
         var lastStyle: MessageBodyStyle?
         private var loadGeneration = 0
         private var pendingRemeasure = false
@@ -417,12 +424,14 @@ extension WebViewRepresentable {
             into webView: WKWebView,
             html: String,
             allowRemoteContent: Bool,
+            stripTrackingPixels: Bool,
             style: MessageBodyStyle
         ) {
             loadGeneration &+= 1
             let generation = loadGeneration
             lastHTML = html
             lastAllowRemote = allowRemoteContent
+            lastStripTrackingPixels = stripTrackingPixels
             lastStyle = style
             let controller = webView.configuration.userContentController
             controller.removeAllContentRuleLists()
@@ -445,7 +454,7 @@ extension WebViewRepresentable {
                 // Wrapping is pure string/regex work over the whole body;
                 // keep it off the main actor so paint isn't blocked on it.
                 let document = HTMLBodyDocument.wrap(
-                    plan.bodyHTML(originalHTML: html),
+                    plan.bodyHTML(originalHTML: html, stripTrackingPixels: stripTrackingPixels),
                     style: style
                 )
                 await MainActor.run {
@@ -576,11 +585,10 @@ enum HTMLBodyLoadPlan: Equatable {
         return .blockedFallback
     }
 
-    func bodyHTML(originalHTML: String) -> String {
+    func bodyHTML(originalHTML: String, stripTrackingPixels: Bool = true) -> String {
         switch self {
         case .original(blocksRemoteSubresources: false):
-            // Remote content is allowed, so tracking pixels are removed
-            // before WebKit loads anything (#299).
+            guard stripTrackingPixels else { return originalHTML }
             let stripped = MessageRemoteContentDetector.strippingLikelyTrackers(originalHTML)
             // If the pixel was the body's only tag, keep the rest read as
             // HTML; otherwise `&amp;` would be escaped again as plain text.

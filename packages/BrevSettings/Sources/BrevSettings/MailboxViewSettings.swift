@@ -16,6 +16,7 @@ import Foundation
 struct MailboxViewSettings: Equatable, Sendable, Codable {
     var useRichRenderer: Bool
     var allowRemoteContent: Bool
+    var stripTrackingPixels: Bool
     var groupByThread: Bool
     var groupByDate: Bool
     var showAbsoluteArrivalTime: Bool
@@ -30,9 +31,29 @@ struct MailboxViewSettings: Equatable, Sendable, Codable {
     var showFolderStats: Bool
     var folderStatsDetail: MailboxFolderStatsDetail
 
+    private enum CodingKeys: String, CodingKey {
+        case useRichRenderer
+        case allowRemoteContent
+        case stripTrackingPixels
+        case groupByThread
+        case groupByDate
+        case showAbsoluteArrivalTime
+        case showSenderAvatars
+        case previewLineCount
+        case fontFamily
+        case textSize
+        case listDensity
+        case sortOrder
+        case threadMessageOrder
+        case readingPanePlacement
+        case showFolderStats
+        case folderStatsDetail
+    }
+
     static let defaults = MailboxViewSettings(
         useRichRenderer: true,
         allowRemoteContent: false,
+        stripTrackingPixels: true,
         groupByThread: true,
         groupByDate: true,
         showAbsoluteArrivalTime: false,
@@ -58,6 +79,11 @@ struct MailboxViewSettings: Equatable, Sendable, Codable {
             allowRemoteContent: bool(
                 for: MailboxViewPreferenceKey.allowRemoteContent,
                 defaultValue: Self.defaults.allowRemoteContent,
+                defaults: defaults
+            ),
+            stripTrackingPixels: bool(
+                for: MailboxViewSettingsPreferenceKey.stripTrackingPixels,
+                defaultValue: Self.defaults.stripTrackingPixels,
                 defaults: defaults
             ),
             groupByThread: bool(
@@ -139,6 +165,7 @@ struct MailboxViewSettings: Equatable, Sendable, Codable {
     func save(to defaults: UserDefaults = .standard) {
         defaults.set(useRichRenderer, forKey: MailboxViewPreferenceKey.useRichRenderer)
         defaults.set(allowRemoteContent, forKey: MailboxViewPreferenceKey.allowRemoteContent)
+        defaults.set(stripTrackingPixels, forKey: MailboxViewSettingsPreferenceKey.stripTrackingPixels)
         defaults.set(groupByThread, forKey: MailboxViewPreferenceKey.groupByThread)
         defaults.set(groupByDate, forKey: MailboxViewPreferenceKey.groupByDate)
         defaults.set(showAbsoluteArrivalTime, forKey: MailboxViewPreferenceKey.showAbsoluteArrivalTime)
@@ -187,5 +214,32 @@ struct MailboxViewSettings: Equatable, Sendable, Codable {
             return defaultValue
         }
         return value
+    }
+}
+
+private enum MailboxViewSettingsPreferenceKey {
+    static let stripTrackingPixels = "body.stripTrackingPixels"
+}
+
+extension MailboxViewSettings {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        useRichRenderer = try container.decode(Bool.self, forKey: .useRichRenderer)
+        allowRemoteContent = try container.decode(Bool.self, forKey: .allowRemoteContent)
+        stripTrackingPixels = try container.decodeIfPresent(Bool.self, forKey: .stripTrackingPixels)
+            ?? Self.defaults.stripTrackingPixels
+        groupByThread = try container.decode(Bool.self, forKey: .groupByThread)
+        groupByDate = try container.decode(Bool.self, forKey: .groupByDate)
+        showAbsoluteArrivalTime = try container.decode(Bool.self, forKey: .showAbsoluteArrivalTime)
+        showSenderAvatars = try container.decode(Bool.self, forKey: .showSenderAvatars)
+        previewLineCount = try container.decode(MailboxPreviewLineCount.self, forKey: .previewLineCount)
+        fontFamily = try container.decode(MailboxFontFamily.self, forKey: .fontFamily)
+        textSize = try container.decode(MailboxTextSize.self, forKey: .textSize)
+        listDensity = try container.decode(MailboxListDensity.self, forKey: .listDensity)
+        sortOrder = try container.decode(MailboxSortOrder.self, forKey: .sortOrder)
+        threadMessageOrder = try container.decode(MailboxThreadOrder.self, forKey: .threadMessageOrder)
+        readingPanePlacement = try container.decode(MailboxReadingPanePlacement.self, forKey: .readingPanePlacement)
+        showFolderStats = try container.decode(Bool.self, forKey: .showFolderStats)
+        folderStatsDetail = try container.decode(MailboxFolderStatsDetail.self, forKey: .folderStatsDetail)
     }
 }
