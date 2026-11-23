@@ -101,7 +101,7 @@ struct MailCommandPaletteTests {
                 openSubscriptions: { launched.append("subscriptions") }
             )
         )
-        for (query, expected) in [("assistant", "assistant"), ("triage", "triage"), ("newsletters", "subscriptions")] {
+        for (query, expected) in [("ai", "assistant"), ("queue", "triage"), ("newsletters", "subscriptions")] {
             let entry = try #require(workspace.first { $0.matches(query) })
             entry.run()
             #expect(launched.last == expected)
@@ -114,7 +114,8 @@ struct MailCommandPaletteTests {
             startTriage: {},
             openSubscriptions: {}
         )
-        #expect(limitedWorkspace.map(\.title) == ["Subscriptions"])
+        #expect(limitedWorkspace.count == 1)
+        #expect(limitedWorkspace.first?.keywords.contains("newsletters") == true)
 
         // Selecting Assistant from a non-default account preserves that source ID even after
         // selectSmartView clears selectedSourceID, so Assistant resolves that account's backend.

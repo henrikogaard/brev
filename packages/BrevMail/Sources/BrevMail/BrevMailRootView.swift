@@ -1777,7 +1777,7 @@ public struct BrevMailRootView: View {
 
     @ViewBuilder
     private var mailSplitView: some View {
-        if navigation.isAssistantSelected, resolvedAssistantAIBackend != nil {
+        if navigation.isAssistantSelected {
             NavigationSplitView(
                 columnVisibility: $splitViewVisibility,
                 preferredCompactColumn: $preferredCompactColumn
@@ -1816,10 +1816,6 @@ public struct BrevMailRootView: View {
         navigation.assistantSourceID
             ?? navigation.selectedSourceID
             ?? preferredDefaultSection(in: visibleSourceSections)?.id
-    }
-
-    private var resolvedAssistantAIBackend: (any AIBackend)? {
-        aiBackend(for: backend(for: resolvedAssistantSourceID).account)
     }
 
     private var assistantDestinationPane: some View {
