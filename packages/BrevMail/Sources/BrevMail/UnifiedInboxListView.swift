@@ -2562,7 +2562,8 @@ struct UnifiedInboxListView: View {
                 loadedItems.removeAll { $0.sourceID == section.id }
                 continue
             }
-            guard let backend = (currentBackendsProvider?() ?? backends).first(where: { $0.account.id == section.account.id }) else {
+            guard let backend = (currentBackendsProvider?() ?? backends).first(where: { $0.account.id == section.account.id })
+            else {
                 continue
             }
             let backendIdentity = ObjectIdentifier(backend as AnyObject)
@@ -2582,7 +2583,8 @@ struct UnifiedInboxListView: View {
                 guard isCurrentRequest(),
                       currentSourceSectionsRevisionProvider() == capturedRevision,
                       currentSourceSectionsProvider().contains(where: { $0.id == section.id }),
-                      let currentBackend = (currentBackendsProvider?() ?? backends).first(where: { $0.account.id == section.id.accountID }),
+                      let currentBackend = (currentBackendsProvider?() ?? backends)
+                      .first(where: { $0.account.id == section.id.accountID }),
                       ObjectIdentifier(currentBackend as AnyObject) == backendIdentity
                 else { return }
                 let currentReminders = followUpSettingsProvider().reminders.filter {
