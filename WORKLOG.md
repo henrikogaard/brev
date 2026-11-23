@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-23 — Agent — PR #329 (#301 rebase and macOS snapshots)
+
+- Goal: rebase PR #329 onto `origin/main`, prevent headline truncation in narrow readers, and record the missing macOS 26 snapshots for `SenderWarningBanner` (look-alike collapsed/expanded and DMARC failure expanded, light/dark).
+- Changes: resolved `CHANGELOG.md`, `WORKLOG.md`, and `Localizable.xcstrings` rebase conflicts; added `initiallyExpanded` parameter and vertical `fixedSize` to `SenderWarningBanner`; added `SenderWarningBannerSnapshotTests` with 4 light/dark baselines; registered suite in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'SenderWarningBannerSnapshotTests|MessageHeaderAnalyzerTests|SenderDomainComparisonTests|BodyRendererTests|NotificationInlineReplyTests'`, `swift test --package-path packages/BrevSettings --filter RecentRecipientStoreTests`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`; visually verified all 4 PNGs.
+- Handoff: pushed and marked ready for review; awaiting green CI to merge.
+
 ## 2026-11-22 — Agent — #301 sender warning review
 
 - Inline image enrichment now preserves authentication metadata, and display-name checks recognize internationalized domains, including equivalent IDNA spellings.

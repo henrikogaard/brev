@@ -21,6 +21,17 @@ struct SenderWarningBanner: View {
     @Environment(\.senderWarningHistory) private var history
     let header: MessageHeader
     let authenticationResults: String?
+    @State private var isExpanded: Bool
+
+    init(
+        header: MessageHeader,
+        authenticationResults: String?,
+        initiallyExpanded: Bool = false
+    ) {
+        self.header = header
+        self.authenticationResults = authenticationResults
+        _isExpanded = State(initialValue: initiallyExpanded)
+    }
 
     var body: some View {
         if let warning = MessageHeaderAnalyzer.warning(
@@ -31,12 +42,13 @@ struct SenderWarningBanner: View {
                 Label {
                     Text(verbatim: title(for: warning))
                         .foregroundStyle(theme.textPrimary.color)
+                        .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: "exclamationmark.shield")
                         .foregroundStyle(theme.warning.color)
                 }
                 .brevFont(.headline)
-                DisclosureGroup {
+                DisclosureGroup(isExpanded: $isExpanded) {
                     VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                         Text(verbatim: explanation(for: warning))
                         Text(verbatim: String(localized: "Sender address: \(header.from.email)", bundle: .module))
