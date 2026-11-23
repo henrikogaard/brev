@@ -24,17 +24,20 @@ struct AIWriterSection: View {
     private let settingsStore: SettingsPersistenceStore
     private let providerSecretStore: any AIProviderSecretStore
     private let accounts: [BrevAccount]
+    private let appleIntelligenceAvailability: AppleIntelligenceAvailability
     private let onProviderConfigurationChanged: () async -> Void
 
     init(
         settingsStore: SettingsPersistenceStore = .standard,
         providerSecretStore: any AIProviderSecretStore = AIProviderKeychainSecretStore(),
         accounts: [BrevAccount] = [],
+        appleIntelligenceAvailability: AppleIntelligenceAvailability = .current(),
         onProviderConfigurationChanged: @escaping () async -> Void = {}
     ) {
         self.settingsStore = settingsStore
         self.providerSecretStore = providerSecretStore
         self.accounts = accounts
+        self.appleIntelligenceAvailability = appleIntelligenceAvailability
         self.onProviderConfigurationChanged = onProviderConfigurationChanged
         _settings = State(initialValue: settingsStore.aiWriterSettings())
     }
@@ -70,6 +73,7 @@ struct AIWriterSection: View {
                     settingsStore: settingsStore,
                     secretStore: providerSecretStore,
                     accounts: accounts,
+                    appleIntelligenceAvailability: appleIntelligenceAvailability,
                     onProviderConfigurationChanged: {
                         await refreshConfiguredProvider()
                         await onProviderConfigurationChanged()
@@ -123,6 +127,12 @@ struct AIWriterSection: View {
             ? String(localized: "granted", bundle: .module)
             : String(localized: "not granted", bundle: .module)
         if let configuredProvider {
+            if configuredProvider.kind.isOnDevice {
+                return String(
+                    localized: "Consent is \(consentState). When you use AI Writer, text is processed locally (\(configuredProvider.transparencyLabel)) and never leaves this device.",
+                    bundle: .module
+                )
+            }
             return String(
                 localized: "Consent is \(consentState). When you use AI Writer, \(configuredProvider.transparencyLabel). Review that provider’s privacy policy before enabling it.",
                 bundle: .module

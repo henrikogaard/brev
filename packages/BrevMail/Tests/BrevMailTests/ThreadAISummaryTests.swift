@@ -115,6 +115,36 @@ struct ThreadAISummaryTests {
         #expect(presentation.contextNote == "Summarized a bounded thread window.")
     }
 
+    @Test("on-device context budget bounds thread summary window below standard cloud cap")
+    func onDeviceContextBudgetBoundsSummaryWindow() throws {
+        let headers = (1 ... 10).map { index in
+            header(
+                id: "msg-\(index)",
+                sender: "sender\(index)@example.com",
+                subject: "Quarterly roadmap",
+                snippet: "Snippet \(index)",
+                date: Date(timeIntervalSince1970: TimeInterval(index))
+            )
+        }
+        let bodies = Dictionary(uniqueKeysWithValues: headers.map {
+            ($0.id, MessageBody(messageID: $0.id, plainText: String(repeating: "Detail ", count: 400)))
+        })
+        let budget = AIBackendContextBudget.onDevice
+        let included = ThreadAISummaryContextBuilder.includedHeaders(from: headers, maxMessages: budget.maxSourceMessages)
+        #expect(included.count == budget.maxSourceMessages)
+        #expect(included.last?.id == "msg-10")
+
+        let context = try #require(ThreadAISummaryContextBuilder.context(
+            headers: headers,
+            bodies: bodies,
+            maxMessages: budget.maxSourceMessages,
+            maxCharacters: budget.maxTotalContextBytes
+        ))
+        #expect(context.includedMessageCount == budget.maxSourceMessages)
+        #expect(context.wasTruncated)
+        #expect(context.messages[0].content.count <= budget.maxTotalContextBytes)
+    }
+
     private func header(
         id: String,
         sender: String,

@@ -689,7 +689,13 @@ service.
 AI features are off by default. When AI is enabled, every invocation in
 Brev shows a label indicating where the content is being sent. Provider
 options are entirely controlled by you: a compatible hosted API, self-hosted
-endpoint, or same-device local model. Brev connects directly to the endpoint
+endpoint, or same-device local model. On macOS 26+ and iOS 26+ devices that
+support Apple Intelligence, you can also select **On this Mac (Apple
+Intelligence)** / **On this iPhone / iPad (Apple Intelligence)** to run AI
+Writer, thread summaries, and Assistant strictly on-device through Apple's
+`FoundationModels` framework with zero network calls and no API key; every AI
+surface displays `"On this Mac"` (or `"On this iPhone"` / `"On this iPad"`).
+Brev connects directly to the endpoint
 you configure; it does not proxy AI requests, sell credits, meter token usage,
 or silently select another provider. You'll never be in doubt about the
 destination, whether you use compose help, thread summaries, or mailbox chat.

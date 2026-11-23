@@ -439,10 +439,14 @@ struct AIWriterSectionMacSnapshotTests {
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
         let theme = BrevTheme.brevPaper
-        let view = AIWriterSection(settingsStore: SettingsPersistenceStore(defaults: defaults))
-            .frame(width: 680, height: 460)
-            .background(theme.bgPrimary.color)
-            .brevTheme(theme)
+        let view = AIWriterSection(
+            settingsStore: SettingsPersistenceStore(defaults: defaults),
+            appleIntelligenceAvailability: .available
+        )
+        .frame(width: 680, height: 460)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .defaultAppStorage(defaults)
         let host = NSHostingController(rootView: view)
 
         assertSnapshot(

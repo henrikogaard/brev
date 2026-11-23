@@ -34,6 +34,28 @@
         }
       }
     },
+    "Apple Intelligence is currently unavailable on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Intelligence er for øyeblikket ikke tilgjengelig på denne enheten."
+          }
+        }
+      }
+    },
+    "Apple Intelligence is still preparing its on-device model. Try again shortly.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Intelligence forbereder fortsatt modellen på enheten. Prøv igjen om litt."
+          }
+        }
+      }
+    },
     "BYOK/local providers are planned for v2, so this account stays disabled until a provider is configured.": {
       "extractionState": "manual",
       "localizations": {
@@ -155,6 +177,72 @@
         }
       }
     },
+    "On this Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På denne Mac-en"
+          }
+        }
+      }
+    },
+    "On this Mac (Apple Intelligence)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På denne Mac-en (Apple Intelligence)"
+          }
+        }
+      }
+    },
+    "On this iPad": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På denne iPad-en"
+          }
+        }
+      }
+    },
+    "On this iPad (Apple Intelligence)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På denne iPad-en (Apple Intelligence)"
+          }
+        }
+      }
+    },
+    "On this iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På denne iPhone-en"
+          }
+        }
+      }
+    },
+    "On this iPhone (Apple Intelligence)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På denne iPhone-en (Apple Intelligence)"
+          }
+        }
+      }
+    },
     "Only the content generated from your request is shared with the provider endpoint.": {
       "extractionState": "manual",
       "localizations": {
@@ -184,6 +272,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "Leverandørhostet postkasseassistent"
+          }
+        }
+      }
+    },
+    "Ready on this device. Text stays local and works offline.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klar på denne enheten. Teksten forblir lokal og fungerer uten nett."
+          }
+        }
+      }
+    },
+    "Requires iOS 26 or later.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krever iOS 26 eller nyere."
+          }
+        }
+      }
+    },
+    "Requires macOS 26 or later.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krever macOS 26 eller nyere."
           }
         }
       }
@@ -232,6 +353,28 @@
         }
       }
     },
+    "This device does not support Apple Intelligence.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne enheten støtter ikke Apple Intelligence."
+          }
+        }
+      }
+    },
+    "This message is too long for the on-device model. Try a shorter selection or thread.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne meldingen er for lang for modellen på enheten. Prøv et kortere utvalg eller en kortere tråd."
+          }
+        }
+      }
+    },
     "Too many requests. Please wait a moment and try again.": {
       "extractionState": "manual",
       "localizations": {
@@ -239,6 +382,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "For mange forespørsler. Vent litt og prøv igjen."
+          }
+        }
+      }
+    },
+    "Turn on Apple Intelligence in System Settings to use on-device AI.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå på Apple Intelligence i Systeminnstillinger for å bruke AI på enheten."
           }
         }
       }

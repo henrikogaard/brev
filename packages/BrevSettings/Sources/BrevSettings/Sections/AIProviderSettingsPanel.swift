@@ -29,27 +29,31 @@ struct AIProviderSettingsPanel: View {
     private let settingsStore: SettingsPersistenceStore
     private let secretStore: any AIProviderSecretStore
     private let accounts: [BrevAccount]
+    private let appleIntelligenceAvailability: AppleIntelligenceAvailability
     private let onProviderConfigurationChanged: () async -> Void
 
     init(
         settingsStore: SettingsPersistenceStore,
         secretStore: any AIProviderSecretStore,
         accounts: [BrevAccount] = [],
+        appleIntelligenceAvailability: AppleIntelligenceAvailability = .current(),
         onProviderConfigurationChanged: @escaping () async -> Void = {}
     ) {
         self.settingsStore = settingsStore
         self.secretStore = secretStore
         self.accounts = accounts
+        self.appleIntelligenceAvailability = appleIntelligenceAvailability
         self.onProviderConfigurationChanged = onProviderConfigurationChanged
     }
 
     var body: some View {
         SettingsGroup(
             title: String(localized: "AI provider", bundle: .module),
-            subtitle: String(localized: "Choose where Brev sends requests when you invoke an AI feature.", bundle: .module),
+            subtitle: String(localized: "Choose where Brev processes requests when you invoke an AI feature.", bundle: .module),
             symbolName: "server.rack"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
+                onDeviceAppleIntelligenceCard
                 providerContent
             }
             .task {
@@ -59,6 +63,50 @@ struct AIProviderSettingsPanel: View {
                 Task { await selectProvider(providerID) }
             }
         }
+    }
+
+    private var isAppleIntelligenceActiveDefault: Bool {
+        configurations.contains {
+            $0.kind == .appleIntelligence && $0.isEnabled && $0.isDefault
+        }
+    }
+
+    private var onDeviceAppleIntelligenceCard: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
+                Image(systemName: "cpu")
+                    .foregroundStyle(
+                        appleIntelligenceAvailability.isSelectable
+                            ? theme.accent.color
+                            : theme.textSecondary.color
+                    )
+                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                    Text(OnDeviceAIPlatformLabel.appleIntelligenceDisplayName)
+                        .brevFont(.headline)
+                        .foregroundStyle(theme.textPrimary.color)
+                    Text(appleIntelligenceAvailability.settingsStatusMessage)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+                Spacer(minLength: BrevSpacing.sm)
+                if isAppleIntelligenceActiveDefault && appleIntelligenceAvailability.isSelectable {
+                    Text(OnDeviceAIPlatformLabel.transparencyLabel)
+                        .brevFont(.caption)
+                        .foregroundStyle(theme.accent.color)
+                } else {
+                    SettingsButton(
+                        String(localized: "Use on this device", bundle: .module),
+                        style: .secondary
+                    ) {
+                        Task { await enableAppleIntelligence() }
+                    }
+                    .disabled(isWorking || !appleIntelligenceAvailability.isSelectable)
+                }
+            }
+        }
+        .padding(BrevSpacing.md)
+        .settingsInlineSurface()
+        .opacity(appleIntelligenceAvailability.isSelectable ? 1 : 0.72)
     }
 
     @ViewBuilder
@@ -171,24 +219,32 @@ struct AIProviderSettingsPanel: View {
                 prompt: draft.kind.settingsDisplayName
             )
 
-            providerTextField(
-                title: String(localized: "Endpoint URL", bundle: .module),
-                text: $draft.endpointURLString,
-                prompt: draft.kind.defaultEndpointString
-            )
-            #if os(iOS)
-            .textInputAutocapitalization(.never)
-            .keyboardType(.URL)
-            #endif
+            if !draft.kind.isOnDevice {
+                providerTextField(
+                    title: String(localized: "Endpoint URL", bundle: .module),
+                    text: $draft.endpointURLString,
+                    prompt: draft.kind.defaultEndpointString
+                )
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                #endif
 
-            providerTextField(
-                title: String(localized: "Model ID", bundle: .module),
-                text: $draft.modelID,
-                prompt: draft.kind.defaultModelID.isEmpty ? "model-name" : draft.kind.defaultModelID
-            )
-            #if os(iOS)
-            .textInputAutocapitalization(.never)
-            #endif
+                providerTextField(
+                    title: String(localized: "Model ID", bundle: .module),
+                    text: $draft.modelID,
+                    prompt: draft.kind.defaultModelID.isEmpty ? "model-name" : draft.kind.defaultModelID
+                )
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                #endif
+            } else if !appleIntelligenceAvailability.isSelectable {
+                SettingsInfoCallout(
+                    symbolName: "exclamationmark.triangle",
+                    message: appleIntelligenceAvailability.settingsStatusMessage,
+                    tone: .warning
+                )
+            }
 
             if draft.requiresAPIKey {
                 apiKeyField
@@ -361,7 +417,11 @@ struct AIProviderSettingsPanel: View {
         SettingsButton(String(localized: "Save provider", bundle: .module)) {
             Task { await saveDraft() }
         }
-        .disabled(isWorking || !draft.validationIssues.isEmpty)
+        .disabled(
+            isWorking
+                || !draft.validationIssues.isEmpty
+                || (draft.kind == .appleIntelligence && !appleIntelligenceAvailability.isSelectable)
+        )
     }
 
     private var cancelButton: some View {
@@ -470,6 +530,45 @@ struct AIProviderSettingsPanel: View {
     private func refreshConfigurations(selecting providerID: AIProviderID?) {
         configurations = (try? settingsStore.aiProviderConfigurations()) ?? []
         selectedProviderID = providerID ?? configurations.first?.id
+    }
+
+    @MainActor
+    private func enableAppleIntelligence() async {
+        guard appleIntelligenceAvailability.isSelectable else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let configuration = AIProviderConfiguration.appleIntelligence(
+                isEnabled: true,
+                isDefault: true,
+                assignedAccountID: nil
+            )
+            let onDeviceDraft = AIProviderSettingsDraft(
+                configuration: configuration,
+                hasSavedAPIKey: false
+            )
+            let saved = try await AIProviderSettingsPersistence.save(
+                onDeviceDraft,
+                settingsStore: settingsStore,
+                secretStore: secretStore
+            )
+            draft = AIProviderSettingsDraft(configuration: saved, hasSavedAPIKey: false)
+            refreshConfigurations(selecting: saved.id)
+            await onProviderConfigurationChanged()
+            isEditingProvider = false
+            statusMessage = ProviderStatusMessage(
+                message: String(
+                    localized: "Apple Intelligence selected for on-device AI. Requests stay on this device.",
+                    bundle: .module
+                ),
+                tone: .success
+            )
+        } catch {
+            statusMessage = ProviderStatusMessage(
+                message: safeErrorMessage(error),
+                tone: .warning
+            )
+        }
     }
 
     @MainActor

@@ -26,12 +26,20 @@ public struct AIProviderID: RawRepresentable, Codable, Hashable, Sendable {
 }
 
 public enum AIProviderKind: String, Codable, CaseIterable, Sendable {
+    case appleIntelligence
     case openAICompatible
     case ollamaLocal
     case customOpenAICompatible
 
+    /// Whether this provider runs strictly on-device with zero network egress (ADR-0094).
+    public var isOnDevice: Bool {
+        self == .appleIntelligence
+    }
+
     var defaultDisplayName: String {
         switch self {
+        case .appleIntelligence:
+            return OnDeviceAIPlatformLabel.appleIntelligenceDisplayName
         case .openAICompatible:
             return "OpenAI"
         case .ollamaLocal:
@@ -90,6 +98,27 @@ public struct AIProviderConfiguration: Codable, Equatable, Identifiable, Sendabl
         self.assignedAccountID = assignedAccountID
     }
 
+    /// Synthetic non-network sentinel URL stored for on-device Apple Intelligence profiles.
+    public static let appleIntelligenceEndpointURL = URL(string: "apple-intelligence://on-device")!
+
+    /// Creates a local-only Apple Intelligence provider profile (ADR-0094).
+    public static func appleIntelligence(
+        isEnabled: Bool = false,
+        isDefault: Bool = true,
+        assignedAccountID: String? = nil
+    ) -> AIProviderConfiguration {
+        AIProviderConfiguration(
+            id: AppleIntelligenceAIBackend.providerID,
+            kind: .appleIntelligence,
+            displayName: OnDeviceAIPlatformLabel.appleIntelligenceDisplayName,
+            endpointURL: appleIntelligenceEndpointURL,
+            modelID: "system-default",
+            isEnabled: isEnabled,
+            isDefault: isDefault,
+            assignedAccountID: assignedAccountID
+        )!
+    }
+
     public static func ollamaLocal(modelID: String) -> AIProviderConfiguration {
         AIProviderConfiguration(
             id: AIProviderID("ollama-local"),
@@ -104,10 +133,13 @@ public struct AIProviderConfiguration: Codable, Equatable, Identifiable, Sendabl
     }
 
     public var requiresAPIKey: Bool {
-        kind != .ollamaLocal
+        kind != .ollamaLocal && !kind.isOnDevice
     }
 
     public var transparencyLabel: String {
+        if kind == .appleIntelligence {
+            return OnDeviceAIPlatformLabel.transparencyLabel
+        }
         let host = endpointURL.host(percentEncoded: false) ?? endpointURL.host ?? endpointURL.absoluteString
         return "Sent to: \(trimmedDisplayName) (\(host))"
     }
@@ -117,11 +149,13 @@ public struct AIProviderConfiguration: Codable, Equatable, Identifiable, Sendabl
         if trimmedDisplayName.isEmpty {
             issues.append(.displayNameRequired)
         }
-        if !isHTTPEndpoint {
-            issues.append(.httpEndpointRequired)
-        }
-        if modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            issues.append(.modelIDRequired)
+        if !kind.isOnDevice {
+            if !isHTTPEndpoint {
+                issues.append(.httpEndpointRequired)
+            }
+            if modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                issues.append(.modelIDRequired)
+            }
         }
         return issues
     }

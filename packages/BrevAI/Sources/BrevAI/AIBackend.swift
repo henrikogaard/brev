@@ -26,8 +26,13 @@ public protocol AIBackend: Sendable {
     var displayName: String { get }
 
     /// Full transparency label displayed per-action in the UI, e.g.
-    /// "Sent to: Provider-hosted AI".
+    /// "Sent to: Provider-hosted AI" or "On this Mac".
     var transparencyLabel: String { get }
+
+    /// Optional provider-neutral message and context-byte cap for smaller
+    /// on-device context windows (ADR-0094). `nil` uses each surface's
+    /// standard cloud cap.
+    var contextBudget: AIBackendContextBudget? { get }
 
     /// Generate a reply or draft from a conversation context with an
     /// optional instruction like "write a polite decline".
@@ -44,7 +49,43 @@ public protocol AIBackend: Sendable {
     ) async throws -> AIResponse
 }
 
+// MARK: - Default context budget
+
+public extension AIBackend {
+    /// Cloud and external OpenAI-compatible backends keep each surface's default cap.
+    var contextBudget: AIBackendContextBudget? {
+        nil
+    }
+}
+
 // MARK: - Supporting types
+
+/// Provider-neutral message-count and serialized-byte limits for AI requests (ADR-0094).
+public struct AIBackendContextBudget: Equatable, Sendable {
+    /// Maximum number of source messages included in one request.
+    public let maxSourceMessages: Int
+
+    /// Maximum UTF-8 bytes of serialized context passed to the backend.
+    public let maxTotalContextBytes: Int
+
+    /// Standard cap used by cloud and external OpenAI-compatible backends.
+    public static let standard = AIBackendContextBudget(
+        maxSourceMessages: AISafetyPolicy.maxSourceMessages,
+        maxTotalContextBytes: AISafetyPolicy.maxTotalContextBytes
+    )
+
+    /// Conservative cap for on-device ~4k-token language-model sessions.
+    public static let onDevice = AIBackendContextBudget(
+        maxSourceMessages: 6,
+        maxTotalContextBytes: 8000
+    )
+
+    /// Creates a positive context budget clamped to at least one message and 256 bytes.
+    public init(maxSourceMessages: Int, maxTotalContextBytes: Int) {
+        self.maxSourceMessages = max(1, maxSourceMessages)
+        self.maxTotalContextBytes = max(256, maxTotalContextBytes)
+    }
+}
 
 /// Role in a conversation context passed to the AI backend.
 public enum AIRole: String, Sendable, Hashable, Codable {
@@ -115,12 +156,14 @@ public struct AIResponse: Sendable, Hashable {
 }
 
 /// Errors that AI backends can throw.
-public enum AIBackendError: Error, LocalizedError, Sendable {
+public enum AIBackendError: Error, LocalizedError, Sendable, Equatable {
     case notEnabled
     case networkError(String)
     case serverError(statusCode: Int, message: String)
     case rateLimited
     case contentFiltered
+    case unavailable(String)
+    case contextWindowExceeded
 
     public var errorDescription: String? {
         switch self {
@@ -134,6 +177,13 @@ public enum AIBackendError: Error, LocalizedError, Sendable {
             String(localized: "Too many requests. Please wait a moment and try again.", bundle: .module)
         case .contentFiltered:
             String(localized: "The content was filtered by the AI provider.", bundle: .module)
+        case .unavailable(let reason):
+            reason
+        case .contextWindowExceeded:
+            String(
+                localized: "This message is too long for the on-device model. Try a shorter selection or thread.",
+                bundle: .module
+            )
         }
     }
 }
