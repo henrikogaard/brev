@@ -1,7 +1,8 @@
 # ADR-0095: Local MCP server for read-only and user-approved agent mail access
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-22
+- **Accepted:** 2026-11-23
 - **Deciders:** Henrik
 - **Relates to:** [ADR-0006](0006-telemetry-and-privacy.md) (telemetry and privacy), [ADR-0026](0026-supervised-mailbox-action-agent.md) (supervised mailbox action agent), [ADR-0028](0028-mail-provider-architecture.md) (mail provider architecture), [ADR-0058](0058-localization-via-string-catalogs.md) (string catalogs), [ADR-0075](0075-macos-background-mail-presence.md) (macOS background mail presence), [ADR-0076](0076-settings-and-account-backup.md) (settings backup), [ADR-0088](0088-sign-in-code-and-link-panel.md) (sign-in code privacy boundary)
 - **Issue:** #305
