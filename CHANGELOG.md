@@ -45,6 +45,8 @@ All notable changes to Brev are documented here.
 - Privacy adds a default-on "Remove tracking pixels" setting, independent of
   remote-content permission. The reader reports trackers removed or likely to
   load according to that setting (#299).
+- Compose Undo Send now shows a compact countdown toast with a ring and Undo
+  action for the configured delay (#297).
 - Add an explicitly approved isolated mock content-QA build option for native
   body rendering and read-only attachment picking; strict and shipping permissions stay unchanged.
 

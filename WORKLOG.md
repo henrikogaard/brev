@@ -1,5 +1,20 @@
 # Worklog
 
+## 2026-11-23 — Agent — PR #323 (#297 undo-send rebase and macOS snapshots)
+
+- Goal: rebase PR #323 onto `origin/main`, extract `ComposeUndoSendToastView` for direct snapshot verification, record macOS 26+ snapshots, and resolve the Devin Review snapshot finding.
+- Changes: resolved `WORKLOG.md` and `Localizable.xcstrings` rebase conflicts; extracted `ComposeUndoSendToastView` in `ComposeUndoSendCountdown.swift`; added `ComposeUndoSendCountdownSnapshotTests` (light/dark); registered suite in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'ComposeUndoSendCountdownSnapshotTests|ComposeUndoSendCountdownTests|ComposeUndoSendLocalizationTests'`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`; visually verified both recorded PNGs.
+- Handoff: pushed and marked ready for review; awaiting green CI to merge.
+
+## 2026-11-21 — Agent — #297 undo-send countdown
+
+- Goal: replace Compose's Undo Send countdown banner with a compact ring toast and Undo action using the existing `compose.undoSendDelay` setting.
+- Changes: added a cancellable countdown runner with an injected sleeper and progress callback; wired the Compose toast to its configured duration, theme tokens, Reduce Motion, accessible remaining time, and the existing send action. Cancellation leaves the draft untouched; sending is only invoked at expiry. Added `nb` copy and a catalog test, plus the Unreleased changelog entry.
+- Verification: a temporary SPM harness compiled the actual countdown and localization Swift Testing files with the production countdown/policy sources; `Test run with 5 tests in 2 suites passed`. Its initial compile exposed a non-exhaustive cancellation-test catch, which now records unexpected errors. A first harness attempt also needed a test-bundle resource for `Bundle.module`; after adding it, both suites passed. Pinned SwiftFormat reported `0/4 files require formatting`; the BrevMail catalog parsed with the new `nb` entry first; `scripts/check-adr-required.sh` exited 0; `git diff --check` passed.
+- Skipped: native BrevMail SwiftUI/package tests, app builds, visual verification, and recording a new snapshot; this Linux host cannot run SwiftUI, and the snapshot needs macOS 26. No existing snapshots or protected packages were changed.
+- Handoff: branch `feature/undo-send-countdown` is based on `origin/main`; PR creation, hosted CI, and visual QA remain pending. PR #322's branch was not touched, and no issue or board changes were made.
+
 ## 2026-11-23 — Agent — PR #322 (#299 rebase and macOS snapshots)
 
 - Goal: rebase PR #322 onto `origin/main`, record the missing macOS 26 snapshots for `MessageTrackerNote` (blocked and opt-out states) and `PrivacySection` ("Remove tracking pixels" toggle), and resolve the Devin Review snapshot finding.

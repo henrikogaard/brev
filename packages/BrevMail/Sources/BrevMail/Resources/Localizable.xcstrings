@@ -14913,6 +14913,17 @@
         }
       }
     },
+    "Undo send countdown": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Angre sending"
+          }
+        }
+      }
+    },
     "Undoing change…": {
       "extractionState": "manual",
       "localizations": {
