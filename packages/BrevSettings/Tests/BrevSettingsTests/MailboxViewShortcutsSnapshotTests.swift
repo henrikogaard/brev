@@ -31,6 +31,7 @@ struct MailboxViewShortcutsSnapshotTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let view = MailboxViewSection(settingsStore: SettingsPersistenceStore(defaults: defaults))
+            .defaultAppStorage(defaults)
             .frame(width: 640, height: 1180)
             .background(theme.bgPrimary.color)
             .brevTheme(theme)

@@ -13496,17 +13496,6 @@
         }
       }
     },
-    "With the message list focused: E archive, R reply, S star, # delete, H snooze, J and K next and previous. Never while typing.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Med meldingslisten i fokus: E arkiverer, R svarer, S stjernemerker, # sletter, H utsetter, J og K går til neste og forrige. Aldri mens du skriver."
-          }
-        }
-      }
-    },
     "Use single-key shortcuts in the message list and reader. Shortcuts pause while you type.": {
       "extractionState": "manual",
       "localizations": {

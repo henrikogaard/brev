@@ -2697,9 +2697,15 @@ public struct MessageListView: View {
     ) -> Bool {
         guard navigation.presentedSheet == nil else { return false }
         guard let action = shortcut.menuAction else {
-            // J and K follow the plain arrow keys exactly.
+            // J and K follow the plain arrow keys exactly, including Updates sender bundles.
             collapseBulkSelectionToCursor()
-            if shortcut == .previous { navigation.selectPreviousHeader() } else { navigation.selectNextHeader() }
+            if !allowsInlineThreadDisclosure {
+                moveUpdatesKeyboardSelection(delta: shortcut == .previous ? -1 : 1)
+            } else if shortcut == .previous {
+                navigation.selectPreviousHeader()
+            } else {
+                navigation.selectNextHeader()
+            }
             return true
         }
         guard navigation.bulkSelection.isEmpty, !isMutationActionBlocked,
