@@ -236,6 +236,36 @@ struct NaturalLanguageSearchPlannerTests {
         #expect(quoted.query.text == "faktura")
         let quotedChip = try #require(quoted.chips.first { $0.kind == .sender })
         #expect(NaturalLanguageSearchChipEditing.removing(quotedChip, from: quoted.originalText) == "faktura")
+
+        // Round-trip through MailSearchTokens (iOS submit path) preserves quotes on multiword names.
+        let extracted = MailSearchTokens.extract(from: #"from "maya patel" invoice"#)
+        let composed = MailSearchTokens.composedText(freeText: extracted.remainingText, tokens: extracted.tokens)
+        let replanned = NaturalLanguageSearchPlanner.plan(for: composed, execution: .cacheOnly)
+        #expect(replanned.query.from == "maya patel")
+        #expect(replanned.query.text == "invoice")
+
+        // Capitalized filter phrases are not swallowed by unquoted multiword sender names.
+        let enFilter = NaturalLanguageSearchPlanner.plan(for: "from Maya Is Unread", execution: .cacheOnly)
+        #expect(enFilter.query.from == "Maya")
+        #expect(enFilter.query.isUnread == true)
+        #expect(enFilter.query.text.isEmpty)
+
+        let nbFilter = NaturalLanguageSearchPlanner.plan(for: "fra Maya Med Vedlegg", execution: .cacheOnly)
+        #expect(nbFilter.query.from == "Maya")
+        #expect(nbFilter.query.hasAttachments == true)
+        #expect(nbFilter.query.text.isEmpty)
+
+        // Date phrases inside quoted sender names stay part of the sender, not a date filter.
+        let quotedDate = NaturalLanguageSearchPlanner.plan(for: #"from "USA TODAY" unread"#, execution: .cacheOnly)
+        #expect(quotedDate.query.from == "USA TODAY")
+        #expect(quotedDate.query.dateRange == nil)
+        #expect(quotedDate.query.isUnread == true)
+
+        // Padded quoted sender chips remove cleanly.
+        let padded = NaturalLanguageSearchPlanner.plan(for: #"from " Maya Patel " invoice"#, execution: .cacheOnly)
+        #expect(padded.query.from == "Maya Patel")
+        let paddedChip = try #require(padded.chips.first { $0.kind == .sender })
+        #expect(NaturalLanguageSearchChipEditing.removing(paddedChip, from: padded.originalText) == "invoice")
     }
 
     private func date(

@@ -152,7 +152,8 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
     fileprivate var queryPhrase: String? {
         switch self {
         case .field: nil
-        case .sender(let email, _): "from \(email)"
+        case .sender(let email, _):
+            email.contains(where: \.isWhitespace) ? "from \"\(email)\"" : "from \(email)"
         case .unread: "unread"
         case .flagged: "flagged"
         case .hasAttachment: "has attachments"

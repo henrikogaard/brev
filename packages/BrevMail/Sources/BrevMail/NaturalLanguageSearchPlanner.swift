@@ -61,6 +61,14 @@ enum NaturalLanguageSearchPlanner {
         var query = SearchQuery(folderID: folderID, execution: execution)
         var parsedChips: [NaturalLanguageSearchChip] = []
 
+        // Extract quoted sender clauses first so date/filter keywords inside
+        // quotes (e.g. `from "USA TODAY"`) are preserved verbatim.
+        var parsedSender: String?
+        if let quotedSenderParse = quotedSender(in: workingText) {
+            parsedSender = quotedSenderParse.value
+            workingText = quotedSenderParse.remainingText
+        }
+
         if let dateParse = dateRange(in: workingText, now: now, calendar: calendar) {
             query.dateRange = dateParse.range
             workingText = removingPattern(datePattern(dateParse.matchedText), from: workingText)
@@ -71,13 +79,17 @@ enum NaturalLanguageSearchPlanner {
             ))
         }
 
-        if let senderParse = sender(in: workingText) {
-            query.from = senderParse.value
+        if parsedSender == nil, let senderParse = unquotedSender(in: workingText) {
+            parsedSender = senderParse.value
             workingText = senderParse.remainingText
+        }
+
+        if let senderValue = parsedSender {
+            query.from = senderValue
             parsedChips.append(.init(
                 kind: .sender,
-                label: String(format: String(localized: "From: %@", bundle: .module), senderParse.value),
-                value: senderParse.value
+                label: String(format: String(localized: "From: %@", bundle: .module), senderValue),
+                value: senderValue
             ))
         }
 
@@ -151,15 +163,41 @@ enum NaturalLanguageSearchPlanner {
         return nil
     }
 
-    private static func sender(in text: String) -> (value: String, remainingText: String)? {
-        let quotedPattern = #""([^"]+)""#
-        let multiwordNamePattern = #"(?-i:[\p{Lu}][\p{Ll}\p{M}'’-]+(?:\s+[\p{Lu}][\p{Ll}\p{M}'’-]+){1,3})"#
+    private static func quotedSender(in text: String) -> (value: String, remainingText: String)? {
+        let pattern = senderPrefix + #""([^"]+)"(?=\s|$)"#
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex ..< text.endIndex, in: text)
+        guard let match = expression.firstMatch(in: text, range: range),
+              let fullRange = Range(match.range(at: 0), in: text),
+              let valueRange = Range(match.range(at: 1), in: text)
+        else {
+            return nil
+        }
+        let value = String(text[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        var remaining = text
+        remaining.removeSubrange(fullRange)
+        return (value.contains("@") ? value.lowercased() : value, cleanedKeywordText(remaining))
+    }
+
+    private static let leadingFilterPatterns: [String] = {
+        let staticFilters = [unreadPattern, attachmentPattern, flaggedPattern]
+        let dateFilters = MailSearchDatePreset.allCases.flatMap(\.phrases).map { datePattern($0) }
+        return (staticFilters + dateFilters).map { #"^\s*(?:"# + $0 + ")" }
+    }()
+
+    private static func startsWithFilterPhrase(_ tail: Substring) -> Bool {
+        let candidate = String(tail)
+        return leadingFilterPatterns.contains { pattern in
+            candidate.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+    }
+
+    private static func unquotedSender(in text: String) -> (value: String, remainingText: String)? {
         let singleWordPattern = #"[\p{L}][\p{L}\p{M}'’-]*"#
-        let pattern = senderPrefix
-            + "(?:"
-            + quotedPattern + "|"
-            + "(" + emailPattern + "|" + multiwordNamePattern + "|" + singleWordPattern + ")"
-            + #")(?=\s|$)"#
+        let pattern = senderPrefix + "(" + emailPattern + "|" + singleWordPattern + #")(?=\s|$)"#
         guard let expression = try? NSRegularExpression(
             pattern: pattern,
             options: [.caseInsensitive]
@@ -168,17 +206,39 @@ enum NaturalLanguageSearchPlanner {
         }
         let range = NSRange(text.startIndex ..< text.endIndex, in: text)
         guard let match = expression.firstMatch(in: text, range: range),
-              let fullRange = Range(match.range(at: 0), in: text)
+              let fullRange = Range(match.range(at: 0), in: text),
+              let firstValueRange = Range(match.range(at: 1), in: text)
         else {
             return nil
         }
-        let capturedRange = (match.range(at: 1).location != NSNotFound ? Range(match.range(at: 1), in: text) : nil)
-            ?? (match.range(at: 2).location != NSNotFound ? Range(match.range(at: 2), in: text) : nil)
-        guard let valueRange = capturedRange else { return nil }
-        let value = String(text[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstWord = String(text[firstValueRange])
+        var endIndex = fullRange.upperBound
+        // Extend unquoted title-cased sender names up to 4 words, stopping before any
+        // recognized filter phrase (e.g. `from Maya Is Unread`, `fra Maya Med Vedlegg`).
+        if !firstWord.contains("@"),
+           firstWord.range(of: #"^[\p{Lu}][\p{Ll}\p{M}'’-]+$"#, options: .regularExpression) != nil {
+            let nextWordRegex = try? NSRegularExpression(
+                pattern: #"^\s+([\p{Lu}][\p{Ll}\p{M}'’-]+)(?=\s|$)"#
+            )
+            var extraWords = 0
+            while extraWords < 3, let nextWordRegex {
+                let tail = text[endIndex...]
+                guard !startsWithFilterPhrase(tail) else { break }
+                let tailString = String(tail)
+                let tailRange = NSRange(tailString.startIndex ..< tailString.endIndex, in: tailString)
+                guard let nextMatch = nextWordRegex.firstMatch(in: tailString, range: tailRange),
+                      let matchedSubrange = Range(nextMatch.range(at: 0), in: tailString)
+                else { break }
+                let distance = tailString.distance(from: tailString.startIndex, to: matchedSubrange.upperBound)
+                endIndex = text.index(endIndex, offsetBy: distance)
+                extraWords += 1
+            }
+        }
+        let value = String(text[firstValueRange.lowerBound ..< endIndex])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
         var remaining = text
-        remaining.removeSubrange(fullRange)
+        remaining.removeSubrange(fullRange.lowerBound ..< endIndex)
         return (value.contains("@") ? value.lowercased() : value, cleanedKeywordText(remaining))
     }
 
@@ -437,7 +497,7 @@ enum NaturalLanguageSearchChipEditing {
             let escaped = NSRegularExpression.escapedPattern(for: chip.value)
             return removingPattern(
                 NaturalLanguageSearchPlanner.senderPrefix
-                    + #"(?:""# + escaped + #""|"# + escaped + #")(?=\s|$)"#,
+                    + #"(?:"\s*"# + escaped + #"\s*"|"# + escaped + #")(?=\s|$)"#,
                 from: text
             )
         case .date:

@@ -2681,12 +2681,21 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
     }
 
+    private static func gmailOperatorValue(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.contains(where: \.isWhitespace),
+              !(trimmed.hasPrefix("\"") && trimmed.hasSuffix("\"") && trimmed.count >= 2)
+        else { return trimmed }
+        let escaped = trimmed.replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
+    }
+
     private static func gmailQuery(from query: SearchQuery) -> String {
         var terms = [String]()
         if !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { terms.append(query.text) }
-        if let from = query.from, !from.isEmpty { terms.append("from:\(from)") }
-        if let to = query.to, !to.isEmpty { terms.append("to:\(to)") }
-        if let subject = query.subject, !subject.isEmpty { terms.append("subject:\(subject)") }
+        if let from = query.from, !from.isEmpty { terms.append("from:\(gmailOperatorValue(from))") }
+        if let to = query.to, !to.isEmpty { terms.append("to:\(gmailOperatorValue(to))") }
+        if let subject = query.subject, !subject.isEmpty { terms.append("subject:\(gmailOperatorValue(subject))") }
         if query.hasAttachments == true { terms.append("has:attachment") }
         if query.isUnread == true { terms.append("is:unread") }
         if query.isFlagged == true { terms.append("is:starred") }
@@ -2707,9 +2716,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     private static func searchScope(for query: SearchQuery) -> SearchScope {
         var terms = [String]()
         if !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { terms.append(query.text) }
-        if let from = query.from, !from.isEmpty { terms.append("from:\(from)") }
-        if let to = query.to, !to.isEmpty { terms.append("to:\(to)") }
-        if let subject = query.subject, !subject.isEmpty { terms.append("subject:\(subject)") }
+        if let from = query.from, !from.isEmpty { terms.append("from:\(gmailOperatorValue(from))") }
+        if let to = query.to, !to.isEmpty { terms.append("to:\(gmailOperatorValue(to))") }
+        if let subject = query.subject, !subject.isEmpty { terms.append("subject:\(gmailOperatorValue(subject))") }
         if let value = query.hasAttachments { terms.append(value ? "has:attachment" : "-has:attachment") }
         if let value = query.isUnread { terms.append(value ? "is:unread" : "is:read") }
         if let value = query.isFlagged { terms.append(value ? "is:starred" : "-is:starred") }
