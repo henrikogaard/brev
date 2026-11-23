@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-23 — Agent — PR #323 (#297 undo-send rebase and macOS snapshots)
+
+- Goal: rebase PR #323 onto `origin/main`, extract `ComposeUndoSendToastView` for direct snapshot verification, record macOS 26+ snapshots, and resolve the Devin Review snapshot finding.
+- Changes: resolved `WORKLOG.md` and `Localizable.xcstrings` rebase conflicts; extracted `ComposeUndoSendToastView` in `ComposeUndoSendCountdown.swift`; added `ComposeUndoSendCountdownSnapshotTests` (light/dark); registered suite in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'ComposeUndoSendCountdownSnapshotTests|ComposeUndoSendCountdownTests|ComposeUndoSendLocalizationTests'`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`; visually verified both recorded PNGs.
+- Handoff: pushed and marked ready for review; awaiting green CI to merge.
+
 ## 2026-11-21 — Agent — #297 undo-send countdown
 
 - Goal: replace Compose's Undo Send countdown banner with a compact ring toast and Undo action using the existing `compose.undoSendDelay` setting.

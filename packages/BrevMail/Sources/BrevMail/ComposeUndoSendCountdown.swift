@@ -20,7 +20,67 @@
  SOFTWARE.
  */
 
+import BrevDesign
+import BrevThemes
 import Foundation
+import SwiftUI
+
+/// Compact countdown-ring toast shown in compose while an undo-send delay is active (#297).
+struct ComposeUndoSendToastView: View {
+    @Environment(\.brevTheme) private var theme
+
+    let remainingSeconds: Int
+    let progress: Double
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(spacing: BrevSpacing.sm) {
+            ZStack {
+                Circle().stroke(theme.border.color, lineWidth: 2)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(theme.accent.color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: 16, height: 16)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Undo send countdown", bundle: .module))
+            .accessibilityValue(
+                String(localized: "Sending in \(remainingSeconds)s…", bundle: .module)
+            )
+
+            Text(String(localized: "Sending in \(remainingSeconds)s…", bundle: .module))
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(2)
+                .frame(maxWidth: 320, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: onUndo) {
+                Text(String(localized: "Undo", bundle: .module))
+                #if os(iOS)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+                #endif
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(theme.accent.color)
+        }
+        .padding(.horizontal, BrevSpacing.md)
+        #if os(iOS)
+            .padding(.vertical, BrevSpacing.xxs)
+        #else
+            .padding(.vertical, BrevSpacing.sm)
+        #endif
+            .background(theme.bgTertiary.color)
+            .overlay {
+                RoundedRectangle(cornerRadius: BrevRadius.lg)
+                    .stroke(theme.border.color, lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.lg))
+            .accessibilityElement(children: .contain)
+    }
+}
 
 enum ComposeUndoSendProgress {
     static func fraction(startedAt: TimeInterval, now: TimeInterval, duration: TimeInterval) -> Double {
