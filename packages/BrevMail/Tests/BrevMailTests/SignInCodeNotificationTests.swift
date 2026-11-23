@@ -27,6 +27,7 @@ private final class MockSignInNotificationScheduler: SignInCodeNotificationSched
     var posted: [PostedNotification] = []
     var removedIdentifiers: [[String]] = []
     var removedAccountIDs: [String] = []
+    var expiredPruneCutoffs: [Date] = []
 
     func postSignInNotification(
         identifier: String,
@@ -41,6 +42,10 @@ private final class MockSignInNotificationScheduler: SignInCodeNotificationSched
 
     func removeAllSignInNotifications(forAccountID accountID: String) async {
         removedAccountIDs.append(accountID)
+    }
+
+    func removeExpiredSignInNotifications(olderThan cutoff: Date) async {
+        expiredPruneCutoffs.append(cutoff)
     }
 }
 
@@ -287,9 +292,58 @@ struct SignInCodeNotificationTests {
 
         currentNow = baseDate.addingTimeInterval(605)
         presenter.pruneExpired()
+        await Task.yield()
         #expect(presenter.storedEntryCount == 0)
         let m2ID = SignInCodeNotificationPolicy.notificationIdentifier(accountID: "acct-2", messageID: "m2")
         #expect(scheduler.removedIdentifiers.contains([m2ID]))
+        #expect(scheduler.expiredPruneCutoffs.last == currentNow
+            .addingTimeInterval(-SignInCodeNotificationPolicy.freshnessWindow))
+
+        // Fresh presenter (simulating relaunch after process termination) still prunes delivered notifications.
+        let relaunchedScheduler = MockSignInNotificationScheduler()
+        let relaunchedPresenter = SignInCodeNotificationPresenter(
+            scheduler: relaunchedScheduler,
+            pasteboard: pasteboard,
+            settings: { SignInCodeSettings() },
+            now: { currentNow }
+        )
+        relaunchedPresenter.pruneExpired()
+        await Task.yield()
+        #expect(relaunchedScheduler
+            .expiredPruneCutoffs == [currentNow.addingTimeInterval(-SignInCodeNotificationPolicy.freshnessWindow)])
+    }
+
+    @Test("freshness window anchors to original message receivedAt date rather than presentation time")
+    func freshnessAnchorsToReceivedDate() async {
+        let scheduler = MockSignInNotificationScheduler()
+        let pasteboard = RecordingSignInPasteboard()
+        let receivedDate = Date(timeIntervalSince1970: 1_700_000_000)
+        // Presented when already 9 minutes old.
+        var currentNow = receivedDate.addingTimeInterval(540)
+        var consent = SignInCodeSettings()
+        consent.setAccountOverride(accountID: "acct-1", codesEnabled: true, linksEnabled: false)
+        let presenter = SignInCodeNotificationPresenter(
+            scheduler: scheduler,
+            pasteboard: pasteboard,
+            settings: { consent },
+            now: { currentNow }
+        )
+        presenter.present(SignInCodePresentation(
+            accountID: "acct-1",
+            messageID: "msg-aged",
+            folderID: "INBOX",
+            sender: "Acme",
+            content: .code("555666"),
+            timeout: 60,
+            receivedAt: receivedDate
+        ))
+        // Two minutes later (11 minutes after receipt), copy must fail closed.
+        currentNow = receivedDate.addingTimeInterval(660)
+        let copied = await presenter.handleCopyCodeAction(
+            route: NotificationMailRoute(accountID: "acct-1", folderID: "INBOX", messageID: "msg-aged")
+        )
+        #expect(!copied)
+        #expect(pasteboard.written.isEmpty)
     }
 
     @Test("delegate buffers cold-launch Copy code and Open link actions until handlers install")

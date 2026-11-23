@@ -184,6 +184,10 @@ public protocol SignInCodeNotificationScheduling: AnyObject {
 
     /// Removes all delivered and pending sign-in notifications for `accountID`.
     func removeAllSignInNotifications(forAccountID accountID: String) async
+
+    /// Removes delivered sign-in notifications posted on or before `cutoff`
+    /// so stale notifications from a previous process are cleaned up on relaunch.
+    func removeExpiredSignInNotifications(olderThan cutoff: Date) async
 }
 
 /// Foreground host-confirmation request shown before opening a sign-in link on iOS
@@ -341,9 +345,10 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
             scheduler.removeSignInNotifications(withIdentifiers: replacedIdentifiers)
         }
 
+        let anchorDate = presentation.receivedAt ?? now()
         entries[key] = StoredEntry(
             presentation: presentation,
-            recordedAt: now(),
+            recordedAt: anchorDate,
             identifier: identifier
         )
         let payload = SignInCodeNotificationPolicy.contentPayload(for: presentation)
@@ -371,7 +376,8 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
         }
     }
 
-    /// Removes expired (> 10 minutes) in-memory candidates and their delivered notifications.
+    /// Removes expired (> 10 minutes) in-memory candidates and their delivered notifications,
+    /// and reconciles delivered sign-in notifications left over from a previous process.
     public func pruneExpired(at referenceDate: Date? = nil) {
         let current = referenceDate ?? now()
         var expiredKeys: [EntryKey] = []
@@ -386,6 +392,10 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
         }
         if !expiredIdentifiers.isEmpty {
             scheduler.removeSignInNotifications(withIdentifiers: expiredIdentifiers)
+        }
+        let cutoff = current.addingTimeInterval(-SignInCodeNotificationPolicy.freshnessWindow)
+        Task { [scheduler] in
+            await scheduler.removeExpiredSignInNotifications(olderThan: cutoff)
         }
     }
 

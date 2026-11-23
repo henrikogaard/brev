@@ -9235,11 +9235,9 @@ public struct BrevMailRootView: View {
             guard ObjectIdentifier(backend) == ObjectIdentifier(selectedBackend) else { return }
             await refreshOutboxCount()
         case .folderRefreshed, .messagesAdded, .messagesRemoved, .messagesUpdated:
-            #if os(macOS)
             if case .messagesAdded = event {
                 signInCodeArrivalController?.handle(event, from: backend)
             }
-            #endif
             requestNoReplyFollowUpRefresh()
             let effects = MailRootAccountEventPolicy.mailboxEventEffects(
                 for: event,
