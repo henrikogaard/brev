@@ -652,6 +652,11 @@ public struct SettingsView: View {
             )
         case .security:
             SecuritySection(settingsStore: settingsStore)
+        case .agentAccess:
+            AgentAccessSection(
+                settingsStore: settingsStore,
+                accounts: accounts
+            )
         case .preferenceSync:
             PreferenceSyncSection(settingsStore: settingsStore)
         case .privacy:

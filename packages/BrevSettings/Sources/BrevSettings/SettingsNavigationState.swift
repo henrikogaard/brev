@@ -66,6 +66,8 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     case privacy
     /// Message encryption, certificates, and key management.
     case security
+    /// macOS-only local MCP server access for user-controlled external agents (ADR-0095).
+    case agentAccess
     // Group: advanced
     case developer
     case updates
@@ -92,6 +94,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .importExport: return String(localized: "Import / Export", bundle: .module)
         case .security: return String(localized: "Security", bundle: .module)
         case .privacy: return String(localized: "Privacy", bundle: .module)
+        case .agentAccess: return String(localized: "Agent access", bundle: .module)
         case .notifications: return String(localized: "Notifications", bundle: .module)
         case .updates: return String(localized: "Updates", bundle: .module)
         case .aiWriter: return String(localized: "AI Writer", bundle: .module)
@@ -119,6 +122,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .importExport: return "square.and.arrow.up.on.square"
         case .security: return "lock.shield"
         case .privacy: return "hand.raised"
+        case .agentAccess: return "terminal"
         case .notifications: return "bell"
         case .updates: return "arrow.triangle.2.circlepath"
         case .aiWriter: return "wand.and.stars"
@@ -129,7 +133,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
 
     public var availability: SettingsSectionAvailabilityKind {
         switch self {
-        case .updates, .developer:
+        case .updates, .developer, .agentAccess:
             return .capabilityGated
         case .security:
             return .shipped
@@ -155,7 +159,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .vipAndReminders, .smartViews, .rules, .autoReply, .calendarContacts:
             return .organization
         case .folderSync, .mailStorage, .importExport, .preferenceSync: return .syncStorage
-        case .privacy, .security: return .privacySecurity
+        case .privacy, .security, .agentAccess: return .privacySecurity
         case .developer, .updates, .about: return .advanced
         }
     }
@@ -193,6 +197,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .preferenceSync: return ["icloud", "sync preferences", "settings sync"]
         case .privacy: return ["remote images", "tracking", "avatars", "sender images"]
         case .security: return ["encryption", "certificates", "keys", "smime"]
+        case .agentAccess: return ["mcp", "agent", "claude", "codex", "cursor", "audit log", "socket"]
         case .developer: return ["debug", "diagnostics"]
         case .updates: return ["version", "download"]
         case .about: return ["license", "credits", "version"]
@@ -252,7 +257,7 @@ public struct SettingsSectionAvailability: Sendable, Equatable {
 
     public static let macOSDirectDownload = SettingsSectionAvailability(
         visibleSections: SettingsSection.allCases.filter {
-            $0.availability == .shipped || $0 == .updates
+            $0.availability == .shipped || $0 == .updates || $0 == .agentAccess
         }
     )
 

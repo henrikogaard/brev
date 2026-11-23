@@ -219,6 +219,23 @@ struct BrevApp: App {
                     addAccountPrefillEmail = ""
                 }
             }
+            .sheet(
+                item: Binding(
+                    get: { session.mcpApprovalCoordinator.activeRequest },
+                    set: { next in
+                        if next == nil {
+                            session.mcpApprovalCoordinator.denyActiveRequest()
+                        }
+                    }
+                )
+            ) { request in
+                MCPApprovalSheetView(
+                    request: request,
+                    onApprove: { session.mcpApprovalCoordinator.approveActiveRequest() },
+                    onDeny: { session.mcpApprovalCoordinator.denyActiveRequest() }
+                )
+                .brevTheme(session.theme)
+            }
             .task {
                 reconcileBackgroundMail()
                 if !IsolatedMockConfiguration.isRequested() {

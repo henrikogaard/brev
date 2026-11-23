@@ -263,6 +263,13 @@ extension SettingsSection {
                 String(localized: "AI Writer requires consent", bundle: .module),
                 String(localized: "Remote content allowlist", bundle: .module),
             ]
+        case .agentAccess: return [
+                String(localized: "Agent access", bundle: .module),
+                String(localized: "Local MCP server", bundle: .module),
+                String(localized: "Allow local agents to access mail", bundle: .module),
+                String(localized: "Exposed tools", bundle: .module),
+                String(localized: "Audit log", bundle: .module),
+            ]
         case .notifications: return [
                 String(localized: "Notifications", bundle: .module),
                 String(localized: "Enable notifications", bundle: .module),

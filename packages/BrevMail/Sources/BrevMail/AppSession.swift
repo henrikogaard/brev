@@ -115,7 +115,13 @@ public final class AppSession {
     /// Session-owned arrival controller for opted-in, trust-assessed accounts (#239, ADR-0088).
     public let signInCodeArrivalController: SignInCodeArrivalController
     private let notificationCenter: NotificationCenter
+    /// Session-owned approval coordinator for local MCP change tools (#305, ADR-0095).
+    public let mcpApprovalCoordinator = MCPApprovalCoordinator()
+    /// Session-owned local MCP broker operating strictly on opted-in accounts (#305, ADR-0095).
+    public private(set) var localMCPBroker: LocalMCPBroker?
     #if os(macOS)
+    private var localMCPServer: LocalMCPUnixSocketServer?
+    private var agentAccessSettingsObserver: NSObjectProtocol?
     private var signInCodeSubscriptionTasks: [BrevAccount.ID: (identity: ObjectIdentifier, task: Task<Void, Never>)] = [:]
     private var signInCodeSettingsObserver: NSObjectProtocol?
     /// Tracks whether at least one main mailbox window is currently observing
@@ -456,6 +462,26 @@ public final class AppSession {
         notificationActionExecutor.prepareBackends = { [weak self] in
             await self?.ensureAccountsRestored()
         }
+        let broker = LocalMCPBroker(
+            backendsProvider: { [weak self] in self?.visibleBackends ?? [] },
+            settingsProvider: { AgentAccessSettings.load(from: .standard) },
+            auditStore: .shared,
+            approvalCoordinator: mcpApprovalCoordinator
+        )
+        localMCPBroker = broker
+        #if os(macOS)
+        localMCPServer = LocalMCPUnixSocketServer(broker: broker)
+        agentAccessSettingsObserver = NotificationCenter.default.addObserver(
+            forName: .brevAgentAccessSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.reconcileLocalMCPServer()
+            }
+        }
+        reconcileLocalMCPServer()
+        #endif
         pimSyncScheduler.sourcesProvider = { [weak self] in
             guard let coordinator = self?.pimSourceCoordinator else { return [] }
             let sources = try? await coordinator.allSources()
@@ -1284,6 +1310,19 @@ public final class AppSession {
             deleteLinkedSourceCache: false
         )
     }
+
+    #if os(macOS)
+    /// Starts or stops the user-private Unix domain socket server to match
+    /// `AgentAccessSettings.isEnabled` (off by default, ADR-0095 §1).
+    public func reconcileLocalMCPServer() {
+        let settings = AgentAccessSettings.load(from: .standard)
+        if settings.isEnabled {
+            try? localMCPServer?.start()
+        } else {
+            localMCPServer?.stop()
+        }
+    }
+    #endif
 
     /// Cancels in-flight sign-in code inspections and hides any visible panel
     /// for `accountID` (ADR-0088 §5, §11).

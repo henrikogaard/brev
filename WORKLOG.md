@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-23 — Agent — Issue #305
+
+- Goal: implement Accepted ADR-0095 local MCP server for macOS read-only and user-approved agent access (`Settings → Privacy & Security → Agent access`, `LocalMCPBroker`, `LocalMCPUnixSocketServer`, `brev-mcp` stdio helper, in-app approval sheet, audit log, privacy docs, and tests).
+- Changes: added `AgentAccessSettings`, `AgentAccessToolSpec`, `AgentAccessAuditLogStore`, `AgentAccessSocketConfiguration`, and `AgentAccessSection` in `BrevSettings`; wired `SettingsSection.agentAccess` (macOS capability-gated under Privacy & Security, excluded from iOS `v1Default`); added `MCPApprovalCoordinator`, `MCPApprovalSheetView`, `LocalMCPBroker`, `LocalMCPUnixSocketServer` (`0600` `AF_UNIX` + `getpeereid` same-UID check, zero TCP/UDP ports), and `BrevMCPHelper` (`brev-mcp`) executable target in `BrevMail`; wired socket lifecycle in `AppSession` and modal approval sheet in `apps/macOS/Sources/BrevApp.swift`; added English and Norwegian (`nb`) String Catalog entries in `BrevSettings` and `BrevMail`; updated `ADRs/0006-telemetry-and-privacy.md`, `PRIVACY.md`, `CHANGELOG.md`, and `.github/workflows/build.yml`; added unit and snapshot tests (`AgentAccessSettingsTests`, `AgentAccessSectionSnapshotTests`, `LocalMCPServerTests`).
+- Verification: `swift test --package-path packages/BrevSettings --filter 'AgentAccessSectionSnapshotTests|AgentAccessSettingsTests|SettingsNavigationStateTests|SettingsSearchPlatformTests'` (47/47 passed, including light/dark macOS 26+ snapshots visually verified), `swift test --package-path packages/BrevMail --filter 'LocalMCPServerTests'` (4/4 passed, including real `AF_UNIX` `0600` socket round-trip, OTP redaction, and approve/deny/timeout/rate-limit flows), `swift build --package-path packages/BrevMail --product brev-mcp`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, and `git diff --check origin/main` all passed on macOS 27.2.1 / Xcode 27.2.
+- Skipped: interactive end-to-end Claude Code / Codex CLI run against a signed `Brev Test` bundle remains for native QA.
+
 ## 2026-11-22 — Agent — #296 cached PDF search
 
 - Search maps PDF phrases to a removable chip and matches cached attachment metadata within each source. A filename ending in another extension, a PDF mentioned only in the subject, or an inline part is not a match. Removing the chip keeps other search predicates.
