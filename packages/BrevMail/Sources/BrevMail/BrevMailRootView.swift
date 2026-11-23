@@ -442,6 +442,7 @@ public struct BrevMailRootView: View {
     private let currentBackendsProvider: @MainActor () -> [any MailBackend]
     private let aiBackend: (any AIBackend)?
     private let aiBackends: [BrevAccount.ID: any AIBackend]
+    private let aiBackendsGeneration: Int
     private let settingsStore: SettingsPersistenceStore
     private let onSignOut: (() async -> Void)?
     private let onChangeTheme: (BrevTheme) -> Void
@@ -602,6 +603,7 @@ public struct BrevMailRootView: View {
         currentBackendsProvider: (@MainActor () -> [any MailBackend])? = nil,
         aiBackend: (any AIBackend)? = nil,
         aiBackends: [BrevAccount.ID: any AIBackend] = [:],
+        aiBackendsGeneration: Int = 0,
         settingsStore: SettingsPersistenceStore = .standard,
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
@@ -645,6 +647,7 @@ public struct BrevMailRootView: View {
         } else {
             self.aiBackends = aiBackends
         }
+        self.aiBackendsGeneration = aiBackendsGeneration
         self.settingsStore = settingsStore
         let workflowStateData = settingsStore.data(forKey: LocalMessageWorkflowStateStorage.storageKey) ?? Data()
         _localMessageWorkflowStateData = State(initialValue: workflowStateData)
@@ -1167,6 +1170,21 @@ public struct BrevMailRootView: View {
 
     private var mailRootCommandContextContent: some View {
         MailRootRenderStage { mailRootPresentationContent }
+        #if os(macOS)
+            .focusedSceneValue(\.mailPaletteMailboxContext, MailPaletteMailboxContext(
+                sections: { sidebarSourceSections },
+                select: { source, folderID in
+                    guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
+                          let section = sidebarSourceSections.first(where: { $0.id == source }), section.loadError == nil,
+                          section.folders.contains(where: { $0.id == folderID }) else { return }
+                    if triageSession != nil {
+                        exitTriage()
+                    }
+                    navigation.selectFolder(folderID, in: source)
+                },
+                workspaceDestinations: { mailPaletteWorkspaceDestinations() }
+            ))
+        #endif
             .focusedSceneValue(\.mailNavigation, triageSession == nil ? navigation : triageReaderNavigation)
             .focusedSceneValue(\.mailBackend, selectedBackend)
             .focusedSceneValue(\.mailFolders, folders)
@@ -1378,6 +1396,38 @@ public struct BrevMailRootView: View {
             }
         )
     }
+
+    #if os(macOS)
+    private func mailPaletteWorkspaceDestinations() -> [MailPaletteWorkspaceDestination] {
+        guard navigation.presentedSheet == nil, !isCommandMutationBlocked else { return [] }
+        return MailPaletteWorkspaceDestination.build(
+            canOpenAssistant: selectedAIBackend != nil && navigation.inlineReply == nil,
+            canStartTriage: triageSession == nil && !sidebarSourceSections.isEmpty && navigation.inlineReply == nil,
+            openAssistant: {
+                guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
+                      selectedAIBackend != nil, navigation.inlineReply == nil else { return }
+                let preservedSourceID = navigation.selectedSourceID
+                    ?? preferredDefaultSection(in: visibleSourceSections)?.id
+                if triageSession != nil {
+                    exitTriage()
+                }
+                navigation.selectAssistantDestination(preserving: preservedSourceID)
+            },
+            startTriage: {
+                guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
+                      triageSession == nil, navigation.inlineReply == nil else { return }
+                Task { await startTriage() }
+            },
+            openSubscriptions: {
+                guard navigation.presentedSheet == nil, !isCommandMutationBlocked else { return }
+                if triageSession != nil {
+                    exitTriage()
+                }
+                navigation.selectSubscriptionsSmartView()
+            }
+        )
+    }
+    #endif
 
     private func triageArchiveFolder(for item: TriageItem) -> Folder? {
         let sourceFolders = sidebarSourceSections.first { $0.id == item.sourceID }?.folders ?? folders
@@ -1730,7 +1780,7 @@ public struct BrevMailRootView: View {
 
     @ViewBuilder
     private var mailSplitView: some View {
-        if navigation.isAssistantSelected, selectedAIBackend != nil {
+        if navigation.isAssistantSelected {
             NavigationSplitView(
                 columnVisibility: $splitViewVisibility,
                 preferredCompactColumn: $preferredCompactColumn
@@ -1765,15 +1815,20 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private var assistantDestinationPane: some View {
-        let resolvedSource = navigation.assistantSourceID
+    private var resolvedAssistantSourceID: MailSourceID? {
+        navigation.assistantSourceID
             ?? navigation.selectedSourceID
             ?? preferredDefaultSection(in: visibleSourceSections)?.id
+    }
+
+    private var assistantDestinationPane: some View {
+        let resolvedSource = resolvedAssistantSourceID
         let resolvedOwner = backend(for: resolvedSource)
         let resolvedAIBackend = aiBackend(for: resolvedOwner.account)
         return AssistantDestinationView(
             sourceID: resolvedSource,
             aiBackend: resolvedAIBackend,
+            aiRouteRevision: aiBackendsGeneration,
             actionFolders: mailboxActionFolders(for: resolvedSource),
             focusedFolder: selectedFolder,
             actionSourceScope: mailboxActionSourceScope(for: resolvedSource),

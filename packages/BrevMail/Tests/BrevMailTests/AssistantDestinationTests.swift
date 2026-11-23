@@ -580,4 +580,82 @@ struct AssistantDestinationTests {
             #expect((unitValue?.isEmpty == false) || hasVariations, "Missing nb localization for \(key)")
         }
     }
+
+    @Test("Assistant refreshes controller route across disable and replacement key without mailbox change")
+    func assistantRefreshesRouteAcrossDisableAndKeyReplacement() async {
+        final class SyncCounter: @unchecked Sendable {
+            private let lock = NSLock()
+            private var value = 0
+            func increment() { lock.withLock { value += 1 } }
+            var count: Int { lock.withLock { value } }
+        }
+
+        let oldCounter = SyncCounter()
+        let newCounter = SyncCounter()
+        let oldBackend = MockAssistantAI(replyText: "Old key reply") {
+            oldCounter.increment()
+        }
+        let replacementBackend = MockAssistantAI(replyText: "New key reply") {
+            newCounter.increment()
+        }
+
+        actor TestTokenStore: TokenStore {
+            func token(for _: String) -> Token? { nil }
+            func setToken(_: Token, for _: String) {}
+            func clearToken(for _: String) {}
+        }
+
+        // Verify AppSession bumps aiBackendsGeneration whenever AI routes reload (disable & key replacement).
+        let session = AppSession(
+            backend: MockBackend(),
+            aiBackend: oldBackend,
+            accountStore: InMemoryAccountStore(),
+            tokenStore: TestTokenStore()
+        )
+        let gen1 = session.aiBackendsGeneration
+        await session.reloadConfiguredAIBackends()
+        let gen2 = session.aiBackendsGeneration
+        await session.reloadConfiguredAIBackends()
+        let gen3 = session.aiBackendsGeneration
+        #expect(gen1 > 0)
+        #expect(gen2 > gen1)
+        #expect(gen3 > gen2)
+
+        let initialIdentity = AssistantDestinationView.routeIdentity(revision: gen1, backend: oldBackend)
+        let disabledIdentity = AssistantDestinationView.routeIdentity(revision: gen2, backend: nil)
+        let replacedIdentity = AssistantDestinationView.routeIdentity(revision: gen3, backend: replacementBackend)
+        #expect(initialIdentity != disabledIdentity)
+        #expect(disabledIdentity != replacedIdentity)
+        #expect(initialIdentity != replacedIdentity)
+
+        let referenceDate = Self.now
+        let searchClosure: MailboxChatController.Search = { _, _ in
+            [MessageHeader(
+                id: "m1",
+                threadID: "t1",
+                folderID: "inbox",
+                from: Correspondent(name: "Alex", email: "alex@example.org"),
+                subject: "Status",
+                snippet: "Ready",
+                date: referenceDate
+            )]
+        }
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: Self.source,
+            aiBackend: oldBackend,
+            search: searchClosure
+        )
+
+        // Transition to unavailable (provider disabled) without changing sourceID.
+        controller.configure(scope: .account, sourceID: Self.source, aiBackend: nil, search: searchClosure)
+        await controller.send(userText: "Summarize status")
+        #expect(oldCounter.count == 0)
+
+        // Transition back to configured with replacement credentials for the same provider ID.
+        controller.configure(scope: .account, sourceID: Self.source, aiBackend: replacementBackend, search: searchClosure)
+        await controller.send(userText: "Summarize status")
+        #expect(oldCounter.count == 0)
+        #expect(newCounter.count == 1)
+    }
 }

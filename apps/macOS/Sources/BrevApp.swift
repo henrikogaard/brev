@@ -107,6 +107,7 @@ struct BrevApp: App {
                         backends: session.visibleBackends,
                         currentBackendsProvider: { session.visibleBackends },
                         aiBackends: session.aiBackends,
+                        aiBackendsGeneration: session.aiBackendsGeneration,
                         onSignOut: { await session.signOut() },
                         onChangeTheme: { newTheme in
                             session.theme = newTheme
@@ -313,7 +314,10 @@ struct BrevApp: App {
             }
             // Window scenes register themselves in the Window menu's window
             // list automatically — a manual group here produced duplicates.
-            BrevMailCommands()
+            BrevMailCommands(theme: session.theme, settingsSections: settingsSectionAvailability.visibleSections) { section in
+                settingsSectionRequest = settingsSectionAvailability.fallback(for: section)
+                openWindow(id: BrevWindowID.settings)
+            }
         }
 
         Window("Calendar", id: BrevWindowID.calendar) {
