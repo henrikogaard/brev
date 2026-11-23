@@ -329,9 +329,27 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     public func moveWithUndo(messageIDs: [MessageHeader.ID], from sourceFolder: Folder, to destination: Folder,
                              sourceID: MailSourceID) async throws -> MailMoveUndo? {
         guard sourceFolder.id != destination.id, !messageIDs.isEmpty else { return nil }
-        try await move(messageIDs: messageIDs, to: destination, sourceID: sourceID)
+        let targetMailboxID = try await mailboxID(for: sourceID)
+        let removedScheduledDrafts = try await store.moveReturningRemovedScheduledDrafts(
+            ids: messageIDs,
+            to: destination.id,
+            mailboxID: targetMailboxID
+        )
         return MailMoveUndo(sourceID: sourceID, originalFolder: sourceFolder) { [self] in
-            try await move(messageIDs: messageIDs, to: sourceFolder, sourceID: sourceID)
+            let restoredDraftMessageIDs = Set(removedScheduledDrafts.map {
+                $0.record.draft?.remoteID ?? "draft-\($0.record.draftID)"
+            })
+            let regularMessageIDs = messageIDs.filter { !restoredDraftMessageIDs.contains($0) }
+            if !regularMessageIDs.isEmpty {
+                try await move(messageIDs: regularMessageIDs, to: sourceFolder, sourceID: sourceID)
+            }
+            if !removedScheduledDrafts.isEmpty {
+                try await store.restoreCanceledScheduledDrafts(
+                    removedScheduledDrafts,
+                    to: sourceFolder.id,
+                    mailboxID: targetMailboxID
+                )
+            }
             return Dictionary(messageIDs.map { ($0, $0) }, uniquingKeysWith: { first, _ in first })
         }
     }
@@ -2904,6 +2922,14 @@ private actor Store {
     }
 
     func move(ids: [String], to destinationFolderID: String, mailboxID: Mailbox.ID) throws {
+        _ = try moveReturningRemovedScheduledDrafts(ids: ids, to: destinationFolderID, mailboxID: mailboxID)
+    }
+
+    func moveReturningRemovedScheduledDrafts(
+        ids: [String],
+        to destinationFolderID: String,
+        mailboxID: Mailbox.ID
+    ) throws -> [MockScheduledDraftProjectionSnapshot] {
         let idSet = Set(ids)
         let mailboxFolders = try data(mailboxID: mailboxID).folders
         let movesToTrash = destinationFolderID == "trash"
@@ -2941,6 +2967,90 @@ private actor Store {
         for event in events {
             emit(event)
         }
+        return scheduledDrafts
+    }
+
+    /// Re-persists canceled draft journal records and restores their canonical Drafts projection
+    /// when a Trash move of scheduled/canceled Mock drafts is undone.
+    func restoreCanceledScheduledDrafts(
+        _ snapshots: [MockScheduledDraftProjectionSnapshot],
+        to destinationFolderID: String,
+        mailboxID: Mailbox.ID
+    ) throws {
+        guard !snapshots.isEmpty else { return }
+        let messageIDs = Set(snapshots.map { $0.record.draft?.remoteID ?? "draft-\($0.record.draftID)" })
+        let removalEvents = try updateData(mailboxID: mailboxID) { data in
+            var events: [MailEvent] = []
+            for key in data.messagesByFolder.keys {
+                let (kept, gone) = (data.messagesByFolder[key] ?? []).reduce(into: (
+                    [MessageHeader](),
+                    [MessageHeader]()
+                )) { acc, msg in
+                    if messageIDs.contains(msg.id) {
+                        acc.1.append(msg)
+                    } else {
+                        acc.0.append(msg)
+                    }
+                }
+                data.messagesByFolder[key] = kept
+                if !gone.isEmpty {
+                    events.append(.messagesRemoved(folderID: key, messageIDs: gone.map(\.id)))
+                }
+            }
+            return events
+        }
+        let canceledRecords: [MockSendJournalRecord] = snapshots.map { snapshot in
+            var record = snapshot.record
+            record.state = .canceled
+            record.scheduledFor = nil
+            record.scheduleID = nil
+            record.nextAttemptAt = nil
+            record.sentHeader = nil
+            record.sentBody = nil
+            if var draft = record.draft {
+                draft.scheduledFor = nil
+                record.draft = draft
+            }
+            return record
+        }
+        _ = try transactJournal { records in
+            for restored in canceledRecords {
+                records.removeAll { $0.sourceID == restored.sourceID && $0.draftID == restored.draftID }
+                records.append(restored)
+            }
+        }
+        let moveEvents: [MailEvent] = try updateData(mailboxID: mailboxID) { data in
+            let draftsFolderID = Self.ensureDraftsFolderID(in: &data)
+            guard destinationFolderID != draftsFolderID else {
+                let addedIDs = (data.messagesByFolder[draftsFolderID] ?? [])
+                    .map(\.id)
+                    .filter { messageIDs.contains($0) }
+                let events: [MailEvent] = addedIDs.isEmpty
+                    ? []
+                    : [.messagesAdded(folderID: draftsFolderID, messageIDs: addedIDs)]
+                return events
+            }
+            let (kept, moved) = (data.messagesByFolder[draftsFolderID] ?? []).reduce(into: (
+                [MessageHeader](),
+                [MessageHeader]()
+            )) { acc, msg in
+                if messageIDs.contains(msg.id) {
+                    acc.1.append(Self.copy(msg, folderID: destinationFolderID))
+                } else {
+                    acc.0.append(msg)
+                }
+            }
+            data.messagesByFolder[draftsFolderID] = kept
+            if !moved.isEmpty {
+                data.messagesByFolder[destinationFolderID, default: []].append(contentsOf: moved)
+                return [.messagesAdded(folderID: destinationFolderID, messageIDs: moved.map(\.id))]
+            }
+            return []
+        }
+        for event in removalEvents + moveEvents {
+            emit(event)
+        }
+        emit(.outboxChanged)
     }
 
     func copy(ids: [String], to destinationFolderID: String) {

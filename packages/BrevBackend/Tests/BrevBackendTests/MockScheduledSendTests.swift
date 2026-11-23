@@ -1391,6 +1391,67 @@ struct MockScheduledSendTests {
         #expect(headers.filter { $0.subject == "Worker race" }.count == 1)
     }
 
+    @Test("undoing a Trash move restores scheduled draft, attachments, and persistence across restart")
+    func undoTrashMoveRestoresScheduledDraftAndAttachmentsAcrossRestart() async throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Self.backend(persistenceDirectory: directory)
+        let attachmentID = try await backend.uploadAttachment(
+            draftID: "undo-draft",
+            data: Data("quarterly-numbers".utf8),
+            filename: "numbers.txt",
+            mimeType: "text/plain",
+            sourceID: Self.sourceA
+        )
+        let draft = Draft(
+            id: "undo-draft",
+            to: [Correspondent(email: "maya@example.test")],
+            subject: "Scheduled undo check",
+            htmlBody: "<p>Keep this draft</p>",
+            attachmentIDs: [attachmentID],
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
+        _ = try await backend.send(draft: draft, sourceID: Self.sourceA)
+
+        let folders = try await backend.folders(in: Self.sourceA)
+        let draftsFolder = try #require(folders.first { $0.role == .drafts })
+        let trashFolder = folders.first { $0.role == .trash } ?? Folder(id: "trash", name: "Trash", role: .trash)
+        let (draftHeadersBefore, _) = try await backend.messages(in: draftsFolder, sourceID: Self.sourceA, pageToken: nil)
+        let draftHeader = try #require(draftHeadersBefore.first { $0.subject == "Scheduled undo check" })
+
+        let undo = try #require(await backend.moveWithUndo(
+            messageIDs: [draftHeader.id],
+            from: draftsFolder,
+            to: trashFolder,
+            sourceID: Self.sourceA
+        ))
+        let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
+        #expect(scheduler.pendingScheduledSends().isEmpty)
+
+        // Undo the Trash move: draft and attachment must reopen immediately as a regular canceled draft...
+        _ = try await undo.restore()
+        #expect(scheduler.pendingScheduledSends().isEmpty)
+        let reopened = try #require(await backend.draft(for: draftHeader.id, sourceID: Self.sourceA))
+        #expect(reopened.subject == "Scheduled undo check")
+        #expect(reopened.attachmentIDs == [attachmentID])
+        let body = try await backend.body(for: draftHeader.id, sourceID: Self.sourceA)
+        let attachment = try #require(body.attachments.first { $0.id == attachmentID })
+        let bytes = try await backend.downloadAttachment(attachment, sourceID: Self.sourceA)
+        #expect(bytes == Data("quarterly-numbers".utf8))
+
+        // ...and survive rebuilding MockBackend from disk.
+        let reloaded = Self.backend(persistenceDirectory: directory)
+        let (reloadedDraftHeaders, _) = try await reloaded.messages(in: draftsFolder, sourceID: Self.sourceA, pageToken: nil)
+        #expect(reloadedDraftHeaders.contains { $0.id == draftHeader.id })
+        let reloadedDraft = try #require(await reloaded.draft(for: draftHeader.id, sourceID: Self.sourceA))
+        #expect(reloadedDraft.subject == "Scheduled undo check")
+        #expect(reloadedDraft.attachmentIDs == [attachmentID])
+        let reloadedBody = try await reloaded.body(for: draftHeader.id, sourceID: Self.sourceA)
+        let reloadedAttachment = try #require(reloadedBody.attachments.first { $0.id == attachmentID })
+        let reloadedBytes = try await reloaded.downloadAttachment(reloadedAttachment, sourceID: Self.sourceA)
+        #expect(reloadedBytes == Data("quarterly-numbers".utf8))
+    }
+
     private static func backend(
         persistenceDirectory: URL?,
         now: @escaping @Sendable () -> Date = { Self.now },
