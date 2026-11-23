@@ -170,5 +170,59 @@ struct MailSingleKeyShortcutTests {
         let nb = (entry["localizations"] as? [String: Any])?["nb"] as? [String: Any]
         #expect((nb?["stringUnit"] as? [String: Any])?["value"] as? String == "%1$@ (%2$@)")
     }
+
+    @Test("J and K step through Updates selectable rows using the same flat order as arrow keys")
+    func updatesTabSingleKeyNavigation() {
+        let now = Date(timeIntervalSince1970: 1_735_689_600)
+        let first = MessageHeader(
+            id: "u1",
+            threadID: "t1",
+            folderID: "inbox",
+            from: Correspondent(name: "News A", email: "a@news.example"),
+            subject: "Digest 1",
+            snippet: "",
+            date: now
+        )
+        let bundled1 = MessageHeader(
+            id: "u2",
+            threadID: "t2",
+            folderID: "inbox",
+            from: Correspondent(name: "News B", email: "b@news.example"),
+            subject: "Digest 2a",
+            snippet: "",
+            date: now.addingTimeInterval(-60)
+        )
+        let bundled2 = MessageHeader(
+            id: "u3",
+            threadID: "t3",
+            folderID: "inbox",
+            from: Correspondent(name: "News B", email: "b@news.example"),
+            subject: "Digest 2b",
+            snippet: "",
+            date: now.addingTimeInterval(-120)
+        )
+        let last = MessageHeader(
+            id: "u4",
+            threadID: "t4",
+            folderID: "inbox",
+            from: Correspondent(name: "News C", email: "c@news.example"),
+            subject: "Digest 3",
+            snippet: "",
+            date: now.addingTimeInterval(-180)
+        )
+        let all = [first, bundled1, bundled2, last]
+        let collapsedRows = UpdatesSenderBundler.selectableHeaders(from: all, sourceID: nil, expandedBundleIDs: [])
+        #expect(collapsedRows.map(\.id) == ["u1", "u4"])
+
+        let navigation = MailNavigationState(selectedMessageID: "u1", currentFolderHeaders: collapsedRows)
+        #expect(MailSingleKeyShortcut.next.performInReader(navigation: navigation, header: first, sourceID: nil) { _, _ in
+            false
+        })
+        #expect(navigation.selectedMessageID == "u4")
+        #expect(MailSingleKeyShortcut.previous.performInReader(navigation: navigation, header: last, sourceID: nil) { _, _ in
+            false
+        })
+        #expect(navigation.selectedMessageID == "u1")
+    }
 }
 #endif
