@@ -283,9 +283,15 @@ struct AIProviderSettingsTests {
         let savedOnDevice = try await AIProviderSettingsPersistence.save(onDevice, settingsStore: store, secretStore: secrets)
 
         var editedOnDevice = AIProviderSettingsDraft(configuration: savedOnDevice, hasSavedAPIKey: false)
+        editedOnDevice.displayName = "Custom On-Device Name"
         editedOnDevice.applyPreset(.openAICompatible)
         #expect(editedOnDevice.kind == .appleIntelligence)
         #expect(editedOnDevice.id == AppleIntelligenceAIBackend.providerID)
+        #expect(editedOnDevice.displayName == "Custom On-Device Name")
+        // Restoring the Apple Intelligence profile's own preset resets its default display name.
+        editedOnDevice.applyPreset(.appleIntelligence)
+        #expect(editedOnDevice.kind == .appleIntelligence)
+        #expect(editedOnDevice.displayName == AIProviderKind.appleIntelligence.settingsDisplayName)
         #expect(await secrets.apiKeyValue(for: savedHosted.id) == "sk-test-secret")
     }
 

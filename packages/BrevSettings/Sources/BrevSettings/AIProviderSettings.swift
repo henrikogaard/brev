@@ -178,9 +178,10 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
     }
 
     mutating func applyPreset(_ newKind: AIProviderKind) {
-        // Keep the reserved Apple Intelligence system profile separate from generic HTTP profiles
-        // so switching presets never overwrites another profile's identity, routing, or API key.
-        guard kind != .appleIntelligence, newKind != .appleIntelligence else { return }
+        // Keep on-device system profiles separate from generic HTTP profiles
+        // so switching presets never overwrites another profile's identity, routing, or API key,
+        // while still allowing an Apple Intelligence profile to restore its own default preset.
+        guard kind.isOnDevice == newKind.isOnDevice else { return }
         kind = newKind
         displayName = newKind.settingsDisplayName
         endpointURLString = newKind.defaultEndpointString

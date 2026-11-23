@@ -157,14 +157,18 @@ struct AIWriterSection: View {
         configuredProvider = configurations.first(where: \.isDefault) ?? configurations.first
         let assignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
         let providersByID = Dictionary(uniqueKeysWithValues: configurations.map { ($0.id, $0) })
-        let hasAssignedAccountOverride = accounts.contains { account in
-            guard let providerID = assignments.providerID(forAccountID: account.id),
-                  let provider = providersByID[providerID]
-            else { return false }
-            return provider.isEnabled && !provider.kind.isOnDevice
+        let legacyOverrideByAccountID: [String: AIProviderConfiguration] = configurations.reduce(into: [:]) { map, config in
+            guard let accountID = config.assignedAccountID, map[accountID] == nil else { return }
+            map[accountID] = config
         }
-        hasNonOnDeviceAccountOverride = hasAssignedAccountOverride || configurations.contains {
-            $0.isEnabled && !$0.kind.isOnDevice && $0.assignedAccountID != nil
+        let allAccountIDs = Set(accounts.map(\.id)).union(legacyOverrideByAccountID.keys)
+        hasNonOnDeviceAccountOverride = allAccountIDs.contains { accountID in
+            if let assignedProviderID = assignments.providerID(forAccountID: accountID) {
+                guard let provider = providersByID[assignedProviderID] else { return false }
+                return provider.isEnabled && !provider.kind.isOnDevice
+            }
+            guard let legacyProvider = legacyOverrideByAccountID[accountID] else { return false }
+            return legacyProvider.isEnabled && !legacyProvider.kind.isOnDevice
         }
     }
 }
