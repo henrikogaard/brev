@@ -22,6 +22,42 @@ public struct MailPaletteWorkspaceDestination {
     let detail: String
     let keywords: String
     let run: @MainActor () -> Void
+
+    /// Builds the workspace destinations available for the focused mail window's current state.
+    @MainActor
+    static func build(
+        canOpenAssistant: Bool,
+        canStartTriage: Bool,
+        openAssistant: @escaping @MainActor () -> Void,
+        startTriage: @escaping @MainActor () -> Void,
+        openSubscriptions: @escaping @MainActor () -> Void
+    ) -> [Self] {
+        let detail = String(localized: "Mailbox", bundle: .module)
+        var destinations: [Self] = []
+        if canOpenAssistant {
+            destinations.append(Self(
+                title: String(localized: "Assistant", bundle: .module),
+                detail: detail,
+                keywords: "ai chat ask",
+                run: openAssistant
+            ))
+        }
+        if canStartTriage {
+            destinations.append(Self(
+                title: String(localized: "Triage", bundle: .module),
+                detail: detail,
+                keywords: "queue review",
+                run: startTriage
+            ))
+        }
+        destinations.append(Self(
+            title: String(localized: "Subscriptions", bundle: .module),
+            detail: detail,
+            keywords: "newsletters unsubscribe updates",
+            run: openSubscriptions
+        ))
+        return destinations
+    }
 }
 
 /// The focused mail root supplies only folders and destinations visible in its current profile.

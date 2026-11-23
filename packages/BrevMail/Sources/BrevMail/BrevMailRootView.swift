@@ -1397,47 +1397,32 @@ public struct BrevMailRootView: View {
     #if os(macOS)
     private func mailPaletteWorkspaceDestinations() -> [MailPaletteWorkspaceDestination] {
         guard navigation.presentedSheet == nil, !isCommandMutationBlocked else { return [] }
-        let detail = String(localized: "Mailbox", bundle: .module)
-        var destinations: [MailPaletteWorkspaceDestination] = []
-        if selectedAIBackend != nil, navigation.inlineReply == nil {
-            destinations.append(MailPaletteWorkspaceDestination(
-                title: String(localized: "Assistant", bundle: .module),
-                detail: detail,
-                keywords: "ai chat ask"
-            ) {
+        return MailPaletteWorkspaceDestination.build(
+            canOpenAssistant: selectedAIBackend != nil && navigation.inlineReply == nil,
+            canStartTriage: triageSession == nil && !sidebarSourceSections.isEmpty && navigation.inlineReply == nil,
+            openAssistant: {
                 guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
                       selectedAIBackend != nil, navigation.inlineReply == nil else { return }
+                let preservedSourceID = navigation.selectedSourceID
+                    ?? preferredDefaultSection(in: visibleSourceSections)?.id
                 if triageSession != nil {
                     exitTriage()
                 }
-                navigation.selectAssistantDestination(
-                    preserving: navigation.selectedSourceID ?? preferredDefaultSection(in: visibleSourceSections)?.id
-                )
-            })
-        }
-        if triageSession == nil, !sidebarSourceSections.isEmpty, navigation.inlineReply == nil {
-            destinations.append(MailPaletteWorkspaceDestination(
-                title: String(localized: "Triage", bundle: .module),
-                detail: detail,
-                keywords: "queue review"
-            ) {
+                navigation.selectAssistantDestination(preserving: preservedSourceID)
+            },
+            startTriage: {
                 guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
                       triageSession == nil, navigation.inlineReply == nil else { return }
                 Task { await startTriage() }
-            })
-        }
-        destinations.append(MailPaletteWorkspaceDestination(
-            title: String(localized: "Subscriptions", bundle: .module),
-            detail: detail,
-            keywords: "newsletters unsubscribe updates"
-        ) {
-            guard navigation.presentedSheet == nil, !isCommandMutationBlocked else { return }
-            if triageSession != nil {
-                exitTriage()
+            },
+            openSubscriptions: {
+                guard navigation.presentedSheet == nil, !isCommandMutationBlocked else { return }
+                if triageSession != nil {
+                    exitTriage()
+                }
+                navigation.selectSubscriptionsSmartView()
             }
-            navigation.selectSubscriptionsSmartView()
-        })
-        return destinations
+        )
     }
     #endif
 
@@ -1792,7 +1777,7 @@ public struct BrevMailRootView: View {
 
     @ViewBuilder
     private var mailSplitView: some View {
-        if navigation.isAssistantSelected, selectedAIBackend != nil {
+        if navigation.isAssistantSelected, resolvedAssistantAIBackend != nil {
             NavigationSplitView(
                 columnVisibility: $splitViewVisibility,
                 preferredCompactColumn: $preferredCompactColumn
@@ -1827,10 +1812,18 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private var assistantDestinationPane: some View {
-        let resolvedSource = navigation.assistantSourceID
+    private var resolvedAssistantSourceID: MailSourceID? {
+        navigation.assistantSourceID
             ?? navigation.selectedSourceID
             ?? preferredDefaultSection(in: visibleSourceSections)?.id
+    }
+
+    private var resolvedAssistantAIBackend: (any AIBackend)? {
+        aiBackend(for: backend(for: resolvedAssistantSourceID).account)
+    }
+
+    private var assistantDestinationPane: some View {
+        let resolvedSource = resolvedAssistantSourceID
         let resolvedOwner = backend(for: resolvedSource)
         let resolvedAIBackend = aiBackend(for: resolvedOwner.account)
         return AssistantDestinationView(

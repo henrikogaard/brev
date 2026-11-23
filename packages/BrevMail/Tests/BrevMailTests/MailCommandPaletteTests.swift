@@ -92,19 +92,38 @@ struct MailCommandPaletteTests {
         #expect(!privacy.matches("unrelated"))
 
         var launched: [String] = []
-        let workspace = MailPaletteEntry.workspaceDestinations([
-            MailPaletteWorkspaceDestination(title: "Assistant", detail: "Mailbox", keywords: "ai") { launched.append("assistant")
-            },
-            MailPaletteWorkspaceDestination(title: "Triage", detail: "Mailbox", keywords: "queue") { launched.append("triage") },
-            MailPaletteWorkspaceDestination(title: "Subscriptions", detail: "Mailbox", keywords: "newsletters") {
-                launched.append("subscriptions")
-            },
-        ])
+        let workspace = MailPaletteEntry.workspaceDestinations(
+            MailPaletteWorkspaceDestination.build(
+                canOpenAssistant: true,
+                canStartTriage: true,
+                openAssistant: { launched.append("assistant") },
+                startTriage: { launched.append("triage") },
+                openSubscriptions: { launched.append("subscriptions") }
+            )
+        )
         for (query, expected) in [("assistant", "assistant"), ("triage", "triage"), ("newsletters", "subscriptions")] {
             let entry = try #require(workspace.first { $0.matches(query) })
             entry.run()
             #expect(launched.last == expected)
         }
+
+        let limitedWorkspace = MailPaletteWorkspaceDestination.build(
+            canOpenAssistant: false,
+            canStartTriage: false,
+            openAssistant: {},
+            startTriage: {},
+            openSubscriptions: {}
+        )
+        #expect(limitedWorkspace.map(\.title) == ["Subscriptions"])
+
+        // Selecting Assistant from a non-default account preserves that source ID even after
+        // selectSmartView clears selectedSourceID, so Assistant resolves that account's backend.
+        let nav = MailNavigationState()
+        nav.selectFolder("inbox", in: work.id)
+        nav.selectAssistantDestination(preserving: nav.selectedSourceID)
+        #expect(nav.isAssistantSelected)
+        #expect(nav.selectedSourceID == nil)
+        #expect(nav.assistantSourceID == work.id)
     }
 
     @Test("new palette copy has Norwegian translations")
