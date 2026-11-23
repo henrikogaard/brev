@@ -92,6 +92,8 @@ struct LocalMCPServerTests {
     func readToolsAndSignInCodeRedaction() async throws {
         let account = BrevAccount(id: "acct-demo", displayName: "Demo", emailAddress: "demo@example.org")
         let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let trash = Folder(id: "trash", name: "Trash", role: .trash)
+        let spam = Folder(id: "spam", name: "Spam", role: .spam)
         let regularHeader = MessageHeader(
             id: "msg-regular",
             threadID: "t1",
@@ -108,15 +110,46 @@ struct LocalMCPServerTests {
             folderID: "inbox",
             from: Correspondent(name: "Acme Security", email: "no-reply@acme.example"),
             to: [Correspondent(name: "Demo", email: "demo@example.org")],
-            subject: "Your verification code",
-            snippet: "Your Acme verification code is 839204. It expires in 10 minutes.",
+            subject: "Your verification code is 839204",
+            snippet: "Your Acme verification code is 839204. Click here to unsubscribe.",
             date: Date(timeIntervalSince1970: 1_735_689_700)
+        )
+        let uncachedHeader = MessageHeader(
+            id: "msg-uncached",
+            threadID: "t3",
+            folderID: "inbox",
+            from: Correspondent(name: "Ops", email: "ops@example.org"),
+            subject: "Uncached body",
+            snippet: "Header only",
+            date: Date(timeIntervalSince1970: 1_735_689_750)
+        )
+        let trashHeader = MessageHeader(
+            id: "msg-trash",
+            threadID: "t4",
+            folderID: "trash",
+            from: Correspondent(name: "Trash Sender", email: "trash@example.org"),
+            subject: "Deleted secret",
+            snippet: "Should never appear",
+            date: Date(timeIntervalSince1970: 1_735_689_800)
+        )
+        let spamHeader = MessageHeader(
+            id: "msg-spam",
+            threadID: "t5",
+            folderID: "spam",
+            from: Correspondent(name: "Spam Sender", email: "spam@example.org"),
+            subject: "Junk mail",
+            snippet: "Should never appear",
+            date: Date(timeIntervalSince1970: 1_735_689_850)
         )
         let backend = MCPBodyStubBackend(
             wrapped: MockBackend(
                 account: account,
-                folders: [inbox],
-                messagesByFolder: ["inbox": [regularHeader, otpHeader]]
+                folders: [inbox, trash, spam],
+                messagesByFolder: [
+                    "inbox": [regularHeader, otpHeader, uncachedHeader],
+                    "trash": [trashHeader],
+                    "spam": [spamHeader]
+                ]
             ),
             bodies: [
                 "msg-regular": MessageBody(
@@ -132,7 +165,11 @@ struct LocalMCPServerTests {
                 ),
                 "msg-otp": MessageBody(
                     messageID: "msg-otp",
-                    plainText: "Your Acme sign-in verification code is 839204. Do not share this code."
+                    plainText: "Your Acme sign-in verification code is 839204. Click here to unsubscribe."
+                ),
+                "msg-trash": MessageBody(
+                    messageID: "msg-trash",
+                    plainText: "Deleted body"
                 )
             ]
         )
@@ -145,17 +182,50 @@ struct LocalMCPServerTests {
             auditStore: auditStore
         )
 
+        // Unscoped search must exclude Trash and Spam and redact OTPs in subjects & snippets even with unsubscribe text.
         let searchResp = try await sendRPC(broker, [
             "jsonrpc": "2.0",
             "id": 10,
             "method": "tools/call",
-            "params": ["name": "search_messages", "arguments": ["account_id": account.id, "folder_id": "inbox", "limit": 999]]
+            "params": ["name": "search_messages", "arguments": ["account_id": account.id, "query": "e", "limit": 999]]
         ])
         let searchPayload = try parseToolTextPayload(searchResp)
         let messages = try #require(searchPayload["messages"] as? [[String: Any]])
-        #expect(messages.count == 2)
+        let messageIDs = Set(messages.compactMap { $0["message_id"] as? String })
+        #expect(!messageIDs.contains("msg-trash"))
+        #expect(!messageIDs.contains("msg-spam"))
+        #expect(messageIDs.contains("msg-regular"))
+        #expect(messageIDs.contains("msg-otp"))
         let otpSearchRow = try #require(messages.first { $0["message_id"] as? String == "msg-otp" })
+        #expect((otpSearchRow["subject"] as? String)?.contains("839204") == false)
         #expect((otpSearchRow["snippet"] as? String)?.contains("839204") == false)
+
+        // Explicit Trash search and Trash read must be rejected.
+        let trashSearch = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 101,
+            "method": "tools/call",
+            "params": ["name": "search_messages", "arguments": ["account_id": account.id, "folder_id": "trash"]]
+        ])
+        #expect((trashSearch["error"] as? [String: Any])?["code"] as? Int == -32602)
+
+        let trashRead = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 102,
+            "method": "tools/call",
+            "params": ["name": "read_message", "arguments": ["account_id": account.id, "message_id": "msg-trash"]]
+        ])
+        #expect((trashRead["error"] as? [String: Any])?["code"] as? Int == -32602)
+
+        // Uncached body fails closed with cache-miss error and NEVER calls network-fetching body(for:).
+        let uncachedRead = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 103,
+            "method": "tools/call",
+            "params": ["name": "read_message", "arguments": ["account_id": account.id, "message_id": "msg-uncached"]]
+        ])
+        #expect((uncachedRead["error"] as? [String: Any])?["code"] as? Int == -32004)
+        #expect(backend.networkBodyFetchCount == 0)
 
         let regularRead = try await sendRPC(broker, [
             "jsonrpc": "2.0",
@@ -176,7 +246,9 @@ struct LocalMCPServerTests {
             "params": ["name": "read_message", "arguments": ["account_id": account.id, "message_id": "msg-otp"]]
         ])
         let otpPayload = try parseToolTextPayload(otpRead)
+        #expect((otpPayload["subject"] as? String)?.contains("839204") == false)
         #expect((otpPayload["body_text"] as? String)?.contains("839204") == false)
+        #expect(backend.networkBodyFetchCount == 0)
     }
 
     @Test("change tools enforce per-call approval, denial, timeout, concurrent rate-limit, and exclude send/delete/trash")
@@ -390,9 +462,15 @@ struct LocalMCPServerTests {
     #endif
 }
 
-private final class MCPBodyStubBackend: MailBackend, @unchecked Sendable {
+private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding, @unchecked Sendable {
     private let wrapped: MockBackend
     private let bodies: [String: MessageBody]
+    private let lock = NSLock()
+    private var fetchCount = 0
+
+    var networkBodyFetchCount: Int {
+        lock.withLock { fetchCount }
+    }
 
     init(wrapped: MockBackend, bodies: [String: MessageBody]) {
         self.wrapped = wrapped
@@ -402,6 +480,17 @@ private final class MCPBodyStubBackend: MailBackend, @unchecked Sendable {
     var account: BrevAccount { wrapped.account }
     var capabilities: BackendCapabilities { wrapped.capabilities }
     var extendedCapabilities: BackendExtendedCapabilities { wrapped.extendedCapabilities }
+
+    func extensionService<Service>(_ serviceType: Service.Type) -> Service? {
+        if serviceType == CachedMessageBodyProviding.self {
+            return self as? Service
+        }
+        return wrapped.extensionService(serviceType)
+    }
+
+    func cachedBody(for messageID: MessageHeader.ID, sourceID _: MailSourceID?) async -> MessageBody? {
+        bodies[messageID]
+    }
 
     func connect() async throws { try await wrapped.connect() }
     func disconnect() async { await wrapped.disconnect() }
@@ -416,6 +505,7 @@ private final class MCPBodyStubBackend: MailBackend, @unchecked Sendable {
     }
 
     func body(for messageID: String) async throws -> MessageBody {
+        lock.withLock { fetchCount += 1 }
         if let stub = bodies[messageID] { return stub }
         return try await wrapped.body(for: messageID)
     }

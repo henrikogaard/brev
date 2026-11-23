@@ -88,6 +88,17 @@ let project = Project(
                 "Resources/InfoPlist.xcstrings"
             ],
             entitlements: .file(path: "Resources/BrevMacOS.entitlements"),
+            scripts: [
+                .post(
+                    script: """
+                    mkdir -p "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers"
+                    cp -f "${BUILT_PRODUCTS_DIR}/brev-mcp" "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers/brev-mcp"
+                    """,
+                    name: "Embed brev-mcp helper",
+                    inputPaths: ["$(BUILT_PRODUCTS_DIR)/brev-mcp"],
+                    outputPaths: ["$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/brev-mcp"]
+                )
+            ],
             dependencies: [
                 .package(product: "BrevBackend", type: .runtime),
                 .package(product: "BrevCalendar", type: .runtime),
@@ -100,7 +111,8 @@ let project = Project(
                 .package(product: "BrevSyncEngine", type: .runtime),
                 .package(product: "BrevThemes", type: .runtime),
                 .external(name: "Sparkle"),
-                .target(name: "BrevMacWidgets")
+                .target(name: "BrevMacWidgets"),
+                .target(name: "BrevMCPHelper")
             ],
             settings: .settings(
                 base: [
@@ -163,6 +175,30 @@ let project = Project(
                         "CODE_SIGN_IDENTITY": "Developer ID Application",
                         "DEVELOPMENT_TEAM": .string(BrevConstants.teamID),
                         "PROVISIONING_PROFILE_SPECIFIER": "$(BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER)"
+                    ])
+                ]
+            )
+        ),
+        // ADR-0095: local-only stdio bridge (`brev-mcp`) embedded under
+        // `Contents/Helpers/brev-mcp` so MCP clients launch the bundled helper.
+        .target(
+            name: "BrevMCPHelper",
+            destinations: .macOS,
+            product: .commandLineTool,
+            productName: "brev-mcp",
+            bundleId: "$(BREV_APP_BUNDLE_ID).mcp-helper",
+            deploymentTargets: BrevConstants.macOSDeploymentTarget,
+            sources: ["../../packages/BrevMail/Sources/BrevMCPHelper/**"],
+            settings: .settings(
+                base: [
+                    "BREV_APP_BUNDLE_ID": .string(BrevConstants.bundleIDPrefix),
+                    "ENABLE_HARDENED_RUNTIME": "YES"
+                ],
+                configurations: [
+                    .release(name: "Release", settings: [
+                        "CODE_SIGN_STYLE": "Manual",
+                        "CODE_SIGN_IDENTITY": "Developer ID Application",
+                        "DEVELOPMENT_TEAM": .string(BrevConstants.teamID)
                     ])
                 ]
             )

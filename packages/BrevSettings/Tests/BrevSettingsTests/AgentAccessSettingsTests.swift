@@ -112,5 +112,19 @@ struct AgentAccessSettingsTests {
         ])
         let changeTools = AgentAccessToolSpec.exposedTools.filter { $0.permission == .approvalRequired }.map(\.name)
         #expect(changeTools == ["archive_messages", "label_messages"])
+
+        let jsonSnippet = AgentAccessSocketConfiguration.clientConfigSnippet(
+            for: .json,
+            helperPath: "/Applications/Brev.app/Contents/Helpers/brev-mcp"
+        )
+        #expect(jsonSnippet.contains("\"mcpServers\""))
+
+        let codexSnippet = AgentAccessSocketConfiguration.clientConfigSnippet(
+            for: .codexTOML,
+            helperPath: "/Applications/Brev.app/Contents/Helpers/brev-mcp"
+        )
+        #expect(codexSnippet.contains("[mcp_servers.brev]"))
+        #expect(codexSnippet.contains("command = \"/Applications/Brev.app/Contents/Helpers/brev-mcp\""))
+        #expect(AgentAccessSocketConfiguration.defaultSocketURL().path.utf8.count <= 100)
     }
 }

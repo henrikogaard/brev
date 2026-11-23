@@ -21,6 +21,8 @@ import Darwin
 /// Fails closed with a structured JSON-RPC error if Brev is not running or Agent access
 /// is turned off, and never opens Realm or SQLite stores directly.
 enum BrevMCPHelperCLI {
+    private static let appGroupIdentifier = "group.eu.brevmail.brev"
+
     static func resolveSocketPath(arguments: [String] = CommandLine.arguments) -> String {
         if let index = arguments.firstIndex(of: "--socket"), index + 1 < arguments.count {
             return arguments[index + 1]
@@ -28,11 +30,17 @@ enum BrevMCPHelperCLI {
         if let env = ProcessInfo.processInfo.environment["BREV_MCP_SOCKET"], !env.isEmpty {
             return env
         }
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        return base
-            .appendingPathComponent("Brev", isDirectory: true)
+        let groupSocket = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Group Containers", isDirectory: true)
+            .appendingPathComponent(appGroupIdentifier, isDirectory: true)
             .appendingPathComponent("mcp.sock", isDirectory: false)
+            .path
+        if groupSocket.utf8.count <= 100 {
+            return groupSocket
+        }
+        return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("brev-mcp-\(getuid()).sock", isDirectory: false)
             .path
     }
 
@@ -41,6 +49,8 @@ enum BrevMCPHelperCLI {
         let socketPath = resolveSocketPath()
         let stdinHandle = FileHandle.standardInput
         let stdoutHandle = FileHandle.standardOutput
+        var persistentFD: Int32 = -1
+        defer { if persistentFD >= 0 { close(persistentFD) } }
 
         var pending = Data()
         while true {
@@ -53,7 +63,7 @@ enum BrevMCPHelperCLI {
                 pending.removeSubrange(0 ... newlineIndex)
                 guard !lineData.isEmpty else { continue }
 
-                if let response = forwardLine(lineData, toSocketPath: socketPath) {
+                if let response = forwardLine(lineData, toSocketPath: socketPath, persistentFD: &persistentFD) {
                     stdoutHandle.write(response)
                     if response.last != 0x0A {
                         stdoutHandle.write(Data([0x0A]))
@@ -65,15 +75,56 @@ enum BrevMCPHelperCLI {
     }
 
     #if os(macOS)
-    private static func forwardLine(_ lineData: Data, toSocketPath socketPath: String) -> Data? {
-        guard let fd = connectUnixSocket(path: socketPath) else {
-            return unavailableResponse(for: lineData)
+    private static func forwardLine(
+        _ lineData: Data,
+        toSocketPath socketPath: String,
+        persistentFD: inout Int32
+    ) -> Data? {
+        if persistentFD < 0 {
+            guard let fd = connectUnixSocket(path: socketPath) else {
+                return unavailableResponse(for: lineData)
+            }
+            persistentFD = fd
         }
-        defer { close(fd) }
 
         var payload = lineData
         payload.append(0x0A)
-        let wroteAll = payload.withUnsafeBytes { rawPtr -> Bool in
+        var wroteAll = writeAll(payload, to: persistentFD)
+        if !wroteAll {
+            close(persistentFD)
+            persistentFD = -1
+            guard let retryFD = connectUnixSocket(path: socketPath) else {
+                return unavailableResponse(for: lineData)
+            }
+            persistentFD = retryFD
+            wroteAll = writeAll(payload, to: persistentFD)
+        }
+        guard wroteAll else {
+            close(persistentFD)
+            persistentFD = -1
+            return unavailableResponse(for: lineData)
+        }
+
+        // Notifications (no `id`) expect no response.
+        if !requestHasID(lineData) { return nil }
+
+        var response = Data()
+        var chunk = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let n = read(persistentFD, &chunk, chunk.count)
+            if n <= 0 {
+                close(persistentFD)
+                persistentFD = -1
+                break
+            }
+            response.append(contentsOf: chunk[0 ..< n])
+            if response.contains(0x0A) { break }
+        }
+        return response.isEmpty ? unavailableResponse(for: lineData) : response
+    }
+
+    private static func writeAll(_ payload: Data, to fd: Int32) -> Bool {
+        payload.withUnsafeBytes { rawPtr -> Bool in
             guard let base = rawPtr.baseAddress else { return false }
             var total = 0
             while total < payload.count {
@@ -83,25 +134,13 @@ enum BrevMCPHelperCLI {
             }
             return true
         }
-        guard wroteAll else { return unavailableResponse(for: lineData) }
-
-        // Notifications (no `id`) expect no response.
-        if !requestHasID(lineData) { return nil }
-
-        var response = Data()
-        var chunk = [UInt8](repeating: 0, count: 4096)
-        while true {
-            let n = read(fd, &chunk, chunk.count)
-            if n <= 0 { break }
-            response.append(contentsOf: chunk[0 ..< n])
-            if response.contains(0x0A) { break }
-        }
-        return response.isEmpty ? unavailableResponse(for: lineData) : response
     }
 
     private static func connectUnixSocket(path: String) -> Int32? {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return nil }
+        var noSigPipe: Int32 = 1
+        _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)

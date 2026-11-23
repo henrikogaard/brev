@@ -549,16 +549,34 @@ public final class LocalMCPBroker {
         )
 
         do {
+            let folders = try await backend.folders()
+            let excludedFolderIDs = Set(folders.filter { $0.role == .trash || $0.role == .spam }.map(\.id))
+            if let folderID, !folderID.isEmpty, excludedFolderIDs.contains(folderID) {
+                recordAudit(
+                    client: client,
+                    toolName: "search_messages",
+                    accountID: accountID,
+                    parameterSummary: "blocked_trash_or_spam folder=\(folderID)",
+                    outcome: .denied
+                )
+                return errorResponse(
+                    id: id,
+                    code: -32602,
+                    message: "Searching Trash or Spam is permanently excluded from MCP."
+                )
+            }
             let headers = try await backend.search(query)
+            let allowedHeaders = headers.filter { !excludedFolderIDs.contains($0.folderID) }
             let formatter = ISO8601DateFormatter()
-            let boundedHeaders = Array(headers.prefix(limit))
+            let boundedHeaders = Array(allowedHeaders.prefix(limit))
             let results = boundedHeaders.map { header -> [String: Any] in
+                let safeSubject = Self.redactedForSignInCodes(header.subject)
                 let safeSnippet = Self.redactedForSignInCodes(header.snippet)
                 return [
                     "message_id": header.id,
                     "folder_id": header.folderID,
                     "from": Self.formatCorrespondent(header.from),
-                    "subject": header.subject,
+                    "subject": safeSubject,
                     "date": formatter.string(from: header.date),
                     "snippet": safeSnippet,
                     "is_read": header.isRead,
@@ -574,7 +592,7 @@ public final class LocalMCPBroker {
             )
             return toolSuccessResponse(id: id, payload: [
                 "messages": results,
-                "truncated": headers.count > limit
+                "truncated": allowedHeaders.count > limit
             ])
         } catch {
             return errorResponse(id: id, code: -32003, message: "Local search failed.")
@@ -604,8 +622,41 @@ public final class LocalMCPBroker {
         }
 
         do {
+            let folders = try await backend.folders()
+            let excludedFolderIDs = Set(folders.filter { $0.role == .trash || $0.role == .spam }.map(\.id))
             let header = try await findHeader(messageID: messageID, in: backend)
-            let body = try await backend.body(for: messageID)
+            if let header, excludedFolderIDs.contains(header.folderID) {
+                recordAudit(
+                    client: client,
+                    toolName: "read_message",
+                    accountID: accountID,
+                    parameterSummary: "blocked_trash_or_spam message_id=\(messageID)",
+                    outcome: .denied
+                )
+                return errorResponse(
+                    id: id,
+                    code: -32602,
+                    message: "Reading messages in Trash or Spam is permanently excluded from MCP."
+                )
+            }
+            // ADR-0095 §2: read_message must stay strictly cache-only and never trigger
+            // provider network fetches on a cache miss.
+            guard let cacheProvider = backend.extensionService(CachedMessageBodyProviding.self),
+                  let body = await cacheProvider.cachedBody(for: messageID, sourceID: nil)
+            else {
+                recordAudit(
+                    client: client,
+                    toolName: "read_message",
+                    accountID: accountID,
+                    parameterSummary: "cache_miss message_id=\(messageID)",
+                    outcome: .denied
+                )
+                return errorResponse(
+                    id: id,
+                    code: -32004,
+                    message: "Message body is not in Brev's local cache."
+                )
+            }
             let rawText = Self.sanitizedPlainText(from: body)
             let safeBody = Self.redactedForSignInCodes(rawText)
             let attachments = body.attachments.map { attachment -> [String: Any] in
@@ -625,7 +676,7 @@ public final class LocalMCPBroker {
                 payload["from"] = Self.formatCorrespondent(header.from)
                 payload["to"] = header.to.map(Self.formatCorrespondent)
                 payload["cc"] = header.cc.map(Self.formatCorrespondent)
-                payload["subject"] = header.subject
+                payload["subject"] = Self.redactedForSignInCodes(header.subject)
                 payload["date"] = formatter.string(from: header.date)
                 payload["folder_id"] = header.folderID
             }
@@ -687,7 +738,7 @@ public final class LocalMCPBroker {
         do {
             let folders = try await backend.folders()
             if toolName == "archive_messages" {
-                guard let archive = folders.first(where: { $0.role == .archive }) else {
+                guard let archive = NotificationActionExecutor.archiveDestinationFolder(in: folders) else {
                     return errorResponse(id: id, code: -32005, message: "No Archive folder available on this account.")
                 }
                 targetFolder = archive
@@ -840,8 +891,18 @@ public final class LocalMCPBroker {
     }
 
     private func findHeader(messageID: String, in backend: any MailBackend) async throws -> MessageHeader? {
-        let matches = try await backend.search(SearchQuery(text: "", execution: .cacheOnly))
-        return matches.first { $0.id == messageID }
+        let folders = try await backend.folders()
+        for folder in folders {
+            let matches = try await backend.search(SearchQuery(
+                text: "",
+                folderID: folder.id,
+                execution: .cacheOnly
+            ))
+            if let found = matches.first(where: { $0.id == messageID }) {
+                return found
+            }
+        }
+        return nil
     }
 
     private func recordAudit(
@@ -862,11 +923,27 @@ public final class LocalMCPBroker {
         ))
     }
 
-    /// ADR-0088 privacy guard: redact text matching `SignInCodeDetector` so automated
-    /// agent reads/searches never leak one-time sign-in codes or magic-link tokens.
+    /// ADR-0088 / ADR-0095 fail-closed credential guard: redact text matching `SignInCodeDetector`
+    /// OR conservative OTP / magic-link patterns (including messages with unsubscribe footers,
+    /// multiple candidates, markup, or > 64 KB payloads that the UI extractor intentionally skips).
     static func redactedForSignInCodes(_ text: String) -> String {
-        guard SignInCodeDetector.detect(in: text) != nil else { return text }
-        return "[Redacted: sign-in code or verification link hidden per ADR-0088]"
+        guard !text.isEmpty else { return text }
+        if SignInCodeDetector.detect(in: text) != nil || containsPotentialSignInCredential(text) {
+            return "[Redacted: sign-in code or verification link hidden per ADR-0088]"
+        }
+        return text
+    }
+
+    private static let fallbackCredentialPatterns: [String] = [
+        #"(?i)\b(?:verification|verify|sign[- ]?in|log[- ]?in|one[- ]?time|passcode|otp|2fa|two[- ]factor|security|auth(?:entication)?|bekreftelses|engangs|innloggings)\s*(?:code|pin|token|kode)\b.{0,48}\b[A-Z0-9]{4,8}\b"#,
+        #"(?i)\b\d{4,8}\b.{0,32}\b(?:verification|verify|sign[- ]?in|log[- ]?in|one[- ]?time|passcode|otp|bekreftelseskode|engangskode)\b"#,
+        #"(?i)https?://\S*(?:magic[-_]?link|sign[-_]?in|log[-_]?in|verify|verification|auth|token=|code=|otp=|reset[-_]?password)\S*"#
+    ]
+
+    private static func containsPotentialSignInCredential(_ text: String) -> Bool {
+        fallbackCredentialPatterns.contains { pattern in
+            text.range(of: pattern, options: .regularExpression) != nil
+        }
     }
 
     private static func sanitizedPlainText(from body: MessageBody) -> String {
@@ -1124,6 +1201,10 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
         let clientFD = accept(fd, nil, nil)
         guard clientFD >= 0 else { return }
 
+        // Prevent SIGPIPE from terminating Brev if an agent disconnects while awaiting approval.
+        var noSigPipe: Int32 = 1
+        _ = setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+
         // Verify peer UID matches current macOS user (ADR-0095 §1).
         var peerUID: uid_t = 0
         var peerGID: gid_t = 0
@@ -1148,6 +1229,7 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
 
     private static func serveClient(fd: Int32, client: MCPClientContext, broker: LocalMCPBroker) {
         defer { close(fd) }
+        var sessionClient = client
         var buffer = Data()
         var chunk = [UInt8](repeating: 0, count: 4096)
 
@@ -1161,28 +1243,49 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
                 buffer.removeSubrange(0 ... newlineIndex)
                 guard !lineData.isEmpty else { continue }
 
+                if let declaredName = Self.initializedClientName(from: lineData) {
+                    let attributed = declaredName == client.processName
+                        ? declaredName
+                        : "\(declaredName) (via \(client.processName))"
+                    sessionClient = MCPClientContext(processName: attributed, pid: client.pid)
+                }
+
+                let currentClient = sessionClient
                 let semaphore = DispatchSemaphore(value: 0)
                 var responseData: Data?
                 Task { @MainActor in
-                    responseData = await broker.handleJSONRPCData(lineData, client: client)
+                    responseData = await broker.handleJSONRPCData(lineData, client: currentClient)
                     semaphore.signal()
                 }
                 semaphore.wait()
 
                 if var output = responseData {
                     output.append(0x0A)
-                    output.withUnsafeBytes { rawPtr in
-                        guard let base = rawPtr.baseAddress else { return }
+                    let wroteAll = output.withUnsafeBytes { rawPtr -> Bool in
+                        guard let base = rawPtr.baseAddress else { return false }
                         var totalWritten = 0
                         while totalWritten < output.count {
                             let written = write(fd, base.advanced(by: totalWritten), output.count - totalWritten)
-                            if written <= 0 { break }
+                            if written <= 0 { return false }
                             totalWritten += written
                         }
+                        return true
                     }
+                    if !wroteAll { return }
                 }
             }
         }
+    }
+
+    private static func initializedClientName(from lineData: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+              (object["method"] as? String) == "initialize",
+              let params = object["params"] as? [String: Any],
+              let clientInfo = params["clientInfo"] as? [String: Any],
+              let rawName = clientInfo["name"] as? String
+        else { return nil }
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : String(trimmed.prefix(80))
     }
 
     private static func resolveProcessName(pid: pid_t) -> String {

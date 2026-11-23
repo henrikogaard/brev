@@ -13990,6 +13990,66 @@
           }
         }
       }
+    },
+    "Claude / Cursor (JSON)": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude / Cursor (JSON)"
+          }
+        }
+      }
+    },
+    "Client format": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klientformat"
+          }
+        }
+      }
+    },
+    "Codex CLI (TOML)": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex CLI (TOML)"
+          }
+        }
+      }
+    },
+    "Copied snippet": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utdrag kopiert"
+          }
+        }
+      }
+    },
+    "Copy snippet": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopier utdrag"
+          }
+        }
+      }
+    },
+    "Show more (%lld remaining)": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis flere (%lld gjenstår)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

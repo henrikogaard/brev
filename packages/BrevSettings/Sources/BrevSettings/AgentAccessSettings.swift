@@ -337,15 +337,45 @@ public final class AgentAccessAuditLogStore: @unchecked Sendable {
     }
 }
 
+/// Client configuration snippet format shown in Settings → Agent access.
+public enum AgentAccessClientFormat: String, CaseIterable, Identifiable, Sendable {
+    case json
+    case codexTOML
+
+    public var id: String { rawValue }
+
+    /// Short picker label for this client format.
+    public var title: String {
+        switch self {
+        case .json: String(localized: "Claude / Cursor (JSON)", bundle: .module)
+        case .codexTOML: String(localized: "Codex CLI (TOML)", bundle: .module)
+        }
+    }
+}
+
 /// Socket path and stdio client configuration helper for `brev-mcp` (ADR-0095 §1).
 public enum AgentAccessSocketConfiguration {
-    /// User-private Unix domain socket path inside Application Support (zero TCP/UDP ports).
+    /// Shared macOS App Group identifier used by sandboxed Brev builds and `brev-mcp`.
+    public static let appGroupIdentifier = "group.eu.brevmail.brev"
+
+    /// Maximum safe `sockaddr_un.sun_path` UTF-8 byte length on macOS (104 including NUL).
+    private static let maxSocketPathUTF8Bytes = 100
+
+    /// User-private Unix domain socket path reachable by both sandboxed Brev builds and
+    /// the unsandboxed `brev-mcp` stdio helper without exceeding the 104-byte `sun_path` limit.
     public static func defaultSocketURL() -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        return base
-            .appendingPathComponent("Brev", isDirectory: true)
-            .appendingPathComponent("mcp.sock", isDirectory: false)
+        let groupContainer = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+            ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Group Containers", isDirectory: true)
+            .appendingPathComponent(appGroupIdentifier, isDirectory: true)
+        let candidate = groupContainer.appendingPathComponent("mcp.sock", isDirectory: false)
+        if candidate.path.utf8.count <= maxSocketPathUTF8Bytes {
+            return candidate
+        }
+        return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("brev-mcp-\(getuid()).sock", isDirectory: false)
     }
 
     /// Default path to the bundled `brev-mcp` stdio bridge executable.
@@ -353,19 +383,39 @@ public enum AgentAccessSocketConfiguration {
         if let helper = bundle.url(forAuxiliaryExecutable: "brev-mcp")?.path {
             return helper
         }
+        let helpersCandidate = bundle.bundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Helpers", isDirectory: true)
+            .appendingPathComponent("brev-mcp", isDirectory: false)
+        if FileManager.default.isExecutableFile(atPath: helpersCandidate.path) {
+            return helpersCandidate.path
+        }
         return "/Applications/Brev.app/Contents/Helpers/brev-mcp"
     }
 
-    /// Copyable MCP client JSON configuration snippet for Claude Desktop, Claude Code, Codex, or Cursor.
-    public static func clientConfigSnippet(helperPath: String = defaultHelperPath()) -> String {
-        """
-        {
-          "mcpServers": {
-            "brev": {
-              "command": "\(helperPath)"
+    /// Copyable MCP client configuration snippet for Claude Desktop/Code/Cursor (JSON) or Codex CLI (TOML).
+    public static func clientConfigSnippet(
+        for format: AgentAccessClientFormat = .json,
+        helperPath: String = defaultHelperPath()
+    ) -> String {
+        switch format {
+        case .json:
+            return """
+            {
+              "mcpServers": {
+                "brev": {
+                  "command": "\(helperPath)"
+                }
+              }
             }
-          }
+            """
+        case .codexTOML:
+            let escaped = helperPath.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+            return """
+            [mcp_servers.brev]
+            command = "\(escaped)"
+            """
         }
-        """
     }
 }

@@ -55,6 +55,8 @@ struct AgentAccessSection: View {
     @State private var settings: AgentAccessSettings
     @State private var auditEntries: [AgentAccessAuditEntry]
     @State private var selectedFilter: AuditFilter = .all
+    @State private var selectedClientFormat: AgentAccessClientFormat = .json
+    @State private var visibleAuditLimit = 25
     @State private var copiedConfig = false
 
     private let settingsStore: SettingsPersistenceStore
@@ -89,10 +91,13 @@ struct AgentAccessSection: View {
         ) {
             SettingsGroupStack {
                 masterAccessGroup
+                    .id(String(localized: "Local MCP server", bundle: .module))
                 accountScopeGroup
                 exposedToolsGroup
+                    .id(String(localized: "Exposed tools", bundle: .module))
                 clientSnippetGroup
                 auditLogGroup
+                    .id(String(localized: "Audit log", bundle: .module))
             }
             .onReceive(NotificationCenter.default.publisher(for: .brevAgentAccessAuditLogDidChange)) { _ in
                 auditEntries = auditStore.entries()
@@ -206,8 +211,22 @@ struct AgentAccessSection: View {
             ),
             symbolName: "doc.on.clipboard"
         ) {
-            let snippet = AgentAccessSocketConfiguration.clientConfigSnippet(helperPath: helperPath)
+            let snippet = AgentAccessSocketConfiguration.clientConfigSnippet(
+                for: selectedClientFormat,
+                helperPath: helperPath
+            )
             VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                Picker(String(localized: "Client format", bundle: .module), selection: $selectedClientFormat) {
+                    ForEach(AgentAccessClientFormat.allCases) { format in
+                        Text(format.title).tag(format)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .onChange(of: selectedClientFormat) { _, _ in
+                    copiedConfig = false
+                }
+
                 Text(snippet)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(theme.textPrimary.color)
@@ -219,8 +238,8 @@ struct AgentAccessSection: View {
 
                 SettingsButton(
                     copiedConfig
-                        ? String(localized: "Copied JSON snippet", bundle: .module)
-                        : String(localized: "Copy JSON snippet", bundle: .module),
+                        ? String(localized: "Copied snippet", bundle: .module)
+                        : String(localized: "Copy snippet", bundle: .module),
                     style: .secondary
                 ) {
                     copySnippet(snippet)
@@ -247,12 +266,16 @@ struct AgentAccessSection: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
+                    .onChange(of: selectedFilter) { _, _ in
+                        visibleAuditLimit = 25
+                    }
 
                     Spacer(minLength: BrevSpacing.sm)
 
                     SettingsButton(String(localized: "Clear log", bundle: .module), style: .secondary) {
                         auditStore.clear()
                         auditEntries = []
+                        visibleAuditLimit = 25
                     }
                     .disabled(auditEntries.isEmpty)
                 }
@@ -264,8 +287,19 @@ struct AgentAccessSection: View {
                         .foregroundStyle(theme.textSecondary.color)
                 } else {
                     SettingsRowStack(spacing: BrevSpacing.xs) {
-                        ForEach(filtered.prefix(25)) { entry in
+                        ForEach(filtered.prefix(visibleAuditLimit)) { entry in
                             auditEntryRow(entry)
+                        }
+                    }
+                    if filtered.count > visibleAuditLimit {
+                        SettingsButton(
+                            String(
+                                format: String(localized: "Show more (%lld remaining)", bundle: .module),
+                                Int64(filtered.count - visibleAuditLimit)
+                            ),
+                            style: .secondary
+                        ) {
+                            visibleAuditLimit += 50
                         }
                     }
                 }

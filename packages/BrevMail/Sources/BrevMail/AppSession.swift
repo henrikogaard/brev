@@ -116,7 +116,8 @@ public final class AppSession {
     public let signInCodeArrivalController: SignInCodeArrivalController
     private let notificationCenter: NotificationCenter
     /// Session-owned approval coordinator for local MCP change tools (#305, ADR-0095).
-    public let mcpApprovalCoordinator = MCPApprovalCoordinator()
+    /// Starts with `canDisplayUI = false` until a mailbox window attaches a sheet host.
+    public let mcpApprovalCoordinator = MCPApprovalCoordinator(canDisplayUI: false)
     /// Session-owned local MCP broker operating strictly on opted-in accounts (#305, ADR-0095).
     public private(set) var localMCPBroker: LocalMCPBroker?
     #if os(macOS)
@@ -1352,11 +1353,13 @@ public final class AppSession {
     /// sign-in consent, and `backgroundMailEnabled` (#239, ADR-0088, ADR-0075).
     public func mailboxWindowDidOpen() {
         openMailboxWindowCount += 1
+        mcpApprovalCoordinator.canDisplayUI = openMailboxWindowCount > 0
         syncSignInCodeArrivalSubscriptions()
     }
 
     public func mailboxWindowDidClose() {
         openMailboxWindowCount = max(0, openMailboxWindowCount - 1)
+        mcpApprovalCoordinator.canDisplayUI = openMailboxWindowCount > 0
         syncSignInCodeArrivalSubscriptions()
     }
 

@@ -358,9 +358,10 @@ ADR-0095 adds an optional macOS-only local Model Context Protocol (MCP) surface
 for external AI tools running on the same Mac. It adds zero listening TCP or UDP
 network ports and zero new external network endpoints:
 
-- **Transport & access control:** A thin stdio helper (`brev-mcp`) talks to the
-  running Brev app strictly over a user-private Unix domain socket (`0600`) in
-  Application Support (`mcp.sock`) with `getpeereid` same-UID peer verification.
+- **Transport & access control:** A thin stdio helper (`brev-mcp`, embedded at
+  `Contents/Helpers/brev-mcp`) talks to the running Brev app strictly over a
+  user-private Unix domain socket (`0600`) in the shared App Group container
+  (`group.eu.brevmail.brev/mcp.sock`) with `getpeereid` same-UID peer verification.
 - **Consent:** `Settings → Privacy & Security → Agent access` (`AgentAccessSettings`)
   is off by default (both master and per-account switches), device-local only,
   and excluded from `.brevbackup` exports and iCloud preference sync.
