@@ -33,6 +33,7 @@ public final class MailNavigationState {
     public nonisolated static let doneSmartViewFolderID = "__brev_smart_done"
     public nonisolated static let vipSmartViewFolderID = "__brev_smart_vip"
     public nonisolated static let allAttachmentsSmartViewFolderID = "__brev_smart_all_attachments"
+    public nonisolated static let assistantDestinationFolderID = "__brev_assistant"
     private static let savedSearchFolderIDPrefix = "__brev_saved_search_"
 
     public enum Sheet: Hashable, Sendable {
@@ -376,6 +377,16 @@ public final class MailNavigationState {
         browsingFolderID == Self.allAttachmentsSmartViewFolderID
     }
 
+    /// Concrete mailbox source preserved when opening the sidebar Assistant
+    /// destination so `MailboxChatController`'s `.account` scope stays bound to
+    /// a real mailbox (#294).
+    public var assistantSourceID: MailSourceID?
+
+    /// True when the full-pane Assistant sidebar destination is selected (#294).
+    public var isAssistantSelected: Bool {
+        browsingFolderID == Self.assistantDestinationFolderID
+    }
+
     public var selectedSavedSearchID: SmartMailbox.ID? {
         guard let folderID = browsingFolderID,
               folderID.hasPrefix(Self.savedSearchFolderIDPrefix)
@@ -452,6 +463,13 @@ public final class MailNavigationState {
 
     public func selectAllAttachmentsSmartView() {
         selectSmartView(folderID: Self.allAttachmentsSmartViewFolderID)
+    }
+
+    /// Selects the full-pane Assistant destination in the sidebar while
+    /// preserving a concrete mailbox source for account-scoped queries (#294).
+    public func selectAssistantDestination(preserving sourceID: MailSourceID? = nil) {
+        assistantSourceID = sourceID ?? selectedSourceID ?? assistantSourceID
+        selectSmartView(folderID: Self.assistantDestinationFolderID)
     }
 
     public func selectSavedSearch(id: SmartMailbox.ID) {

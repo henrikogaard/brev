@@ -36,6 +36,7 @@ final class MailboxChatController: ObservableObject {
     private var actionFolders: [Folder]
     private var focusedFolder: Folder?
     private var actionSourceScope: MailboxActionAgentSourceScope
+    private var supportsAllMailArchive: Bool
     private var actionProviderLabel: String
     private var executeAction: ActionExecute?
     private let maxMessages: Int
@@ -49,6 +50,7 @@ final class MailboxChatController: ObservableObject {
         actionFolders: [Folder] = [],
         focusedFolder: Folder? = nil,
         actionSourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false,
         actionProviderLabel: String = MailboxChatController.localActionProviderLabel,
         executeAction: ActionExecute? = nil,
         maxMessages: Int = 12,
@@ -62,6 +64,7 @@ final class MailboxChatController: ObservableObject {
         self.actionFolders = actionFolders
         self.focusedFolder = focusedFolder
         self.actionSourceScope = actionSourceScope
+        self.supportsAllMailArchive = supportsAllMailArchive
         self.actionProviderLabel = actionProviderLabel
         self.executeAction = executeAction
         self.maxMessages = maxMessages
@@ -77,6 +80,7 @@ final class MailboxChatController: ObservableObject {
         actionFolders: [Folder] = [],
         focusedFolder: Folder? = nil,
         actionSourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false,
         actionProviderLabel: String = MailboxChatController.localActionProviderLabel,
         executeAction: ActionExecute? = nil,
         search: @escaping Search
@@ -87,6 +91,7 @@ final class MailboxChatController: ObservableObject {
         self.actionFolders = actionFolders
         self.focusedFolder = focusedFolder
         self.actionSourceScope = actionSourceScope
+        self.supportsAllMailArchive = supportsAllMailArchive
         self.actionProviderLabel = actionProviderLabel
         self.executeAction = executeAction
         self.search = search
@@ -265,6 +270,34 @@ final class MailboxChatController: ObservableObject {
         isSending = false
     }
 
+    /// Stages a deterministic reviewed archive plan targeting strictly the exact
+    /// displayed Assistant `cards` through the standard ADR-0026/ADR-0047 typed
+    /// confirmation flow (#294).
+    func stageArchiveCards(_ cards: [AssistantConversationCard]) {
+        guard executeAction != nil else {
+            turns.append(.clarification(
+                text: "Mailbox actions aren't available for this mailbox yet.",
+                providerLabel: MailboxChatProviderLabelPolicy.localClarification()
+            ))
+            return
+        }
+        let result = MailboxActionAgentPlanner().planArchive(
+            cards: cards,
+            folders: actionFolders,
+            sourceScope: actionSourceScope,
+            supportsAllMailArchive: supportsAllMailArchive
+        )
+        switch result {
+        case .planned(let plan):
+            turns.append(.actionReview(plan, providerLabel: actionProviderLabel))
+        case .clarificationRequired(let clarification):
+            turns.append(.clarification(
+                text: MailboxActionAgentClarificationPresentation.message(for: clarification),
+                providerLabel: MailboxChatProviderLabelPolicy.actionPlanner()
+            ))
+        }
+    }
+
     private func sendAction(message: String) async {
         guard isScopeReadyForActions else {
             turns.append(.clarification(
@@ -289,6 +322,7 @@ final class MailboxChatController: ObservableObject {
         let actionFolders = actionFolders
         let focusedFolder = focusedFolder
         let actionSourceScope = actionSourceScope
+        let supportsAllMailArchive = supportsAllMailArchive
         let actionProviderLabel = actionProviderLabel
 
         let task = Task<MailboxChatTurnKind?, Never> {
@@ -299,6 +333,7 @@ final class MailboxChatController: ObservableObject {
                     focusedFolder: focusedFolder,
                     sourceID: sourceID,
                     sourceScope: actionSourceScope,
+                    supportsAllMailArchive: supportsAllMailArchive,
                     search: search
                 )
                 switch result {
@@ -429,7 +464,13 @@ private struct MailboxChatAnswerContext {
                 folderID: $0.folderID,
                 sourceID: sourceID,
                 subject: $0.subject,
-                date: $0.date
+                date: $0.date,
+                senderName: $0.from.name,
+                senderEmail: $0.from.email,
+                snippet: $0.snippet,
+                isRead: $0.isRead,
+                isFlagged: $0.isFlagged,
+                isAnswered: $0.isAnswered
             )
         }
 

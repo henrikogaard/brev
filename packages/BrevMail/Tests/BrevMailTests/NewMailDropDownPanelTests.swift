@@ -115,8 +115,8 @@ struct NewMailDropDownPanelTests {
     }
 
     @Test("panel state auto-dismisses after timeout and cancels on manual dismiss")
-    func autoDismissesAfterTimeout() async throws {
-        let controller = NewMailPanelStateController(autoDismissDelay: .milliseconds(40))
+    func autoDismissesAfterTimeout() async {
+        let controller = NewMailPanelStateController(autoDismissDelay: .milliseconds(20))
         let payload = NewMailPanelPayload(
             route: Self.makeRoute(),
             senderName: "Maya Okafor",
@@ -128,10 +128,7 @@ struct NewMailDropDownPanelTests {
         controller.present(payload)
         #expect(controller.activePayload == payload)
 
-        let deadline = Date().addingTimeInterval(2.0)
-        while controller.activePayload != nil, Date() < deadline {
-            try await Task.sleep(for: .milliseconds(25))
-        }
+        await controller.awaitAutoDismissForTesting()
         #expect(controller.activePayload == nil)
     }
 

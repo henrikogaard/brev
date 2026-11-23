@@ -959,7 +959,7 @@ struct MailboxChatPanel: View {
     }
 }
 
-private struct MailboxChatAIConsentAlert: ViewModifier {
+struct MailboxChatAIConsentAlert: ViewModifier {
     @Binding var showAIConsent: Bool
     @Binding var aiEnabled: Bool
     @Binding var aiConsentGiven: Bool

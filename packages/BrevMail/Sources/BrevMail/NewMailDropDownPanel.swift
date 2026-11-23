@@ -203,6 +203,13 @@ public final class NewMailPanelStateController {
             dismiss()
         }
     }
+
+    /// Waits for any in-flight auto-dismiss task to finish so tests do not
+    /// race wall-clock deadlines under heavy parallel CI load.
+    func awaitAutoDismissForTesting() async {
+        let task = dismissTask
+        await task?.value
+    }
 }
 
 /// Compact drop-down card shown near the macOS menu bar / notch for incoming mail (#307).

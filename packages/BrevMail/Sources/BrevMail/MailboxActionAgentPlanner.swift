@@ -929,6 +929,7 @@ struct MailboxActionAgentRequestResolver: Sendable {
         focusedFolder: Folder?,
         sourceID: MailSourceID?,
         sourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false,
         search: Search
     ) async throws -> MailboxActionAgentPlanningResult {
         let preliminary = planner.plan(
@@ -936,7 +937,8 @@ struct MailboxActionAgentRequestResolver: Sendable {
             headers: [],
             folders: folders,
             focusedFolder: focusedFolder,
-            sourceScope: sourceScope
+            sourceScope: sourceScope,
+            supportsAllMailArchive: supportsAllMailArchive
         )
         guard case .planned(let preliminaryPlan) = preliminary else {
             return preliminary
@@ -948,7 +950,8 @@ struct MailboxActionAgentRequestResolver: Sendable {
             headers: headers,
             folders: folders,
             focusedFolder: focusedFolder,
-            sourceScope: sourceScope
+            sourceScope: sourceScope,
+            supportsAllMailArchive: supportsAllMailArchive
         )
     }
 }
@@ -970,7 +973,8 @@ struct MailboxActionAgentPlanner: Sendable {
         headers: [MessageHeader],
         folders: [Folder],
         focusedFolder: Folder?,
-        sourceScope: MailboxActionAgentSourceScope = .currentMailbox
+        sourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false
     ) -> MailboxActionAgentPlanningResult {
         guard let action = Self.action(in: request) else {
             return .clarificationRequired(.unsupportedRequest)
@@ -1007,7 +1011,7 @@ struct MailboxActionAgentPlanner: Sendable {
                 return .clarificationRequired(clarification)
             }
         case .archive:
-            switch Self.archiveTarget(in: folders) {
+            switch Self.archiveTarget(in: folders, supportsAllMailArchive: supportsAllMailArchive) {
             case .resolved(let folder):
                 operation = .archive(to: folder)
             case .needsClarification(let clarification):
@@ -1196,12 +1200,116 @@ struct MailboxActionAgentPlanner: Sendable {
     }
 
     private static func archiveTarget(
-        in folders: [Folder]
+        in folders: [Folder],
+        supportsAllMailArchive: Bool
     ) -> ArchiveTargetResolution {
-        guard let archive = folders.first(where: { $0.role == .archive }) else {
-            return .needsClarification(.unknownFolder("Archive"))
+        if let archive = folders.first(where: { $0.role == .archive }) {
+            return .resolved(archive)
         }
-        return .resolved(archive)
+        // Label-based providers (e.g. Gmail API via `.labels`) and Gmail IMAP
+        // `[Gmail]/All Mail` use All Mail as the provider-validated archive
+        // destination. Reject ordinary IMAP folders merely named "All".
+        if supportsAllMailArchive,
+           let allMail = folders.first(where: { $0.role == .allMail }) {
+            return .resolved(allMail)
+        }
+        if let gmailIMAPAllMail = folders.first(where: { folder in
+            guard folder.role == .allMail else { return false }
+            let lower = folder.id.lowercased()
+            return lower.hasPrefix("[gmail]/") || lower.hasPrefix("[google mail]/")
+        }) {
+            return .resolved(gmailIMAPAllMail)
+        }
+        return .needsClarification(.unknownFolder("Archive"))
+    }
+
+    /// Builds a deterministic reviewed archive plan targeting strictly the exact
+    /// displayed Assistant cards without broadening to other messages from those
+    /// senders (#294, ADR-0026, ADR-0047).
+    func planArchive(
+        cards: [AssistantConversationCard],
+        folders: [Folder],
+        sourceScope: MailboxActionAgentSourceScope = .currentMailbox,
+        supportsAllMailArchive: Bool = false
+    ) -> MailboxActionAgentPlanningResult {
+        let archiveFolder: Folder
+        switch Self.archiveTarget(in: folders, supportsAllMailArchive: supportsAllMailArchive) {
+        case .resolved(let folder):
+            archiveFolder = folder
+        case .needsClarification(let clarification):
+            return .clarificationRequired(clarification)
+        }
+        let eligible = cards.filter { $0.folderID != archiveFolder.id }
+        guard !eligible.isEmpty else {
+            return .clarificationRequired(.unsupportedRequest)
+        }
+        // Preserve every distinct sender and count in order so multi-sender
+        // batches are explicitly surfaced in the ADR-0026 confirmation prompt.
+        var senderOrder: [String] = []
+        var senderCounts: [String: Int] = [:]
+        for card in eligible {
+            let email = Self.normalizedEmail(card.senderEmail)
+            if senderCounts[email] == nil {
+                senderOrder.append(email)
+            }
+            senderCounts[email, default: 0] += 1
+        }
+        let senderSummary: String
+        if senderOrder.count == 1 {
+            senderSummary = senderOrder[0]
+        } else {
+            senderSummary = senderOrder
+                .map { "\($0) (\(senderCounts[$0] ?? 1))" }
+                .joined(separator: ", ")
+        }
+        let headers = eligible.map { card in
+            MessageHeader(
+                id: card.messageID,
+                threadID: card.messageID,
+                folderID: card.folderID,
+                from: Correspondent(name: card.senderName, email: card.senderEmail),
+                subject: card.subject,
+                snippet: card.snippet,
+                date: card.date,
+                isRead: card.citation.isRead,
+                isFlagged: card.citation.isFlagged,
+                isAnswered: card.citation.isAnswered
+            )
+        }
+        let messageIDs = headers.map(\.id)
+        let matchedMessageStates = headers.map(MailboxActionAgentMatchedMessageState.init(header:))
+        let matchedFolderNames = Self.matchedFolderNames(for: headers, folders: folders)
+        let sampleMessages = headers
+            .prefix(Self.maxSampleMessageCount)
+            .map(MailboxActionAgentMessageSample.init(header:))
+        let id = idGenerator()
+        let operation: MailboxActionAgentOperation = .archive(to: archiveFolder)
+        let challenge = Self.confirmationChallenge(
+            id: id,
+            senderEmail: senderSummary,
+            operation: operation,
+            count: messageIDs.count
+        )
+        return .planned(
+            MailboxActionAgentPlan(
+                id: id,
+                request: String(localized: "Archive all \(messageIDs.count)", bundle: .module),
+                senderEmail: senderSummary,
+                operation: operation,
+                searchQuery: SearchQuery(execution: .cacheOnly),
+                matchingMessageIDs: messageIDs,
+                matchedMessageStates: matchedMessageStates,
+                matchedFolderNames: matchedFolderNames,
+                sampleMessages: sampleMessages,
+                sourceScope: sourceScope,
+                refinements: MailboxActionAgentRefinements(
+                    folder: nil,
+                    olderThanDays: nil,
+                    olderThanCutoffDate: nil
+                ),
+                confirmationChallenge: challenge
+            )
+        )
     }
 
     private static func refinements(
@@ -1396,5 +1504,75 @@ struct MailboxActionAgentPlanner: Sendable {
             prompt: prompt,
             requiredPhrase: "\(operation.confirmationVerb) \(count)"
         )
+    }
+}
+
+/// Executes a confirmed archive action plan in source-folder groups using
+/// `moveWithUndo` and registers one combined `UndoQueue` entry (#294, ADR-0026).
+enum MailboxActionArchiveExecutor {
+    @MainActor
+    static func archive(
+        plan: MailboxActionAgentPlan,
+        to archiveFolder: Folder,
+        sourceID: MailSourceID,
+        folders: [Folder],
+        backend: any MailBackend,
+        undoQueue: UndoQueue
+    ) async throws {
+        let grouped: [(Folder.ID, [MessageHeader.ID])]
+        if !plan.matchedMessageStates.isEmpty {
+            let byFolder = Dictionary(grouping: plan.matchedMessageStates, by: \.folderID)
+            grouped = byFolder
+                .keys
+                .filter { $0 != archiveFolder.id }
+                .sorted()
+                .map { folderID in
+                    (folderID, byFolder[folderID, default: []].map(\.id))
+                }
+        } else {
+            let fallbackFolderID = folders.first(where: { $0.role == .inbox })?.id ?? "INBOX"
+            grouped = fallbackFolderID == archiveFolder.id ? [] : [(fallbackFolderID, plan.matchingMessageIDs)]
+        }
+
+        guard !grouped.isEmpty else { return }
+
+        var receipts: [MailMoveUndo?] = []
+        let lease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(lease) }
+
+        do {
+            for (folderID, messageIDs) in grouped where !messageIDs.isEmpty {
+                let sourceFolder = folders.first { $0.id == folderID }
+                    ?? Folder(id: folderID, name: folderID, role: .custom)
+                let receipt = try await backend.moveWithUndo(
+                    messageIDs: messageIDs,
+                    from: sourceFolder,
+                    to: archiveFolder,
+                    sourceID: sourceID
+                )
+                receipts.append(receipt)
+            }
+        } catch {
+            // Preserve reversible Undo for any earlier source folders that
+            // already committed before the later folder failed.
+            if !receipts.isEmpty {
+                undoQueue.registerMoves(
+                    receipts,
+                    description: String(localized: "Archived", bundle: .module),
+                    lease: lease
+                )
+            }
+            throw error
+        }
+
+        // Pass original optional receipts so `MailMoveUndoRegistration`
+        // suppresses partial Undo whenever any completed move lacks a receipt.
+        if !receipts.isEmpty {
+            undoQueue.registerMoves(
+                receipts,
+                description: String(localized: "Archived", bundle: .module),
+                lease: lease
+            )
+        }
     }
 }

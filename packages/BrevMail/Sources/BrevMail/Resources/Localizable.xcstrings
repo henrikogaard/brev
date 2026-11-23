@@ -1,6 +1,182 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Archive updates": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arkiver oppdateringer"
+          }
+        }
+      }
+    },
+    "Enable AI Assistant": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktiver AI-assistent"
+          }
+        }
+      }
+    },
+    "Questions send matching local message summaries to your configured AI provider.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørsmål sender treffende lokale meldingssammendrag til din konfigurerte AI-leverandør."
+          }
+        }
+      }
+    },
+    "%lld need you": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld trenger deg"
+          }
+        }
+      }
+    },
+    "%lld worth a look": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld verdt en titt"
+          }
+        }
+      }
+    },
+    "Archive all %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arkiver alle %lld"
+          }
+        }
+      }
+    },
+    "Ask about your cached mail. Answers link to real conversations and never run until you press Send.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør om lagret e-post. Svar lenker til ekte samtaler og kjører ikke før du trykker Send."
+          }
+        }
+      }
+    },
+    "Ask anything about your mail…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør om hva som helst i e-posten din…"
+          }
+        }
+      }
+    },
+    "Needs you": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trenger deg"
+          }
+        }
+      }
+    },
+    "Searching local mail…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søker i lokal e-post…"
+          }
+        }
+      }
+    },
+    "Updates & newsletters": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdateringer og nyhetsbrev"
+          }
+        }
+      }
+    },
+    "Urgent": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Haster"
+          }
+        }
+      }
+    },
+    "What needs me today?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hva trenger meg i dag?"
+          }
+        }
+      }
+    },
+    "Who hasn't replied?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvem har ikke svart?"
+          }
+        }
+      }
+    },
+    "Who hasn't replied to me?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvem har ikke svart meg?"
+          }
+        }
+      }
+    },
+    "Worth a look": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verdt en titt"
+          }
+        }
+      }
+    },
     "New mail": {
       "extractionState": "manual",
       "localizations": {

@@ -33,6 +33,38 @@ struct MailboxChatCitation: Equatable, Identifiable, Sendable {
     var sourceID: MailSourceID?
     var subject: String
     var date: Date
+    var senderName: String?
+    var senderEmail: String?
+    var snippet: String?
+    var isRead: Bool
+    var isFlagged: Bool
+    var isAnswered: Bool
+
+    init(
+        id: String,
+        folderID: String,
+        sourceID: MailSourceID?,
+        subject: String,
+        date: Date,
+        senderName: String? = nil,
+        senderEmail: String? = nil,
+        snippet: String? = nil,
+        isRead: Bool = false,
+        isFlagged: Bool = false,
+        isAnswered: Bool = false
+    ) {
+        self.id = id
+        self.folderID = folderID
+        self.sourceID = sourceID
+        self.subject = subject
+        self.date = date
+        self.senderName = senderName
+        self.senderEmail = senderEmail
+        self.snippet = snippet
+        self.isRead = isRead
+        self.isFlagged = isFlagged
+        self.isAnswered = isAnswered
+    }
 
     var recentItem: SenderContextRecentItem {
         SenderContextRecentItem(
