@@ -28,23 +28,35 @@ public struct OutboxView: View {
     @State private var scheduled: [PendingScheduledSend] = []
     @State private var changingSchedule: PendingScheduledSend?
     @State private var reviewAction: ScheduleReviewAction?
+    @State private var contextTransition = ScheduledOutboxContextTransition()
+    @State private var loadedContext: ScheduledOutboxContext?
+    @State private var loadedGeneration = -1
 
     private enum ScheduleReviewAction {
         case change(PendingScheduledSend), cancel(PendingScheduledSend)
     }
 
     private let backend: any MailBackend
+    private let sourceID: MailSourceID?
     private let onClose: (() -> Void)?
 
-    public init(backend: any MailBackend, onClose: (() -> Void)? = nil) {
+    /// Creates the account's Outbox, filtering source-owned schedules to the effective mailbox.
+    /// - Parameters:
+    ///   - backend: Backend providing pending mutations and schedules.
+    ///   - sourceID: Selected mailbox owner; nil keeps legacy unowned schedules only.
+    ///   - onClose: Optional dismissal action for the containing sheet.
+    public init(backend: any MailBackend, sourceID: MailSourceID? = nil, onClose: (() -> Void)? = nil) {
         self.backend = backend
+        self.sourceID = sourceID
         self.onClose = onClose
     }
 
     public var body: some View {
         NavigationStack {
             Group {
-                if mutations.isEmpty && scheduled.isEmpty && retryError == nil {
+                if !isLoadedForCurrentContext {
+                    ProgressView()
+                } else if visibleMutations.isEmpty && visibleScheduled.isEmpty && retryError == nil {
                     emptyState
                 } else {
                     mutationList
@@ -62,7 +74,7 @@ public struct OutboxView: View {
                     ToolbarItem(placement: .confirmationAction) {
                         Button { onClose?() } label: { Text("Done", bundle: .module) }
                     }
-                    if !mutations.isEmpty {
+                    if !visibleMutations.isEmpty {
                         ToolbarItem(placement: .bottomBar) {
                             retryButton
                         }
@@ -75,7 +87,7 @@ public struct OutboxView: View {
                     ToolbarItem(placement: .cancellationAction) {
                         Button(String(localized: "Close", bundle: .module)) { onClose?() }
                     }
-                    if !mutations.isEmpty {
+                    if !visibleMutations.isEmpty {
                         ToolbarItem(placement: .primaryAction) {
                             retryButton
                         }
@@ -83,11 +95,16 @@ public struct OutboxView: View {
                     #endif
                 }
         }
-        .task {
-            await loadMutations()
+        .onChange(of: requestedContext) { _, _ in
+            _ = transitionContext(to: requestedContext)
+        }
+        .task(id: requestedContext) {
+            let context = requestedContext
+            let generation = transitionContext(to: context)
+            await loadMutations(context: context, generation: generation)
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
-                await loadMutations()
+                await loadMutations(context: context, generation: generation)
             }
         }
         .sheet(item: $changingSchedule) { entry in
@@ -137,7 +154,7 @@ public struct OutboxView: View {
                 Text(backend.account.emailAddress).brevFont(.caption).foregroundStyle(theme.textSecondary.color)
             }
             .brevSheetRow()
-            if let retryError {
+            if let retryError, isLoadedForCurrentContext {
                 Section {
                     Text(retryError)
                         .brevFont(.footnote)
@@ -145,9 +162,9 @@ public struct OutboxView: View {
                 }
                 .brevSheetRow()
             }
-            if !scheduled.isEmpty {
+            if !visibleScheduled.isEmpty {
                 Section(String(localized: "Scheduled", bundle: .module)) {
-                    ForEach(scheduled) { entry in
+                    ForEach(visibleScheduled) { entry in
                         ScheduledOutboxRow(entry: entry, isBusy: isRetrying,
                                            canEdit: backend.extensionService(ScheduledSendEditing.self) != nil,
                                            onChange: {
@@ -167,7 +184,7 @@ public struct OutboxView: View {
                 }
                 .brevSheetRow()
             }
-            ForEach(mutations) { mutation in
+            ForEach(visibleMutations) { mutation in
                 mutationRow(mutation)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
@@ -178,7 +195,7 @@ public struct OutboxView: View {
                     }
                     .brevSheetRow()
             }
-            if !mutations.isEmpty { Section {
+            if !visibleMutations.isEmpty { Section {
                 Button(role: .destructive) {
                     Task { await discardAll() }
                 } label: {
@@ -195,7 +212,7 @@ public struct OutboxView: View {
         #if os(iOS)
         .listStyle(.insetGrouped)
         #endif
-        .refreshable { await loadMutations() }
+        .refreshable { await loadMutations(context: requestedContext, generation: contextGeneration) }
     }
 
     private func mutationRow(_ mutation: PendingMutation) -> some View {
@@ -230,64 +247,171 @@ public struct OutboxView: View {
                 Text("Retry sync changes", bundle: .module)
             }
         }
-        .disabled(isRetrying)
+        .disabled(isRetrying || !isLoadedForCurrentContext)
     }
 
     private func loadMutations() async {
-        let values = await backend.extensionService(OutboxManaging.self)?.pendingMutations() ?? []
-        guard !Task.isCancelled else { return }
+        await loadMutations(context: requestedContext, generation: contextGeneration)
+    }
+
+    private var requestedContext: ScheduledOutboxContext {
+        ScheduledOutboxContext(backendID: ObjectIdentifier(backend), sourceID: sourceID)
+    }
+
+    private var contextGeneration: Int {
+        contextTransition.generation
+    }
+
+    private func transitionContext(to context: ScheduledOutboxContext) -> Int {
+        var transition = contextTransition
+        guard transition.transition(to: context) else { return transition.generation }
+        contextTransition = transition
+        clearLoadedContext()
+        return transition.generation
+    }
+
+    private var isLoadedForCurrentContext: Bool {
+        ScheduledOutboxSourcePolicy.isLoaded(
+            loaded: loadedContext,
+            requested: requestedContext,
+            loadedGeneration: loadedGeneration,
+            currentGeneration: contextGeneration
+        )
+    }
+
+    private var visibleMutations: [PendingMutation] {
+        isLoadedForCurrentContext ? mutations : []
+    }
+
+    private var visibleScheduled: [PendingScheduledSend] {
+        isLoadedForCurrentContext ? scheduled : []
+    }
+
+    private func isCurrentContext(_ context: ScheduledOutboxContext, generation: Int) -> Bool {
+        ScheduledOutboxSourcePolicy.isCurrent(
+            requested: context,
+            current: requestedContext,
+            generation: generation,
+            currentGeneration: contextGeneration,
+            isCancelled: Task.isCancelled
+        )
+    }
+
+    private func clearLoadedContext() {
+        loadedContext = nil
+        loadedGeneration = -1
+        mutations = []
+        scheduled = []
+        retryError = nil
+        changingSchedule = nil
+        reviewAction = nil
+        isRetrying = false
+    }
+
+    private func loadMutations(context: ScheduledOutboxContext, generation: Int) async {
+        let owner = backend
+        guard isCurrentContext(context, generation: generation) else { return }
+        let values = await owner.extensionService(OutboxManaging.self)?.pendingMutations() ?? []
+        guard isCurrentContext(context, generation: generation) else { return }
+        let scheduledValues = owner.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends() ?? []
+        guard isCurrentContext(context, generation: generation),
+              ObjectIdentifier(owner) == context.backendID else { return }
         mutations = values
-        scheduled = backend.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends() ?? []
+        scheduled = ScheduledOutboxSourcePolicy.visibleEntries(
+            scheduledValues,
+            selectedSourceID: context.sourceID
+        )
+        loadedContext = context
+        loadedGeneration = generation
     }
 
     private func changeSchedule(_ entry: PendingScheduledSend, to date: Date) async {
+        let context = requestedContext
+        let generation = contextGeneration
+        guard isLoadedForCurrentContext,
+              isCurrentContext(context, generation: generation),
+              ScheduledOutboxSourcePolicy.visibleEntries([entry], selectedSourceID: context.sourceID)
+              .contains(where: { $0.id == entry.id }) else { return }
         guard !isRetrying, let editor = backend.extensionService(ScheduledSendEditing.self) else { return }
         isRetrying = true
         retryError = nil
-        defer { isRetrying = false }
+        defer { if generation == contextGeneration { isRetrying = false } }
+        var actionError: String?
         do {
             if entry.state == .needsReview {
                 try await editor.retryReviewedScheduledSend(id: entry.id, for: date)
             } else {
                 try await editor.rescheduleSend(id: entry.id, for: date)
             }
-            if date <= Date() { await editor.deliverDueScheduledSends() }
-        } catch { retryError = error.localizedDescription }
-        await loadMutations()
+            guard isCurrentContext(context, generation: generation) else { return }
+            if date <= Date() {
+                await editor.deliverDueScheduledSends()
+                guard isCurrentContext(context, generation: generation) else { return }
+            }
+        } catch { actionError = error.localizedDescription }
+        guard isCurrentContext(context, generation: generation) else { return }
+        retryError = actionError
+        await loadMutations(context: context, generation: generation)
     }
 
     private func cancelSchedule(_ entry: PendingScheduledSend) async {
+        let context = requestedContext
+        let generation = contextGeneration
+        guard isLoadedForCurrentContext,
+              isCurrentContext(context, generation: generation),
+              ScheduledOutboxSourcePolicy.visibleEntries([entry], selectedSourceID: context.sourceID)
+              .contains(where: { $0.id == entry.id }) else { return }
         guard !isRetrying, let editor = backend.extensionService(ScheduledSendEditing.self) else { return }
         isRetrying = true
         retryError = nil
-        defer { isRetrying = false }
+        defer { if generation == contextGeneration { isRetrying = false } }
+        var actionError: String?
         do {
             _ = try await editor.cancelScheduledSend(id: entry.id)
         } catch {
-            retryError = error.localizedDescription
+            actionError = error.localizedDescription
         }
-        await loadMutations()
+        guard isCurrentContext(context, generation: generation) else { return }
+        retryError = actionError
+        await loadMutations(context: context, generation: generation)
     }
 
     private func retryAll() async {
+        let owner = backend
+        let context = requestedContext
+        let generation = contextGeneration
+        guard isLoadedForCurrentContext, isCurrentContext(context, generation: generation), !isRetrying else { return }
         isRetrying = true
         retryError = nil
-        await backend.replayOfflineMutations()
-        await loadMutations()
-        isRetrying = false
-        if mutations.isEmpty && scheduled.isEmpty { onClose?() }
+        defer { if generation == contextGeneration { isRetrying = false } }
+        await owner.replayOfflineMutations()
+        guard isCurrentContext(context, generation: generation) else { return }
+        await loadMutations(context: context, generation: generation)
+        guard isCurrentContext(context, generation: generation) else { return }
+        if visibleMutations.isEmpty && visibleScheduled.isEmpty { onClose?() }
     }
 
     private func discard(_ mutation: PendingMutation) async {
-        guard let manager = backend.extensionService(OutboxManaging.self) else { return }
+        let owner = backend
+        let context = requestedContext
+        let generation = contextGeneration
+        guard isLoadedForCurrentContext, isCurrentContext(context, generation: generation),
+              let manager = owner.extensionService(OutboxManaging.self) else { return }
         await manager.discardMutation(id: mutation.id)
-        await loadMutations()
+        guard isCurrentContext(context, generation: generation) else { return }
+        await loadMutations(context: context, generation: generation)
     }
 
     private func discardAll() async {
-        guard let manager = backend.extensionService(OutboxManaging.self) else { return }
+        let owner = backend
+        let context = requestedContext
+        let generation = contextGeneration
+        guard isLoadedForCurrentContext, isCurrentContext(context, generation: generation),
+              let manager = owner.extensionService(OutboxManaging.self) else { return }
         await manager.discardAllMutations()
-        mutations = []
-        if scheduled.isEmpty { onClose?() }
+        guard isCurrentContext(context, generation: generation) else { return }
+        await loadMutations(context: context, generation: generation)
+        guard isCurrentContext(context, generation: generation) else { return }
+        if visibleScheduled.isEmpty { onClose?() }
     }
 }

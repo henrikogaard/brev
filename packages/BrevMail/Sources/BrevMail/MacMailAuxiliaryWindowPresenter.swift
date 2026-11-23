@@ -243,17 +243,23 @@ struct MacMailAuxiliaryWindowConfiguration: Equatable {
 
 enum MacComposeToolbarItemIdentifier {
     static let send = NSToolbarItem.Identifier("BrevComposeSend")
+    static let scheduleSend = NSToolbarItem.Identifier("BrevComposeScheduleSend")
     static let format = NSToolbarItem.Identifier("BrevComposeFormat")
     static let attachment = NSToolbarItem.Identifier("BrevComposeAttachment")
     static let more = NSToolbarItem.Identifier("BrevComposeMore")
 
     static let defaultOrder: [NSToolbarItem.Identifier] = [
         send,
+        scheduleSend,
         .flexibleSpace,
         format,
         attachment,
         more
     ]
+
+    static func itemWidth(for identifier: NSToolbarItem.Identifier) -> CGFloat {
+        identifier == scheduleSend ? 78 : 42
+    }
 }
 
 @MainActor
@@ -278,10 +284,14 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
         item.label = action.accessibilityLabel
         item.paletteLabel = action.accessibilityLabel
+        let width = MacComposeToolbarItemIdentifier.itemWidth(for: itemIdentifier)
+        let size = NSSize(width: width, height: 36)
         let content = contentViews[itemIdentifier] ?? AnyView(EmptyView())
-        let hostingView = NSHostingView(rootView: AnyView(content.frame(width: 42, height: 36)))
-        hostingView.frame = NSRect(x: 0, y: 0, width: 42, height: 36)
+        let hostingView = NSHostingView(rootView: AnyView(content.frame(width: width, height: 36)))
+        hostingView.frame = NSRect(origin: .zero, size: size)
         item.view = hostingView
+        item.minSize = size
+        item.maxSize = size
         return item
     }
 
@@ -292,8 +302,9 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
                   let hostingView = item.view as? NSHostingView<AnyView> else {
                 continue
             }
-            hostingView.rootView = AnyView(content.frame(width: 42, height: 36))
-            hostingView.frame = NSRect(x: 0, y: 0, width: 42, height: 36)
+            let width = MacComposeToolbarItemIdentifier.itemWidth(for: item.itemIdentifier)
+            hostingView.rootView = AnyView(content.frame(width: width, height: 36))
+            hostingView.frame = NSRect(x: 0, y: 0, width: width, height: 36)
         }
     }
 
@@ -301,6 +312,8 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
         switch identifier {
         case MacComposeToolbarItemIdentifier.send:
             .send
+        case MacComposeToolbarItemIdentifier.scheduleSend:
+            .scheduleSend
         case MacComposeToolbarItemIdentifier.format:
             .format
         case MacComposeToolbarItemIdentifier.attachment:

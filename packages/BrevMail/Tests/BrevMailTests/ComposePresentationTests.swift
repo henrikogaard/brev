@@ -169,7 +169,7 @@ struct ComposePresentationTests {
     func compactComposeSeparatesPrimaryAndUtilityActions() {
         let layout = ComposePresentation.toolbarActionLayout(for: .compactIOSAccessibility)
 
-        #expect(layout.primaryActions == [.close, .send])
+        #expect(layout.primaryActions == [.close, .scheduleSend, .send])
         #expect(layout.utilityActions == [.attach, .format, .moreActions])
         #expect(layout.overflowActions == [
             .templates,
@@ -199,10 +199,11 @@ struct ComposePresentationTests {
     @Test("regular iPad uses the same primary and utility action split")
     func regularToolbarFitsNarrowIPadScene() {
         let layout = ComposePresentation.toolbarActionLayout(for: .regularIOS)
-        #expect(layout.primaryActions == [.close, .send])
+        #expect(layout.primaryActions == [.close, .scheduleSend, .send])
         #expect(layout.utilityActions == [.attach, .format, .moreActions])
         #expect(layout.overflowActions.contains(.signature))
         #expect(layout.overflowActions.contains(.security))
+        #expect(layout.overflowActions.contains(.scheduleSend))
         #expect(!layout.overflowActions.contains(.attach))
     }
 
@@ -210,7 +211,7 @@ struct ComposePresentationTests {
     func macOSToolbarKeepsOnlyCommonActionsDirect() {
         let layout = ComposePresentation.toolbarActionLayout(for: .macOS)
 
-        #expect(layout.primaryActions == [.attach, .format, .send, .moreActions])
+        #expect(layout.primaryActions == [.attach, .format, .send, .scheduleSend, .moreActions])
         #expect(layout.utilityActions.isEmpty)
         #expect(layout.overflowActions == [
             .templates,

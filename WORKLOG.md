@@ -1,5 +1,121 @@
 # Worklog
 
+## 2026-11-22 — Agent — #297 collision fixture resource identity
+
+- Goal: retain valid attachment lookup metadata when deliberately seeding duplicate IDs across Mock mailboxes.
+- Changes: rename the fixture's attachment resource together with its ID. Mock uploads use the same value for both, journal restoration keys bytes by ID, and downloads look up the resource. Keeping the old resource made the synthetic collision fixture point at nonexistent bytes. Added resource assertions before delivered and restarted download checks; byte-isolation coverage remains intact.
+- Verification: the latest hosted Backend run completed 1,206 tests with the collision scenario as its only failure; its log omits the individual issue detail. The inconsistent fixture was confirmed by tracing upload, journal restoration, and download lookup. Pinned SwiftFormat reports 0/1 files require formatting; Swift parse, diff, and ADR-required checks pass. Native execution remains required because Linux lacks PDFKit.
+- Documentation: no release or privacy change; this only corrects the regression fixture.
+
+## 2026-11-22 — Agent — PR #325 BrevMail test compile correction
+
+- Goal: unblock native BrevMail tests after hosted CI found invalid filesystem API arguments.
+- Changes: pass `URL.path` to `FileManager.contentsOfDirectory(atPath:)` in the isolated-session cleanup regression.
+- Verification: pinned SwiftFormat requires no changes; `swiftc -frontend -parse` passes; diff and ADR-required checks pass. Hosted CI is pending rerun.
+- Handoff: hosted macOS CI must confirm the Mock/account/Outbox suites execute.
+
+## 2026-11-22 — Agent — PR #325 scheduled-draft restoration fixture
+
+- Goal: keep source-owned canonical drafts available while the collision test restores the scheduled-send journal.
+- Cause: the test scheduled both drafts exactly at its injected clock time, then called `connect()`. `Store.resume()` calls `deliverDueScheduledSends()`, which correctly delivers entries with due dates at or before the clock; delivery removes the canonical Draft projection before the restore assertions.
+- Changes: schedule at a future injected-clock time, assert each canonical draft both before and after reconnect, then advance the clock before explicit delivery. Kept the deliberate cross-mailbox attachment-ID collision and both byte-isolation assertions. No production changes.
+- Verification: hosted Backend log 137172444853 recorded this single failure after completing the suite. Local BrevBackend tests could not build on Linux because PDFKit is unavailable; formatter, parse, diff, and ADR results are recorded in the handoff.
+- Handoff: commit and push this fixture correction normally; do not wait for CI.
+
+## 2026-11-22 — Agent — Issue #297 / PR #325 Backend CI repair
+
+- Goal: resolve hosted Backend fixture and assertion failures and ensure missing events fail boundedly instead of hanging.
+- Changes: preserve the folder set on failed unscoped cleanup; create the Archive fixture explicitly; align local draft attachment assertions with UUID allocation while retaining the seeded cross-mailbox collision test; register Store event streams synchronously; emit original-message updates for replies/forwards; replace task-group event waits with bounded stream waits.
+- Diagnosis: the previous Store stream registered continuations asynchronously, so an immediate event could be lost. The reply/forward send path also changed original headers without emitting `.messagesUpdated`. Its timeout task group could still wait for a blocked stream iterator during scope cleanup.
+- Verification: pinned SwiftFormat, Swift parse, ADR-required check, and `git diff --check` pass. The raw Backend log was read in full; job 137160169346 was canceled at the 30-minute limit after the reported fixture/attachment failures and incomplete event tests. Native package tests were not rerun because the known Linux `PDFKit` import failure occurs before test compilation.
+- Handoff: commit and push this repair normally, then record the immediate CI snapshot without waiting for the run to settle.
+
+## 2026-11-22 — Agent — Issue #297 / PR #325 scheduled-draft cleanup
+
+- Goal: ensure discard, Trash moves, and deletion remove durable scheduling intent before succeeding; preserve queued content if persistence fails.
+- Changes: clear schedule IDs on persistent discard; allocate attachment IDs independently of mutable map counts; remove source-owned queued/canceled records before Trash/delete mutations while preserving the live Trash projection; propagate cleanup failures through unscoped APIs.
+- Regressions: persistent discard and scoped/unscoped deletion, storage-failure preservation, canceled-draft attachment removal followed by upload/save/restart, Trash move, permanent deletion, source-isolated duplicate Draft IDs and seeded duplicate attachment IDs, delivery bytes, and no draft resurrection after restart.
+- Verification: the `scripts/lint.sh` SwiftFormat phase passed (`0/1383 files require formatting`); Swift parse, `git diff --check`, and ADR-required check passed. SwiftLint could not run because the Ubuntu GLIBC 2.35 runtime lacks `GLIBC_2.38`, required by the pinned binary. Native tests remain unrun because the known Linux `PDFKit` import failure occurs before test compilation; hosted macOS CI is required for execution evidence.
+- Hosted CI follow-up: the first pushed deletion build failed before tests because the Store helper referenced `account` instead of its `accountID`; the helper now uses the Store-owned account ID and an explicit record-ID closure. The next run found `DemoLoginCoordinator` was nonthrowing while the factory registry login throws; the coordinator now handles connection errors through existing sign-in error state. New hosted checks must confirm compilation and native suite execution.
+- Handoff: continue hosted checks for the corrected head and verify `MockScheduledSendTests`, factory/isolated-session, and Outbox-policy suites from the logs. No UI or snapshot PNG changes.
+
+## 2026-11-22 — Agent — Issue #297 / PR #325 compose snapshot compatibility
+
+- Goal: keep established unsupported-provider Compose snapshots stable after the Later action was added.
+- Changes: disabled scheduled-send capability in the InlineReply and desktop Compose toolbar snapshot fixtures. Corrected the date on the earlier Mock scheduling-corrections heading. Reviewed README, CHANGELOG, PRIVACY, ADR-0043, and current PR #325 worklog claims; no other wording needed correction because the descriptions match the final behavior.
+- Verification: pinned SwiftFormat, Swift parse, header/catalog, ADR, diff, and test-call-label checks. Native tests and snapshots were not run on this Linux host; hosted macOS/iOS execution remains required.
+- Handoff: local commit only on `feature/compose-later-action`; do not push before review. Hosted CI must provide Mock, account, and Outbox test evidence.
+
+## 2026-11-22 — Agent — Issue #297 / PR #325 Mock purge and Draft projection corrections
+
+- Goal: make successful Mock purge terminal for its Store and keep canceled-Draft live and restored projection dates consistent.
+- Changes: reject resume/reload after purge, make repeated purge a no-op, and use the persisted canceled-Draft projection date (or injected clock for ordinary saves) when building the live header. Added fresh-login isolation and saved-canceled-date regressions; added the explicit clock getter return.
+- Verification: targeted SwiftFormat, Swift parse, diff, and ADR checks. Native tests were not rerun; the known Linux `PDFKit` import failure occurs before compilation.
+- Handoff: local commit only on `feature/compose-later-action`; do not push before review.
+
+## 2026-11-22 — Agent — Issue #297 / PR #325 Outbox context ordering
+
+- Goal: prevent duplicate Outbox lifecycle callbacks from invalidating the active load generation.
+- Changes: route `.onChange` and `.task(id:)` through one idempotent context transition; a late callback for the same backend/source preserves the current generation. Keep existing context, cancellation, generation, and selected-source checks. Add production-policy regressions for both callback orderings and stale-context publication.
+- Verification: targeted SwiftFormat, Swift parse, diff, and ADR checks. Native execution was not attempted because it remains unavailable on this Linux host, as specified.
+- Handoff: local commit only on `feature/compose-later-action`; do not push before review.
+
+## 2026-11-22 — Agent — Issue #297 / PR #325 worker ownership consolidation
+
+- Goal: simplify Mock scheduled-send worker ownership while preserving startup, manual delivery, reconnect, retry, and teardown behavior.
+- Changes: moved the cancellable weak worker loop into Store with one generation; removed backend task/request coordination and actor-local active-delivery bookkeeping. Due delivery remains synchronous Store work, and `sendHandler` remains only the public send override. Corrected `MockScheduledSendTests` message-call and Draft initializer argument order; added a backend/Store release regression while the worker sleeps.
+- Verification: targeted SwiftFormat, Swift parse, diff, and ADR checks plus a focused call-order scan. Native package tests were not rerun, per the brief, because the known Linux `PDFKit` import failure occurs before compilation.
+- Handoff: local commit only on `feature/compose-later-action`; do not push before review.
+
+## 2026-11-22 — Agent — Issue #297 / PR #325 journal health correction
+
+- Goal: fail closed when established Mock send-journal data is missing or unreadable, and surface initial corruption through ordinary mailbox loading.
+- Changes: retain established-state knowledge in the journal owner, distinguish genuine no-such-file results from other path errors, and create the established marker only after the journal data is encoded and atomically written. Folder and message loads now reload the journal and use the existing localized storage error. Updated the Later changelog entry; no new app copy or network behavior.
+- Regressions: whole-directory loss retains the last-known-good queue and recovers after journal restoration; corrupt initial storage fails folder/message loads; a failed first write does not poison first use, non-directory parents fail closed, and successful purge resets established-state knowledge.
+- Verification: targeted SwiftFormat, Swift parse, diff, and ADR checks passed. Native tests were not rerun: this Linux host's prior focused run stopped before test execution with missing `PDFKit`, and the task explicitly says not to repeat it.
+- Handoff: local commit only; do not push before review.
+
+## 2026-11-22 — Agent — Issue #297 / PR #325 journal projection follow-up
+
+- Goal: preserve live Mock mailbox edits across journal refreshes and give scheduled/canceled Draft projections durable timestamps.
+- Changes: refresh only added or projection-relevant changed journal records, leaving unchanged Sent and canceled-Draft projections untouched. Persist the projection date, update it when the canonical Draft changes, and preserve a planned Later date through save/autosave without enqueueing. Canceled retained Drafts can be replanned and explicitly queued; the attachment staging test checks full bytes.
+- Regressions: delivered Sent move/delete/flag survives an unrelated schedule/reload; queued/canceled Draft dates remain stable across restart; a pre-existing second Mock refreshes changed canceled/delivered records with attachment bytes; saving an attachment Draft preserves its Later date until explicit send.
+- Verification: SwiftFormat reported `0/3 files require formatting`; `swiftc -frontend -parse` parsed the two source files and focused test file; `git diff --check` and `scripts/check-adr-required.sh` exited 0. `swift test --package-path packages/BrevBackend --filter MockScheduledSendTests` stopped before test compilation: `AttachmentTextExtractor.swift:14:8: error: no such module 'PDFKit'`.
+- Limits/handoff: Linux cannot run or typecheck the native BrevBackend tests; CI/native checks remain unverified. Local commit only; do not push before review.
+
+## 2026-11-22 — Agent — Issue #297 / PR #325 Mock scheduling corrections
+
+- Goal: apply the review correction pass to PR #325 on `feature/compose-later-action`; keep PR #324 untouched and do not push.
+- Changes: restored `sendHandler` as a top-level send override and kept due delivery/worker transactions in Store. Hardened the versioned journal with established-file detection, read-back verification, semantic validation, frozen sender/reply context and last-known-good state on storage errors. Added transaction-owned delivery identity, stale-lifetime guards, per-factory Mock cleanup, exact Outbox context ownership, isolated lifecycle/re-login regressions and canceled-Draft autosave wording. Added malformed-record and transient-draft/attachment cleanup coverage. Compose snapshots remain capability-disabled; no PNGs or localization catalogs changed.
+- Verification: `swiftc -frontend -parse` parsed 13 changed Swift files. `scripts/lint.sh` reported `0/1383 files require formatting, 191 files skipped`; SwiftLint could not start because its pinned binary requires unavailable GLIBC 2.38. The focused BrevBackend test stopped before test execution at `AttachmentTextExtractor.swift:14:8: error: no such module 'PDFKit'`. The BrevMail test stopped before test execution at `BrevPluginRegistry.swift:14:8: error: no such module 'SwiftUI'`. All 22 String Catalog JSON files parsed; no catalog changes or new `nb` entries were needed. Header comparison found no changes in the 13 existing Swift headers. `scripts/check-adr-required.sh`, `git diff --check` and `git diff --cached --check` passed before commit.
+- Limits: native tests/typechecking, Xcode builds, CI and visual QA remain unverified on this Linux host. The repository blueprint targets macOS, so the Xcode workspace preparation command was not run. No enabled-state compose snapshot was recorded; if needed, record it on macOS 26.
+- Handoff: local commit only, awaiting review; no push, PR/issue/board edits, CI, network actions or PNG changes.
+
+## 2026-11-21 — Agent — #297 scheduled send compose action
+
+- Goal: expose scheduled send beside Send in the full macOS and iOS composers.
+- Changes: added a localized Later button that opens the existing schedule
+  sheet, gates presentation on ScheduledSendManaging and existing work
+  blockers, and preserves the selected/edit-schedule indication. The macOS
+  toolbar reserves a wider item for its label; the iOS toolbar keeps 44 pt
+  controls and places the title between the action groups. The inline-reply
+  Later action is unchanged.
+- Review follow-up: qualified toolbar-width assertion arguments with the
+  MacComposeToolbarItemIdentifier namespace.
+- Red/green: the actual pure presentation source and focused Swift Testing file
+  first failed to compile because canPresentScheduleSend was missing; after
+  implementation, both policy tests passed in an external Linux SPM harness.
+  The harness used only a Linux compatibility shim for CoreGraphics/localized
+  bundle APIs; production source and test code were copied unchanged.
+- Local checks: pinned SwiftFormat lint reported 0/1 files requiring formatting;
+  scripts/check-adr-required.sh exited 0; git diff --check and
+  git diff --cached --check had no diagnostics.
+- Skipped: native BrevMail tests and macOS/iOS builds, in-app visual QA, and
+  snapshot recording require macOS 26. Scheduled-send restart and account-cleanup
+  QA remain unverified; this slice makes no persistence or backend changes.
+- Handoff: no PR or CI was started. Project board #9 could not be opened from
+  this environment; intended status is In review after local verification.
+
 ## 2026-11-22 — Sidekick — #324 date-section compile correction
 
 - Goal: fix the second native test-target compile failure in the collapsed-row wake regression and audit the added presentation/cache test APIs.
@@ -7825,3 +7941,17 @@ buttons, and package-aware localization.
 - Goal: rebase `feature/snooze-wake-order` onto `origin/main` (`a1a8be0f`), record macOS 26+ snapshots for collapsed conversation wake ordering, register the suite in `.github/workflows/build.yml`, and verify locally on macOS.
 - Changes: rebased onto `origin/main` (keeping `filteredUngroupedHeaders: workflowHeaders` and `projectedNavigationHeaders` in `MessageListView.swift`); added `SnoozeWakeOrderSnapshotTests.swift` + light/dark PNG baselines; registered `SnoozeWakeOrderSnapshotTests` in `.github/workflows/build.yml`.
 - Verification: `swift test --package-path packages/BrevMail --filter 'SnoozeWakeOrderSnapshotTests|MessageListSortPolicyTests|MessageListDateSectionGroupingTests|Snooze'` (54 tests in 11 suites passed), visually inspected PNGs, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`.
+
+## 2026-11-22 — Agent — Issue #297 / PR #325 Mock scheduled sends
+
+- Goal: implement the authoritative Mock scheduling brief on `feature/compose-later-action`; leave the accumulated PR #324 branch untouched and do not push.
+- Changes: Mock now exposes scheduled-send editing/management with source-owned opaque schedule IDs and an exact versioned file journal for submitted drafts, attachments and delivered Sent records. Journal writes are same-process serialized, atomic and account/source validated; schedule edits and delivery re-read durable state to avoid reviving a canceled queue from another Mock instance. Added clock/worker controls, startup replay, serialized worker-generation ownership, bounded waiting during in-flight delivery, retry-safe cleanup, source-filtered Outbox/badge visibility, lazy demo factories and isolated Mock cleanup. Added backend tests for due-boundary, immediate/scheduled Sent persistence, canonical draft restoration, colliding source IDs, cleanup and overlapping reconnects; added Outbox-policy, factory and failed-cleanup regressions. Updated README, CHANGELOG, PRIVACY and ADR-0043; no network calls, String Catalog edits or PNG changes.
+- Verification: pinned SwiftFormat on all 14 changed Swift files reports `0/14 files require formatting`; `swiftc -frontend -parse` passes for those 14 files. Full `scripts/lint.sh` formatted `0/1383 files` (191 skipped) but could not start SwiftLint: the pinned Linux binary requires `GLIBC_2.38`, absent on this host. Header check reports `Header mismatches: []`; no String Catalogs changed, so no localization or `nb` entries were needed. ADR-required and final staged/unstaged diff checks passed.
+- Limits: `swift test --package-path packages/BrevBackend --filter MockScheduledSendTests` stops before test execution because Linux lacks PDFKit (`AttachmentTextExtractor.swift:14:8: error: no such module 'PDFKit'`); SwiftPM also warns that it has no rule to process the `.xcstrings` resource for `x86_64`. BrevMail native tests, Xcode builds, CI and visual QA were not run. The repo blueprint targets macOS; this workspace is Linux/Swift 6.4.3, so the Xcode workspace maintenance command was not run.
+- Handoff: local commit only, awaiting lead review of the full diff. No push, PR/issue/board edits, CI, real accounts or network actions.
+
+## 2026-11-23 — Agent — PR #325 / Issue #297 (rebase + macOS snapshots)
+
+- Goal: rebase `feature/compose-later-action` onto `origin/main` (`a1a8be0f`), record macOS 26+ snapshots for the Compose "Later" action beside Send, register the suite in `.github/workflows/build.yml`, and verify locally on macOS.
+- Changes: rebased onto `origin/main`; extracted `ComposeLaterButtonView.swift` from `ComposeView.swift`; added `ComposeLaterSnapshotTests.swift` + light/dark PNG baselines covering enabled, scheduled, and disabled states; registered `ComposeLaterSnapshotTests` in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevBackend --filter MockScheduledSendTests` (35/35 passed), `swift test --package-path packages/BrevMail --filter 'ComposeLaterSnapshotTests|ComposeLaterActionPresentationTests|ScheduledOutboxSourcePolicyTests|ComposeViewMacOSSnapshotTests'` (9 tests in 4 suites passed), visually inspected both PNGs, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`.

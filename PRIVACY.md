@@ -898,6 +898,13 @@ provider's own synchronization settings apply.
   Drafts and staged attachment bytes are stored separately from
   evictable cache content; submitted Send Later messages can also keep
   frozen MIME content and delivery state until resolved or removed.
+  Demo and isolated Mock scheduled sends are kept in a private,
+  account-scoped JSON journal under the app's Application Support/container
+  directory; message content is copied there only after an explicit send or
+  send-later submission. Autosaving a retained canceled Draft updates its
+  persisted content but does not enqueue it again. This fixture content is not
+  placed in UserDefaults or iCloud metadata, is not sent over a network, and is
+  purged when the Mock account is removed.
   Local Maildir folders are persistent user data, not a disposable cache.
   Reopening a locally saved draft can read its account-owned staged attachment
   bytes into the composer; it does not download or re-stage missing provider

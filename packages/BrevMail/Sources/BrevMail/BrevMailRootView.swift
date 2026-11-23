@@ -952,6 +952,10 @@ public struct BrevMailRootView: View {
             .onChange(of: navigation.selectedSourceID) {
                 handleSelectedSourceChange()
                 onSettingsMailboxContextChange?(settingsMailboxContext)
+                Task { await refreshOutboxCount() }
+            }
+            .onChange(of: activeMailboxID) {
+                Task { await refreshOutboxCount() }
             }
             .onChange(of: monitor.isOnline) { wasOnline, isOnline in
                 handleNetworkStatusChange(wasOnline: wasOnline, isOnline: isOnline)
@@ -5225,6 +5229,8 @@ public struct BrevMailRootView: View {
             let activeBackend = selectedBackend
             OutboxView(
                 backend: activeBackend,
+                sourceID: navigation.selectedSourceID
+                    ?? activeMailboxID.map { MailSourceID(accountID: activeBackend.account.id, mailboxID: $0) },
                 onClose: onClose
             )
             .brevSheetAppearance(theme)
@@ -7799,9 +7805,23 @@ public struct BrevMailRootView: View {
 
     private func refreshOutboxCount() async {
         let owner = selectedBackend
+        let selectedSource = navigation.selectedSourceID
+        let activeMailbox = activeMailboxID
+        let sourceCandidate = selectedSource
+            ?? activeMailbox.map { MailSourceID(accountID: owner.account.id, mailboxID: $0) }
+        let sourceID = sourceCandidate.flatMap { $0.accountID == owner.account.id ? $0 : nil }
         let mutations = await owner.extensionService(OutboxManaging.self)?.pendingMutations() ?? []
-        let scheduled = owner.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends() ?? []
-        guard !Task.isCancelled, ObjectIdentifier(owner) == ObjectIdentifier(selectedBackend) else { return }
+        let scheduled = ScheduledOutboxSourcePolicy.visibleEntries(
+            owner.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends() ?? [],
+            selectedSourceID: sourceID
+        )
+        guard !Task.isCancelled,
+              ObjectIdentifier(owner) == ObjectIdentifier(selectedBackend),
+              selectedSource == navigation.selectedSourceID,
+              activeMailbox == activeMailboxID,
+              sourceCandidate == (navigation.selectedSourceID
+                  ?? activeMailboxID.map { MailSourceID(accountID: selectedBackend.account.id, mailboxID: $0) }),
+              sourceID?.accountID == nil || sourceID?.accountID == owner.account.id else { return }
         outboxPendingCount = mutations.count + scheduled.count
     }
 

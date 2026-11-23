@@ -12,9 +12,7 @@
 
 import Foundation
 
-/// An in-memory `MailBackend` used by SwiftUI previews, snapshot
-/// tests, and design-system development. Never instantiated in the
-/// shipping app.
+/// A fixture `MailBackend` used by SwiftUI previews, tests, and the app's debug demo and isolated modes.
 ///
 /// State is held in an internal actor so concurrent calls from multiple
 /// tasks behave sanely. Canned data is seeded at construction; mutating
@@ -23,7 +21,7 @@ import Foundation
 public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManaging, ContactLookupProviding, MailImporting,
     SyncHealthReporting, SyncHealthRepairing, SyncConflictManaging,
     CachedConversationProviding, RelatedConversationLoading, LocalDraftAttachmentProviding, CachedListUnsubscribeProviding,
-    @unchecked Sendable {
+    ScheduledSendManaging, ScheduledSendEditing, @unchecked Sendable {
     public let account: BrevAccount
     public let capabilities: BackendCapabilities
     public let extendedCapabilities: BackendExtendedCapabilities
@@ -38,10 +36,19 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     public var relatedConversationHandler:
         (@Sendable (ConversationMember, Bool, String?,
                     @escaping @Sendable (ConversationSnapshot) async -> Void) async throws -> ConversationSnapshot)?
+    var sendHandler: (@Sendable (Draft, MailSourceID?) async throws -> SendResult)?
 
     private let store: Store
     private let contacts: [ContactLookupResult]
+    private let supportsScheduledSend: Bool
+    private let scheduledSendSnapshot: MockScheduledSendSnapshot
 
+    /// Creates a preview or demo backend; scheduled-send fixtures persist only when a directory is supplied.
+    /// - Parameters:
+    ///   - supportsScheduledSend: Whether the backend exposes scheduled-send services.
+    ///   - persistenceDirectory: Optional private, file-backed Mock fixture storage.
+    ///   - now: Synchronous clock used for due checks and Sent timestamps.
+    ///   - automaticDeliveryEnabled: Disables the worker for deterministic tests while keeping explicit delivery available.
     public init(
         account: BrevAccount = .preview,
         capabilities: BackendCapabilities = .full,
@@ -49,11 +56,19 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         folders: [Folder] = MockBackend.previewFolders,
         messagesByFolder: [String: [MessageHeader]] = MockBackend.previewMessages,
         mailboxes: [Mailbox]? = nil,
-        contacts: [ContactLookupResult]? = nil
+        contacts: [ContactLookupResult]? = nil,
+        supportsScheduledSend: Bool = true,
+        persistenceDirectory: URL? = nil,
+        now: @escaping @Sendable () -> Date = { Date() },
+        automaticDeliveryEnabled: Bool = true
     ) {
         self.account = account
         self.capabilities = capabilities
         self.extendedCapabilities = extendedCapabilities
+        self.supportsScheduledSend = supportsScheduledSend
+        let journal = persistenceDirectory.map { MockSendJournal(directoryURL: $0, accountID: account.id) }
+        let scheduledSendSnapshot = MockScheduledSendSnapshot()
+        self.scheduledSendSnapshot = scheduledSendSnapshot
         let resolvedMailboxes: [Mailbox]
         if let mailboxes, !mailboxes.isEmpty {
             resolvedMailboxes = mailboxes
@@ -64,14 +79,23 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
             accountID: account.id,
             mailboxID: resolvedMailboxes.first?.id ?? account.id
         )
-        store = Store(
+        let store = Store(
             mailboxes: resolvedMailboxes,
             dataByMailboxID: Self.previewMailboxData(
                 mailboxes: resolvedMailboxes,
                 primaryFolders: folders,
                 primaryMessagesByFolder: messagesByFolder
-            )
+            ),
+            accountID: account.id,
+            journal: journal,
+            now: now,
+            automaticDeliveryEnabled: automaticDeliveryEnabled,
+            scheduledSendSnapshot: scheduledSendSnapshot
         )
+        self.store = store
+        Task { [weak store] in
+            await store?.startWorkerIfNeeded()
+        }
     }
 
     /// The set of email addresses that have been blocked via `blockSender(email:)`.
@@ -86,11 +110,16 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         try await store.seedConflict(conflict, mailboxID: mailboxID)
     }
 
-    public func connect() async throws { /* no-op */ }
-    public func disconnect() async { /* no-op */ }
+    public func connect() async throws {
+        try await store.resume()
+    }
+
+    public func disconnect() async {
+        await store.pause()
+    }
 
     public func folders() async throws -> [Folder] {
-        await store.folderSnapshots()
+        try await store.folderSnapshots()
     }
 
     public func mailboxes() async throws -> [Mailbox] {
@@ -192,7 +221,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
 
     public func messages(in folder: Folder, pageToken: String?) async throws
         -> (headers: [MessageHeader], nextPageToken: String?) {
-        let all = await store.messages(in: folder.id)
+        let all = try await store.messages(in: folder.id)
         return (all, nil)
     }
 
@@ -273,11 +302,11 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         }
         if isJunk {
             if let spam = await store.spamFolderID() {
-                await store.move(ids: messageIDs, to: spam)
+                try await store.move(ids: messageIDs, to: spam)
             }
         } else {
             let inboxID = await store.inboxFolderID()
-            await store.move(ids: messageIDs, to: inboxID)
+            try await store.move(ids: messageIDs, to: inboxID)
         }
     }
 
@@ -300,15 +329,33 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     public func moveWithUndo(messageIDs: [MessageHeader.ID], from sourceFolder: Folder, to destination: Folder,
                              sourceID: MailSourceID) async throws -> MailMoveUndo? {
         guard sourceFolder.id != destination.id, !messageIDs.isEmpty else { return nil }
-        try await move(messageIDs: messageIDs, to: destination, sourceID: sourceID)
+        let targetMailboxID = try await mailboxID(for: sourceID)
+        let removedScheduledDrafts = try await store.moveReturningRemovedScheduledDrafts(
+            ids: messageIDs,
+            to: destination.id,
+            mailboxID: targetMailboxID
+        )
         return MailMoveUndo(sourceID: sourceID, originalFolder: sourceFolder) { [self] in
-            try await move(messageIDs: messageIDs, to: sourceFolder, sourceID: sourceID)
+            let restoredDraftMessageIDs = Set(removedScheduledDrafts.map {
+                $0.record.draft?.remoteID ?? "draft-\($0.record.draftID)"
+            })
+            let regularMessageIDs = messageIDs.filter { !restoredDraftMessageIDs.contains($0) }
+            if !regularMessageIDs.isEmpty {
+                try await move(messageIDs: regularMessageIDs, to: sourceFolder, sourceID: sourceID)
+            }
+            if !removedScheduledDrafts.isEmpty {
+                try await store.restoreCanceledScheduledDrafts(
+                    removedScheduledDrafts,
+                    to: sourceFolder.id,
+                    mailboxID: targetMailboxID
+                )
+            }
             return Dictionary(messageIDs.map { ($0, $0) }, uniquingKeysWith: { first, _ in first })
         }
     }
 
     public func move(messageIDs: [String], to folder: Folder) async throws {
-        await store.move(ids: messageIDs, to: folder.id)
+        try await store.move(ids: messageIDs, to: folder.id)
     }
 
     public func move(messageIDs: [String], to folder: Folder, sourceID: MailSourceID) async throws {
@@ -324,7 +371,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     }
 
     public func delete(messageIDs: [String]) async throws {
-        await store.delete(ids: messageIDs)
+        try await store.delete(ids: messageIDs)
     }
 
     public func delete(messageIDs: [String], sourceID: MailSourceID) async throws {
@@ -360,7 +407,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     }
 
     public func discard(draftID: String) async throws {
-        await store.discard(draftID: draftID)
+        try await store.discard(draftID: draftID)
     }
 
     public func discard(draftID: String, sourceID: MailSourceID) async throws {
@@ -368,7 +415,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     }
 
     public func uploadAttachment(draftID: String, data: Data, filename: String, mimeType: String) async throws -> String {
-        await store.uploadAttachment(
+        try await store.uploadAttachment(
             draftID: draftID,
             data: data,
             filename: filename,
@@ -393,13 +440,64 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     }
 
     public func send(draft: Draft) async throws -> SendResult {
+        try await store.ensureActive()
+        if let sendHandler { return try await sendHandler(draft, nil) }
+        if let scheduledFor = draft.scheduledFor {
+            let mailbox = try await store.currentMailbox()
+            let result = try await store.schedule(draft: draft, scheduledFor: scheduledFor, mailboxID: mailbox.id)
+            await store.startWorkerIfNeeded(restart: true)
+            return result
+        }
         let messageID = try await store.send(draft: draft)
-        return SendResult(sentMessageID: messageID, scheduledFor: draft.scheduledFor)
+        return SendResult(sentMessageID: messageID)
     }
 
     public func send(draft: Draft, sourceID: MailSourceID) async throws -> SendResult {
-        let messageID = try await store.send(draft: draft, mailboxID: mailboxID(for: sourceID))
-        return SendResult(sentMessageID: messageID, scheduledFor: draft.scheduledFor)
+        try await store.ensureActive()
+        if let sendHandler { return try await sendHandler(draft, sourceID) }
+        let owner = try await mailboxID(for: sourceID)
+        if let scheduledFor = draft.scheduledFor {
+            let result = try await store.schedule(draft: draft, scheduledFor: scheduledFor, mailboxID: owner)
+            await store.startWorkerIfNeeded(restart: true)
+            return result
+        }
+        let messageID = try await store.send(draft: draft, mailboxID: owner)
+        return SendResult(sentMessageID: messageID)
+    }
+
+    public func pendingScheduledSends() -> [PendingScheduledSend] {
+        scheduledSendSnapshot.read()
+    }
+
+    public func scheduledDraft(id: String) async throws -> Draft {
+        guard let draft = try await store.scheduledDraft(id: id) else { throw ScheduledSendEditingError.notFound }
+        return draft
+    }
+
+    public func cancelScheduledSend(id: String) async throws -> Draft? {
+        let draft = try await store.cancelScheduledSend(id: id)
+        await store.startWorkerIfNeeded(restart: true)
+        return draft
+    }
+
+    public func rescheduleSend(id: String, for date: Date) async throws {
+        try await store.rescheduleSend(id: id, for: date)
+        await store.startWorkerIfNeeded(restart: true)
+    }
+
+    /// Treats a reviewed Mock send as a new schedule at the supplied due date.
+    public func retryReviewedScheduledSend(id: String, for date: Date) async throws {
+        try await rescheduleSend(id: id, for: date)
+    }
+
+    public func deliverDueScheduledSends() async {
+        await store.deliverDueScheduledSends()
+        await store.startWorkerIfNeeded(restart: true)
+    }
+
+    /// Clears this Mock fixture's scheduled-send journal and its in-memory projections.
+    public func purgePersistentState() async throws {
+        try await store.purgePersistentState()
     }
 
     /// Returns every seeded header owned by the requested mailbox and folder.
@@ -474,6 +572,12 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
 
     public func extensionService<Service>(_ type: Service.Type) -> Service? {
         switch ObjectIdentifier(type) {
+        case ObjectIdentifier(ScheduledSendEditing.self)
+            where supportsScheduledSend:
+            return self as? Service
+        case ObjectIdentifier(ScheduledSendManaging.self)
+            where supportsScheduledSend:
+            return self as? Service
         case ObjectIdentifier(LocalDraftAttachmentProviding.self):
             return self as? Service
         case ObjectIdentifier(CachedListUnsubscribeProviding.self)
@@ -1632,20 +1736,681 @@ private struct MockAttachmentSeed {
     let attachmentDataByID: [String: Data]
 }
 
+private struct MockScheduledDraftProjectionSnapshot {
+    let record: MockSendJournalRecord
+    let header: MessageHeader?
+    let body: MessageBody?
+}
+
+private final class MockBackendEventHub: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [UUID: AsyncStream<MailEvent>.Continuation] = [:]
+
+    func stream() -> AsyncStream<MailEvent> {
+        AsyncStream { continuation in
+            let token = UUID()
+            lock.withLock {
+                continuations[token] = continuation
+            }
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                _ = lock.withLock {
+                    self.continuations.removeValue(forKey: token)
+                }
+            }
+        }
+    }
+
+    func emit(_ event: MailEvent) {
+        let current = lock.withLock { Array(continuations.values) }
+        for continuation in current {
+            continuation.yield(event)
+        }
+    }
+}
+
 private actor Store {
     var mailboxes: [Mailbox]
     var activeMailboxID: Mailbox.ID
     var dataByMailboxID: [Mailbox.ID: MockMailboxData]
     private(set) var blockedSenders: Set<String> = []
-    private var continuations: [UUID: AsyncStream<MailEvent>.Continuation] = [:]
+    nonisolated let eventHub = MockBackendEventHub()
+    private let accountID: BrevAccount.ID
+    private let journal: MockSendJournal?
+    private let now: @Sendable () -> Date
+    private let automaticDeliveryEnabled: Bool
+    private let scheduledSendSnapshot: MockScheduledSendSnapshot
+    private let initialDataByMailboxID: [Mailbox.ID: MockMailboxData]
+    private var journalRecords: [MockSendJournalRecord] = []
+    private var journalLoadError: (any Error)?
+    private var isPaused = false
+    private var isPurged = false
+    private var workerGeneration = 0
+    private var workerTask: Task<Void, Never>?
+    private var retryAfter: [String: Date] = [:]
 
     init(
         mailboxes: [Mailbox],
-        dataByMailboxID: [Mailbox.ID: MockMailboxData]
+        dataByMailboxID: [Mailbox.ID: MockMailboxData],
+        accountID: BrevAccount.ID,
+        journal: MockSendJournal?,
+        now: @escaping @Sendable () -> Date,
+        automaticDeliveryEnabled: Bool,
+        scheduledSendSnapshot: MockScheduledSendSnapshot
     ) {
+        initialDataByMailboxID = dataByMailboxID
         self.mailboxes = mailboxes
         activeMailboxID = mailboxes.first(where: \.isPrimary)?.id ?? mailboxes[0].id
-        self.dataByMailboxID = dataByMailboxID
+        self.accountID = accountID
+        self.journal = journal
+        self.now = now
+        self.automaticDeliveryEnabled = automaticDeliveryEnabled
+        self.scheduledSendSnapshot = scheduledSendSnapshot
+        if let journal {
+            do {
+                let records = try journal.load()
+                self.dataByMailboxID = Self.projectJournalChanges(
+                    previousRecords: [],
+                    records: records,
+                    mailboxes: mailboxes,
+                    current: dataByMailboxID
+                )
+                journalRecords = records
+            } catch {
+                journalLoadError = error
+                self.dataByMailboxID = dataByMailboxID
+            }
+        } else {
+            self.dataByMailboxID = dataByMailboxID
+        }
+        scheduledSendSnapshot.replace(with: Self.scheduledEntries(from: journalRecords))
+    }
+
+    deinit {
+        workerTask?.cancel()
+    }
+
+    func resume() throws {
+        guard !isPurged else { throw Self.storageError }
+        try reloadJournalRecords()
+        isPaused = false
+        deliverDueScheduledSends()
+        startWorkerIfNeeded(restart: true)
+    }
+
+    func pause() {
+        isPaused = true
+        stopWorker()
+    }
+
+    func startWorkerIfNeeded(restart: Bool = false) {
+        if restart { stopWorker() }
+        guard automaticDeliveryEnabled, !isPaused,
+              journalLoadError == nil,
+              journalRecords.contains(where: { $0.state == .queued }),
+              workerTask == nil else { return }
+        workerGeneration += 1
+        let generation = workerGeneration
+        workerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let delay = await self?.workerDelay(generation: generation) else { break }
+                if delay > 0 {
+                    do { try await Task.sleep(for: .seconds(delay)) } catch { break }
+                }
+                guard !Task.isCancelled else { break }
+                guard let shouldContinue = await self?.deliverWorkerTick(generation: generation),
+                      shouldContinue else { break }
+            }
+            await self?.finishWorker(generation: generation)
+        }
+    }
+
+    private func stopWorker() {
+        workerGeneration += 1
+        workerTask?.cancel()
+        workerTask = nil
+    }
+
+    private func workerDelay(generation: Int) -> TimeInterval? {
+        guard generation == workerGeneration, !isPaused, journalLoadError == nil else { return nil }
+        let dates = journalRecords.compactMap { record -> Date? in
+            guard record.state == .queued,
+                  dataByMailboxID[record.sourceID.mailboxID] != nil,
+                  let due = record.scheduledFor else { return nil }
+            return max(due, record.nextAttemptAt ?? retryAfter[record.recordID] ?? due)
+        }
+        guard let next = dates.min() else { return nil }
+        return min(max(0, next.timeIntervalSince(now())), 60)
+    }
+
+    private func deliverWorkerTick(generation: Int) -> Bool {
+        guard generation == workerGeneration, !isPaused, journalLoadError == nil else { return false }
+        deliverDueScheduledSends()
+        return generation == workerGeneration && !isPaused && journalLoadError == nil
+    }
+
+    private func finishWorker(generation: Int) {
+        guard generation == workerGeneration else { return }
+        workerTask = nil
+    }
+
+    func ensureActive() throws {
+        guard !isPurged, journalLoadError == nil else { throw Self.storageError }
+    }
+
+    func scheduledDraft(id: String) throws -> Draft? {
+        guard journalLoadError == nil else { throw Self.storageError }
+        return journalRecords.first { $0.scheduleID == id && $0.state == .queued }?.draft
+    }
+
+    func schedule(draft: Draft, scheduledFor: Date, mailboxID: Mailbox.ID) throws -> SendResult {
+        try ensureActive()
+        try reloadJournalRecords()
+        guard scheduledFor.timeIntervalSince1970.isFinite else { throw ScheduledSendEditingError.invalidDate }
+        guard var mailboxData = dataByMailboxID[mailboxID] else { throw MailBackendError.notFound(id: mailboxID) }
+        guard journalLoadError == nil else { throw Self.storageError }
+        var canonical = draft
+        canonical.remoteID = canonical.remoteID ?? "draft-\(draft.id)"
+        canonical.scheduledFor = scheduledFor
+        let attachments = try Self.journalAttachments(for: canonical, in: mailboxData)
+        let sender = try sender(mailboxID: mailboxID)
+        let parent = canonical.inReplyToMessageID.flatMap { parentID in
+            mailboxData.messagesByFolder.values.flatMap(\.self).first { $0.id == parentID }
+        }
+        let parentMessageID = parent?.rfcMessageID
+        let references = Self.deduplicatedReferences((parent?.references ?? []) + [parentMessageID].compactMap { $0 })
+        let draftsFolderID = Self.ensureDraftsFolderID(in: &mailboxData)
+        let existed = mailboxData.savedDrafts[canonical.id] != nil
+        Self.projectDraft(canonical, folderID: draftsFolderID, sender: sender, at: now(), in: &mailboxData)
+        let update: (MockSendJournalRecord, Bool)
+        do {
+            update = try transactJournal { records in
+                if let delivered = records.last(where: {
+                    $0.sourceID.mailboxID == mailboxID && $0.draftID == canonical.id && $0.state == .delivered
+                }) {
+                    return (delivered, false)
+                }
+                if let index = records.lastIndex(where: {
+                    $0.sourceID.mailboxID == mailboxID && $0.draftID == canonical.id && $0.state == .queued
+                }) {
+                    let record = records[index]
+                    var updated = record
+                    if updated.draft != canonical { updated.draftProjectionDate = now() }
+                    updated.draft = canonical
+                    updated.attachments = attachments
+                    updated.scheduledFor = scheduledFor
+                    updated.sender = sender
+                    updated.parentMessageID = parentMessageID
+                    updated.references = references
+                    records[index] = updated
+                    return (updated, updated != record)
+                }
+                if let index = records.lastIndex(where: {
+                    $0.sourceID.mailboxID == mailboxID && $0.draftID == canonical.id && $0.state == .canceled
+                }) {
+                    var updated = records[index]
+                    updated.scheduleID = UUID().uuidString
+                    if updated.draft != canonical || updated.draftProjectionDate == nil {
+                        updated.draftProjectionDate = now()
+                    }
+                    updated.draft = canonical
+                    updated.attachments = attachments
+                    updated.state = .queued
+                    updated.scheduledFor = scheduledFor
+                    updated.sender = sender
+                    updated.parentMessageID = parentMessageID
+                    updated.references = references
+                    updated.nextAttemptAt = nil
+                    records[index] = updated
+                    return (updated, true)
+                }
+                let record = MockSendJournalRecord(
+                    recordID: UUID().uuidString,
+                    accountID: accountID,
+                    sourceID: MailSourceID(accountID: accountID, mailboxID: mailboxID),
+                    draftID: canonical.id,
+                    scheduleID: UUID().uuidString,
+                    draft: canonical,
+                    attachments: attachments,
+                    state: .queued,
+                    scheduledFor: scheduledFor,
+                    sentHeader: nil,
+                    sentBody: nil,
+                    nextAttemptAt: nil,
+                    sender: sender,
+                    parentMessageID: parentMessageID,
+                    references: references,
+                    draftProjectionDate: now()
+                )
+                records.append(record)
+                return (record, true)
+            }
+        } catch { throw Self.storageError }
+        if update.0.state == .delivered {
+            return SendResult(sentMessageID: update.0.sentHeader?.id)
+        }
+        guard update.1 else { return SendResult(sentMessageID: nil, scheduledFor: update.0.scheduledFor) }
+        if journal == nil { dataByMailboxID[mailboxID] = mailboxData }
+        refreshScheduledSnapshot()
+        emit(existed ? .messagesUpdated(folderID: draftsFolderID, messageIDs: [canonical.remoteID!]) : .messagesAdded(
+            folderID: draftsFolderID,
+            messageIDs: [canonical.remoteID!]
+        ))
+        emit(.outboxChanged)
+        return SendResult(sentMessageID: nil, scheduledFor: update.0.scheduledFor)
+    }
+
+    func cancelScheduledSend(id: String) throws -> Draft? {
+        try ensureActive()
+        try reloadJournalRecords()
+        guard let record = journalRecords.first(where: { $0.scheduleID == id && $0.state == .queued }),
+              var draft = record.draft,
+              var mailboxData = dataByMailboxID[record.sourceID.mailboxID] else {
+            throw ScheduledSendEditingError.notFound
+        }
+        draft.scheduledFor = nil
+        let folderID = Self.ensureDraftsFolderID(in: &mailboxData)
+        try Self.projectDraft(
+            draft,
+            folderID: folderID,
+            sender: sender(mailboxID: record.sourceID.mailboxID),
+            at: now(),
+            in: &mailboxData
+        )
+        _ = try transactJournal { records in
+            guard let index = records.firstIndex(where: {
+                $0.recordID == record.recordID && $0.scheduleID == id && $0.state == .queued
+                    && $0.sourceID == record.sourceID && $0.draft == record.draft
+                    && $0.scheduledFor == record.scheduledFor
+            }) else {
+                throw ScheduledSendEditingError.notFound
+            }
+            records[index].state = .canceled
+            records[index].draftProjectionDate = now()
+            records[index].draft = draft
+            records[index].scheduledFor = nil
+            records[index].scheduleID = nil
+            return ()
+        }
+        if journal == nil { dataByMailboxID[record.sourceID.mailboxID] = mailboxData }
+        refreshScheduledSnapshot()
+        emit(.messagesUpdated(folderID: folderID, messageIDs: [draft.remoteID ?? "draft-\(draft.id)"]))
+        emit(.outboxChanged)
+        return draft
+    }
+
+    func rescheduleSend(id: String, for date: Date) throws {
+        guard date.timeIntervalSince1970.isFinite else { throw ScheduledSendEditingError.invalidDate }
+        try ensureActive()
+        try reloadJournalRecords()
+        guard let record = journalRecords.first(where: { $0.scheduleID == id && $0.state == .queued }),
+              var draft = record.draft,
+              var mailboxData = dataByMailboxID[record.sourceID.mailboxID] else {
+            throw ScheduledSendEditingError.notFound
+        }
+        guard record.scheduledFor != date else { return }
+        draft.scheduledFor = date
+        let folderID = Self.ensureDraftsFolderID(in: &mailboxData)
+        try Self.projectDraft(
+            draft,
+            folderID: folderID,
+            sender: sender(mailboxID: record.sourceID.mailboxID),
+            at: now(),
+            in: &mailboxData
+        )
+        _ = try transactJournal { records in
+            guard let index = records.firstIndex(where: {
+                $0.recordID == record.recordID && $0.scheduleID == id && $0.state == .queued
+                    && $0.sourceID == record.sourceID && $0.draft == record.draft
+                    && $0.scheduledFor == record.scheduledFor
+            }) else {
+                throw ScheduledSendEditingError.notFound
+            }
+            records[index].draft = draft
+            records[index].draftProjectionDate = now()
+            records[index].scheduledFor = date
+            records[index].nextAttemptAt = nil
+            return ()
+        }
+        if journal == nil { dataByMailboxID[record.sourceID.mailboxID] = mailboxData }
+        refreshScheduledSnapshot()
+        emit(.messagesUpdated(folderID: folderID, messageIDs: [draft.remoteID ?? "draft-\(draft.id)"]))
+        emit(.outboxChanged)
+    }
+
+    func deliverDueScheduledSends() {
+        do { try reloadJournalRecords() } catch { return }
+        guard journalLoadError == nil, !isPaused else { return }
+        let date = now()
+        let dueRecords = journalRecords.filter {
+            $0.state == .queued && ($0.scheduledFor ?? .distantFuture) <= date
+                && ($0.nextAttemptAt ?? retryAfter[$0.recordID] ?? .distantPast) <= date
+        }
+        for record in dueRecords {
+            guard let draft = record.draft,
+                  dataByMailboxID[record.sourceID.mailboxID] != nil else { continue }
+            guard journalRecords.contains(where: { $0.recordID == record.recordID && $0.state == .queued }) else { continue }
+            do {
+                guard !isPaused,
+                      let currentRecord = journalRecords.first(where: { $0.recordID == record.recordID && $0.state == .queued }),
+                      let currentDraft = currentRecord.draft,
+                      currentDraft == draft,
+                      (currentRecord.scheduledFor ?? .distantFuture) <= date,
+                      (currentRecord.nextAttemptAt ?? retryAfter[record.recordID] ?? .distantPast) <= date else { continue }
+                _ = try send(
+                    draft: currentDraft,
+                    mailboxID: record.sourceID.mailboxID,
+                    scheduledDelivery: (
+                        recordID: record.recordID,
+                        scheduleID: record.scheduleID ?? "",
+                        at: date,
+                        sender: record.sender ?? sender(mailboxID: record.sourceID.mailboxID),
+                        parentMessageID: record.parentMessageID,
+                        references: record.references ?? []
+                    )
+                )
+            } catch ScheduledSendEditingError.notFound {
+                continue
+            } catch {
+                retryAfter[record.recordID] = date.addingTimeInterval(60)
+                do {
+                    _ = try transactJournal { records in
+                        guard let index = records.firstIndex(where: { $0.recordID == record.recordID }) else { return () }
+                        records[index].nextAttemptAt = date.addingTimeInterval(60)
+                        return ()
+                    }
+                    refreshScheduledSnapshot()
+                } catch {}
+            }
+        }
+    }
+
+    private static var storageError: ScheduledSendEditingError {
+        .stagingUnavailable
+    }
+
+    private func transactJournal<T>(
+        _ operation: (inout [MockSendJournalRecord]) throws -> T
+    ) throws -> T {
+        if let journal {
+            do {
+                let previousRecords = journalRecords
+                let transaction = try journal.transact(operation)
+                dataByMailboxID = Self.projectJournalChanges(
+                    previousRecords: previousRecords,
+                    records: transaction.records,
+                    mailboxes: mailboxes,
+                    current: dataByMailboxID
+                )
+                journalRecords = transaction.records
+                journalLoadError = nil
+                refreshScheduledSnapshot()
+                return transaction.value
+            } catch let error as ScheduledSendEditingError {
+                throw error
+            } catch {
+                journalLoadError = error
+                throw Self.storageError
+            }
+        }
+        let value = try operation(&journalRecords)
+        refreshScheduledSnapshot()
+        return value
+    }
+
+    private func reloadJournalRecords() throws {
+        guard !isPurged else { throw Self.storageError }
+        guard let journal else { return }
+        do {
+            let records = try journal.load()
+            dataByMailboxID = Self.projectJournalChanges(
+                previousRecords: journalRecords,
+                records: records,
+                mailboxes: mailboxes,
+                current: dataByMailboxID
+            )
+            journalRecords = records
+            journalLoadError = nil
+            refreshScheduledSnapshot()
+        } catch {
+            journalLoadError = error
+            throw Self.storageError
+        }
+    }
+
+    private func removeScheduledDrafts(
+        matching messageIDs: Set<String>,
+        mailboxID: Mailbox.ID
+    ) throws -> [MockScheduledDraftProjectionSnapshot] {
+        try ensureActive()
+        try reloadJournalRecords()
+        let mailboxData = try data(mailboxID: mailboxID)
+        let sourceID = MailSourceID(accountID: accountID, mailboxID: mailboxID)
+        let recordsToRemove = journalRecords.filter { record in
+            guard record.sourceID == sourceID, record.state == .queued || record.state == .canceled else {
+                return false
+            }
+            let messageID = record.draft?.remoteID ?? "draft-\(record.draftID)"
+            return messageIDs.contains(messageID)
+        }
+        guard !recordsToRemove.isEmpty else { return [] }
+
+        let snapshots = recordsToRemove.map { record in
+            let messageID = record.draft?.remoteID ?? "draft-\(record.draftID)"
+            let header = mailboxData.messagesByFolder.values.flatMap(\.self).first { $0.id == messageID }
+            return MockScheduledDraftProjectionSnapshot(
+                record: record,
+                header: header,
+                body: mailboxData.messageBodies[messageID]
+            )
+        }
+        let recordIDs = Set(recordsToRemove.map { $0.recordID })
+        _ = try transactJournal { records in
+            records.removeAll { recordIDs.contains($0.recordID) }
+        }
+        emit(.outboxChanged)
+        return snapshots
+    }
+
+    private static func restoreScheduledDraftProjections(
+        _ snapshots: [MockScheduledDraftProjectionSnapshot],
+        in data: inout MockMailboxData
+    ) {
+        for snapshot in snapshots {
+            guard let header = snapshot.header else { continue }
+            if !data.messagesByFolder.values.flatMap(\.self).contains(where: { $0.id == header.id }) {
+                data.messagesByFolder[header.folderID, default: []].append(header)
+            }
+            if let body = snapshot.body { data.messageBodies[header.id] = body }
+            for attachment in snapshot.record.attachments {
+                let id = attachment.metadata.id
+                data.attachmentsByID[id] = attachment.metadata
+                data.attachmentDataByID[id] = attachment.data
+                data.attachmentDraftIDs[id] = attachment.draftID
+            }
+        }
+    }
+
+    private func refreshScheduledSnapshot() {
+        scheduledSendSnapshot.replace(with: Self.scheduledEntries(from: journalRecords))
+    }
+
+    private static func scheduledEntries(from records: [MockSendJournalRecord]) -> [PendingScheduledSend] {
+        records.compactMap { record -> PendingScheduledSend? in
+            guard record.state == .queued, let date = record.scheduledFor, let draft = record.draft,
+                  let id = record.scheduleID else { return nil }
+            return PendingScheduledSend(
+                draftID: draft.id,
+                scheduledFor: date,
+                id: id,
+                sourceID: record.sourceID,
+                subject: draft.subject,
+                state: .waiting,
+                lastError: nil,
+                nextAttemptAt: record.nextAttemptAt
+            )
+        }.sorted { $0.scheduledFor < $1.scheduledFor }
+    }
+
+    func purgePersistentState() throws {
+        guard !isPurged else { return }
+        stopWorker()
+        try journal?.purge()
+        isPaused = true
+        isPurged = true
+        retryAfter.removeAll()
+        dataByMailboxID = initialDataByMailboxID
+        journalRecords = []
+        journalLoadError = nil
+        refreshScheduledSnapshot()
+    }
+
+    private static func journalAttachments(
+        for draft: Draft,
+        in data: MockMailboxData
+    ) throws -> [MockSendJournalAttachment] {
+        try draft.attachmentIDs.map { id in
+            guard let ownerID = data.attachmentDraftIDs[id],
+                  ownerID == draft.id || ownerID == draft.remoteID,
+                  let metadata = data.attachmentsByID[id],
+                  let bytes = data.attachmentDataByID[id] else {
+                throw MailBackendError.notFound(id: id)
+            }
+            return MockSendJournalAttachment(metadata: metadata, data: bytes, draftID: draft.id)
+        }
+    }
+
+    private static func projectDraft(
+        _ draft: Draft,
+        folderID: String,
+        sender: Correspondent,
+        at date: Date,
+        in data: inout MockMailboxData
+    ) {
+        let remoteID = draft.remoteID ?? "draft-\(draft.id)"
+        data.savedDrafts[draft.id] = draft
+        data.messagesByFolder[folderID, default: []].removeAll { $0.id == remoteID }
+        data.messagesByFolder[folderID, default: []].append(MessageHeader(
+            id: remoteID,
+            threadID: threadID(for: draft, in: data) ?? draft.threadID ?? remoteID,
+            folderID: folderID,
+            from: sender,
+            to: draft.to,
+            cc: draft.cc,
+            bcc: draft.bcc,
+            subject: draft.subject,
+            snippet: snippet(from: draft.htmlBody),
+            date: date,
+            isRead: true,
+            hasAttachments: !draft.attachmentIDs.isEmpty
+        ))
+        data.messageBodies[remoteID] = MessageBody(
+            messageID: remoteID,
+            html: draft.htmlBody,
+            plainText: HTMLTextStripper.plainText(from: draft.htmlBody),
+            attachments: attachments(for: draft.attachmentIDs, in: data)
+        )
+    }
+
+    private static func projectJournalChanges(
+        previousRecords: [MockSendJournalRecord],
+        records: [MockSendJournalRecord],
+        mailboxes: [Mailbox],
+        current: [Mailbox.ID: MockMailboxData]
+    ) -> [Mailbox.ID: MockMailboxData] {
+        var result = current
+        let previousByID = Dictionary(uniqueKeysWithValues: previousRecords.map { ($0.recordID, $0) })
+        let recordsByID = Dictionary(uniqueKeysWithValues: records.map { ($0.recordID, $0) })
+        for previous in previousRecords {
+            let changed = recordsByID[previous.recordID].map { !hasSameJournalProjection(previous, $0) } ?? true
+            guard changed else { continue }
+            guard var data = result[previous.sourceID.mailboxID] else { continue }
+            removeJournalProjection(of: previous, keeping: records, in: &data)
+            result[previous.sourceID.mailboxID] = data
+        }
+        for record in records {
+            let changed = previousByID[record.recordID].map { !hasSameJournalProjection($0, record) } ?? true
+            guard changed else { continue }
+            let mailboxID = record.sourceID.mailboxID
+            guard var data = result[mailboxID] else { continue }
+            projectJournalRecord(record, mailboxes: mailboxes, in: &data)
+            result[mailboxID] = data
+        }
+        return result
+    }
+
+    private static func hasSameJournalProjection(
+        _ lhs: MockSendJournalRecord,
+        _ rhs: MockSendJournalRecord
+    ) -> Bool {
+        lhs.sourceID == rhs.sourceID && lhs.draftID == rhs.draftID && lhs.draft == rhs.draft
+            && lhs.attachments == rhs.attachments && lhs.state == rhs.state
+            && lhs.draftProjectionDate == rhs.draftProjectionDate && lhs.sentHeader == rhs.sentHeader
+            && lhs.sentBody == rhs.sentBody && lhs.sender == rhs.sender
+            && lhs.parentMessageID == rhs.parentMessageID && lhs.references == rhs.references
+    }
+
+    private static func removeJournalProjection(
+        of record: MockSendJournalRecord,
+        keeping records: [MockSendJournalRecord],
+        in data: inout MockMailboxData
+    ) {
+        if record.state != .delivered {
+            _ = removeDraft(draftID: record.draftID, in: &data)
+            data.savedDrafts[record.draftID] = nil
+        }
+        let retainedAttachmentIDs = Set(records.filter { $0.sourceID == record.sourceID }
+            .flatMap { $0.attachments.map { $0.metadata.id } })
+        for attachment in record.attachments where !retainedAttachmentIDs.contains(attachment.metadata.id) {
+            let id = attachment.metadata.id
+            guard data.attachmentDraftIDs[id] == record.draftID else { continue }
+            data.attachmentsByID[id] = nil
+            data.attachmentDataByID[id] = nil
+            data.attachmentDraftIDs[id] = nil
+        }
+    }
+
+    private static func projectJournalRecord(
+        _ record: MockSendJournalRecord,
+        mailboxes: [Mailbox],
+        in data: inout MockMailboxData
+    ) {
+        let mailboxID = record.sourceID.mailboxID
+        for attachment in record.attachments {
+            data.attachmentsByID[attachment.metadata.id] = attachment.metadata
+            data.attachmentDataByID[attachment.metadata.id] = attachment.data
+            data.attachmentDraftIDs[attachment.metadata.id] = attachment.draftID
+        }
+        switch record.state {
+        case .queued, .canceled:
+            if let draft = record.draft, let projectionDate = record.draftProjectionDate {
+                let folderID = ensureDraftsFolderID(in: &data)
+                let sender = record.sender ?? mailboxes.first(where: { $0.id == mailboxID }).map {
+                    Correspondent(name: $0.displayName, email: $0.email)
+                } ?? Correspondent(email: "mock@example.test")
+                projectDraft(draft, folderID: folderID, sender: sender, at: projectionDate, in: &data)
+            } else {
+                _ = removeDraft(draftID: record.draftID, in: &data)
+                data.savedDrafts[record.draftID] = nil
+            }
+        case .delivered:
+            _ = removeDraft(draftID: record.draftID, in: &data)
+            data.savedDrafts[record.draftID] = nil
+            if let header = record.sentHeader, let body = record.sentBody {
+                if !data.folders.contains(where: { $0.id == header.folderID }) {
+                    data.folders.append(Folder(id: header.folderID, name: "Sent", role: .sent))
+                }
+                data.messagesByFolder[header.folderID, default: []].removeAll { $0.id == header.id }
+                data.messagesByFolder[header.folderID, default: []].append(header)
+                data.messageBodies[header.id] = body
+                if let replyID = record.draft?.inReplyToMessageID {
+                    updateHeader(id: replyID, in: &data) { $0.isAnswered = true }
+                }
+                if let forwardedID = record.draft?.forwardedMessageID {
+                    updateHeader(id: forwardedID, in: &data) { $0.isForwarded = true }
+                }
+            }
+        }
     }
 
     var allMessages: [MessageHeader] {
@@ -1720,20 +2485,22 @@ private actor Store {
         emit(.mailboxChanged(mailboxID: id))
     }
 
-    func messages(in folderID: String) -> [MessageHeader] {
-        (try? messages(in: folderID, mailboxID: activeMailboxID)) ?? []
+    func messages(in folderID: String) throws -> [MessageHeader] {
+        try messages(in: folderID, mailboxID: activeMailboxID)
     }
 
     func messages(in folderID: String, mailboxID: Mailbox.ID) throws -> [MessageHeader] {
-        try (data(mailboxID: mailboxID).messagesByFolder[folderID] ?? [])
+        try reloadJournalRecords()
+        return try (data(mailboxID: mailboxID).messagesByFolder[folderID] ?? [])
             .sorted { $0.date > $1.date }
     }
 
-    func folderSnapshots() -> [Folder] {
-        (try? folderSnapshots(mailboxID: activeMailboxID)) ?? []
+    func folderSnapshots() throws -> [Folder] {
+        try folderSnapshots(mailboxID: activeMailboxID)
     }
 
     func folderSnapshots(mailboxID: Mailbox.ID) throws -> [Folder] {
+        try reloadJournalRecords()
         let data = try data(mailboxID: mailboxID)
         return data.folders.map { folder in
             let messages = data.messagesByFolder[folder.id] ?? []
@@ -2150,13 +2917,28 @@ private actor Store {
         }
     }
 
-    func move(ids: [String], to destinationFolderID: String) {
-        try? move(ids: ids, to: destinationFolderID, mailboxID: activeMailboxID)
+    func move(ids: [String], to destinationFolderID: String) throws {
+        try move(ids: ids, to: destinationFolderID, mailboxID: activeMailboxID)
     }
 
     func move(ids: [String], to destinationFolderID: String, mailboxID: Mailbox.ID) throws {
+        _ = try moveReturningRemovedScheduledDrafts(ids: ids, to: destinationFolderID, mailboxID: mailboxID)
+    }
+
+    func moveReturningRemovedScheduledDrafts(
+        ids: [String],
+        to destinationFolderID: String,
+        mailboxID: Mailbox.ID
+    ) throws -> [MockScheduledDraftProjectionSnapshot] {
         let idSet = Set(ids)
+        let mailboxFolders = try data(mailboxID: mailboxID).folders
+        let movesToTrash = destinationFolderID == "trash"
+            || mailboxFolders.first { $0.id == destinationFolderID }?.role == .trash
+        let scheduledDrafts = movesToTrash
+            ? try removeScheduledDrafts(matching: idSet, mailboxID: mailboxID)
+            : []
         let events = try updateData(mailboxID: mailboxID) { data in
+            Self.restoreScheduledDraftProjections(scheduledDrafts, in: &data)
             var events: [MailEvent] = []
             var moved: [MessageHeader] = []
             for key in data.messagesByFolder.keys {
@@ -2185,6 +2967,110 @@ private actor Store {
         for event in events {
             emit(event)
         }
+        return scheduledDrafts
+    }
+
+    /// Re-persists canceled draft journal records and restores their canonical Drafts projection
+    /// when a Trash move of scheduled/canceled Mock drafts is undone.
+    func restoreCanceledScheduledDrafts(
+        _ snapshots: [MockScheduledDraftProjectionSnapshot],
+        to destinationFolderID: String,
+        mailboxID: Mailbox.ID
+    ) throws {
+        guard !snapshots.isEmpty else { return }
+        let snapshotsByID = Dictionary(
+            snapshots.map { ($0.record.draft?.remoteID ?? "draft-\($0.record.draftID)", $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        let messageIDs = Set(snapshotsByID.keys)
+        let canceledRecords: [MockSendJournalRecord] = snapshots.map { snapshot in
+            var record = snapshot.record
+            record.state = .canceled
+            record.scheduledFor = nil
+            record.scheduleID = nil
+            record.nextAttemptAt = nil
+            record.sentHeader = nil
+            record.sentBody = nil
+            if var draft = record.draft {
+                draft.scheduledFor = nil
+                record.draft = draft
+            }
+            return record
+        }
+        // Persist canceled journal entries before touching folder state so a storage failure
+        // leaves the Trash copy intact.
+        _ = try transactJournal { records in
+            for restored in canceledRecords {
+                records.removeAll { $0.sourceID == restored.sourceID && $0.draftID == restored.draftID }
+                records.append(restored)
+            }
+        }
+        let hasPersistentJournal = journal != nil
+        let events: [MailEvent] = try updateData(mailboxID: mailboxID) { data in
+            let draftsFolderID = Self.ensureDraftsFolderID(in: &data)
+            if !hasPersistentJournal {
+                // In-memory MockBackend skips projectJournalChanges in transactJournal; project directly.
+                for restored in canceledRecords {
+                    Self.projectJournalRecord(restored, mailboxes: mailboxes, in: &data)
+                }
+            }
+            var events: [MailEvent] = []
+            // Remove Trash (and any other non-Drafts) copies after the journal write succeeded.
+            for key in data.messagesByFolder.keys where key != draftsFolderID {
+                let (kept, gone) = (data.messagesByFolder[key] ?? []).reduce(into: (
+                    [MessageHeader](),
+                    [MessageHeader]()
+                )) { acc, msg in
+                    if messageIDs.contains(msg.id) {
+                        acc.1.append(msg)
+                    } else {
+                        acc.0.append(msg)
+                    }
+                }
+                data.messagesByFolder[key] = kept
+                if !gone.isEmpty {
+                    events.append(.messagesRemoved(folderID: key, messageIDs: gone.map(\.id)))
+                }
+            }
+            // Restore original read/flagged state from the captured header snapshot.
+            if var draftHeaders = data.messagesByFolder[draftsFolderID] {
+                for index in draftHeaders.indices {
+                    guard let original = snapshotsByID[draftHeaders[index].id]?.header else { continue }
+                    draftHeaders[index].isRead = original.isRead
+                    draftHeaders[index].isFlagged = original.isFlagged
+                }
+                data.messagesByFolder[draftsFolderID] = draftHeaders
+            }
+            guard destinationFolderID != draftsFolderID else {
+                let addedIDs = (data.messagesByFolder[draftsFolderID] ?? [])
+                    .map(\.id)
+                    .filter { messageIDs.contains($0) }
+                if !addedIDs.isEmpty {
+                    events.append(.messagesAdded(folderID: draftsFolderID, messageIDs: addedIDs))
+                }
+                return events
+            }
+            let (kept, moved) = (data.messagesByFolder[draftsFolderID] ?? []).reduce(into: (
+                [MessageHeader](),
+                [MessageHeader]()
+            )) { acc, msg in
+                if messageIDs.contains(msg.id) {
+                    acc.1.append(Self.copy(msg, folderID: destinationFolderID))
+                } else {
+                    acc.0.append(msg)
+                }
+            }
+            data.messagesByFolder[draftsFolderID] = kept
+            if !moved.isEmpty {
+                data.messagesByFolder[destinationFolderID, default: []].append(contentsOf: moved)
+                events.append(.messagesAdded(folderID: destinationFolderID, messageIDs: moved.map(\.id)))
+            }
+            return events
+        }
+        for event in events {
+            emit(event)
+        }
+        emit(.outboxChanged)
     }
 
     func copy(ids: [String], to destinationFolderID: String) {
@@ -2212,16 +3098,25 @@ private actor Store {
         }
     }
 
-    func delete(ids: [String]) {
-        try? delete(ids: ids, mailboxID: activeMailboxID)
+    func delete(ids: [String]) throws {
+        try delete(ids: ids, mailboxID: activeMailboxID)
     }
 
     func delete(ids: [String], mailboxID: Mailbox.ID) throws {
         let idSet = Set(ids)
+        let scheduledDrafts = try removeScheduledDrafts(matching: idSet, mailboxID: mailboxID)
         let events = try updateData(mailboxID: mailboxID) { data in
             var events: [MailEvent] = []
             let trashFolderID = Self.ensureTrashFolderID(in: &data)
             let originalTrashMessages = data.messagesByFolder[trashFolderID] ?? []
+            let originalTrashIDs = Set(originalTrashMessages.map(\.id))
+            Self.restoreScheduledDraftProjections(
+                scheduledDrafts.filter { snapshot in
+                    guard let header = snapshot.header else { return false }
+                    return !originalTrashIDs.contains(header.id)
+                },
+                in: &data
+            )
             let sourceFolderIDs = Array(data.messagesByFolder.keys)
             for key in sourceFolderIDs where key != trashFolderID {
                 let existing = data.messagesByFolder[key] ?? []
@@ -2508,8 +3403,41 @@ private actor Store {
     }
 
     func save(draft: Draft, mailboxID: Mailbox.ID) throws -> Draft {
+        try ensureActive()
+        try reloadJournalRecords()
+        if let delivered = journalRecords.last(where: {
+            $0.sourceID.mailboxID == mailboxID && $0.draftID == draft.id && $0.state == .delivered
+        }) {
+            return delivered.draft ?? draft
+        }
+        if let queued = journalRecords.last(where: {
+            $0.sourceID.mailboxID == mailboxID && $0.draftID == draft.id && $0.state == .queued
+        }) {
+            guard let frozen = queued.draft else { throw Self.storageError }
+            return frozen
+        }
         let sender = try sender(mailboxID: mailboxID)
         var saved = draft
+        saved.remoteID = saved.remoteID ?? "draft-\(saved.id)"
+        let projectionDate: Date
+        if let canceled = journalRecords.last(where: {
+            $0.sourceID.mailboxID == mailboxID && $0.draftID == saved.id && $0.state == .canceled
+        }) {
+            let attachmentRecords = try Self.journalAttachments(for: saved, in: data(mailboxID: mailboxID))
+            projectionDate = try transactJournal { records in
+                guard let index = records.firstIndex(where: { $0.recordID == canceled.recordID }) else {
+                    throw ScheduledSendEditingError.notFound
+                }
+                if records[index].draft != saved || records[index].draftProjectionDate == nil {
+                    records[index].draftProjectionDate = now()
+                }
+                records[index].draft = saved
+                records[index].attachments = attachmentRecords
+                return records[index].draftProjectionDate ?? now()
+            }
+        } else {
+            projectionDate = now()
+        }
         let event = try updateData(mailboxID: mailboxID) { data -> MailEvent in
             let draftsFolderID = Self.ensureDraftsFolderID(in: &data)
             let draftID = draft.remoteID ?? "draft-\(draft.id)"
@@ -2531,7 +3459,7 @@ private actor Store {
                     bcc: draft.bcc,
                     subject: draft.subject,
                     snippet: Self.snippet(from: draft.htmlBody),
-                    date: Date(),
+                    date: projectionDate,
                     isRead: true,
                     hasAttachments: !draft.attachmentIDs.isEmpty
                 )
@@ -2551,17 +3479,47 @@ private actor Store {
         return saved
     }
 
-    func discard(draftID: String) {
-        try? discard(draftID: draftID, mailboxID: activeMailboxID)
+    func discard(draftID: String) throws {
+        try discard(draftID: draftID, mailboxID: activeMailboxID)
     }
 
     func discard(draftID: String, mailboxID: Mailbox.ID) throws {
+        try ensureActive()
+        try reloadJournalRecords()
+        let existingDraft = try draft(for: draftID, mailboxID: mailboxID)
+            ?? draft(for: "draft-\(draftID)", mailboxID: mailboxID)
+        if let existingDraft, journalRecords.contains(where: {
+            $0.sourceID.mailboxID == mailboxID && $0.draftID == existingDraft.id && $0.state == .delivered
+        }) { return }
+        var changedSchedule = false
+        if let existingDraft,
+           let canceled = journalRecords.last(where: {
+               $0.sourceID.mailboxID == mailboxID && $0.draftID == existingDraft.id
+                   && ($0.state == .queued || $0.state == .canceled)
+           }) {
+            _ = try transactJournal { records in
+                guard let index = records.firstIndex(where: { $0.recordID == canceled.recordID }) else {
+                    throw ScheduledSendEditingError.notFound
+                }
+                records[index].state = .canceled
+                records[index].scheduleID = nil
+                records[index].draft = nil
+                records[index].draftProjectionDate = nil
+                records[index].attachments = []
+                records[index].scheduledFor = nil
+                return ()
+            }
+            changedSchedule = true
+        }
         let event = try updateData(mailboxID: mailboxID) { data in
             Self.removeDraft(draftID: draftID, in: &data)
         }
+        if let existingDraft { dataByMailboxID[mailboxID]?.savedDrafts[existingDraft.id] = nil }
+        refreshScheduledSnapshot()
         if let event {
             emit(event)
         }
+        if changedSchedule { emit(.outboxChanged) }
     }
 
     func uploadAttachment(
@@ -2569,14 +3527,14 @@ private actor Store {
         data: Data,
         filename: String,
         mimeType: String
-    ) -> String {
-        (try? uploadAttachment(
+    ) throws -> String {
+        try uploadAttachment(
             draftID: draftID,
             data: data,
             filename: filename,
             mimeType: mimeType,
             mailboxID: activeMailboxID
-        )) ?? "attachment-\(draftID)"
+        )
     }
 
     func uploadAttachment(
@@ -2586,8 +3544,14 @@ private actor Store {
         mimeType: String,
         mailboxID: Mailbox.ID
     ) throws -> String {
-        try updateData(mailboxID: mailboxID) { mailboxData in
-            let attachmentID = "attachment-\(draftID)-\(mailboxData.attachmentsByID.count + 1)"
+        try ensureActive()
+        return try updateData(mailboxID: mailboxID) { mailboxData in
+            let journalAttachmentIDs = Set(journalRecords.filter { $0.sourceID.mailboxID == mailboxID }
+                .flatMap { $0.attachments.map { $0.metadata.id } })
+            var attachmentID: String
+            repeat {
+                attachmentID = "attachment-\(draftID)-\(UUID().uuidString)"
+            } while mailboxData.attachmentsByID[attachmentID] != nil || journalAttachmentIDs.contains(attachmentID)
             mailboxData.attachmentsByID[attachmentID] = Attachment(
                 id: attachmentID,
                 name: filename,
@@ -2605,50 +3569,172 @@ private actor Store {
         try send(draft: draft, mailboxID: activeMailboxID)
     }
 
-    func send(draft: Draft, mailboxID: Mailbox.ID) throws -> String {
-        let sender = try sender(mailboxID: mailboxID)
-        if let draftID = draft.remoteID {
-            try discard(draftID: draftID, mailboxID: mailboxID)
+    func send(
+        draft: Draft,
+        mailboxID: Mailbox.ID,
+        scheduledDelivery: (
+            recordID: String,
+            scheduleID: String,
+            at: Date,
+            sender: Correspondent,
+            parentMessageID: String?,
+            references: [String]
+        )? = nil
+    ) throws -> String {
+        try ensureActive()
+        try reloadJournalRecords()
+        if let delivered = journalRecords.last(where: {
+            $0.sourceID.mailboxID == mailboxID && $0.draftID == draft.id && $0.state == .delivered
+        })?.sentHeader {
+            return delivered.id
         }
-        if let replyID = draft.inReplyToMessageID {
-            try mutate(ids: [replyID], mailboxID: mailboxID) { $0.isAnswered = true }
+        var canonical = draft
+        canonical.remoteID = canonical.remoteID ?? "draft-\(draft.id)"
+        canonical.scheduledFor = nil
+        let sourceID = MailSourceID(accountID: accountID, mailboxID: mailboxID)
+        let originalData = try data(mailboxID: mailboxID)
+        let attachments = try Self.journalAttachments(for: canonical, in: originalData)
+        let currentSender = try sender(mailboxID: mailboxID)
+        let from = scheduledDelivery?.sender ?? currentSender
+        let parent = canonical.inReplyToMessageID.flatMap { parentID in
+            originalData.messagesByFolder.values.flatMap(\.self).first { $0.id == parentID }
         }
-        if let forwardedID = draft.forwardedMessageID {
-            try mutate(ids: [forwardedID], mailboxID: mailboxID) { $0.isForwarded = true }
+        let parentMessageID: String?
+        let references: [String]
+        if let scheduledDelivery {
+            parentMessageID = scheduledDelivery.parentMessageID
+            references = scheduledDelivery.references
+        } else {
+            parentMessageID = parent?.rfcMessageID
+            references = Self.deduplicatedReferences((parent?.references ?? []) + [parentMessageID].compactMap { $0 })
         }
-        let result = try updateData(mailboxID: mailboxID) { data -> (messageID: String, event: MailEvent) in
-            let sentFolderID = Self.ensureSentFolderID(in: &data)
-            let messageID = "sent-\(draft.remoteID ?? draft.id)"
-            let header = MessageHeader(
-                id: messageID,
-                threadID: Self.threadID(for: draft, in: data) ?? messageID,
-                folderID: sentFolderID,
-                from: sender,
-                to: draft.to,
-                cc: draft.cc,
-                bcc: draft.bcc,
-                subject: draft.subject,
-                snippet: Self.snippet(from: draft.htmlBody),
-                date: Date(),
-                isRead: true,
-                hasAttachments: !draft.attachmentIDs.isEmpty
-            )
+        var updatedData = originalData
+        let draftsFolderID = Self.ensureDraftsFolderID(in: &updatedData)
+        let draftRemoteID = canonical.remoteID ?? "draft-\(canonical.id)"
+        _ = Self.removeDraft(draftID: draftRemoteID, in: &updatedData)
+        updatedData.savedDrafts[canonical.id] = nil
+        let sentFolderID = Self.ensureSentFolderID(in: &updatedData)
+        let messageID = "sent-\(draft.remoteID ?? draft.id)"
+        let existingHeader = originalData.messagesByFolder.values.flatMap(\.self).first { $0.id == messageID }
+        let header = existingHeader ?? MessageHeader(
+            id: messageID,
+            threadID: Self.threadID(for: canonical, in: originalData) ?? canonical.threadID ?? messageID,
+            folderID: sentFolderID,
+            from: from,
+            to: canonical.to,
+            cc: canonical.cc,
+            bcc: canonical.bcc,
+            subject: canonical.subject,
+            snippet: Self.snippet(from: canonical.htmlBody),
+            date: now(),
+            isRead: true,
+            isAnswered: false,
+            isForwarded: false,
+            hasAttachments: !canonical.attachmentIDs.isEmpty,
+            messageID: MIMEMessageBuilder.messageIDHeaderValue(draftID: canonical.id, fromEmail: from.email),
+            inReplyTo: parentMessageID,
+            references: references.isEmpty ? nil : references
+        )
+        let body = originalData.messageBodies[messageID] ?? MessageBody(
+            messageID: messageID,
+            html: canonical.htmlBody,
+            plainText: HTMLTextStripper.plainText(from: canonical.htmlBody),
+            attachments: Self.attachments(for: canonical.attachmentIDs, in: originalData)
+        )
+        updatedData.messagesByFolder[sentFolderID, default: []].removeAll { $0.id == messageID }
+        updatedData.messagesByFolder[sentFolderID, default: []].append(header)
+        updatedData.messageBodies[messageID] = body
+        let updatedOriginalMessageEvents = Self.updateRelatedMessageHeaders(for: canonical, in: &updatedData)
+        let committed: (messageID: String, changed: Bool)
+        do {
+            committed = try transactJournal { records in
+                if let delivered = records.last(where: {
+                    $0.sourceID == sourceID && $0.draftID == canonical.id && $0.state == .delivered
+                }), let sentHeader = delivered.sentHeader {
+                    return (sentHeader.id, false)
+                }
+                try Self.validateScheduledDelivery(
+                    scheduledDelivery,
+                    sourceID: sourceID,
+                    draft: draft,
+                    records: records
+                )
+                if let index = records.lastIndex(where: {
+                    $0.sourceID == sourceID && $0.draftID == canonical.id && $0.state != .delivered
+                }) {
+                    records[index].state = .delivered
+                    records[index].draft = canonical
+                    records[index].attachments = attachments
+                    records[index].scheduledFor = nil
+                    records[index].sentHeader = header
+                    records[index].sentBody = body
+                    records[index].nextAttemptAt = nil
+                    records[index].sender = from
+                    records[index].parentMessageID = parentMessageID
+                    records[index].references = references
+                    records[index].draftProjectionDate = nil
+                } else {
+                    records.append(MockSendJournalRecord(
+                        recordID: UUID().uuidString,
+                        accountID: accountID,
+                        sourceID: sourceID,
+                        draftID: canonical.id,
+                        scheduleID: nil,
+                        draft: canonical,
+                        attachments: attachments,
+                        state: .delivered,
+                        scheduledFor: nil,
+                        sentHeader: header,
+                        sentBody: body,
+                        nextAttemptAt: nil,
+                        sender: from,
+                        parentMessageID: parentMessageID,
+                        references: references
+                    ))
+                }
+                return (messageID, true)
+            }
+        } catch { throw Self.storageError }
+        guard committed.changed else { return committed.messageID }
+        if journal == nil { dataByMailboxID[mailboxID] = updatedData }
+        emit(.messagesAdded(folderID: sentFolderID, messageIDs: [committed.messageID]))
+        emit(.messagesRemoved(folderID: draftsFolderID, messageIDs: [draftRemoteID]))
+        for event in updatedOriginalMessageEvents {
+            emit(event)
+        }
+        emit(.outboxChanged)
+        return committed.messageID
+    }
 
-            data.messagesByFolder[sentFolderID, default: []].removeAll { $0.id == messageID }
-            data.messagesByFolder[sentFolderID, default: []].append(header)
-            data.messageBodies[messageID] = MessageBody(
-                messageID: messageID,
-                html: draft.htmlBody,
-                plainText: HTMLTextStripper.plainText(from: draft.htmlBody),
-                attachments: Self.attachments(for: draft.attachmentIDs, in: data)
-            )
-            return (
-                messageID,
-                .messagesAdded(folderID: sentFolderID, messageIDs: [messageID])
-            )
+    private static func validateScheduledDelivery(
+        _ scheduledDelivery: (
+            recordID: String,
+            scheduleID: String,
+            at: Date,
+            sender: Correspondent,
+            parentMessageID: String?,
+            references: [String]
+        )?,
+        sourceID: MailSourceID,
+        draft: Draft,
+        records: [MockSendJournalRecord]
+    ) throws {
+        guard let scheduledDelivery else { return }
+        guard let record = records.first(where: { $0.recordID == scheduledDelivery.recordID }),
+              record.state == .queued,
+              record.scheduleID == scheduledDelivery.scheduleID,
+              record.sourceID == sourceID,
+              record.draft == draft,
+              let dueDate = record.scheduledFor,
+              dueDate <= scheduledDelivery.at,
+              (record.nextAttemptAt ?? .distantPast) <= scheduledDelivery.at else {
+            throw ScheduledSendEditingError.notFound
         }
-        emit(result.event)
-        return result.messageID
+    }
+
+    private static func deduplicatedReferences(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     private static func ensureSentFolderID(in data: inout MockMailboxData) -> String {
@@ -2676,6 +3762,40 @@ private actor Store {
         let fallbackID = "trash"
         data.folders.append(Folder(id: fallbackID, name: "Trash", role: .trash))
         return fallbackID
+    }
+
+    private static func updateRelatedMessageHeaders(for draft: Draft, in data: inout MockMailboxData) -> [MailEvent] {
+        var updatedMessageIDsByFolder: [Folder.ID: Set<String>] = [:]
+        if let replyID = draft.inReplyToMessageID,
+           let folderID = updateHeader(id: replyID, in: &data, update: { $0.isAnswered = true }) {
+            updatedMessageIDsByFolder[folderID, default: []].insert(replyID)
+        }
+        if let forwardedID = draft.forwardedMessageID,
+           let folderID = updateHeader(id: forwardedID, in: &data, update: { $0.isForwarded = true }) {
+            updatedMessageIDsByFolder[folderID, default: []].insert(forwardedID)
+        }
+        return updatedMessageIDsByFolder.keys.sorted().map { folderID in
+            .messagesUpdated(
+                folderID: folderID,
+                messageIDs: (updatedMessageIDsByFolder[folderID] ?? []).sorted()
+            )
+        }
+    }
+
+    @discardableResult
+    private static func updateHeader(
+        id: String,
+        in data: inout MockMailboxData,
+        update: (inout MessageHeader) -> Void
+    ) -> Folder.ID? {
+        for folderID in Array(data.messagesByFolder.keys) {
+            guard var headers = data.messagesByFolder[folderID],
+                  let index = headers.firstIndex(where: { $0.id == id }) else { continue }
+            update(&headers[index])
+            data.messagesByFolder[folderID] = headers
+            return folderID
+        }
+        return nil
     }
 
     @discardableResult
@@ -2793,27 +3913,11 @@ private actor Store {
     }
 
     nonisolated func eventStream() -> AsyncStream<MailEvent> {
-        AsyncStream { continuation in
-            let token = UUID()
-            Task { await self.register(token: token, continuation: continuation) }
-            continuation.onTermination = { _ in
-                Task { await self.unregister(token: token) }
-            }
-        }
-    }
-
-    func register(token: UUID, continuation: AsyncStream<MailEvent>.Continuation) {
-        continuations[token] = continuation
-    }
-
-    func unregister(token: UUID) {
-        continuations.removeValue(forKey: token)
+        eventHub.stream()
     }
 
     func emit(_ event: MailEvent) {
-        for c in continuations.values {
-            c.yield(event)
-        }
+        eventHub.emit(event)
     }
 }
 

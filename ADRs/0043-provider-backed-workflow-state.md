@@ -49,6 +49,12 @@ Provider-backed workflow state must use capability gates and extension services.
 Views must not check for concrete backend types. Generic IMAP/SMTP accounts keep
 local fallback behavior even when provider-backed modes are unavailable.
 
+Mock scheduled sends are fixture-local rather than provider-backed workflow
+state. An explicit send-later submission is stored in a versioned, account- and
+mailbox-scoped Mock journal, while ordinary draft autosaves remain unscheduled.
+The journal is private app-owned storage, is never synchronized through
+UserDefaults/iCloud or sent to a service, and is purged with its Mock account.
+
 Conflict policy is explicit:
 
 - When provider-backed state is available, provider state is authoritative after

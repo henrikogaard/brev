@@ -24,7 +24,7 @@ import Testing
 struct ConversationWorkspaceSnapshotTests {
     @Test("desktop compose separates primary send from secondary tools")
     func composeToolbar() {
-        let backend = MockBackend()
+        let backend = MockBackend(supportsScheduledSend: false)
         let view = ComposeView(backend: backend, from: backend.account)
             .frame(width: 680, height: 560)
             .brevTheme(.brevMonoLight)
