@@ -1208,8 +1208,15 @@ struct UnifiedInboxListView: View {
         return parts.joined(separator: " · ")
     }
 
+    private var isWaitingSmartView: Bool {
+        smartView?.id == MailboxSmartView.waiting.id
+    }
+
     private var unifiedSearchExecutionSelection: Binding<SearchExecution> {
-        Binding {
+        if isWaitingSmartView {
+            return .constant(.cacheOnly)
+        }
+        return Binding {
             navigation.searchExecution
         } set: { newValue in
             navigation.hasUserSelectedSearchExecution = true
@@ -1268,13 +1275,14 @@ struct UnifiedInboxListView: View {
     }
 
     private var availableSearchExecutions: [SearchExecution] {
-        if savedSearchQuery != nil { return [.cacheOnly] }
+        if savedSearchQuery != nil || isWaitingSmartView { return [.cacheOnly] }
         return UnifiedInboxSearchPolicy.availableExecutions(from: sourceSections) { sourceID in
             backend(for: sourceID)?.capabilities ?? []
         }
     }
 
     private func reconcileSearchExecutionWithVisibleSources() {
+        if isWaitingSmartView { return }
         if savedSearchQuery != nil {
             navigation.searchExecution = .cacheOnly
             navigation.hasUserSelectedSearchExecution = false

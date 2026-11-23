@@ -296,10 +296,8 @@ All notable changes to Brev are documented here.
   invalidated session.
 
 ### Added
-- Waiting searches filter only source-owned cached Sent messages that belong in
-- An opted-in existing server draft is saved before sending so the canonical
-- Compose, including inline reply, can optionally add a three-day no-reply
-- Compose can optionally add a three-day no-reply follow-up. Sent copies and
+- Compose (including inline reply) can optionally add a three-day no-reply follow-up reminder; sent copies with an active reminder appear in the **Waiting** smart view and surface in **Today** when overdue, clearing automatically when a reply arrives.
+- Opted-in remote server drafts are saved before sending so canonical draft metadata and follow-up identifiers stay aligned across providers, and Waiting searches filter strictly over source-owned cached Sent messages.
 
 - macOS Today page (#292): with no message open, the reader greets you and
   lists conversations from people that wait on you and sent mail still waiting

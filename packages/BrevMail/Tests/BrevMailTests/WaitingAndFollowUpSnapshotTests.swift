@@ -23,7 +23,7 @@ import Testing
 /// macOS snapshot coverage for the Waiting smart view in the sidebar and the
 /// no-reply follow-up indicator / compose reminder toggle (#297).
 /// Set `RECORD_SNAPSHOTS=YES` to record or refresh baselines on macOS 26+.
-@Suite("Waiting and follow-up snapshots")
+@Suite("Waiting and follow-up snapshots", .serialized)
 @MainActor
 struct WaitingAndFollowUpSnapshotTests {
     @Test("sidebar Waiting smart view and follow-up indicator render cleanly", arguments: ["light", "dark"])
@@ -89,6 +89,7 @@ struct WaitingAndFollowUpSnapshotTests {
                     sourceContext: nil,
                     isBlockedSender: false,
                     hasFollowUp: true,
+                    referenceDate: waitingDate.addingTimeInterval(3 * 86400),
                     onActivate: {},
                     onToggleCheck: {},
                     onToggleThread: {}
@@ -108,6 +109,7 @@ struct WaitingAndFollowUpSnapshotTests {
         .brevTheme(theme)
         .environment(\.colorScheme, theme.mode.colorScheme)
         .environment(\.locale, Locale(identifier: "en_US"))
+        .transaction { $0.animation = nil }
         .defaultAppStorage(defaults)
 
         let host = NSHostingController(rootView: view)

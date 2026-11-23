@@ -66,10 +66,10 @@ deletion, and draft-operation session guards reject stale writes after removal.
 No credentials are added to staging and no new external service is involved.
 When the user opts an existing remote draft into a no-reply reminder and
 explicitly sends it, Brev saves the composed MIME to that draft through the
-existing authenticated Gmail draft-update request before sending. This keeps
-the canonical RFC Message-ID aligned with the reminder request; the explicit
-reminder opt-in and Send action gate the save, with no new endpoint or
-background request.
+existing authenticated Gmail draft-update or IMAP draft-upload (`APPEND`)
+request before sending. This keeps the canonical RFC Message-ID aligned with
+the reminder request; the explicit reminder opt-in and Send action gate the
+save, with no new endpoint or background request.
 
 Explicit Gmail Send Later submission persists frozen MIME and delivery intent
 in account-owned SQLite rows. Automatic delivery uses existing Gmail send calls
@@ -87,7 +87,7 @@ sign-in, platform distribution infrastructure, or off by default
 | Call | Data sent | When | Default | User control |
 |---|---|---|---|---|
 | IMAP/SMTP account autodiscovery | Email domain for DNS SRV probes; full email address only for provider-local HTTPS autoconfig requests | During user-initiated account setup | Off until the user starts account setup | Account setup/manual entry |
-| IMAP mail access | Account credentials, mailbox commands, folder/message identifiers, search queries, message/attachment fetch requests, raw RFC 822 source fetches (cache-first; on miss only, for View Source / Show Headers / Save As), and server-side message copies (`UID COPY`, originals left in place) | During signed-in mail use after the user adds an account | On after account add | Account add/remove |
+| IMAP mail access | Account credentials, mailbox commands, folder/message identifiers, search queries, message/attachment fetch requests, raw RFC 822 source fetches (cache-first; on miss only, for View Source / Show Headers / Save As), server-side message copies (`UID COPY`, originals left in place), and pre-send draft updates (`APPEND`) when sending an opted-in existing remote draft with a no-reply reminder | During signed-in mail use after the user adds an account; pre-send draft update runs only on explicit Send with a no-reply reminder enabled | On after account add | Account add/remove; no-reply reminder opt-in plus explicit Send for the pre-send draft save |
 | SMTP submission | Account credentials plus the draft headers, body, and attachments being sent | When the user sends mail | On after account add | Account add/remove |
 | Gmail API mail access | Google OAuth access token; account-wide Gmail message, thread, label, draft, attachment, and history identifiers; Gmail search queries; requested message metadata, bodies, raw source, attachments, label mutations, drafts, and outgoing MIME payloads | Through `gmail.googleapis.com` after the user explicitly adds a Google account using the native Gmail provider; full and delta sync continue while that account remains configured. Opening a Draft from the Drafts folder also reads `drafts.list` to find its draft ID (ADR-0093). Sending an opted-in existing remote draft first updates that draft through the existing authenticated Gmail save call so its canonical RFC Message-ID matches the no-reply reminder | Off until Google account add | Account add/remove; explicit IMAP/SMTP fallback; no-reply reminder opt-in plus explicit Send for the pre-send save |
 | Keep Offline body prefetch | Existing IMAP account credentials or Gmail OAuth token plus mailbox/message identifiers and a message-body fetch request to the configured provider, when needed by the backend | Only when the user turns Keep Offline on in a message list, Unified Inbox, reader or conversation menu; cache-first and best-effort | **Off** | Explicit per-message Keep Offline toggle; removing the local pin does not fetch or immediately delete cached content |
