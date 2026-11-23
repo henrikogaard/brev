@@ -152,21 +152,31 @@ enum NaturalLanguageSearchPlanner {
     }
 
     private static func sender(in text: String) -> (value: String, remainingText: String)? {
+        let quotedPattern = #""([^"]+)""#
+        let multiwordNamePattern = #"(?-i:[\p{Lu}][\p{Ll}\p{M}'’-]+(?:\s+[\p{Lu}][\p{Ll}\p{M}'’-]+){1,3})"#
+        let singleWordPattern = #"[\p{L}][\p{L}\p{M}'’-]*"#
+        let pattern = senderPrefix
+            + "(?:"
+            + quotedPattern + "|"
+            + "(" + emailPattern + "|" + multiwordNamePattern + "|" + singleWordPattern + ")"
+            + #")(?=\s|$)"#
         guard let expression = try? NSRegularExpression(
-            pattern: senderPrefix + "(" + emailPattern + #"|[\p{L}][\p{L}\p{M}'’-]*)(?=\s|$)"#,
+            pattern: pattern,
             options: [.caseInsensitive]
         ) else {
             return nil
         }
         let range = NSRange(text.startIndex ..< text.endIndex, in: text)
         guard let match = expression.firstMatch(in: text, range: range),
-              match.numberOfRanges > 1,
-              let valueRange = Range(match.range(at: 1), in: text),
               let fullRange = Range(match.range(at: 0), in: text)
         else {
             return nil
         }
-        let value = String(text[valueRange])
+        let capturedRange = (match.range(at: 1).location != NSNotFound ? Range(match.range(at: 1), in: text) : nil)
+            ?? (match.range(at: 2).location != NSNotFound ? Range(match.range(at: 2), in: text) : nil)
+        guard let valueRange = capturedRange else { return nil }
+        let value = String(text[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
         var remaining = text
         remaining.removeSubrange(fullRange)
         return (value.contains("@") ? value.lowercased() : value, cleanedKeywordText(remaining))
@@ -424,8 +434,10 @@ enum NaturalLanguageSearchChipEditing {
         case .keyword, .subject:
             return removingLiteral(chip.value, from: text)
         case .sender:
+            let escaped = NSRegularExpression.escapedPattern(for: chip.value)
             return removingPattern(
-                NaturalLanguageSearchPlanner.senderPrefix + NSRegularExpression.escapedPattern(for: chip.value) + #"(?=\s|$)"#,
+                NaturalLanguageSearchPlanner.senderPrefix
+                    + #"(?:""# + escaped + #""|"# + escaped + #")(?=\s|$)"#,
                 from: text
             )
         case .date:

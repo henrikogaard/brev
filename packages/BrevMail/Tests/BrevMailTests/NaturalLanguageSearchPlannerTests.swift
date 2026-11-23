@@ -223,6 +223,21 @@ struct NaturalLanguageSearchPlannerTests {
         #expect(NaturalLanguageSearchChipEditing.removing(dateChip, from: plan.originalText) == "salg")
     }
 
+    @Test("multiword and quoted sender names parse cleanly without leaking surnames into keywords")
+    func multiwordSenderNames() throws {
+        let unquoted = NaturalLanguageSearchPlanner.plan(for: "from Maya Patel invoice", execution: .cacheOnly)
+        #expect(unquoted.query.from == "Maya Patel")
+        #expect(unquoted.query.text == "invoice")
+        let unquotedChip = try #require(unquoted.chips.first { $0.kind == .sender })
+        #expect(NaturalLanguageSearchChipEditing.removing(unquotedChip, from: unquoted.originalText) == "invoice")
+
+        let quoted = NaturalLanguageSearchPlanner.plan(for: #"fra "maya patel" faktura"#, execution: .cacheOnly)
+        #expect(quoted.query.from == "maya patel")
+        #expect(quoted.query.text == "faktura")
+        let quotedChip = try #require(quoted.chips.first { $0.kind == .sender })
+        #expect(NaturalLanguageSearchChipEditing.removing(quotedChip, from: quoted.originalText) == "faktura")
+    }
+
     private func date(
         year: Int,
         month: Int,
