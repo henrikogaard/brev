@@ -16804,17 +16804,6 @@
         }
       }
     },
-    "%@ (%@)": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ (%2$@)"
-          }
-        }
-      }
-    },
     "In the message list or reader: J next · K previous · E archive · R reply · S star · # delete · H snooze.": {
       "extractionState": "manual",
       "localizations": {
