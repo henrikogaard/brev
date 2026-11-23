@@ -17,11 +17,10 @@ import SwiftUI
 
 /// The same disclosure sits above the body in the single reader and expanded conversation cards.
 struct SenderWarningBanner: View {
-    @Environment(\.brevTheme) private var theme
     @Environment(\.senderWarningHistory) private var history
     let header: MessageHeader
     let authenticationResults: String?
-    @State private var isExpanded: Bool
+    let initiallyExpanded: Bool
 
     init(
         header: MessageHeader,
@@ -30,7 +29,7 @@ struct SenderWarningBanner: View {
     ) {
         self.header = header
         self.authenticationResults = authenticationResults
-        _isExpanded = State(initialValue: initiallyExpanded)
+        self.initiallyExpanded = initiallyExpanded
     }
 
     var body: some View {
@@ -38,32 +37,53 @@ struct SenderWarningBanner: View {
             for: header, authenticationResults: authenticationResults,
             writtenAddresses: history?.written ?? [], knownDomains: history?.knownDomains ?? []
         ), history != nil || MessageHeaderAnalyzer.hasDMARCFail(in: authenticationResults) {
-            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                Label {
-                    Text(verbatim: title(for: warning))
-                        .foregroundStyle(theme.textPrimary.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "exclamationmark.shield")
-                        .foregroundStyle(theme.warning.color)
-                }
-                .brevFont(.headline)
-                DisclosureGroup(isExpanded: $isExpanded) {
-                    VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                        Text(verbatim: explanation(for: warning))
-                        Text(verbatim: String(localized: "Sender address: \(header.from.email)", bundle: .module))
-                    }
-                    .foregroundStyle(theme.textSecondary.color)
-                    .textSelection(.enabled)
-                } label: {
-                    Text("Show sender details", bundle: .module)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(BrevSpacing.md)
-            .brevQuietSurface(cornerRadius: BrevRadius.sm)
+            SenderWarningBannerCard(
+                header: header,
+                warning: warning,
+                initiallyExpanded: initiallyExpanded
+            )
             .id(header.id)
         }
+    }
+}
+
+private struct SenderWarningBannerCard: View {
+    @Environment(\.brevTheme) private var theme
+    let header: MessageHeader
+    let warning: SenderAuthWarning
+    @State private var isExpanded: Bool
+
+    init(header: MessageHeader, warning: SenderAuthWarning, initiallyExpanded: Bool) {
+        self.header = header
+        self.warning = warning
+        _isExpanded = State(initialValue: initiallyExpanded)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            Label {
+                Text(verbatim: title(for: warning))
+                    .foregroundStyle(theme.textPrimary.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "exclamationmark.shield")
+                    .foregroundStyle(theme.warning.color)
+            }
+            .brevFont(.headline)
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    Text(verbatim: explanation(for: warning))
+                    Text(verbatim: String(localized: "Sender address: \(header.from.email)", bundle: .module))
+                }
+                .foregroundStyle(theme.textSecondary.color)
+                .textSelection(.enabled)
+            } label: {
+                Text("Show sender details", bundle: .module)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(BrevSpacing.md)
+        .brevQuietSurface(cornerRadius: BrevRadius.sm)
     }
 
     private func title(for warning: SenderAuthWarning) -> String {

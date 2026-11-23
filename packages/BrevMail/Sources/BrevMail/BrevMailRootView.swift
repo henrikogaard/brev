@@ -1489,37 +1489,46 @@ public struct BrevMailRootView: View {
             }
         ) { item, preloadedBody in
             let owner = backend(for: item.sourceID)
-            let sourceFolders = sidebarSourceSections.first { $0.id == item.sourceID }?.folders ?? folders
-            if owner.groupsMessagesIntoThreads, item.threadHeaders.count > 1 {
-                ThreadConversationView(
-                    threadHeaders: item.threadHeaders,
-                    backend: owner,
-                    sourceID: item.sourceID,
-                    mailboxLabel: sidebarSourceSections.first { $0.id == item.sourceID }?.mailbox.email,
-                    navigation: triageReaderNavigation,
-                    isWorkBlocked: isCommandMutationBlocked || isReaderComposeBlocked,
-                    allFolders: sourceFolders,
-                    canFileLocally: localBackend != nil,
-                    inviteReconciler: inviteReconciler,
-                    readerFooter: nil
-                )
-            } else {
-                MessageDetailView(
-                    backend: owner,
-                    sourceID: item.sourceID,
-                    header: item.header,
-                    navigation: triageReaderNavigation,
-                    allFolders: sourceFolders,
-                    isWorkBlocked: isMessageWorkBlocked || isReaderComposeBlocked,
-                    isMutationWorkBlocked: isCommandMutationBlocked,
-                    canFileLocally: localBackend != nil,
-                    inviteReconciler: inviteReconciler,
-                    contactActions: senderContactActions,
-                    driveFeature: driveFeature,
-                    readerFooter: nil,
-                    preloadedBody: preloadedBody
-                )
+            let sourceSection = sidebarSourceSections.first { $0.id == item.sourceID }
+            let sourceFolders = sourceSection?.folders ?? folders
+            Group {
+                if owner.groupsMessagesIntoThreads, item.threadHeaders.count > 1 {
+                    ThreadConversationView(
+                        threadHeaders: item.threadHeaders,
+                        backend: owner,
+                        sourceID: item.sourceID,
+                        mailboxLabel: sourceSection?.mailbox.email,
+                        navigation: triageReaderNavigation,
+                        isWorkBlocked: isCommandMutationBlocked || isReaderComposeBlocked,
+                        allFolders: sourceFolders,
+                        canFileLocally: localBackend != nil,
+                        inviteReconciler: inviteReconciler,
+                        readerFooter: nil
+                    )
+                } else {
+                    MessageDetailView(
+                        backend: owner,
+                        sourceID: item.sourceID,
+                        header: item.header,
+                        navigation: triageReaderNavigation,
+                        allFolders: sourceFolders,
+                        isWorkBlocked: isMessageWorkBlocked || isReaderComposeBlocked,
+                        isMutationWorkBlocked: isCommandMutationBlocked,
+                        canFileLocally: localBackend != nil,
+                        inviteReconciler: inviteReconciler,
+                        contactActions: senderContactActions,
+                        driveFeature: driveFeature,
+                        readerFooter: nil,
+                        preloadedBody: preloadedBody
+                    )
+                }
             }
+            .modifier(SenderWarningHistoryModifier(
+                backend: owner,
+                sourceID: item.sourceID,
+                folders: sourceFolders,
+                mailboxEmail: sourceSection?.mailbox.email
+            ))
         }
         .onChange(of: session.currentItem?.id) { _, _ in
             session.syncReaderNavigation(triageReaderNavigation)
