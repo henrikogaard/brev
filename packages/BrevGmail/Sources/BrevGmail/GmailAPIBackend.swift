@@ -2639,8 +2639,11 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         plain: inout String?,
         html: inout String?,
         attachments: inout [Attachment],
-        path: String = "mime:0"
+        path: String = "mime:0",
+        inRelatedContainer: Bool = false
     ) {
+        let mimeType = part.mimeType?.lowercased() ?? ""
+        let childInRelated = inRelatedContainer || mimeType == "multipart/related"
         for (index, child) in part.parts.enumerated() {
             collectParts(
                 child,
@@ -2648,10 +2651,10 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
                 plain: &plain,
                 html: &html,
                 attachments: &attachments,
-                path: "\(path).\(index)"
+                path: "\(path).\(index)",
+                inRelatedContainer: childInRelated
             )
         }
-        let mimeType = part.mimeType?.lowercased() ?? ""
         if mimeType == "text/plain", let data = part.body?.data.flatMap(decodeBase64URL) {
             plain = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
         } else if mimeType == "text/html", let data = part.body?.data.flatMap(decodeBase64URL) {
@@ -2660,16 +2663,18 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         if let filename = part.attachmentFilename, let key = part.attachmentKey(at: path) {
             let headers = headerMap(part.headers)
             let contentID = headers["content-id"]
+            let normalizedContentID = contentID?.trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
             let disposition = headers["content-disposition"]?.components(separatedBy: ";").first?
                 .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let providerAttachmentID = part.body?.attachmentID ?? key
+            let isRelatedImage = inRelatedContainer && mimeType.hasPrefix("image/") && normalizedContentID != nil
             attachments.append(Attachment(
                 id: "gmail-attachment:\(messageID):\(key)",
                 name: filename,
                 mimeType: part.mimeType ?? "application/octet-stream",
                 sizeBytes: part.body?.size ?? 0,
-                isInline: disposition.map { $0 == "inline" } ?? (contentID != nil),
-                contentID: contentID?.trimmingCharacters(in: CharacterSet(charactersIn: "<>")),
+                isInline: isRelatedImage || (disposition.map { $0 == "inline" } ?? (normalizedContentID != nil)),
+                contentID: normalizedContentID,
                 resource: "\(messageID)|\(providerAttachmentID)"
             ))
         }

@@ -40,6 +40,45 @@ struct GmailAPIBackendTests {
         #expect(await transport.networkCalls == 0)
     }
 
+    @Test("CID-referenced images inside multipart/related stay inline even when marked attachment")
+    func relatedImageWithAttachmentDispositionStaysInline() async throws {
+        let related = GmailMessagePart(
+            mimeType: "multipart/related",
+            parts: [
+                GmailMessagePart(partID: "1", mimeType: "text/html"),
+                GmailMessagePart(
+                    partID: "2",
+                    mimeType: "image/png",
+                    filename: "logo.png",
+                    headers: [
+                        .init(name: "Content-Disposition", value: "attachment; filename=logo.png"),
+                        .init(name: "Content-ID", value: "<logo>")
+                    ]
+                ),
+                GmailMessagePart(
+                    partID: "3",
+                    mimeType: "application/pdf",
+                    filename: "invoice.pdf",
+                    headers: [
+                        .init(name: "Content-Disposition", value: "attachment; filename=invoice.pdf"),
+                        .init(name: "Content-ID", value: "<invoice>")
+                    ]
+                ),
+            ]
+        )
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "cid-msg", threadID: "t-cid", labels: ["INBOX"], payload: related),
+        ]))
+        let transport = StubGmailTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let rows = await backend.cachedAttachmentMessages(in: [Folder(id: "INBOX", name: "Inbox", role: .inbox)])
+        let attachments = try #require(rows.first?.body.attachments)
+        #expect(attachments.filter(\.isInline).map(\.name) == ["logo.png"])
+        #expect(attachments.filter { !$0.isInline }.map(\.name) == ["invoice.pdf"])
+        #expect(await transport.networkCalls == 0)
+    }
+
     @Test("cached attachment enumeration reads only the requested label without fetching bodies")
     func cachedAttachmentsStayLocal() async throws {
         let store = InMemoryGmailAccountStore()

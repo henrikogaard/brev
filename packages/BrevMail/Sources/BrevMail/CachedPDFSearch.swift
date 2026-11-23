@@ -55,8 +55,10 @@ enum CachedPDFSearch {
         }
         try Task.checkCancellation()
         let ids = Set(indexed.map(\.id))
-        lookup.text = ""
-        return matches(messages.filter { ids.contains($0.header.id) }, query: lookup)
+        var structuredOnly = lookup
+        structuredOnly.text = ""
+        let matched = messages.filter { ids.contains($0.header.id) || lookup.matches($0.header) }
+        return matches(matched, query: structuredOnly)
     }
 
     static func matches(_ messages: [CachedAttachmentMessage], query: SearchQuery) -> [MessageHeader] {

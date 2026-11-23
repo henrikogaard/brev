@@ -70,4 +70,104 @@ struct CachedPDFSearchTests {
             try await CachedPDFSearch.headers(backend: backend, query: server, folders: folders, sourceID: source)
         }
     }
+
+    @Test("PDF search accepts both partial-word header matches and index-only body matches")
+    func partialWordHeaderFallbackAndIndexOnlyMatch() async throws {
+        let folder = Folder(id: "in", name: "Inbox", role: .inbox)
+        let substringHeader = MessageHeader(
+            id: "hdr-sub",
+            threadID: "t1",
+            folderID: folder.id,
+            from: Correspondent(email: "ada@example.org"),
+            to: [],
+            subject: "Quarterly report",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 100)
+        )
+        let indexedOnlyHeader = MessageHeader(
+            id: "idx-only",
+            threadID: "t2",
+            folderID: folder.id,
+            from: Correspondent(email: "ada@example.org"),
+            to: [],
+            subject: "Summary",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 200)
+        )
+        let pdfAttachment = BrevBackend.Attachment(
+            id: "a1",
+            name: "doc.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 128,
+            isInline: false
+        )
+        let cachedRows = [
+            CachedAttachmentMessage(
+                folder: folder,
+                header: substringHeader,
+                body: MessageBody(messageID: substringHeader.id, attachments: [pdfAttachment])
+            ),
+            CachedAttachmentMessage(
+                folder: folder,
+                header: indexedOnlyHeader,
+                body: MessageBody(messageID: indexedOnlyHeader.id, attachments: [pdfAttachment])
+            ),
+        ]
+        let backend = PrefixIndexPDFStubBackend(cached: cachedRows, indexedHits: [indexedOnlyHeader])
+        let plan = NaturalLanguageSearchPlanner.plan(for: "port pdf", execution: .cacheOnly)
+        let results = try await CachedPDFSearch.headers(
+            backend: backend,
+            query: plan.query,
+            folders: [folder],
+            sourceID: nil
+        )
+        #expect(Set(results.map(\.id)) == ["hdr-sub", "idx-only"])
+    }
+}
+
+private final class PrefixIndexPDFStubBackend: MailBackend, @unchecked Sendable {
+    let account = BrevAccount(id: "acct", displayName: "Demo", emailAddress: "demo@example.org")
+    let capabilities: BackendCapabilities = []
+    private let cached: [CachedAttachmentMessage]
+    private let indexedHits: [MessageHeader]
+
+    init(cached: [CachedAttachmentMessage], indexedHits: [MessageHeader]) {
+        self.cached = cached
+        self.indexedHits = indexedHits
+    }
+
+    func cachedAttachmentMessages(in _: [Folder]) async -> [CachedAttachmentMessage] { cached }
+    func cachedAttachmentMessages(in _: [Folder], sourceID _: MailSourceID) async -> [CachedAttachmentMessage] { cached }
+    func connect() async throws {}
+    func disconnect() async {}
+    func folders() async throws -> [Folder] { [] }
+    func refresh(folder _: Folder) async throws {}
+    func messages(in _: Folder, pageToken _: String?) async throws -> (headers: [MessageHeader], nextPageToken: String?) { (
+        [],
+        nil
+    ) }
+    func body(for messageID: String) async throws -> MessageBody { MessageBody(messageID: messageID) }
+    func setRead(_: Bool, for _: [String]) async throws {}
+    func setFlagged(_: Bool, for _: [String]) async throws {}
+    func move(messageIDs _: [String], to _: Folder) async throws {}
+    func delete(messageIDs _: [String]) async throws {}
+    func save(draft: Draft) async throws -> Draft { draft }
+    func discard(draftID _: String) async throws {}
+    func send(draft _: Draft) async throws -> SendResult { SendResult(sentMessageID: "sent") }
+    func search(_: SearchQuery) async throws -> [MessageHeader] { indexedHits }
+    func calendarEvent(from attachmentID: String) async throws -> CalendarEvent {
+        CalendarEvent(
+            id: attachmentID,
+            title: "Event",
+            start: Date(),
+            end: Date(),
+            location: nil,
+            organizer: nil,
+            attendees: [],
+            description: nil
+        )
+    }
+
+    func replyToCalendarInvite(messageID _: String, response _: AttendeeState) async throws {}
+    func subscribeToChanges() -> AsyncStream<MailEvent> { AsyncStream { $0.finish() } }
 }
