@@ -7577,3 +7577,10 @@ buttons, and package-aware localization.
 - Changes: added `SignInCodePanel.swift`, `SignInCodeSurfaces.swift`, `SignInCodePanelTests.swift`, `SignInCodePanelSnapshotTests.swift` (+ 6 light/dark PNG baselines); wired `AppSession`, `BrevMailRootView`, `MessageDetailView`, `TodayPageView`, `NotificationSection`, `SettingsView`, `apps/macOS/Sources/BrevApp.swift`, `apps/iOS/Sources/BrevApp.swift`, and `.github/workflows/build.yml`; added Norwegian catalog strings; updated `ADRs/0088-sign-in-code-and-link-panel.md` (with Proposed iOS amendment), `ADRs/0006-telemetry-and-privacy.md`, `PRIVACY.md`, and `CHANGELOG.md`.
 - Verification: `swift test --package-path packages/BrevMail --filter 'SignInCode|MailStatusCopyLocalizationTests|TodayPageSnapshotTests'` (all unit, localization, and snapshot suites passed), `swift test --package-path packages/BrevSettings --filter 'SignInCodeSettingsTests'`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check`, and `Localizable.xcstrings` JSON check.
 - Skipped: Gmail E1–E5 live trust evidence (blocked on disposable Gmail fixture and per-send maintainer approval), live multi-app focus/Escape runtime QA, and iOS notification implementation (blocked until Proposed ADR-0088 iOS amendment is accepted).
+
+## 2026-11-22 — Agent — Issue #304 / ADR-0094 (Proposed)
+
+- Goal: draft Proposed ADR-0094 covering on-device AI via Apple Intelligence (`FoundationModels`, macOS 26+) and the opt-in downloaded local model path, with zero implementation code until accepted.
+- Changes: added `ADRs/0094-on-device-ai-apple-intelligence-and-local-models.md` (`Status: Proposed`) and updated `ADRs/README.md`. Documentation-only PR, so TDD does not apply.
+- Verification: `scripts/check-adr-required.sh origin/main`, `git diff --check`.
+- Handoff: awaiting Henrik's review and acceptance before implementing Slice 1 (`AppleIntelligenceAIBackend`) or Slice 2 (local weight download + ADR-0006 / `PRIVACY.md` entries).
