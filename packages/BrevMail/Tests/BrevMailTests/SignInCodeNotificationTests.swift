@@ -373,10 +373,10 @@ struct SignInCodeNotificationTests {
         ))
         await Task.yield()
 
-        // Payload includes non-secret receipt timestamp for relaunch cleanup and never includes code.
+        // Payload strictly respects ADR-0088's userInfo allowlist (no extra keys, never includes code).
         let posted = try #require(scheduler1.posted.last)
-        #expect(posted.payload
-            .userInfo[SignInCodeNotificationPolicy.receivedAtUserInfoKey] == String(baseDate.timeIntervalSince1970))
+        let allowedKeys: Set<String> = ["accountID", "folderID", "messageID", "signInKind"]
+        #expect(Set(posted.payload.userInfo.keys) == allowedKeys)
         // Stored defaults must never contain codes, links, or sender names.
         let rawDump = String(describing: defaults.dictionaryRepresentation())
         #expect(!rawDump.contains("918273"))
@@ -384,8 +384,9 @@ struct SignInCodeNotificationTests {
 
         // Fresh presenter (simulating process restart 2 minutes later) still recognizes delivered provenance.
         currentNow = baseDate.addingTimeInterval(120)
+        let scheduler2 = MockSignInNotificationScheduler()
         let presenter2 = SignInCodeNotificationPresenter(
-            scheduler: MockSignInNotificationScheduler(),
+            scheduler: scheduler2,
             pasteboard: RecordingSignInPasteboard(),
             settings: { SignInCodeSettings() },
             now: { currentNow },
@@ -394,9 +395,16 @@ struct SignInCodeNotificationTests {
         #expect(presenter2.hasValidDeliveredProvenance(accountID: "acct-gmail", messageID: "msg-cold-1"))
         #expect(!presenter2.hasValidDeliveredProvenance(accountID: "acct-gmail", messageID: "msg-unseen-backfill"))
 
-        // After 10 minutes, provenance expires and fails closed.
+        // After 10 minutes, provenance expires and relaunch pruneExpired removes the delivered notification by ID.
         currentNow = baseDate.addingTimeInterval(605)
         #expect(!presenter2.hasValidDeliveredProvenance(accountID: "acct-gmail", messageID: "msg-cold-1"))
+        presenter2.pruneExpired()
+        await Task.yield()
+        let expectedNotificationID = SignInCodeNotificationPolicy.notificationIdentifier(
+            accountID: "acct-gmail",
+            messageID: "msg-cold-1"
+        )
+        #expect(scheduler2.removedIdentifiers.contains([expectedNotificationID]))
     }
 
     @Test("delegate buffers cold-launch Copy code and Open link actions until handlers install")

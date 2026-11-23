@@ -40,10 +40,6 @@ public enum SignInCodeNotificationPolicy {
     /// Maximum freshness age (10 minutes) matching ADR-0088 Decision 3 and the iOS amendment.
     public static let freshnessWindow: TimeInterval = 600
 
-    /// Non-secret userInfo key storing the message's anchor receipt timestamp (epoch seconds)
-    /// so relaunch cleanup expires notifications by message age rather than post time.
-    public static let receivedAtUserInfoKey = "brev.signInReceivedAt"
-
     /// Lock-screen-safe notification payload carrying only generic copy and an opaque mail route.
     public struct Payload: Equatable, Sendable {
         /// Whether this notification announces a code or a sign-in link.
@@ -127,10 +123,9 @@ public enum SignInCodeNotificationPolicy {
     }
 
     /// Builds a lock-screen-safe notification payload for `presentation`.
-    /// Never writes the extracted code or magic-link URL into any field.
+    /// Never writes the extracted code, magic-link URL, or extra metadata outside the ADR-0088 allowlist.
     public static func contentPayload(
-        for presentation: SignInCodePresentation,
-        receivedAt: Date? = nil
+        for presentation: SignInCodePresentation
     ) -> Payload {
         let trimmedSender = presentation.sender.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = trimmedSender.isEmpty ? "Brev" : trimmedSender
@@ -155,9 +150,6 @@ public enum SignInCodeNotificationPolicy {
         ]
         if let folderID = presentation.folderID {
             userInfo["folderID"] = folderID
-        }
-        if let anchorDate = receivedAt ?? presentation.receivedAt {
-            userInfo[receivedAtUserInfoKey] = String(anchorDate.timeIntervalSince1970)
         }
 
         return Payload(
@@ -383,7 +375,7 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
             identifier: identifier
         )
         recordProvenance(accountID: presentation.accountID, messageID: presentation.messageID, recordedAt: anchorDate)
-        let payload = SignInCodeNotificationPolicy.contentPayload(for: presentation, receivedAt: anchorDate)
+        let payload = SignInCodeNotificationPolicy.contentPayload(for: presentation)
         Task { [scheduler] in
             await scheduler.postSignInNotification(identifier: identifier, payload: payload)
         }
@@ -423,10 +415,25 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
         for key in expiredKeys {
             entries.removeValue(forKey: key)
         }
+        let allProvenance = loadAllProvenance()
+        var activeProvenance: [ProvenanceRecord] = []
+        for record in allProvenance {
+            if current.timeIntervalSince(record.recordedAt) >= SignInCodeNotificationPolicy.freshnessWindow {
+                let expiredID = SignInCodeNotificationPolicy.notificationIdentifier(
+                    accountID: record.accountID,
+                    messageID: record.messageID
+                )
+                if !expiredIdentifiers.contains(expiredID) {
+                    expiredIdentifiers.append(expiredID)
+                }
+            } else {
+                activeProvenance.append(record)
+            }
+        }
+        saveProvenance(activeProvenance)
         if !expiredIdentifiers.isEmpty {
             scheduler.removeSignInNotifications(withIdentifiers: expiredIdentifiers)
         }
-        saveProvenance(loadActiveProvenance(at: current))
         let cutoff = current.addingTimeInterval(-SignInCodeNotificationPolicy.freshnessWindow)
         Task { [scheduler] in
             await scheduler.removeExpiredSignInNotifications(olderThan: cutoff)
@@ -533,11 +540,15 @@ public final class SignInCodeNotificationPresenter: SignInCodePresenting,
         pendingLinkConfirmation = nil
     }
 
-    private func loadActiveProvenance(at referenceDate: Date) -> [ProvenanceRecord] {
+    private func loadAllProvenance() -> [ProvenanceRecord] {
         guard let data = provenanceDefaults.data(forKey: Self.provenanceStorageKey),
               let records = try? JSONDecoder().decode([ProvenanceRecord].self, from: data)
         else { return [] }
-        return records.filter {
+        return records
+    }
+
+    private func loadActiveProvenance(at referenceDate: Date) -> [ProvenanceRecord] {
+        loadAllProvenance().filter {
             referenceDate.timeIntervalSince($0.recordedAt) < SignInCodeNotificationPolicy.freshnessWindow
         }
     }
