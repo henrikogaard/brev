@@ -342,6 +342,12 @@ plain-text `body(for:)` fetch over the account's own already-configured mail
 connection after freshness, Inbox-folder, and aligned-DMARC checks pass.
 Derived candidates and panel state stay memory-only (redacted descriptions and
 mirrors, never logged or persisted), and clipboard copies use
-`org.nspasteboard.ConcealedType` with change-count-guarded clearing. No
-production mail provider advertises `.trustedSignInAssessment` until live
-provider trust evidence (E1–E5) is recorded.
+`org.nspasteboard.ConcealedType` with change-count-guarded clearing on macOS
+and `.localOnly` with a 60-second expiration on iOS. On iOS (accepted 2026-11-23
+amendment), opted-in trust-assessed accounts post lock-screen-safe local
+notifications carrying only generic copy and an opaque mail route (zero raw
+codes or links in `UNNotificationContent`), with biometric-gated `Copy code`
+and foreground host-confirming `Open link` actions and automatic Notification
+Center cleanup. No production mail provider advertises
+`.trustedSignInAssessment` until live provider trust evidence (E1–E5) is
+recorded.

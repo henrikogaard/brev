@@ -16974,6 +16974,83 @@
           }
         }
       }
+    },
+    "Open link": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne lenke"
+          }
+        }
+      }
+    },
+    "Sign-in link": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innloggingslenke"
+          }
+        }
+      }
+    },
+    "Sign-in code arrived": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innloggingskode mottatt"
+          }
+        }
+      }
+    },
+    "Sign-in link arrived": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innloggingslenke mottatt"
+          }
+        }
+      }
+    },
+    "Open sign-in link?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne innloggingslenke?"
+          }
+        }
+      }
+    },
+    "This sign-in link opens %@ in your browser.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne innloggingslenken åpner %@ i nettleseren din."
+          }
+        }
+      }
+    },
+    "Sign-in link from %@ opens %@ in your browser.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innloggingslenken fra %@ åpner %@ i nettleseren din."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

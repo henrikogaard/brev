@@ -989,8 +989,12 @@ may read the plain-text body of an eligible freshly arrived Inbox message over
 that account's own mail connection. Extracted codes and links live in memory
 only while shown, are never written to logs, analytics, or sync payloads, and
 are copied to the macOS clipboard with `org.nspasteboard.ConcealedType` and
-optional change-count-guarded clearing. Sign-in codes are excluded from system
-notifications until a dedicated iOS notification privacy design is accepted.
+optional change-count-guarded clearing. On iOS, lock-screen-safe local
+notifications announce only the sender and generic copy (never the raw code or
+link), require Face ID / Touch ID / passcode for **Copy code** (written with
+`.localOnly` and a 60-second expiration) and **Open link** (which shows the
+real destination host in Brev before opening your browser), and are removed
+from Notification Center after use, on consent withdrawal, or after 10 minutes.
 
 ## Children
 

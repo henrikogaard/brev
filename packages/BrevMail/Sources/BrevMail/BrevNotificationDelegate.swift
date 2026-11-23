@@ -115,13 +115,67 @@ public final class BrevNotificationDelegate: NSObject, UNUserNotificationCenterD
         }
     }
 
+    public var onCopySignInCode: ActionHandler? {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return copySignInCodeHandler
+        }
+        set {
+            let pending: [PendingAction]
+            stateLock.lock()
+            copySignInCodeHandler = newValue
+            if newValue == nil {
+                pending = []
+            } else {
+                pending = pendingCopySignInCodes
+                pendingCopySignInCodes.removeAll()
+            }
+            stateLock.unlock()
+
+            guard let newValue else { return }
+            for action in pending {
+                deliverAction(action, using: newValue)
+            }
+        }
+    }
+
+    public var onOpenSignInLink: ActionHandler? {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return openSignInLinkHandler
+        }
+        set {
+            let pending: [PendingAction]
+            stateLock.lock()
+            openSignInLinkHandler = newValue
+            if newValue == nil {
+                pending = []
+            } else {
+                pending = pendingOpenSignInLinks
+                pendingOpenSignInLinks.removeAll()
+            }
+            stateLock.unlock()
+
+            guard let newValue else { return }
+            for action in pending {
+                deliverAction(action, using: newValue)
+            }
+        }
+    }
+
     private let stateLock = NSLock()
     private var markReadHandler: ActionHandler?
     private var archiveHandler: ActionHandler?
     private var replyHandler: ReplyHandler?
+    private var copySignInCodeHandler: ActionHandler?
+    private var openSignInLinkHandler: ActionHandler?
     private var pendingMarkReads: [PendingAction] = []
     private var pendingArchives: [PendingAction] = []
     private var pendingReplies: [PendingReply] = []
+    private var pendingCopySignInCodes: [PendingAction] = []
+    private var pendingOpenSignInLinks: [PendingAction] = []
 
     var pendingMarkReadCount: Int {
         stateLock.lock()
@@ -182,9 +236,43 @@ public final class BrevNotificationDelegate: NSObject, UNUserNotificationCenterD
                 userText: textResponse.userText,
                 completionHandler: completionHandler
             )
+        case SignInCodeNotificationPolicy.copyCodeActionIdentifier:
+            handleCopySignInCode(route: route, completionHandler: completionHandler)
+        case SignInCodeNotificationPolicy.openLinkActionIdentifier:
+            handleOpenSignInLink(route: route, completionHandler: completionHandler)
         default:
             onOpen?(route)
             completionHandler()
+        }
+    }
+
+    func handleCopySignInCode(
+        route: NotificationMailRoute,
+        completionHandler: @escaping () -> Void
+    ) {
+        let pending = PendingAction(route: route, completionHandler: completionHandler)
+        stateLock.lock()
+        if let handler = copySignInCodeHandler {
+            stateLock.unlock()
+            deliverAction(pending, using: handler)
+        } else {
+            pendingCopySignInCodes.append(pending)
+            stateLock.unlock()
+        }
+    }
+
+    func handleOpenSignInLink(
+        route: NotificationMailRoute,
+        completionHandler: @escaping () -> Void
+    ) {
+        let pending = PendingAction(route: route, completionHandler: completionHandler)
+        stateLock.lock()
+        if let handler = openSignInLinkHandler {
+            stateLock.unlock()
+            deliverAction(pending, using: handler)
+        } else {
+            pendingOpenSignInLinks.append(pending)
+            stateLock.unlock()
         }
     }
 

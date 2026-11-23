@@ -125,7 +125,12 @@ public final class BrevLocalNotificationCenter {
             hiddenPreviewsBodyPlaceholder: String(localized: "New mail", bundle: .module),
             options: [.customDismissAction]
         )
-        center.setNotificationCategories([category, replyCategory])
+        center.setNotificationCategories([
+            category,
+            replyCategory,
+            SignInCodeNotificationPolicy.makeCodeCategory(),
+            SignInCodeNotificationPolicy.makeLinkCategory()
+        ])
     }
 
     /// Background Mark-as-read action used by the new-mail category (#307).
@@ -662,6 +667,63 @@ public final class BrevLocalNotificationCenter {
         case .provisional: return .provisional
         case .ephemeral: return .ephemeral
         @unknown default: return .notDetermined
+        }
+    }
+}
+
+extension BrevLocalNotificationCenter: SignInCodeNotificationScheduling {
+    public func postSignInNotification(
+        identifier: String,
+        payload: SignInCodeNotificationPolicy.Payload
+    ) async {
+        guard let center else { return }
+        if authorizationStatus != .authorized,
+           authorizationStatus != .provisional,
+           authorizationStatus != .ephemeral {
+            await currentAuthorizationStatus()
+        }
+        guard authorizationStatus == .authorized
+            || authorizationStatus == .provisional
+            || authorizationStatus == .ephemeral
+        else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = payload.title
+        content.body = payload.body
+        content.categoryIdentifier = payload.categoryIdentifier
+        content.threadIdentifier = payload.threadIdentifier
+        content.userInfo = payload.userInfo
+        content.sound = .default
+        content.interruptionLevel = .timeSensitive
+
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: nil
+        )
+        try? await center.add(request)
+    }
+
+    public func removeSignInNotifications(withIdentifiers identifiers: [String]) {
+        guard let center, !identifiers.isEmpty else { return }
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+    }
+
+    public func removeAllSignInNotifications(forAccountID accountID: String) async {
+        guard let center else { return }
+        let prefix = SignInCodeNotificationPolicy.accountIdentifierPrefix(accountID: accountID)
+        let pending = await center.pendingNotificationRequests()
+            .map(\.identifier)
+            .filter { $0.hasPrefix(prefix) }
+        if !pending.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: pending)
+        }
+        let delivered = await center.deliveredNotifications()
+            .map(\.request.identifier)
+            .filter { $0.hasPrefix(prefix) }
+        if !delivered.isEmpty {
+            center.removeDeliveredNotifications(withIdentifiers: delivered)
         }
     }
 }

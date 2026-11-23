@@ -32,11 +32,29 @@ public struct SignInCodePresentation: Equatable, Sendable, CustomStringConvertib
     public let accountID: String
     /// The message the content was read from.
     public let messageID: String
+    /// Optional folder ID for notification route correlation.
+    public let folderID: String?
     /// Sender display name (falls back to the address).
     public let sender: String
     public let content: Content
     /// How long the panel stays visible.
     public let timeout: TimeInterval
+
+    public init(
+        accountID: String,
+        messageID: String,
+        folderID: String? = nil,
+        sender: String,
+        content: Content,
+        timeout: TimeInterval
+    ) {
+        self.accountID = accountID
+        self.messageID = messageID
+        self.folderID = folderID
+        self.sender = sender
+        self.content = content
+        self.timeout = timeout
+    }
 
     public var description: String { "SignInCodePresentation(redacted)" }
     public var debugDescription: String { description }
@@ -169,6 +187,7 @@ public final class SignInCodeArrivalController {
             SignInCodePresentation(
                 accountID: accountID,
                 messageID: messageID,
+                folderID: folderID,
                 sender: sender,
                 content: content,
                 timeout: SignInCodeSettings.panelTimeout

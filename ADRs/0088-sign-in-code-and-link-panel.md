@@ -493,29 +493,36 @@ configuration. `PRIVACY.md` and ADR-0006 are still untouched for that reason.
    behavior, app-active Escape, and unconsumed Escape in other apps.
 6. Defer iOS notifications until a separate privacy design is accepted.
 
-## Proposed amendment: iOS sign-in notifications (#239 / #257) — Proposed
+## Amendment: iOS sign-in notifications (#239 / #257) — Accepted
 
-- **Status:** Proposed (awaiting Henrik's explicit acceptance before any iOS notification code is written)
+- **Status:** Accepted
 - **Date:** 2026-11-22
+- **Accepted:** 2026-11-23 (by Henrik)
 - **Issue:** #239 (folded #257)
 
 ### Problem
 
 Decision 1 defers iOS because iOS cannot draw a floating panel over other apps, while standard OS notifications persist in Notification Center and may appear on the lock screen — directly conflicting with Decision 7 (derived codes and links stay memory-only).
 
-### Proposed privacy design
+### Accepted privacy design
 
 1. **Lock-screen-safe notification payload (zero raw codes or links in `UNNotificationContent`):**
    - When an opted-in, trust-assessed account receives a fresh sign-in message on iOS, Brev posts a time-sensitive local notification (`interruptionLevel = .timeSensitive`) whose title and body contain **only** the sender name and generic copy (e.g., `"<Sender>"` / `"Sign-in code arrived"` or `"Sign-in link arrived"`).
-   - **Never** write the extracted code or magic-link URL into `title`, `subtitle`, `body`, `threadIdentifier`, or `userInfo`. `userInfo` carries only the opaque `NotificationMailRoute` (`accountID`, `folderID`, `messageID`).
-   - `hiddenPreviewsBodyPlaceholder` stays generic (`"Sign-in code"`).
+   - **Never** write the extracted code or magic-link URL into `title`, `subtitle`, `body`, `threadIdentifier`, or `userInfo`. `userInfo` carries only the opaque `NotificationMailRoute` (`accountID`, `folderID`, `messageID`) and `"signInKind"`.
+   - `hiddenPreviewsBodyPlaceholder` stays generic (`"Sign-in code"` / `"Sign-in link"`).
 2. **Biometric-gated actions (`Copy code` and `Open link`):**
    - Both notification actions require `.authenticationRequired` (Face ID / Touch ID / passcode).
-   - `Copy code` runs without foregrounding the app: it re-reads the in-memory ephemeral candidate (or re-extracts from the verified plain-text part if the app woke in background, failing closed if consent was withdrawn or the 10-minute window expired) and writes to `UIPasteboard.general.setItems(..., options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(60)])`.
+   - `Copy code` runs without foregrounding the app: it re-reads the in-memory ephemeral candidate (or re-extracts from the verified plain-text part if the app woke in background, failing closed if consent was withdrawn, `.trustedSignInAssessment` is absent, or the 10-minute window expired) and writes to `UIPasteboard.general.setItems(..., options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(60)])`.
    - `Open link` requires `.foreground` + `.authenticationRequired` so Brev shows the real destination host before handing off to the default browser (preserving Decision 6).
 3. **Notification expiry and cleanup:**
-   - Notifications carry a stable per-message identifier (`brev.signIn.<accountID>.<messageID>`) and are removed from Notification Center via `removeDeliveredNotifications(withIdentifiers:)` immediately after action use, on consent withdrawal / account removal, or once the 10-minute freshness window elapses when Brev wakes.
-4. **Gate:** No iOS sign-in notification code is implemented until Henrik accepts this proposed amendment and the Gmail E1–E5 live trust evidence is recorded.
+   - Notifications carry a stable per-message identifier (`brev.signIn.<encodedAccountID>.<encodedMessageID>`) and are removed from Notification Center via `removeDeliveredNotifications(withIdentifiers:)` immediately after action use, on consent withdrawal / account removal, or once the 10-minute freshness window elapses when Brev wakes.
+4. **Provider trust gate preserved:** Gmail's `.trustedSignInAssessment` capability remains OFF until live E1–E5 trust evidence is recorded in a disposable Gmail mailbox.
+
+### iOS notification implementation status (2026-11-23)
+
+- Added `SignInCodeNotifications.swift` (`SignInCodeNotificationPolicy`, `SignInCodeNotificationScheduling`, `SignInCodeLinkConfirmation`, and `SignInCodeNotificationPresenter` conforming to `SignInCodePresenting` with redacted descriptions/mirrors).
+- Registered `brev.signIn.code` and `brev.signIn.link` categories in `BrevLocalNotificationCenter`, wired `onCopySignInCode` and `onOpenSignInLink` cold-launch-buffered handlers in `BrevNotificationDelegate` and `AppSession`, and wired iOS foreground host-confirmation alert + `.active` expiry pruning in `apps/iOS/Sources/BrevApp.swift`.
+- **Gmail `.trustedSignInAssessment` remains OFF** pending live E1–E5 evidence.
 
 ### macOS panel, AppSession owner, and in-app surfaces status (2026-11-22)
 
