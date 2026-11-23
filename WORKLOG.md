@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-23 — Agent — PR #327 (#300 single-key shortcuts rebase and macOS snapshots)
+
+- Goal: rebase PR #327 onto `origin/main`, verify zero conflicts with merged #293 Triage mode (Triage owns its own local key monitor and renders key hints on its action bar), refresh Today snapshots for the shortcut legend, and record the Mailbox View shortcuts toggle snapshot.
+- Changes: resolved `CHANGELOG.md`, `WORKLOG.md`, and `Localizable.xcstrings` rebase conflicts (removing stale `%@ (%@)` catalog key superseded by `mail.shortcut.tooltip`); refreshed `TodayPageSnapshotTests` and `SignInCodePanelSnapshotTests` Today baselines; added `MailboxViewShortcutsSnapshotTests` (light/dark) and registered it in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'MailSingleKeyShortcutTests|TodayPageSnapshotTests|SignInCodePanelSnapshotTests'`, `swift test --package-path packages/BrevSettings --filter 'MailboxViewShortcutsSnapshotTests|MailKeyboardSettingsTests'`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`; visually inspected recorded Today and Mailbox View PNGs.
+- Handoff: pushed and marked ready for review; awaiting green CI to merge.
+
 ## 2026-11-22 — Agent — #300 reader navigation
 
 - Reader J/K use the same source-scoped row sequence as the merged list and preserve reader focus. Hiding a selected card with Unread only still allows navigation, but no message action can operate on the hidden card.
