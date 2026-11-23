@@ -7591,3 +7591,10 @@ buttons, and package-aware localization.
 - Changes: added `ADRs/0095-local-mcp-agent-access.md` (`Status: Proposed`) and updated `ADRs/README.md`. Documentation-only PR, so TDD does not apply.
 - Verification: `scripts/check-adr-required.sh origin/main`, `git diff --check`.
 - Handoff: awaiting Henrik's review and acceptance before implementing the mock-mailbox MCP server, approval flow, audit log, and ADR-0006 / `PRIVACY.md` entries.
+
+## 2026-11-23 — Agent — Issue #305 / ADR-0095 (Accepted)
+
+- Goal: rebase PR #340 onto `origin/main` after PR #339 merged and record Henrik's explicit acceptance of ADR-0095 so Issue #305 implementation can start.
+- Changes: updated `ADRs/0095-local-mcp-agent-access.md` and `ADRs/README.md` from `Proposed` to `Accepted` (`Accepted: 2026-11-23`). Documentation-only PR, so TDD does not apply.
+- Verification: `scripts/check-adr-required.sh origin/main`, `git diff --check`.
+- Handoff: once PR #340 merges, implement Issue #305 (`brev-mcp` stdio bridge + `0600` peer-UID Unix socket, macOS `Settings → Agent access`, cache-only read tools, per-call in-app archive/label approvals, bounded local audit log, `PRIVACY.md` + ADR-0006 updates, tests, and snapshots) on a fresh branch from `origin/main`.
