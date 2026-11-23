@@ -16,10 +16,29 @@ import BrevBackend
 import BrevSettings
 import SwiftUI
 
-/// The focused mail root supplies only folders visible in its current profile.
+/// A top-level workspace destination surfaced by the focused mail window (#300).
+public struct MailPaletteWorkspaceDestination {
+    let title: String
+    let detail: String
+    let keywords: String
+    let run: @MainActor () -> Void
+}
+
+/// The focused mail root supplies only folders and destinations visible in its current profile.
 public struct MailPaletteMailboxContext {
     let sections: @MainActor () -> [MailSourceSection]
     let select: @MainActor (MailSourceID, Folder.ID) -> Void
+    let workspaceDestinations: @MainActor () -> [MailPaletteWorkspaceDestination]
+
+    init(
+        sections: @escaping @MainActor () -> [MailSourceSection],
+        select: @escaping @MainActor (MailSourceID, Folder.ID) -> Void,
+        workspaceDestinations: @escaping @MainActor () -> [MailPaletteWorkspaceDestination] = { [] }
+    ) {
+        self.sections = sections
+        self.select = select
+        self.workspaceDestinations = workspaceDestinations
+    }
 }
 
 private struct MailPaletteMailboxContextKey: FocusedValueKey {
@@ -92,6 +111,12 @@ struct MailPaletteEntry: Identifiable {
     static func settings(_ sections: [SettingsSection], open: @escaping @MainActor (SettingsSection) -> Void) -> [Self] {
         sections.map { section in
             Self(section.title, detail: String(localized: "Settings", bundle: .module), section: section) { open(section) }
+        }
+    }
+
+    static func workspaceDestinations(_ destinations: [MailPaletteWorkspaceDestination]) -> [Self] {
+        destinations.map { destination in
+            Self(destination.title, detail: destination.detail, keywords: destination.keywords, run: destination.run)
         }
     }
 

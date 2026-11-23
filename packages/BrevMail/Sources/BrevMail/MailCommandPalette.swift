@@ -30,6 +30,7 @@ public enum MailCommandPalette {
               let menu = NSApp.mainMenu else { return }
         var entries = MailPaletteEntry.commands(in: menu)
         if let mailbox {
+            entries += MailPaletteEntry.workspaceDestinations(mailbox.workspaceDestinations())
             entries += MailPaletteEntry.mailDestinations(in: mailbox.sections(), select: mailbox.select)
         }
         entries += MailPaletteEntry.settings(settings, open: openSettings)

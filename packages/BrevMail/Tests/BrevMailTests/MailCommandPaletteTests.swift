@@ -90,6 +90,21 @@ struct MailCommandPaletteTests {
         privacy.run()
         #expect(opened == .privacy)
         #expect(!privacy.matches("unrelated"))
+
+        var launched: [String] = []
+        let workspace = MailPaletteEntry.workspaceDestinations([
+            MailPaletteWorkspaceDestination(title: "Assistant", detail: "Mailbox", keywords: "ai") { launched.append("assistant")
+            },
+            MailPaletteWorkspaceDestination(title: "Triage", detail: "Mailbox", keywords: "queue") { launched.append("triage") },
+            MailPaletteWorkspaceDestination(title: "Subscriptions", detail: "Mailbox", keywords: "newsletters") {
+                launched.append("subscriptions")
+            },
+        ])
+        for (query, expected) in [("assistant", "assistant"), ("triage", "triage"), ("newsletters", "subscriptions")] {
+            let entry = try #require(workspace.first { $0.matches(query) })
+            entry.run()
+            #expect(launched.last == expected)
+        }
     }
 
     @Test("new palette copy has Norwegian translations")

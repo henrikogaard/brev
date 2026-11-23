@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-23 — Agent — PR #328 (#300 command palette rebase, workspace destinations, and macOS snapshots)
+
+- Goal: rebase PR #328 onto `origin/main`, surface newly merged `Assistant`, `Triage`, and `Subscriptions` workspace destinations in the ⌘K palette, and record macOS 26+ palette snapshots.
+- Changes: resolved `BrevMailRootView.swift`, `CHANGELOG.md`, `WORKLOG.md`, and `Localizable.xcstrings` rebase conflicts; added `MailPaletteWorkspaceDestination` and wired `Assistant`, `Triage`, and `Subscriptions` into `MailPaletteMailboxContext` with unit tests; added `MailCommandPaletteSnapshotTests` (light/dark) and registered the suite in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'MailCommandPaletteSnapshotTests|MailCommandPaletteTests'`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`; visually inspected both recorded PNGs.
+- Handoff: pushed and marked ready for review; awaiting green CI to merge.
+
 ## 2026-11-22 — Agent — #300 command palette appearance
 
 - Passed the session theme into the palette's separate hosting controller and used its surface, text and accent tokens. A macOS rendering regression samples the palette background with two different themes; native execution runs on CI. The full palette snapshot needs recording on macOS 26.

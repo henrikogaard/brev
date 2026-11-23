@@ -1175,7 +1175,8 @@ public struct BrevMailRootView: View {
                           let section = sidebarSourceSections.first(where: { $0.id == source }), section.loadError == nil,
                           section.folders.contains(where: { $0.id == folderID }) else { return }
                     navigation.selectFolder(folderID, in: source)
-                }
+                },
+                workspaceDestinations: { mailPaletteWorkspaceDestinations() }
             ))
         #endif
             .focusedSceneValue(\.mailNavigation, triageSession == nil ? navigation : triageReaderNavigation)
@@ -1389,6 +1390,47 @@ public struct BrevMailRootView: View {
             }
         )
     }
+
+    #if os(macOS)
+    private func mailPaletteWorkspaceDestinations() -> [MailPaletteWorkspaceDestination] {
+        guard navigation.presentedSheet == nil, !isCommandMutationBlocked else { return [] }
+        let detail = String(localized: "Mailbox", bundle: .module)
+        var destinations: [MailPaletteWorkspaceDestination] = []
+        if selectedAIBackend != nil, navigation.inlineReply == nil {
+            destinations.append(MailPaletteWorkspaceDestination(
+                title: String(localized: "Assistant", bundle: .module),
+                detail: detail,
+                keywords: "ai chat ask"
+            ) {
+                guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
+                      selectedAIBackend != nil, navigation.inlineReply == nil else { return }
+                navigation.selectAssistantDestination(
+                    preserving: navigation.selectedSourceID ?? preferredDefaultSection(in: visibleSourceSections)?.id
+                )
+            })
+        }
+        if triageSession == nil, !sidebarSourceSections.isEmpty, navigation.inlineReply == nil {
+            destinations.append(MailPaletteWorkspaceDestination(
+                title: String(localized: "Triage", bundle: .module),
+                detail: detail,
+                keywords: "queue review"
+            ) {
+                guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
+                      triageSession == nil, navigation.inlineReply == nil else { return }
+                Task { await startTriage() }
+            })
+        }
+        destinations.append(MailPaletteWorkspaceDestination(
+            title: String(localized: "Subscriptions", bundle: .module),
+            detail: detail,
+            keywords: "newsletters unsubscribe updates"
+        ) {
+            guard navigation.presentedSheet == nil, !isCommandMutationBlocked else { return }
+            navigation.selectSubscriptionsSmartView()
+        })
+        return destinations
+    }
+    #endif
 
     private func triageArchiveFolder(for item: TriageItem) -> Folder? {
         let sourceFolders = sidebarSourceSections.first { $0.id == item.sourceID }?.folders ?? folders
