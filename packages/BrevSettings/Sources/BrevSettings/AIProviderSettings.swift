@@ -70,7 +70,9 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
 
     static func new(kind: AIProviderKind) -> AIProviderSettingsDraft {
         AIProviderSettingsDraft(
-            id: AIProviderID("provider-\(UUID().uuidString)"),
+            id: kind == .appleIntelligence
+                ? AppleIntelligenceAIBackend.providerID
+                : AIProviderID("provider-\(UUID().uuidString)"),
             kind: kind,
             displayName: kind.settingsDisplayName,
             endpointURLString: kind.defaultEndpointString,
@@ -110,7 +112,7 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
             ? "system-default"
             : modelID.trimmingCharacters(in: .whitespacesAndNewlines)
         return AIProviderConfiguration(
-            id: kind == .appleIntelligence ? AppleIntelligenceAIBackend.providerID : id,
+            id: id,
             kind: kind,
             displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
             endpointURL: resolvedEndpoint,
@@ -176,6 +178,9 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
     }
 
     mutating func applyPreset(_ newKind: AIProviderKind) {
+        // Keep the reserved Apple Intelligence system profile separate from generic HTTP profiles
+        // so switching presets never overwrites another profile's identity, routing, or API key.
+        guard kind != .appleIntelligence, newKind != .appleIntelligence else { return }
         kind = newKind
         displayName = newKind.settingsDisplayName
         endpointURLString = newKind.defaultEndpointString

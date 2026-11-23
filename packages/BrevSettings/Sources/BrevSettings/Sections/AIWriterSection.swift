@@ -20,6 +20,7 @@ struct AIWriterSection: View {
     @Environment(\.brevTheme) private var theme
     @State private var settings: AIWriterSettings
     @State private var configuredProvider: AIProviderConfiguration?
+    @State private var hasNonOnDeviceAccountOverride = false
 
     private let settingsStore: SettingsPersistenceStore
     private let providerSecretStore: any AIProviderSecretStore
@@ -128,6 +129,12 @@ struct AIWriterSection: View {
             : String(localized: "not granted", bundle: .module)
         if let configuredProvider {
             if configuredProvider.kind.isOnDevice {
+                if hasNonOnDeviceAccountOverride {
+                    return String(
+                        localized: "Consent is \(consentState). Default AI Writer requests stay on this device (\(configuredProvider.transparencyLabel)); accounts with a custom provider override follow that provider’s policy.",
+                        bundle: .module
+                    )
+                }
                 return String(
                     localized: "Consent is \(consentState). When you use AI Writer, text is processed locally (\(configuredProvider.transparencyLabel)) and never leaves this device.",
                     bundle: .module
@@ -148,5 +155,16 @@ struct AIWriterSection: View {
     private func refreshConfiguredProvider() async {
         let configurations = (try? settingsStore.aiProviderConfigurations()) ?? []
         configuredProvider = configurations.first(where: \.isDefault) ?? configurations.first
+        let assignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
+        let providersByID = Dictionary(uniqueKeysWithValues: configurations.map { ($0.id, $0) })
+        let hasAssignedAccountOverride = accounts.contains { account in
+            guard let providerID = assignments.providerID(forAccountID: account.id),
+                  let provider = providersByID[providerID]
+            else { return false }
+            return provider.isEnabled && !provider.kind.isOnDevice
+        }
+        hasNonOnDeviceAccountOverride = hasAssignedAccountOverride || configurations.contains {
+            $0.isEnabled && !$0.kind.isOnDevice && $0.assignedAccountID != nil
+        }
     }
 }

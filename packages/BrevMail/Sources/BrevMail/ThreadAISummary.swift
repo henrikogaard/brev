@@ -88,7 +88,8 @@ enum ThreadAISummaryContextBuilder {
         headers: [MessageHeader],
         bodies: [MessageHeader.ID: MessageBody],
         maxMessages: Int = defaultMaxMessages,
-        maxCharacters: Int = defaultMaxCharacters
+        maxCharacters: Int = defaultMaxCharacters,
+        maxUTF8Bytes: Int? = nil
     ) -> ThreadAISummaryContext? {
         let includedHeaders = includedHeaders(from: headers, maxMessages: maxMessages)
         guard !includedHeaders.isEmpty else { return nil }
@@ -106,7 +107,20 @@ enum ThreadAISummaryContextBuilder {
             ))
         }
 
-        let content = truncated(parts.joined(separator: "\n\n"), maxCharacters: maxCharacters)
+        let joined = parts.joined(separator: "\n\n")
+        let charBounded = truncated(joined, maxCharacters: maxCharacters)
+        let content: String
+        let byteTruncated: Bool
+        if let maxUTF8Bytes {
+            let wrapperOverhead = AISafetyPolicy.serializeUntrustedMailContent("").utf8.count
+            let allowedContentBytes = max(0, maxUTF8Bytes - wrapperOverhead)
+            let bounded = truncatedUTF8(charBounded, maxBytes: allowedContentBytes)
+            content = bounded.text
+            byteTruncated = bounded.wasTruncated
+        } else {
+            content = charBounded
+            byteTruncated = false
+        }
         return ThreadAISummaryContext(
             messages: [AIMessage(role: .user, content: content)],
             instruction: [
@@ -117,7 +131,7 @@ enum ThreadAISummaryContextBuilder {
             ].joined(separator: " "),
             includedMessageCount: includedHeaders.count,
             totalMessageCount: headers.count,
-            wasTruncated: omittedCount > 0 || content.hasSuffix("...")
+            wasTruncated: omittedCount > 0 || byteTruncated || content.hasSuffix("...")
         )
     }
 
@@ -166,6 +180,27 @@ enum ThreadAISummaryContextBuilder {
         }
         let endIndex = text.index(text.startIndex, offsetBy: max(0, maxCharacters - 3))
         return String(text[..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+    }
+
+    private static func truncatedUTF8(_ text: String, maxBytes: Int) -> (text: String, wasTruncated: Bool) {
+        guard maxBytes > 0, text.utf8.count > maxBytes else {
+            return (text, false)
+        }
+        let ellipsis = "..."
+        let limit = max(0, maxBytes - ellipsis.utf8.count)
+        var bytes = 0
+        var end = text.startIndex
+        while end < text.endIndex {
+            let next = text.index(after: end)
+            let charBytes = text[end ..< next].utf8.count
+            if bytes + charBytes > limit {
+                break
+            }
+            bytes += charBytes
+            end = next
+        }
+        let prefix = String(text[..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (prefix + ellipsis, true)
     }
 
     private static func cleaned(_ text: String?) -> String {

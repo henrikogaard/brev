@@ -90,13 +90,17 @@ public actor AIProviderBackendResolver {
         else { return nil }
 
         if configuration.kind == .appleIntelligence {
-            guard appleIntelligenceAvailability().isSelectable else { return nil }
-            return AppleIntelligenceAIBackend(
-                displayName: configuration.displayName,
-                transparencyLabel: configuration.transparencyLabel,
-                availability: appleIntelligenceAvailability,
-                generator: appleIntelligenceGenerator
-            )
+            switch appleIntelligenceAvailability() {
+            case .unsupportedOS, .deviceNotEligible:
+                return nil
+            case .available, .modelNotReady, .appleIntelligenceNotEnabled, .unavailable:
+                return AppleIntelligenceAIBackend(
+                    displayName: configuration.displayName,
+                    transparencyLabel: configuration.transparencyLabel,
+                    availability: appleIntelligenceAvailability,
+                    generator: appleIntelligenceGenerator
+                )
+            }
         }
 
         let apiKey: String?

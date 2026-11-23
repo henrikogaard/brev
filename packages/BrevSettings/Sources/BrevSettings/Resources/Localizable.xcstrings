@@ -13572,6 +13572,17 @@
           }
         }
       }
+    },
+    "Consent is %@. Default AI Writer requests stay on this device (%@); accounts with a custom provider override follow that provider’s policy.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samtykke er %@. Standardforespørsler fra AI-skriveren forblir på denne enheten (%@); kontoer med egen leverandøroverstyring følger den leverandørens retningslinjer."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

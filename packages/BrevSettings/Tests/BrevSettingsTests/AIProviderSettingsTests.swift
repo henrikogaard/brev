@@ -258,6 +258,37 @@ struct AIProviderSettingsTests {
         #expect(store.aiWriterSettings() == AIWriterSettings.defaults)
     }
 
+    @Test("preset switching preserves hosted and Apple Intelligence profile identities")
+    func presetSwitchingPreservesProfileIdentity() async throws {
+        let defaults = try Self.makeDefaults()
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let secrets = InMemoryProviderSecretStore()
+
+        var hosted = AIProviderSettingsDraft.new(kind: .openAICompatible)
+        hosted.displayName = "Work OpenAI"
+        hosted.pendingAPIKey = "sk-test-secret"
+        hosted.isEnabled = true
+        hosted.assignedAccountID = "acct-work"
+        let savedHosted = try await AIProviderSettingsPersistence.save(hosted, settingsStore: store, secretStore: secrets)
+
+        var editedHosted = AIProviderSettingsDraft(configuration: savedHosted, hasSavedAPIKey: true)
+        editedHosted.applyPreset(.appleIntelligence)
+        #expect(editedHosted.kind == .openAICompatible)
+        #expect(editedHosted.id == savedHosted.id)
+
+        var onDevice = AIProviderSettingsDraft.new(kind: .appleIntelligence)
+        onDevice.isEnabled = true
+        onDevice.isDefault = false
+        onDevice.assignedAccountID = "acct-personal"
+        let savedOnDevice = try await AIProviderSettingsPersistence.save(onDevice, settingsStore: store, secretStore: secrets)
+
+        var editedOnDevice = AIProviderSettingsDraft(configuration: savedOnDevice, hasSavedAPIKey: false)
+        editedOnDevice.applyPreset(.openAICompatible)
+        #expect(editedOnDevice.kind == .appleIntelligence)
+        #expect(editedOnDevice.id == AppleIntelligenceAIBackend.providerID)
+        #expect(await secrets.apiKeyValue(for: savedHosted.id) == "sk-test-secret")
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "AIProviderSettingsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

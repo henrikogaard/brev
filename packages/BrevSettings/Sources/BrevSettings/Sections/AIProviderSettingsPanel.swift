@@ -208,10 +208,11 @@ struct AIProviderSettingsPanel: View {
                 subtitle: draft.kind.settingsSubtitle,
                 selection: presetBinding
             ) {
-                ForEach(AIProviderKind.allCases, id: \.self) { kind in
+                ForEach(editablePresets, id: \.self) { kind in
                     Text(kind.settingsTitle).tag(kind)
                 }
             }
+            .disabled(draft.kind == .appleIntelligence)
 
             providerTextField(
                 title: String(localized: "Display name", bundle: .module),
@@ -348,6 +349,12 @@ struct AIProviderSettingsPanel: View {
             .brevFont(.caption)
             .foregroundStyle(theme.textSecondary.color)
         }
+    }
+
+    private var editablePresets: [AIProviderKind] {
+        draft.kind == .appleIntelligence
+            ? [.appleIntelligence]
+            : AIProviderKind.allCases.filter { !$0.isOnDevice }
     }
 
     private var presetBinding: Binding<AIProviderKind> {
@@ -538,10 +545,12 @@ struct AIProviderSettingsPanel: View {
         isWorking = true
         defer { isWorking = false }
         do {
+            let existing = ((try? settingsStore.aiProviderConfigurations()) ?? [])
+                .first { $0.id == AppleIntelligenceAIBackend.providerID }
             let configuration = AIProviderConfiguration.appleIntelligence(
                 isEnabled: true,
                 isDefault: true,
-                assignedAccountID: nil
+                assignedAccountID: existing?.assignedAccountID
             )
             let onDeviceDraft = AIProviderSettingsDraft(
                 configuration: configuration,

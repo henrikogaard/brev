@@ -108,6 +108,54 @@ struct AppleIntelligenceAIBackendTests {
         #expect(await generator.recordedPrompts.isEmpty)
     }
 
+    @Test("shortcut fails closed with contextWindowExceeded instead of silently dropping draft tail")
+    func shortcutFailsClosedWhenOverBudget() async {
+        let generator = MockAppleIntelligenceGenerator()
+        let backend = AppleIntelligenceAIBackend(
+            contextBudget: AIBackendContextBudget(maxSourceMessages: 2, maxTotalContextBytes: 120),
+            availability: { .available },
+            generator: generator
+        )
+        let oversizedDraft = String(repeating: "Long paragraph content. ", count: 20)
+        await #expect(throws: AIBackendError.contextWindowExceeded) {
+            _ = try await backend.shortcut(.shorten, on: oversizedDraft)
+        }
+        #expect(await generator.recordedPrompts.isEmpty)
+    }
+
+    @Test("Apple Intelligence route stays installed while model is preparing and works once ready")
+    func modelNotReadyRecoversInSameSession() async throws {
+        let suiteName = "AppleIntelligenceRecoveryTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        try AIProviderConfigurationStore(defaults: defaults).save([
+            AIProviderConfiguration.appleIntelligence(isEnabled: true, isDefault: true)
+        ])
+
+        final class ReadinessBox: @unchecked Sendable {
+            var status: AppleIntelligenceAvailability = .modelNotReady
+        }
+        let box = ReadinessBox()
+        let generator = MockAppleIntelligenceGenerator()
+        let resolver = AIProviderBackendResolver(
+            defaults: defaults,
+            secretStore: EmptySecretStore(),
+            appleIntelligenceAvailability: { box.status },
+            appleIntelligenceGenerator: generator
+        )
+
+        let resolved = await resolver.backends(forAccountIDs: ["acct-1"], builtInBackends: [:])
+        let backend = try #require(resolved["acct-1"])
+        await #expect(throws: AIBackendError.self) {
+            _ = try await backend.shortcut(.shorten, on: "Hello world")
+        }
+        #expect(await generator.recordedPrompts.isEmpty)
+
+        box.status = .available
+        let response = try await backend.shortcut(.shorten, on: "Hello world")
+        #expect(response.text == "On-device draft response.")
+    }
+
     @Test("Apple Intelligence provider configuration needs no API key or HTTP endpoint and reports On this Mac")
     func providerConfigurationAndResolver() async throws {
         let config = AIProviderConfiguration.appleIntelligence(isEnabled: true, isDefault: true)

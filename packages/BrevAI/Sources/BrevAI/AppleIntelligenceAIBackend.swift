@@ -117,6 +117,15 @@ public enum OnDeviceAIPlatformLabel {
                     UIDevice.current.userInterfaceIdiom == .pad ? .iPad : .iPhone
                 }
             }
+            var size = 0
+            sysctlbyname("hw.machine", nil, &size, nil, 0)
+            if size > 0 {
+                var machine = [CChar](repeating: 0, count: size)
+                if sysctlbyname("hw.machine", &machine, &size, nil, 0) == 0,
+                   String(cString: machine).hasPrefix("iPad") {
+                    return .iPad
+                }
+            }
             return .iPhone
             #else
             return .mac
@@ -279,6 +288,9 @@ public struct AppleIntelligenceAIBackend: AIBackend {
             [AIMessage(role: .user, content: text)],
             budget: effectiveBudget
         )
+        guard !bounded.wasTruncated else {
+            throw AIBackendError.contextWindowExceeded
+        }
         let instructions = [
             AISafetyPolicy.untrustedMailSystemInstruction,
             Self.shortcutInstruction(for: action)

@@ -754,7 +754,8 @@ public struct ThreadConversationView: View {
                 headers: threadHeaders,
                 bodies: bodies,
                 maxMessages: budget.maxSourceMessages,
-                maxCharacters: budget.maxTotalContextBytes
+                maxCharacters: budget.maxTotalContextBytes,
+                maxUTF8Bytes: budget.maxTotalContextBytes
             ) else {
                 aiSummaryState = .failure(
                     message: "Couldn't summarize this thread.",
