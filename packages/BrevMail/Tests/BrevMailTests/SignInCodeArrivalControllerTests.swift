@@ -44,6 +44,10 @@ struct SignInCodeArrivalControllerTests {
         private let bodyReadLock = NSLock()
         private var recordedBodyReads: [String] = []
         var bodyReads: [String] { bodyReadLock.withLock { recordedBodyReads } }
+        private var recordedSubscriptionStarts = 0
+        var subscriptionStarts: Int { bodyReadLock.withLock { recordedSubscriptionStarts } }
+        private var recordedSubscriptionStops = 0
+        var subscriptionStops: Int { bodyReadLock.withLock { recordedSubscriptionStops } }
         /// Lets a test flip consent while the assessment is in flight.
         var onAssess: (@Sendable () -> Void)?
         var onHeaders: (@Sendable () -> Void)?
@@ -86,7 +90,15 @@ struct SignInCodeArrivalControllerTests {
         }
 
         func replyToCalendarInvite(messageID: String, response: AttendeeState) async throws {}
-        func subscribeToChanges() -> AsyncStream<MailEvent> { AsyncStream { $0.finish() } }
+        func subscribeToChanges() -> AsyncStream<MailEvent> {
+            bodyReadLock.withLock { recordedSubscriptionStarts += 1 }
+            return AsyncStream { [weak self] continuation in
+                continuation.onTermination = { [weak self] _ in
+                    self?.bodyReadLock.withLock { self?.recordedSubscriptionStops += 1 }
+                }
+            }
+        }
+
         func sourceID(for mailbox: Mailbox) -> MailSourceID {
             MailSourceID(accountID: account.id, mailboxID: mailbox.id)
         }
@@ -273,4 +285,79 @@ struct SignInCodeArrivalControllerTests {
         #expect(!String(reflecting: presentation).contains(Self.code))
         #expect(Mirror(reflecting: presentation).children.isEmpty)
     }
+
+    #if os(macOS)
+    private actor StubTokenStore: TokenStore {
+        private var tokens: [String: Token] = [:]
+        func token(for accountID: String) -> Token? { tokens[accountID] }
+        func setToken(_ token: Token, for accountID: String) { tokens[accountID] = token }
+        func clearToken(for accountID: String) { tokens[accountID] = nil }
+    }
+
+    @Test("AppSession never starts a competing subscription while a mailbox window is open or opt-ins are off")
+    func sessionSubscriptionRespectsWindowOwnershipAndOptIns() async {
+        let backend = TrustedBackend()
+        let session = AppSession(
+            accountStore: InMemoryAccountStore(),
+            tokenStore: StubTokenStore(),
+            loginCoordinator: {
+                AppSession.LoginResult(backend: backend, account: backend.account)
+            }
+        )
+        session.mailboxWindowDidOpen()
+        await session.signIn()
+
+        var backgroundOff = NotificationSettings.defaults
+        backgroundOff.backgroundMailEnabled = false
+        var backgroundOn = NotificationSettings.defaults
+        backgroundOn.backgroundMailEnabled = true
+
+        let consentOff = SignInCodeSettings.defaults
+        var consentOn = SignInCodeSettings.defaults
+        consentOn.setAccountOverride(accountID: backend.account.id, codesEnabled: true, linksEnabled: false)
+
+        // With a mailbox window open, AppSession must not open a second IDLE stream.
+        session.syncSignInCodeArrivalSubscriptions(
+            notificationSettings: backgroundOn,
+            signInCodeSettings: consentOn
+        )
+        await Task.yield()
+        #expect(backend.subscriptionStarts == 0)
+
+        // Closing the window with background mail or sign-in consent off starts no stream.
+        session.mailboxWindowDidClose()
+        session.syncSignInCodeArrivalSubscriptions(
+            notificationSettings: backgroundOff,
+            signInCodeSettings: consentOn
+        )
+        session.syncSignInCodeArrivalSubscriptions(
+            notificationSettings: backgroundOn,
+            signInCodeSettings: consentOff
+        )
+        await Task.yield()
+        #expect(backend.subscriptionStarts == 0)
+
+        // Only when windowless + background mail on + account opted-in + trusted capability does one stream start.
+        session.syncSignInCodeArrivalSubscriptions(
+            notificationSettings: backgroundOn,
+            signInCodeSettings: consentOn
+        )
+        await Task.yield()
+        #expect(backend.subscriptionStarts == 1)
+
+        // Re-syncing for the same backend does not spawn a duplicate stream.
+        session.syncSignInCodeArrivalSubscriptions(
+            notificationSettings: backgroundOn,
+            signInCodeSettings: consentOn
+        )
+        await Task.yield()
+        #expect(backend.subscriptionStarts == 1)
+
+        // Reopening a mailbox window terminates the session's background stream
+        // so the mailbox view resumes exclusive ownership with zero overlap.
+        session.mailboxWindowDidOpen()
+        await Task.yield()
+        #expect(backend.subscriptionStops == 1)
+    }
+    #endif
 }

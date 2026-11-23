@@ -101,6 +101,18 @@ public final class AppSession {
     )
     private var restoreAccountsTask: Task<Void, Never>?
     private var hasCompletedInitialRestore = false
+    /// Session-owned floating panel presenter for sign-in codes and links (#239, ADR-0088).
+    public let signInCodePanelController: SignInCodePanelController
+    /// Session-owned arrival controller for opted-in, trust-assessed accounts (#239, ADR-0088).
+    public let signInCodeArrivalController: SignInCodeArrivalController
+    #if os(macOS)
+    private var signInCodeSubscriptionTasks: [BrevAccount.ID: (identity: ObjectIdentifier, task: Task<Void, Never>)] = [:]
+    private var signInCodeSettingsObserver: NSObjectProtocol?
+    /// Tracks whether at least one main mailbox window is currently observing
+    /// backend change streams so the session never opens a second competing
+    /// IMAP IDLE connection while a window is open (#239, ADR-0088).
+    private var openMailboxWindowCount = 0
+    #endif
     /// Session-owned periodic sync loop for PIM sources the user opted into
     /// sync (`PIMSource.syncEnabled`). Inert until a view or the app target
     /// calls `start(interval:)` with the configured fetch interval.
@@ -409,7 +421,14 @@ public final class AppSession {
         self.localBackend = localBackend
         backgroundMail = BackgroundMailCoordinator()
         notificationActionExecutor = NotificationActionExecutor()
+        let panelController = SignInCodePanelController()
+        signInCodePanelController = panelController
+        signInCodeArrivalController = SignInCodeArrivalController(
+            settings: { SignInCodeSettings.load(from: .standard) },
+            presenter: panelController
+        )
         pimSyncScheduler = PIMSyncScheduler()
+        panelController.themeProvider = { [weak self] in self?.theme ?? .brevMonoLight }
         backgroundMail.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         notificationActionExecutor.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         notificationActionExecutor.prepareBackends = { [weak self] in
@@ -1167,12 +1186,110 @@ public final class AppSession {
     }
 
     public func signOut(account: BrevAccount) async {
+        cancelSignInCodeArrival(accountID: account.id, removeConsent: false)
         await endAccountSession(
             account,
             shouldRunSignOutCoordinator: true,
             deleteLinkedSourceCache: false
         )
     }
+
+    /// Cancels in-flight sign-in code inspections and hides any visible panel
+    /// for `accountID` (ADR-0088 §5, §11).
+    public func cancelSignInCodeArrival(
+        accountID: BrevAccount.ID,
+        removeConsent: Bool = false
+    ) {
+        signInCodeArrivalController.cancel(accountID: accountID)
+        if removeConsent {
+            var consent = SignInCodeSettings.load(from: .standard)
+            consent.removeAccountOverride(accountID: accountID, from: .standard)
+            #if os(macOS)
+            signInCodeSubscriptionTasks.removeValue(forKey: accountID)?.task.cancel()
+            #endif
+        } else {
+            #if os(macOS)
+            syncSignInCodeArrivalSubscriptions()
+            #endif
+        }
+    }
+
+    #if os(macOS)
+    /// Records mailbox window lifecycle transitions so session-owned sign-in
+    /// arrival subscriptions run ONLY when no mailbox window owns the single
+    /// per-account event stream (preventing competing IMAP IDLE workers) AND
+    /// only for accounts that have both `.trustedSignInAssessment`, explicit
+    /// sign-in consent, and `backgroundMailEnabled` (#239, ADR-0088, ADR-0075).
+    public func mailboxWindowDidOpen() {
+        openMailboxWindowCount += 1
+        syncSignInCodeArrivalSubscriptions()
+    }
+
+    public func mailboxWindowDidClose() {
+        openMailboxWindowCount = max(0, openMailboxWindowCount - 1)
+        syncSignInCodeArrivalSubscriptions()
+    }
+
+    public func syncSignInCodeArrivalSubscriptions() {
+        syncSignInCodeArrivalSubscriptions(
+            notificationSettings: NotificationSettings.load(),
+            signInCodeSettings: SignInCodeSettings.load(from: .standard)
+        )
+    }
+
+    func syncSignInCodeArrivalSubscriptions(
+        notificationSettings: NotificationSettings,
+        signInCodeSettings: SignInCodeSettings
+    ) {
+        if signInCodeSettingsObserver == nil {
+            signInCodeSettingsObserver = NotificationCenter.default.addObserver(
+                forName: .brevNotificationSettingsDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.syncSignInCodeArrivalSubscriptions()
+                }
+            }
+        }
+        guard openMailboxWindowCount == 0,
+              notificationSettings.backgroundMailEnabled else {
+            for (_, entry) in signInCodeSubscriptionTasks {
+                entry.task.cancel()
+            }
+            signInCodeSubscriptionTasks.removeAll()
+            return
+        }
+        let eligible = visibleBackends.filter { backend in
+            guard backend.extendedCapabilities.contains(.trustedSignInAssessment) else { return false }
+            let override = signInCodeSettings.accountOverride(for: backend.account.id)
+            return override.codesEnabled || override.linksEnabled
+        }
+        let activeByID = Dictionary(
+            uniqueKeysWithValues: eligible.map { ($0.account.id, ObjectIdentifier($0)) }
+        )
+        for (id, entry) in signInCodeSubscriptionTasks where activeByID[id] != entry.identity {
+            entry.task.cancel()
+            signInCodeSubscriptionTasks.removeValue(forKey: id)
+        }
+        for backend in eligible {
+            let accountID = backend.account.id
+            let identity = ObjectIdentifier(backend)
+            if signInCodeSubscriptionTasks[accountID]?.identity == identity {
+                continue
+            }
+            let task = Task { @MainActor [weak self] in
+                for await event in backend.subscribeToChanges() {
+                    guard !Task.isCancelled, let self else { break }
+                    if case .messagesAdded = event {
+                        signInCodeArrivalController.handle(event, from: backend)
+                    }
+                }
+            }
+            signInCodeSubscriptionTasks[accountID] = (identity: identity, task: task)
+        }
+    }
+    #endif
 
     /// Removes the account and every PIM source linked to it (ADR-0072).
     ///
@@ -1185,6 +1302,7 @@ public final class AppSession {
         _ account: BrevAccount,
         deleteLinkedSourceCache: Bool = false
     ) async {
+        cancelSignInCodeArrival(accountID: account.id, removeConsent: true)
         await endAccountSession(
             account,
             shouldRunSignOutCoordinator: true,
@@ -1474,6 +1592,9 @@ public final class AppSession {
             authFailedAccountBackendIdentifier = nil
         }
         injectCardDAVContactSync(result.backend)
+        #if os(macOS)
+        syncSignInCodeArrivalSubscriptions()
+        #endif
     }
 
     private func restoreContactsAccessIfNoDemoMailboxRemains() {

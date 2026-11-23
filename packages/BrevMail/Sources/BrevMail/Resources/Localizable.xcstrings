@@ -1,6 +1,94 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ sent a sign-in link": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ sendte en innloggingslenke"
+          }
+        }
+      }
+    },
+    "Click to open it in your browser": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klikk for å åpne i nettleseren"
+          }
+        }
+      }
+    },
+    "Codes usually stop working after a few minutes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koder slutter vanligvis å virke etter noen minutter."
+          }
+        }
+      }
+    },
+    "Copied": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopiert"
+          }
+        }
+      }
+    },
+    "Copy code": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopier kode"
+          }
+        }
+      }
+    },
+    "Sent at %@. Codes usually stop working after a few minutes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sendt %@. Koder slutter vanligvis å virke etter noen minutter."
+          }
+        }
+      }
+    },
+    "Sign-in code": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innloggingskode"
+          }
+        }
+      }
+    },
+    "Sign-in code · probably expired": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innloggingskode · trolig utløpt"
+          }
+        }
+      }
+    },
     "Archive updates": {
       "extractionState": "manual",
       "localizations": {

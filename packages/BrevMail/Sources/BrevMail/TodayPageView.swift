@@ -35,8 +35,12 @@ struct TodayPageView: View {
     let onAsk: (() -> Void)?
     /// Starts sequential triage mode (#293); nil hides the button.
     let onStartTriage: (() -> Void)?
+    /// Optional newest non-expired sign-in code for opted-in accounts (#239).
+    let activeSignInCode: SignInCodeSurfaceMatch?
     /// The moment the page describes; fixed in snapshot tests.
     let now: Date
+    /// True when the caller supplied a fixed reference date (e.g. snapshots).
+    private let usesFixedClock: Bool
 
     @State private var digest: TodayDigest?
 
@@ -49,7 +53,8 @@ struct TodayPageView: View {
         onOpen: @escaping (TodayDigest.Row) -> Void,
         onAsk: (() -> Void)?,
         onStartTriage: (() -> Void)? = nil,
-        now: Date = .now,
+        activeSignInCode: SignInCodeSurfaceMatch? = nil,
+        now: Date? = nil,
         preloaded: TodayDigest? = nil
     ) {
         self.displayName = displayName
@@ -58,13 +63,34 @@ struct TodayPageView: View {
         self.onOpen = onOpen
         self.onAsk = onAsk
         self.onStartTriage = onStartTriage
-        self.now = now
+        self.activeSignInCode = activeSignInCode
+        self.now = now ?? .now
+        usesFixedClock = now != nil
         _digest = State(initialValue: preloaded)
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+                if let activeSignInCode {
+                    if usesFixedClock {
+                        if !SignInCodePresentationFormat.isProbablyExpired(
+                            sentAt: activeSignInCode.sentAt,
+                            now: now
+                        ) {
+                            TodaySignInCodeCard(match: activeSignInCode)
+                        }
+                    } else {
+                        TimelineView(.periodic(from: .now, by: 30)) { context in
+                            if !SignInCodePresentationFormat.isProbablyExpired(
+                                sentAt: activeSignInCode.sentAt,
+                                now: context.date
+                            ) {
+                                TodaySignInCodeCard(match: activeSignInCode)
+                            }
+                        }
+                    }
+                }
                 header
                 if let digest {
                     if !digest.waitingOnYou.isEmpty {

@@ -154,6 +154,9 @@ struct BrevApp: App {
             onAIProviderConfigurationChanged: {
                 await session.reloadConfiguredAIBackends()
             },
+            onSignInCodeConsentChanged: { accountID in
+                session.cancelSignInCodeArrival(accountID: accountID)
+            },
             onClose: { showSettings = false }
         )
         .environment(\.openURL, browserOpenURLAction)

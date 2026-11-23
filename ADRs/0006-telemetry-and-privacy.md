@@ -324,3 +324,18 @@ loading remains off by default. Unlike ADR-0091's strict profile, this profile
 cannot claim OS-level outbound-network denial. It retains UUID/Debug/mock/private
 container guards and excludes App Groups, broad file access and live providers.
 Normal, strict and release signing defaults remain unchanged.
+
+### 2026-11-22 opt-in sign-in codes and links on screen (ADR-0088)
+
+ADR-0088 wires a device-local, per-account opt-in (`SignInCodeSettings`, off by
+default and excluded from backups and iCloud sync) for detecting one-time
+sign-in codes and HTTPS sign-in links locally on macOS. No new network endpoint
+or third party is introduced: for opted-in accounts whose provider advertises a
+verified `.trustedSignInAssessment` capability, Brev may perform a bounded
+plain-text `body(for:)` fetch over the account's own already-configured mail
+connection after freshness, Inbox-folder, and aligned-DMARC checks pass.
+Derived candidates and panel state stay memory-only (redacted descriptions and
+mirrors, never logged or persisted), and clipboard copies use
+`org.nspasteboard.ConcealedType` with change-count-guarded clearing. No
+production mail provider advertises `.trustedSignInAssessment` until live
+provider trust evidence (E1–E5) is recorded.

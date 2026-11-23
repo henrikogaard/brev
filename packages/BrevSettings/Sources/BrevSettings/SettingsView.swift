@@ -66,6 +66,7 @@ public struct SettingsView: View {
     private let linkedSourcesProvider: @MainActor (BrevAccount.ID) async -> [PIMSource]
     private let onSignInRestoredAccount: (AccountBackupEntry) -> Void
     private let onAIProviderConfigurationChanged: () async -> Void
+    private let onSignInCodeConsentChanged: (BrevAccount.ID) -> Void
     private let onClose: (() -> Void)?
     private let allFolders: [Folder]
     private let currentFolderSourceID: MailSourceID?
@@ -104,6 +105,7 @@ public struct SettingsView: View {
         linkedSourcesProvider: @MainActor @escaping (BrevAccount.ID) async -> [PIMSource] = { _ in [] },
         onSignInRestoredAccount: @escaping (AccountBackupEntry) -> Void = { _ in },
         onAIProviderConfigurationChanged: @escaping () async -> Void = {},
+        onSignInCodeConsentChanged: @escaping (BrevAccount.ID) -> Void = { _ in },
         onClose: (() -> Void)? = nil
     ) {
         self.accountStore = accountStore
@@ -162,6 +164,7 @@ public struct SettingsView: View {
         }
         self.linkedSourcesProvider = linkedSourcesProvider
         self.onAIProviderConfigurationChanged = onAIProviderConfigurationChanged
+        self.onSignInCodeConsentChanged = onSignInCodeConsentChanged
         self.onSignInRestoredAccount = onSignInRestoredAccount
         self.onClose = onClose
     }
@@ -660,7 +663,8 @@ public struct SettingsView: View {
                 signInAssessmentAvailable: { accountID in
                     backendProvider(accountID)?.extendedCapabilities
                         .contains(.trustedSignInAssessment) ?? false
-                }
+                },
+                onSignInCodeConsentChanged: onSignInCodeConsentChanged
             )
         case .updates:
             UpdatesSection(

@@ -948,6 +948,20 @@ Apple's standard data collection on installations and updates
 applies. This is outside Brev's control. See Apple's privacy
 documentation.
 
+## Sign-in codes and links (opt-in, local-only)
+
+Brev's optional sign-in code and link detection (ADR-0088) runs strictly on
+your device using deterministic local matching — no AI, no third-party service,
+and no new network endpoints. Both one-time codes and sign-in links are **off
+by default** per account and per device, and consent is excluded from backups
+and iCloud preference sync. When enabled on a supported, verified account, Brev
+may read the plain-text body of an eligible freshly arrived Inbox message over
+that account's own mail connection. Extracted codes and links live in memory
+only while shown, are never written to logs, analytics, or sync payloads, and
+are copied to the macOS clipboard with `org.nspasteboard.ConcealedType` and
+optional change-count-guarded clearing. Sign-in codes are excluded from system
+notifications until a dedicated iOS notification privacy design is accepted.
+
 ## Children
 
 Brev does not target users under 16. Brev has no sign-up of its own;

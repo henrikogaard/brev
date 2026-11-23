@@ -144,6 +144,7 @@ struct BrevApp: App {
                         backgroundMail: session.backgroundMail,
                         notificationActionExecutor: session.notificationActionExecutor,
                         newMailPanelController: session.newMailPanelController,
+                        signInCodeArrivalController: session.signInCodeArrivalController,
                         pimSyncScheduler: session.pimSyncScheduler,
                         localBackend: session.localBackend,
                         onLocalFoldersChanged: { session.refreshLocalFolders() },
@@ -246,15 +247,23 @@ struct BrevApp: App {
                     NSApp.activate()
                 }
                 session.syncBackgroundPanelSubscriptions()
+                session.syncSignInCodeArrivalSubscriptions()
                 BrevMacOSAppDelegate.currentSession = session
                 if !session.accountRestoreErrors.isEmpty,
                    !session.visibleBackends.isEmpty {
                     showRestoreErrorAlert = true
                 }
             }
+            .onAppear {
+                session.mailboxWindowDidOpen()
+            }
+            .onDisappear {
+                session.mailboxWindowDidClose()
+            }
             .onChange(of: session.visibleBackends.map(\.account.id)) { _, _ in
                 BrevMacOSAppDelegate.currentSession = session
                 session.syncBackgroundPanelSubscriptions()
+                session.syncSignInCodeArrivalSubscriptions()
             }
             .onReceive(
                 NotificationCenter.default.publisher(for: .brevDidReceiveMailtoURL)
@@ -420,6 +429,9 @@ struct BrevApp: App {
                 },
                 onAIProviderConfigurationChanged: {
                     await session.reloadConfiguredAIBackends()
+                },
+                onSignInCodeConsentChanged: { accountID in
+                    session.cancelSignInCodeArrival(accountID: accountID)
                 }
             )
             .brevWindowTranslucency(windowRole: .settings)
