@@ -43,7 +43,10 @@ public struct FollowUpReminder: Codable, Equatable, Sendable, Identifiable {
     public var isCompleted: Bool
     /// Creation date — used for stable ordering when `dueAt` is the same.
     public let createdAt: Date
+    /// Present only for reminders created by exact cached no-reply reconciliation.
+    public var noReplyMetadata: NoReplyFollowUpMetadata?
 
+    /// Creates a manual or automatic follow-up reminder.
     public init(
         id: String = UUID().uuidString,
         messageID: String,
@@ -54,7 +57,8 @@ public struct FollowUpReminder: Codable, Equatable, Sendable, Identifiable {
         dueAt: Date,
         isDismissed: Bool = false,
         isCompleted: Bool = false,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        noReplyMetadata: NoReplyFollowUpMetadata? = nil
     ) {
         self.id = id
         self.messageID = messageID
@@ -66,6 +70,7 @@ public struct FollowUpReminder: Codable, Equatable, Sendable, Identifiable {
         self.isDismissed = isDismissed
         self.isCompleted = isCompleted
         self.createdAt = createdAt
+        self.noReplyMetadata = noReplyMetadata
     }
 
     /// Full source identity when this reminder has been written by the source-aware flow.
@@ -74,10 +79,90 @@ public struct FollowUpReminder: Codable, Equatable, Sendable, Identifiable {
         return MailSourceID(accountID: accountID, mailboxID: mailboxID)
     }
 
+    /// `true` only when this reminder was created by no-reply reconciliation.
+    public var isAutomaticNoReply: Bool { noReplyMetadata != nil }
+
     /// `true` when the reminder is active: not dismissed, not completed,
     /// and the due date has passed or is within the next 24 hours.
     public func isDue(at now: Date = Date()) -> Bool {
         !isDismissed && !isCompleted && dueAt <= now.addingTimeInterval(86400)
+    }
+}
+
+/// Exact source and RFC identity for an automatically reconciled no-reply reminder.
+public struct NoReplyFollowUpMetadata: Codable, Equatable, Sendable {
+    /// Exact mailbox source that owns the Sent copy.
+    public let sourceID: MailSourceID
+    /// Stable local draft identity that opted in.
+    public let draftID: String
+    /// Canonical outbound RFC Message-ID.
+    public let expectedMessageID: String
+    /// Delivery time from the matched Sent header.
+    public let sentAt: Date
+
+    /// Creates automatic reminder metadata for one exact source and message.
+    public init(sourceID: MailSourceID, draftID: String, expectedMessageID: String, sentAt: Date) {
+        self.sourceID = sourceID
+        self.draftID = draftID
+        self.expectedMessageID = expectedMessageID
+        self.sentAt = sentAt
+    }
+}
+
+/// Pending local intent registered only after a send or queue operation is accepted.
+public struct PendingNoReplyFollowUpIntent: Codable, Equatable, Sendable, Identifiable {
+    /// Stable deduplication key for this source and draft.
+    public let id: String
+    /// Exact mailbox source that owns the pending send.
+    public let sourceID: MailSourceID
+    /// Stable local draft identity that opted in.
+    public let draftID: String
+    /// Canonical outbound RFC Message-ID.
+    public let expectedMessageID: String
+    /// Fixed delay to apply after the actual Sent header date.
+    public let delay: TimeInterval
+    /// Optional exact provider locator hint; not an RFC identifier.
+    public let sentMessageIDHint: String?
+
+    /// Creates the pending intent for an accepted send on one exact source.
+    public init(
+        sourceID: MailSourceID,
+        draftID: String,
+        expectedMessageID: String,
+        sentMessageIDHint: String? = nil
+    ) {
+        id = Self.stableID(sourceID: sourceID, draftID: draftID)
+        self.sourceID = sourceID
+        self.draftID = draftID
+        self.expectedMessageID = expectedMessageID
+        delay = DraftNoReplyFollowUpRequest.threeDayDelay
+        self.sentMessageIDHint = sentMessageIDHint
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case sourceID
+        case draftID
+        case expectedMessageID
+        case delay
+        case sentMessageIDHint
+    }
+
+    /// Decodes a pending intent while enforcing its fixed delay and stable identity.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceID = try container.decode(MailSourceID.self, forKey: .sourceID)
+        draftID = try container.decode(String.self, forKey: .draftID)
+        id = Self.stableID(sourceID: sourceID, draftID: draftID)
+        expectedMessageID = try container.decode(String.self, forKey: .expectedMessageID)
+        delay = DraftNoReplyFollowUpRequest.threeDayDelay
+        sentMessageIDHint = try container.decodeIfPresent(String.self, forKey: .sentMessageIDHint)
+    }
+
+    /// Creates a source- and draft-scoped stable reminder identity.
+    public static func stableID(sourceID: MailSourceID, draftID: String) -> String {
+        let value = [sourceID.accountID, sourceID.mailboxID, draftID].joined(separator: "\0")
+        return "no-reply-\(Data(value.utf8).base64EncodedString())"
     }
 }
 
@@ -88,11 +173,39 @@ public struct FollowUpSettings: Codable, Equatable, Sendable {
     }
 
     public var reminders: [FollowUpReminder]
+    /// Accepted sends waiting for an exact cached Sent copy.
+    public var pendingNoReplyIntents: [PendingNoReplyFollowUpIntent]
 
     public static let defaults = FollowUpSettings(reminders: [])
 
-    public init(reminders: [FollowUpReminder]) {
+    /// Creates reminder settings and any accepted sends awaiting Sent copies.
+    public init(
+        reminders: [FollowUpReminder],
+        pendingNoReplyIntents: [PendingNoReplyFollowUpIntent] = []
+    ) {
         self.reminders = reminders
+        self.pendingNoReplyIntents = pendingNoReplyIntents
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case reminders
+        case pendingNoReplyIntents
+    }
+
+    /// Decodes legacy settings with an empty pending-intent collection by default.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reminders = try container.decodeIfPresent([FollowUpReminder].self, forKey: .reminders) ?? []
+        pendingNoReplyIntents = try container.decodeIfPresent(
+            [PendingNoReplyFollowUpIntent].self, forKey: .pendingNoReplyIntents
+        ) ?? []
+    }
+
+    /// Encodes reminders and pending accepted-send intents for backup and sync.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(reminders, forKey: .reminders)
+        try container.encode(pendingNoReplyIntents, forKey: .pendingNoReplyIntents)
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> FollowUpSettings {
@@ -125,6 +238,7 @@ public struct FollowUpSettings: Codable, Equatable, Sendable {
     public func reminder(for messageID: String) -> FollowUpReminder? {
         reminders.first {
             $0.messageID == messageID
+                && !$0.isAutomaticNoReply
                 && !$0.isDismissed
                 && !$0.isCompleted
         }
@@ -140,6 +254,7 @@ public struct FollowUpSettings: Codable, Equatable, Sendable {
         for reminder in reminders where reminder.messageID == messageID
             && !reminder.isDismissed
             && !reminder.isCompleted {
+            if reminder.isAutomaticNoReply, reminder.noReplyMetadata?.sourceID != sourceID { continue }
             guard let sourceID else {
                 globalMatch = Self.earlier(globalMatch, reminder)
                 continue
@@ -167,6 +282,14 @@ public struct FollowUpSettings: Codable, Equatable, Sendable {
     }
 
     public mutating func add(_ reminder: FollowUpReminder) {
+        if reminder.isAutomaticNoReply, reminders.contains(where: { $0.id == reminder.id }) { return }
+        if !reminder.isAutomaticNoReply {
+            for index in reminders.indices where reminders[index].isAutomaticNoReply
+                && !reminders[index].isDismissed && !reminders[index].isCompleted
+                && Self.sameScope(reminders[index], reminder) {
+                reminders[index].isDismissed = true
+            }
+        }
         // Dedup only within the same source scope. Legacy records are retained
         // unless they are themselves being replaced, so older persisted data
         // remains available as a migration fallback.
@@ -174,9 +297,22 @@ public struct FollowUpSettings: Codable, Equatable, Sendable {
             $0.messageID == reminder.messageID
                 && !$0.isDismissed
                 && !$0.isCompleted
+                && !$0.isAutomaticNoReply
                 && Self.sameScope($0, reminder)
         }
         reminders.append(reminder)
+    }
+
+    /// Replaces a pending intent with the same exact source and draft identity.
+    public mutating func upsertPendingNoReplyIntent(_ intent: PendingNoReplyFollowUpIntent) {
+        pendingNoReplyIntents.removeAll { $0.id == intent.id }
+        pendingNoReplyIntents.append(intent)
+    }
+
+    /// Removes the pending intent associated with a cancelled scheduled draft.
+    public mutating func removePendingNoReplyIntent(sourceID: MailSourceID, draftID: String) {
+        let id = PendingNoReplyFollowUpIntent.stableID(sourceID: sourceID, draftID: draftID)
+        pendingNoReplyIntents.removeAll { $0.id == id }
     }
 
     private static func sameScope(_ lhs: FollowUpReminder, _ rhs: FollowUpReminder) -> Bool {

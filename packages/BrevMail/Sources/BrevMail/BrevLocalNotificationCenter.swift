@@ -72,6 +72,7 @@ public final class BrevLocalNotificationCenter {
     public static let replyActionIdentifier = "brev.newMail.reply"
 
     private let providedCenter: UNUserNotificationCenter?
+    private let userDefaults: UserDefaults
     private var center: UNUserNotificationCenter? {
         guard Self.canUseSystemNotificationCenterInCurrentProcess else {
             return providedCenter
@@ -91,8 +92,13 @@ public final class BrevLocalNotificationCenter {
 
     public private(set) var authorizationStatus: BrevNotificationAuthStatus = .notDetermined
 
-    public init(center: UNUserNotificationCenter? = nil) {
+    /// Creates a wrapper around the system notification center and local device storage.
+    /// - Parameters:
+    ///   - center: An injected notification center, or nil to use the app's system center.
+    ///   - userDefaults: Device-local storage used for notification delivery bookkeeping.
+    public init(center: UNUserNotificationCenter? = nil, userDefaults: UserDefaults = .standard) {
         providedCenter = center
+        self.userDefaults = userDefaults
     }
 
     /// Register the "newMail" category and its actions. Safe to call
@@ -422,13 +428,127 @@ public final class BrevLocalNotificationCenter {
         try? await center.add(request)
     }
 
+    /// Restores a missing local request without replacing one already pending.
+    public func ensureFollowUpReminderScheduled(_ reminder: FollowUpReminder, subject: String) async {
+        if reminder.isAutomaticNoReply {
+            await ensureAutomaticFollowUpRemindersScheduled(
+                [(reminder, subject)],
+                settingsProvider: { FollowUpSettings.load() },
+                isSourceCurrent: { _ in true }
+            )
+            return
+        }
+        guard let center else { return }
+        let identifier = Self.followUpReminderIdentifier(for: reminder)
+        let pending = await center.pendingNotificationRequests()
+        guard !pending.contains(where: { $0.identifier == identifier }) else { return }
+        await scheduleFollowUpReminder(reminder, subject: subject)
+    }
+
+    func ensureAutomaticFollowUpRemindersScheduled(
+        _ reminders: [(FollowUpReminder, String)],
+        settingsProvider: @MainActor () -> FollowUpSettings,
+        isSourceCurrent: @MainActor (MailSourceID) -> Bool
+    ) async {
+        guard let center, !reminders.isEmpty else { return }
+        let pendingRequests = await center.pendingNotificationRequests()
+        guard !Task.isCancelled else { return }
+        var deliveredIDs = await deliveredFollowUpNotificationIdentifiers(from: center)
+        guard !Task.isCancelled else { return }
+        let authorizationStatus = await center.notificationSettings().authorizationStatus
+        let authorization = Self.map(authorizationStatus)
+        let authorizationAvailable = authorization == .authorized
+            || authorization == .provisional
+            || authorization == .ephemeral
+
+        var ledger = loadFollowUpReminderNotificationLedger()
+        defer { saveFollowUpReminderNotificationLedger(ledger) }
+        var pendingIDs = Set(pendingRequests.map(\.identifier))
+        for (reminder, subject) in reminders {
+            guard !Task.isCancelled,
+                  let metadata = reminder.noReplyMetadata,
+                  let activeReminder = activeAutomaticReminder(
+                      matching: reminder,
+                      settings: settingsProvider()
+                  ),
+                  isSourceCurrent(metadata.sourceID)
+            else { continue }
+
+            let identifier = Self.followUpReminderIdentifier(for: reminder)
+            if let previous = ledger.entries[identifier], previous.dueAt != activeReminder.dueAt {
+                center.removePendingNotificationRequests(withIdentifiers: [identifier])
+                center.removeDeliveredNotifications(withIdentifiers: [identifier])
+                pendingIDs.remove(identifier)
+                deliveredIDs.remove(identifier)
+                ledger.remove(identifier: identifier)
+            }
+            guard ledger.shouldSchedule(
+                identifier: identifier,
+                dueAt: activeReminder.dueAt,
+                now: Date(),
+                pendingIDs: pendingIDs,
+                deliveredIDs: deliveredIDs,
+                authorizationAvailable: authorizationAvailable
+            ) else { continue }
+
+            guard activeAutomaticReminder(matching: activeReminder, settings: settingsProvider()) != nil,
+                  isSourceCurrent(metadata.sourceID)
+            else { continue }
+
+            let content = UNMutableNotificationContent()
+            content.title = String(localized: "Follow-Up Reminder", bundle: .module)
+            let genericBody = String(localized: "Follow up on this message.", bundle: .module)
+            content.body = NotificationSettings.load().showPreviews && !subject.isEmpty
+                ? subject
+                : genericBody
+            content.sound = .default
+            content.threadIdentifier = "brev.followUp"
+            content.userInfo = Self.followUpNotificationUserInfo(for: activeReminder)
+            let request = UNNotificationRequest(
+                identifier: identifier,
+                content: content,
+                trigger: UNTimeIntervalNotificationTrigger(
+                    timeInterval: max(1, activeReminder.dueAt.timeIntervalSinceNow),
+                    repeats: false
+                )
+            )
+
+            do {
+                try await center.add(request)
+                guard activeAutomaticReminder(matching: activeReminder, settings: settingsProvider()) != nil,
+                      isSourceCurrent(metadata.sourceID)
+                else {
+                    center.removePendingNotificationRequests(withIdentifiers: [identifier])
+                    ledger.remove(identifier: identifier)
+                    continue
+                }
+                ledger.markScheduled(identifier: identifier, dueAt: activeReminder.dueAt)
+                pendingIDs.insert(identifier)
+            } catch {
+                guard activeAutomaticReminder(matching: activeReminder, settings: settingsProvider()) != nil,
+                      isSourceCurrent(metadata.sourceID)
+                else {
+                    center.removePendingNotificationRequests(withIdentifiers: [identifier])
+                    ledger.remove(identifier: identifier)
+                    continue
+                }
+                ledger.markFailed(identifier: identifier, dueAt: activeReminder.dueAt)
+            }
+        }
+
+        ledger.keepOnly(Self.activeFollowUpReminderIdentifiers(for: settingsProvider()))
+    }
+
     /// Cancel the pending reminder for a persisted reminder, including its legacy ID.
     public func cancelFollowUpReminder(_ reminder: FollowUpReminder) {
-        guard let center else { return }
-        center.removePendingNotificationRequests(withIdentifiers: [
-            Self.followUpReminderIdentifier(for: reminder),
+        let identifier = Self.followUpReminderIdentifier(for: reminder)
+        center?.removePendingNotificationRequests(withIdentifiers: [
+            identifier,
             Self.legacyFollowUpReminderIdentifier(for: reminder.messageID)
         ])
+        var ledger = loadFollowUpReminderNotificationLedger()
+        ledger.remove(identifier: identifier)
+        saveFollowUpReminderNotificationLedger(ledger)
     }
 
     /// Cancel a pending reminder by source-aware identity.
@@ -442,14 +562,59 @@ public final class BrevLocalNotificationCenter {
 
     /// Remove pending follow-up requests that no longer have an active local reminder.
     public func cancelInactiveFollowUpReminders(settings: FollowUpSettings) async {
+        await cancelInactiveFollowUpReminders(settingsProvider: { settings })
+    }
+
+    func cancelInactiveFollowUpReminders(settingsProvider: @MainActor () -> FollowUpSettings) async {
         guard let center else { return }
-        let activeIDs = Self.activeFollowUpReminderIdentifiers(for: settings)
         let pending = await center.pendingNotificationRequests()
+        let activeSettings = settingsProvider()
+        let activeIDs = Self.activeFollowUpReminderIdentifiers(for: activeSettings)
         let staleIDs = pending.map(\.identifier).filter {
             $0.hasPrefix(Self.followUpReminderIdentifierPrefix) && !activeIDs.contains($0)
         }
-        guard !staleIDs.isEmpty else { return }
-        center.removePendingNotificationRequests(withIdentifiers: staleIDs)
+        if !staleIDs.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: staleIDs)
+        }
+        var ledger = loadFollowUpReminderNotificationLedger()
+        ledger.keepOnly(activeIDs)
+        saveFollowUpReminderNotificationLedger(ledger)
+    }
+
+    private func loadFollowUpReminderNotificationLedger() -> FollowUpReminderNotificationLedger {
+        guard let data = userDefaults.data(forKey: FollowUpReminderNotificationLedger.userDefaultsKey),
+              let ledger = try? JSONDecoder().decode(FollowUpReminderNotificationLedger.self, from: data)
+        else { return FollowUpReminderNotificationLedger() }
+        return ledger
+    }
+
+    private func saveFollowUpReminderNotificationLedger(_ ledger: FollowUpReminderNotificationLedger) {
+        guard let data = try? JSONEncoder().encode(ledger) else { return }
+        userDefaults.set(data, forKey: FollowUpReminderNotificationLedger.userDefaultsKey)
+    }
+
+    private func activeAutomaticReminder(
+        matching reminder: FollowUpReminder,
+        settings: FollowUpSettings
+    ) -> FollowUpReminder? {
+        guard reminder.isAutomaticNoReply, !reminder.isDismissed, !reminder.isCompleted,
+              let metadata = reminder.noReplyMetadata
+        else { return nil }
+        return settings.reminders.first {
+            $0.id == reminder.id
+                && $0.dueAt == reminder.dueAt
+                && !$0.isDismissed
+                && !$0.isCompleted
+                && $0.noReplyMetadata == metadata
+        }
+    }
+
+    private func deliveredFollowUpNotificationIdentifiers(from center: UNUserNotificationCenter) async -> Set<String> {
+        await withCheckedContinuation { continuation in
+            center.getDeliveredNotifications { notifications in
+                continuation.resume(returning: Set(notifications.map(\.request.identifier)))
+            }
+        }
     }
 
     /// Schedule a low-priority "inbox refresh" reminder so the system has

@@ -103,7 +103,7 @@ struct ComposeDraftRestorationTests {
         #expect(try await backend.body(for: header.id).html == draft.htmlBody)
     }
 
-    @Test("private SwiftUI wiring uses one authoritative ID set and validated payloads")
+    @Test("draft restoration uses one authoritative ID set and validated payloads")
     func restorationWiring() throws {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/BrevMail")
@@ -201,11 +201,17 @@ struct ComposeDraftRestorationTests {
         #expect(row.filename == "old.txt")
         #expect(row.statusText == "Ready to send")
         #expect(row.removeAccessibilityLabel.contains("old.txt"))
-        #expect(!ComposeSendDraftPersistencePolicy
-            .shouldPersistDraftBeforeSend(hasPendingAttachments: pending.contains { $0.uploadedAttachmentID == nil }))
+        #expect(!ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
+            hasPendingAttachments: pending.contains { $0.uploadedAttachmentID == nil },
+            hasNoReplyFollowUp: draft.followUpRequest != nil,
+            hasExistingRemoteDraft: draft.remoteID != nil
+        ))
         pending.append(PendingAttachment(filename: "new.txt", mimeType: "text/plain", data: Data([2])))
-        #expect(ComposeSendDraftPersistencePolicy
-            .shouldPersistDraftBeforeSend(hasPendingAttachments: pending.contains { $0.uploadedAttachmentID == nil }))
+        #expect(ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
+            hasPendingAttachments: pending.contains { $0.uploadedAttachmentID == nil },
+            hasNoReplyFollowUp: draft.followUpRequest != nil,
+            hasExistingRemoteDraft: draft.remoteID != nil
+        ))
         let uploads = ComposeAttachmentUploadState.attachmentsNeedingUpload(pending)
         #expect(uploads.map(\.filename) == ["new.txt"])
         let upload = try #require(uploads.first)

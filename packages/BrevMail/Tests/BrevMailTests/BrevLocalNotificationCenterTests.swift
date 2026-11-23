@@ -143,13 +143,14 @@ struct BrevLocalNotificationCenterTests {
         #expect(activeIDs.contains(BrevLocalNotificationCenter.legacyFollowUpReminderIdentifier(for: legacy.messageID)))
     }
 
-    @Test("auth status enum covers the four user-facing cases")
+    @Test("auth status enum covers all user-facing cases")
     func authStatusEnumCoverage() {
         let all = BrevNotificationAuthStatus.allCases
         #expect(all.contains(.notDetermined))
         #expect(all.contains(.denied))
         #expect(all.contains(.authorized))
         #expect(all.contains(.provisional))
+        #expect(all.contains(.ephemeral))
     }
 
     @Test("every auth status has a non-empty display title and subtitle")

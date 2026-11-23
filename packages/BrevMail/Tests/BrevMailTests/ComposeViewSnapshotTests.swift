@@ -194,14 +194,39 @@ struct ComposeViewSnapshotTests {
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
 
-        let markerCount = countMarkerViews(in: host.view)
+        let markerCount = countViews(withAccessibilityIdentifier: "brev-compose-toolbar-marker", in: host.view)
         #expect(markerCount == 1)
     }
 
-    private func countMarkerViews(in view: UIView) -> Int {
-        let ownCount = view.accessibilityIdentifier == "brev-compose-toolbar-marker" ? 1 : 0
+    @Test("compact compose overflow exposes the no-reply follow-up toggle")
+    func compactOverflowExposesNoReplyFollowUpToggle() {
+        let theme = BrevTheme.brevPaper
+        let backend = MockBackend()
+        let view = VStack {
+            ComposeView(backend: backend, from: backend.account)
+                .compactComposeActionsMenuContent
+        }
+        .frame(width: 960, height: 780)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+
+        let host = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 960, height: 780))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.loadViewIfNeeded()
+        host.view.frame = CGRect(x: 0, y: 0, width: 960, height: 780)
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+
+        #expect(countViews(withAccessibilityIdentifier: "brev-compose-no-reply-follow-up", in: host.view) == 1)
+    }
+
+    private func countViews(withAccessibilityIdentifier identifier: String, in view: UIView) -> Int {
+        let ownCount = view.accessibilityIdentifier == identifier ? 1 : 0
         return ownCount + view.subviews.reduce(0) { count, subview in
-            count + countMarkerViews(in: subview)
+            count + countViews(withAccessibilityIdentifier: identifier, in: subview)
         }
     }
 }

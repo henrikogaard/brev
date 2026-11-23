@@ -12,6 +12,7 @@
 
 import BrevBackend
 import BrevDesign
+import BrevSettings
 import Foundation
 
 /// What the Today page shows when no message is open (#292): conversations
@@ -23,9 +24,17 @@ struct TodayDigest: Equatable, Sendable {
     struct Row: Identifiable, Equatable, Sendable {
         let sourceID: MailSourceID
         let header: MessageHeader
+        let dueAt: Date?
         /// The other person: the sender of received mail, the first other
         /// recipient of sent mail.
         let person: Correspondent
+
+        init(sourceID: MailSourceID, header: MessageHeader, dueAt: Date? = nil, person: Correspondent) {
+            self.sourceID = sourceID
+            self.header = header
+            self.dueAt = dueAt
+            self.person = person
+        }
 
         var id: SourceMessageID { SourceMessageID(sourceID: sourceID, messageID: header.id) }
     }
@@ -64,6 +73,7 @@ enum TodayDigestBuilder {
         sent: [(MailSourceID, [MessageHeader])],
         myAddresses: Set<String>,
         now: Date,
+        noReplyReminders: [FollowUpReminder] = [],
         classify: (MessageHeader, MailSourceID) -> InboxCategory
     ) -> TodayDigest {
         let mine = Set(myAddresses.map { $0.lowercased() })
@@ -73,12 +83,25 @@ enum TodayDigestBuilder {
         var sentByThread: [ThreadKey: Date] = [:]
         var sentMessageIDs: Set<String> = []
         var sentLatest: [ThreadKey: (MailSourceID, MessageHeader)] = [:]
+        var sentByCanonicalID: [SourceMessageID: [MessageHeader]] = [:]
+        var trackedNoReplyMessages = Set<SourceMessageID>()
+        for reminder in noReplyReminders where reminder.isAutomaticNoReply {
+            guard let metadata = reminder.noReplyMetadata,
+                  let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier(metadata.expectedMessageID)
+            else { continue }
+            trackedNoReplyMessages.insert(SourceMessageID(sourceID: metadata.sourceID, messageID: identifier))
+        }
         // Message ID -> when I last replied to it. IMAP threads each folder
         // on its own, so Inbox and Sent rarely share a thread ID; the reply
         // headers are what tie my answer to the conversation.
         var myReplyDates: [String: Date] = [:]
         for (sourceID, headers) in sent {
-            for header in headers where header.date >= since {
+            for header in headers {
+                if let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier(header.messageID) {
+                    sentByCanonicalID[SourceMessageID(sourceID: sourceID, messageID: identifier), default: []]
+                        .append(header)
+                }
+                guard header.date >= since else { continue }
                 let key = ThreadKey(sourceID: sourceID, threadID: header.threadID)
                 sentByThread[key] = max(sentByThread[key] ?? .distantPast, header.date)
                 if let id = header.messageID { sentMessageIDs.insert(id) }
@@ -122,6 +145,9 @@ enum TodayDigestBuilder {
 
         var waitingOn: [TodayDigest.Row] = []
         for (key, (sourceID, header)) in sentLatest {
+            let canonicalID = NoReplyFollowUpReconciler.singleMessageIdentifier(header.messageID)
+            if let canonicalID,
+               trackedNoReplyMessages.contains(SourceMessageID(sourceID: sourceID, messageID: canonicalID)) { continue }
             let other = (header.to + header.cc).first { !isMine($0) }
             let oldEnough = now.timeIntervalSince(header.date) >= replyGrace
             let replied = (inboxByThread[key] ?? .distantPast) > header.date
@@ -131,7 +157,25 @@ enum TodayDigestBuilder {
             }
         }
 
-        let newestFirst: (TodayDigest.Row, TodayDigest.Row) -> Bool = { $0.header.date > $1.header.date }
+        for reminder in noReplyReminders where reminder.isAutomaticNoReply
+            && !reminder.isDismissed && !reminder.isCompleted && reminder.dueAt <= now {
+            guard let metadata = reminder.noReplyMetadata,
+                  let expectedIdentifier = NoReplyFollowUpReconciler.singleMessageIdentifier(metadata.expectedMessageID),
+                  let header = NoReplyFollowUpReconciler.resolveSentCopy(
+                      sentByCanonicalID[SourceMessageID(sourceID: metadata.sourceID, messageID: expectedIdentifier)] ?? []
+                  ),
+                  let other = (header.to + header.cc).first(where: { !isMine($0) })
+            else { continue }
+            waitingOn.append(TodayDigest.Row(
+                sourceID: metadata.sourceID,
+                header: header,
+                dueAt: reminder.dueAt,
+                person: other
+            ))
+        }
+
+        let newestFirst: (TodayDigest.Row, TodayDigest.Row)
+            -> Bool = { ($0.dueAt ?? $0.header.date) > ($1.dueAt ?? $1.header.date) }
         digest.waitingOnYouCount = waiting.count
         digest.waitingOnYou = Array(waiting.sorted(by: newestFirst).prefix(rowLimit))
         digest.youreWaitingOnCount = waitingOn.count

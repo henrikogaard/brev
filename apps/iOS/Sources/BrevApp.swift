@@ -456,6 +456,7 @@ struct BrevApp: App {
                 DetachedComposeWindowView(
                     payload: payload,
                     backends: session.visibleBackends,
+                    currentBackendsProvider: { session.visibleBackends },
                     aiBackends: session.aiBackends,
                     signatureContextProvider: { account in
                         AppSessionFactory.composeSignatureContext(for: account)

@@ -88,6 +88,7 @@ struct MailStatusCopyLocalizationTests {
         "Snoozed messages will appear here.",
         "Messages marked done will appear here.",
         "Messages from your VIP senders will appear here.",
+        "Waiting",
         // Calendar/Contacts/Tasks kept-cache banner
         "Showing cached data",
         "Last updated %@",

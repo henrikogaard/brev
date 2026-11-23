@@ -11950,6 +11950,17 @@
         }
       }
     },
+    "Waiting": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Venter"
+          }
+        }
+      }
+    },
     "Warn before sending to recipients outside the current account domain.": {
       "extractionState": "manual",
       "localizations": {

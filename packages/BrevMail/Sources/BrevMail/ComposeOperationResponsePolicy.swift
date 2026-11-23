@@ -98,7 +98,11 @@ enum ComposeOperationResponsePolicy {
 }
 
 enum ComposeSendDraftPersistencePolicy {
-    static func shouldPersistDraftBeforeSend(hasPendingAttachments: Bool) -> Bool {
-        hasPendingAttachments
+    static func shouldPersistDraftBeforeSend(
+        hasPendingAttachments: Bool,
+        hasNoReplyFollowUp: Bool,
+        hasExistingRemoteDraft: Bool
+    ) -> Bool {
+        hasPendingAttachments || (hasNoReplyFollowUp && hasExistingRemoteDraft)
     }
 }

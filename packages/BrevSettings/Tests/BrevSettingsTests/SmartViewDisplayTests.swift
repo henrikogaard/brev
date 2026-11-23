@@ -21,7 +21,8 @@ struct SmartViewDisplayTests {
         var settings = SmartMailboxSettings(mailboxes: [
             .init(id: "custom", name: "Invoices", query: .init(text: "invoice"), isEnabled: true)
         ])
-        settings.moveEntry(id: "custom:custom", by: -7)
+        let customIndex = try #require(settings.orderedEntries.firstIndex { $0.id == "custom:custom" })
+        settings.moveEntry(id: "custom:custom", by: -customIndex)
         #expect(settings.orderedEntries.first?.id == "custom:custom")
         let first = try #require(settings.orderedEntries.first)
         settings.setEntry(first, isEnabled: false)
@@ -38,7 +39,8 @@ struct SmartViewDisplayTests {
         #expect(settings.showInSidebar)
         settings.displayOrder = ["removed", "builtin:vip", "builtin:vip"]
         #expect(settings.orderedEntries.first?.id == "builtin:vip")
-        #expect(settings.orderedEntries.count == 7)
+        #expect(settings.orderedEntries.count == 8)
+        #expect(settings.orderedEntries.contains { $0.id == "builtin:waiting" })
     }
 
     @Test("dragging a row to a new position reorders entries, as List.onMove reports it")

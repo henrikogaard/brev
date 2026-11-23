@@ -37,6 +37,7 @@ private struct ComposeAutoSaveFingerprint: Equatable {
     let bodyHTML: String?
     let attachmentIDs: [UUID]
     let requestReadReceipt: Bool
+    let remindIfNoReply: Bool
 }
 
 private struct ComposeAttachmentRetryRequiredError: LocalizedError {
@@ -198,6 +199,7 @@ public struct ComposeView: View {
     /// A window or sheet of its own, or docked under the reader (#302).
     private let hostStyle: ComposeHostStyle
     private let onCompletion: (ComposeCompletion) async -> Void
+    private let onAcceptedSend: ((Draft, SendResult, MailSourceID?, any MailBackend) async -> Void)?
     var inspection: ((ComposeView) -> Void)?
 
     @State private var to: [String] = []
@@ -253,6 +255,7 @@ public struct ComposeView: View {
     @State private var signMessage: Bool
     @State private var encryptMessage: Bool
     @State private var requestReadReceipt = false
+    @State private var remindIfNoReply: Bool
     @State private var aliases: [ServerAlias] = []
     @State private var selectedAliasID: String?
     @State private var currentSignatureContext: ComposeSignatureContext?
@@ -354,6 +357,7 @@ public struct ComposeView: View {
         isWorkBlocked: Bool = false,
         driveFeature: GoogleDriveFeature? = nil,
         onClose: (() -> Void)? = nil,
+        onAcceptedSend: ((Draft, SendResult, MailSourceID?, any MailBackend) async -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
         self.init(
@@ -377,6 +381,7 @@ public struct ComposeView: View {
             isWorkBlocked: isWorkBlocked,
             driveFeature: driveFeature,
             onClose: onClose,
+            onAcceptedSend: onAcceptedSend,
             onCompletion: onCompletion
         )
     }
@@ -402,6 +407,7 @@ public struct ComposeView: View {
         isWorkBlocked: Bool = false,
         driveFeature: GoogleDriveFeature? = nil,
         onClose: (() -> Void)? = nil,
+        onAcceptedSend: ((Draft, SendResult, MailSourceID?, any MailBackend) async -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
         self.init(
@@ -428,6 +434,7 @@ public struct ComposeView: View {
             isWorkBlocked: isWorkBlocked,
             driveFeature: driveFeature,
             onClose: onClose,
+            onAcceptedSend: onAcceptedSend,
             onCompletion: onCompletion
         )
     }
@@ -465,6 +472,7 @@ public struct ComposeView: View {
         /// An AI Writer preview to show at once; snapshot tests use it.
         initialAIPreview: ComposeAIPreviewState? = nil,
         onClose: (() -> Void)? = nil,
+        onAcceptedSend: ((Draft, SendResult, MailSourceID?, any MailBackend) async -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
         self.recoveryDefaults = recoveryDefaults
@@ -511,6 +519,7 @@ public struct ComposeView: View {
         self.driveFeature = driveFeature
         self.onClose = onClose
         self.onCompletion = onCompletion
+        self.onAcceptedSend = onAcceptedSend
         let initialBodyText: String
         if let replyingTo {
             _to = State(initialValue: ComposeReplyResolver.recipients(
@@ -597,6 +606,7 @@ public struct ComposeView: View {
         _isRecoverySession = State(initialValue: recoveredDraft != nil)
         _currentSignatureContext = State(initialValue: signatureContext)
         _selectedSenderID = State(initialValue: selectedSenderOption.id)
+        _remindIfNoReply = State(initialValue: existingDraft?.followUpRequest != nil)
     }
 
     private static func fallbackSenderOption(
@@ -1441,6 +1451,15 @@ public struct ComposeView: View {
         #endif
     }
 
+    private var noReplyFollowUpToggle: some View {
+        Toggle(
+            String(localized: "Remind me if no reply in 3 days", bundle: .module),
+            isOn: $remindIfNoReply
+        )
+        .disabled(isBusy)
+        .accessibilityIdentifier("brev-compose-no-reply-follow-up")
+    }
+
     /// One overflow menu for the desktop compose actions that do not need
     /// permanent toolbar space.
     private var composeSecondaryActionsMenu: some View {
@@ -1460,6 +1479,8 @@ public struct ComposeView: View {
             }
 
             receiptOptionsMenuContent
+
+            noReplyFollowUpToggle
 
             if composeSecurityDefaults.isFeatureEnabled {
                 Menu(ComposeToolbarAction.security.accessibilityLabel) {
@@ -1581,6 +1602,7 @@ public struct ComposeView: View {
             }
 
             receiptOptionsMenuContent
+            noReplyFollowUpToggle
 
             if composeBodyFormat == .richTextHTML {
                 Divider()
@@ -3633,7 +3655,10 @@ public struct ComposeView: View {
 
         do {
             let draft = try await draftForSend(request: request)
-            let result = try await send(draft)
+            let backend = selectedComposeBackend
+            let sourceID = selectedComposeSourceID
+            let result = try await send(draft, using: backend, sourceID: sourceID)
+            await onAcceptedSend?(draft, result, sourceID, backend)
             guard canApplyComposeOperationResponse(request) else { return }
             recordRecentRecipients(from: draft)
             await onCompletion(.sentMessage(
@@ -3758,6 +3783,7 @@ public struct ComposeView: View {
                 }
                 let draft = resolved.draft
                 restoredDraft = draft
+                remindIfNoReply = draft.followUpRequest != nil
                 draftID = draft.id
                 savedDraftRemoteID = draft.remoteID
                 to = draft.to.map(\.email)
@@ -3916,12 +3942,18 @@ public struct ComposeView: View {
         // before building or persisting the draft so the attachment IDs are
         // available in `currentDraft()`.
         try await stageInlineImages()
+        let requestedDraft = currentDraft()
         guard ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
-            hasPendingAttachments: pendingAttachments.contains { restoredDraft == nil || $0.uploadedAttachmentID == nil }
+            hasPendingAttachments: pendingAttachments.contains { restoredDraft == nil || $0.uploadedAttachmentID == nil },
+            hasNoReplyFollowUp: requestedDraft.followUpRequest != nil,
+            hasExistingRemoteDraft: requestedDraft.remoteID != nil
         ) else {
-            return currentDraft()
+            return requestedDraft
         }
-        return try await persistDraft(for: request)
+        var saved = try await persistDraft(for: request)
+        saved.scheduledFor = requestedDraft.scheduledFor
+        saved.followUpRequest = requestedDraft.followUpRequest
+        return saved
     }
 
     /// Reconciles the inline-image registry against the serialised HTML body,
@@ -4060,7 +4092,7 @@ public struct ComposeView: View {
         )
     }
 
-    private func currentDraft() -> Draft {
+    func currentDraft() -> Draft {
         var draft = ComposeDraftBuilder.draft(
             id: draftID,
             remoteID: savedDraftRemoteID,
@@ -4086,6 +4118,14 @@ public struct ComposeView: View {
                 encrypting: encryptMessage
             )
         )
+        if remindIfNoReply {
+            draft.followUpRequest = DraftNoReplyFollowUpRequest(
+                expectedMessageID: MIMEMessageBuilder.messageIDHeaderValue(
+                    draftID: draft.id,
+                    fromEmail: currentFromEmail
+                )
+            )
+        }
         draft.quoteBoundary = quoteProtection?.boundary
         if let restoredDraft {
             // Reopened drafts are neither reply nor forward sessions, but the
@@ -4125,7 +4165,8 @@ public struct ComposeView: View {
             bodyText: bodyTextExcludingManagedSignature,
             bodyHTML: composeBodyFormat == .richTextHTML ? bodyHTML : nil,
             attachmentIDs: pendingAttachments.map(\.id),
-            requestReadReceipt: requestReadReceipt
+            requestReadReceipt: requestReadReceipt,
+            remindIfNoReply: remindIfNoReply
         )
     }
 
@@ -4207,9 +4248,12 @@ public struct ComposeView: View {
         )
     }
 
-    private func send(_ draft: Draft) async throws -> SendResult {
-        let backend = selectedComposeBackend
-        if let sourceID = selectedComposeSourceID {
+    private func send(
+        _ draft: Draft,
+        using backend: any MailBackend,
+        sourceID: MailSourceID?
+    ) async throws -> SendResult {
+        if let sourceID {
             return try await backend.send(draft: draft, sourceID: sourceID)
         }
         return try await backend.send(draft: draft)
@@ -4548,7 +4592,7 @@ public struct ComposeView: View {
         restoredDraft != nil || isRecoverySession
     }
 
-    private func selectSender(_ option: ComposeSenderOption) {
+    func selectSender(_ option: ComposeSenderOption) {
         guard !isInteractionBlocked else { return }
         guard ComposeDraftRestoration.allowsSender(
             option,
@@ -4568,6 +4612,11 @@ public struct ComposeView: View {
             await loadAliases()
             await reloadServerSignaturesIfPossible()
         }
+    }
+
+    func setNoReplyFollowUpEnabled(_ enabled: Bool) {
+        guard !isInteractionBlocked else { return }
+        remindIfNoReply = enabled
     }
 
     /// Updates the selected alias and (best-effort) reloads the

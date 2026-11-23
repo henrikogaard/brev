@@ -13,6 +13,7 @@
 import BrevAvatars
 import BrevBackend
 import BrevDesign
+import BrevSettings
 import BrevThemes
 import SwiftUI
 
@@ -43,6 +44,7 @@ struct TodayPageView: View {
     private let usesFixedClock: Bool
 
     @State private var digest: TodayDigest?
+    @State private var followUpRefreshRevision = 0
 
     /// - Parameter preloaded: A digest to show before `load` returns
     ///   (snapshot tests); nil shows the greeting alone until then.
@@ -115,9 +117,15 @@ struct TodayPageView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollContentBackground(.hidden)
-        .task(id: refreshKey) {
+        .task(id: "\(refreshKey)-\(followUpRefreshRevision)") {
             guard let loaded = await load(), !Task.isCancelled else { return }
             digest = loaded
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
+            followUpRefreshRevision &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .brevNoReplyFollowUpCacheDidChange)) { _ in
+            followUpRefreshRevision &+= 1
         }
     }
 
@@ -229,7 +237,7 @@ struct TodayPageView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: BrevSpacing.sm)
-                Text(verbatim: Self.timeText(row.header.date, now: now, locale: locale))
+                Text(verbatim: Self.timeText(row.dueAt ?? row.header.date, now: now, locale: locale))
                     .brevFont(.caption)
                     .foregroundStyle(theme.textTertiary.color)
                     .monospacedDigit()

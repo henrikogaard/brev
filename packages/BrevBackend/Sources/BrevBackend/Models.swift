@@ -620,6 +620,35 @@ public struct DraftQuoteBoundary: Sendable, Hashable, Codable {
     }
 }
 
+/// Optional user request to create a reminder if a sent message gets no reply.
+public struct DraftNoReplyFollowUpRequest: Sendable, Hashable, Codable {
+    /// The fixed delay chosen by the compose action.
+    public static let threeDayDelay: TimeInterval = 3 * 24 * 60 * 60
+
+    /// The exact RFC Message-ID expected on the outbound message.
+    public let expectedMessageID: String
+    /// The fixed reminder delay in seconds.
+    public let delay: TimeInterval
+
+    /// Creates the fixed three-day request for an exact outbound RFC Message-ID.
+    public init(expectedMessageID: String) {
+        self.expectedMessageID = expectedMessageID
+        delay = Self.threeDayDelay
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case expectedMessageID
+        case delay
+    }
+
+    /// Decodes the request while preserving its fixed three-day delay.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        expectedMessageID = try container.decode(String.self, forKey: .expectedMessageID)
+        delay = Self.threeDayDelay
+    }
+}
+
 public struct Draft: Sendable, Hashable, Identifiable, Codable {
     public let id: String // local UUID, stable across remote saves
     public var remoteID: String?
@@ -636,6 +665,8 @@ public struct Draft: Sendable, Hashable, Identifiable, Codable {
     public var htmlBody: String
     public var attachmentIDs: [String]
     public var scheduledFor: Date?
+    /// Optional no-reply request carried through draft saves and sends.
+    public var followUpRequest: DraftNoReplyFollowUpRequest?
     public var readReceiptRequest: ReadReceiptRequest?
     public var readReceiptResponse: ReadReceiptResponse?
     /// Requested end-to-end security for this message (ADR-0021). Carried from
@@ -645,6 +676,7 @@ public struct Draft: Sendable, Hashable, Identifiable, Codable {
     /// Saved quote position, absent for new messages and older saved replies.
     public var quoteBoundary: DraftQuoteBoundary?
 
+    /// Creates a draft with optional no-reply follow-up intent.
     public init(
         id: String,
         remoteID: String? = nil,
@@ -659,6 +691,7 @@ public struct Draft: Sendable, Hashable, Identifiable, Codable {
         htmlBody: String = "",
         attachmentIDs: [String] = [],
         scheduledFor: Date? = nil,
+        followUpRequest: DraftNoReplyFollowUpRequest? = nil,
         readReceiptRequest: ReadReceiptRequest? = nil,
         readReceiptResponse: ReadReceiptResponse? = nil,
         securityMode: OutboundMessageSecurityMode = .none,
@@ -677,14 +710,14 @@ public struct Draft: Sendable, Hashable, Identifiable, Codable {
         self.htmlBody = htmlBody
         self.attachmentIDs = attachmentIDs
         self.scheduledFor = scheduledFor
+        self.followUpRequest = followUpRequest
         self.readReceiptRequest = readReceiptRequest
         self.readReceiptResponse = readReceiptResponse
         self.securityMode = securityMode
         self.quoteBoundary = quoteBoundary
     }
 
-    // Custom decoder so drafts persisted before `securityMode` existed still
-    // decode (defaulting to `.none`) instead of failing with `keyNotFound`.
+    /// Decodes older drafts without requiring fields added in later versions.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -700,6 +733,7 @@ public struct Draft: Sendable, Hashable, Identifiable, Codable {
         htmlBody = try container.decodeIfPresent(String.self, forKey: .htmlBody) ?? ""
         attachmentIDs = try container.decodeIfPresent([String].self, forKey: .attachmentIDs) ?? []
         scheduledFor = try container.decodeIfPresent(Date.self, forKey: .scheduledFor)
+        followUpRequest = try container.decodeIfPresent(DraftNoReplyFollowUpRequest.self, forKey: .followUpRequest)
         readReceiptRequest = try container.decodeIfPresent(
             ReadReceiptRequest.self, forKey: .readReceiptRequest
         )

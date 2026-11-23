@@ -203,7 +203,16 @@ struct MailboxSmartView: Equatable, Identifiable, Sendable {
         workflowMode: .active
     )
 
-    static let builtIns: [MailboxSmartView] = [.today, .flagged, .snoozed, .done, .vip]
+    static let waiting = MailboxSmartView(
+        id: "waiting",
+        title: String(localized: "Waiting", bundle: .module),
+        symbolName: "hourglass",
+        navigationFolderID: MailNavigationState.waitingSmartViewFolderID,
+        query: .none,
+        workflowMode: .active
+    )
+
+    static let builtIns: [MailboxSmartView] = [.today, .flagged, .snoozed, .done, .vip, .waiting]
 
     /// Resolves the local VIP sender set at render time without persisting it
     /// inside the built-in view definition.

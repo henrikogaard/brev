@@ -29,9 +29,9 @@ account:
 | Data | Where it goes | Why |
 |---|---|---|
 | Email domain, and sometimes full email address during account setup | Your mail provider's DNS and provider-local autoconfig hosts | To discover IMAP/SMTP (and, where advertised, ManageSieve) server settings after you choose to add an account |
-| IMAP account credentials and mail requests | Your selected mail provider's IMAP server | To authenticate, list folders, sync, search, read, view or export original message source, copy, and manage mail after you add an account |
+| IMAP account credentials and mail requests | Your selected mail provider's IMAP server | To authenticate, list folders, sync, search, read, view or export original message source, copy, and manage mail after you add an account. If you opt an existing remote draft into a no-reply reminder and explicitly send it, Brev first updates that draft with the composed MIME using your account's existing authenticated IMAP draft-save request before SMTP submission so its canonical Message-ID matches the reminder; this adds no endpoint or background request |
 | SMTP submission credentials and message payloads | Your selected mail provider's SMTP submission server | To send mail after you add an account |
-| Google OAuth token and Gmail mail requests | `gmail.googleapis.com` | For a Gmail API account: to load Gmail labels, messages, threads, bodies, raw source and attachments; run Gmail search; synchronize mailbox history; find and save drafts; apply label/read/star/archive/trash actions; and send mail after you add the account |
+| Google OAuth token and Gmail mail requests | `gmail.googleapis.com` | For a Gmail API account: to load Gmail labels, messages, threads, bodies, raw source and attachments; run Gmail search; synchronize mailbox history; find and save drafts; apply label/read/star/archive/trash actions; and send mail after you add the account. If you opt an existing remote draft into a no-reply reminder and explicitly send it, Brev first updates that draft with the composed MIME using the existing authenticated draft-save request so its canonical Message-ID matches the reminder; this adds no endpoint or background request |
 | Update check | `henrikogaard.github.io` (appcast and release notes), `github.com` / `objects.githubusercontent.com` (DMG download) | Direct-download macOS builds of either release ring only; checks the signed Sparkle appcast using Settings -> About & Updates -> Updates cadence |
 
 For standards-first IMAP/SMTP setup, Brev first checks built-in
@@ -72,12 +72,18 @@ Apple's iCloud Key-Value Storage under your own Apple ID so they follow
 you between your Mac and iPhone: snoozes (including normalized RFC message
 identifier seeds used to keep a snoozed conversation together) and done markers, VIP senders,
 manual inbox category choices, pinned messages, blocked senders,
-follow-up reminders, signatures, message templates, smart mailbox
+follow-up reminders, including pending no-reply follow-ups and their source,
+draft, RFC Message-ID, and delivery-date metadata, signatures, message templates, smart mailbox
 definitions, compose preferences, and sidebar smart-folder visibility.
 The exact key list is in ADR-0056. Mail content, attachments, account
 settings, passwords, tokens, and settings that would turn on other
 network features are never included. Apple stores this data subject to
 Apple's iCloud terms; Brev has no server and never sees it.
+
+No-reply notification delivery bookkeeping (scheduled, delivered, denied,
+or failed) is stored only in local device preferences. It is not part of
+FollowUpSettings backup or iCloud synchronization and is not sent to a
+service.
 
 **How to disable:** Settings → Sync & Storage → Preferences → "Sync preferences with
 iCloud". Defaults to off. Turning it off stops reading and writing on
