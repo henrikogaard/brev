@@ -133,6 +133,26 @@ struct MessageListFolderLoadResponsePolicyTests {
         #expect(canApply(ObjectIdentifier(capturedBackend), 4))
         #expect(!canApply(ObjectIdentifier(replacementBackend), 4))
         #expect(!canApply(ObjectIdentifier(capturedBackend), 5))
+        #expect(MessageListFolderLoadResponsePolicy.shouldRestartFolderLoadForSourceRevisionChange(
+            request: request,
+            activeRequest: request,
+            currentSourceID: sourceID,
+            currentFolderID: "inbox",
+            currentReloadRequestID: 2,
+            currentSearchText: "",
+            currentBackendIdentity: ObjectIdentifier(capturedBackend),
+            currentSourceRevision: 5
+        ))
+        #expect(!MessageListFolderLoadResponsePolicy.shouldRestartFolderLoadForSourceRevisionChange(
+            request: request,
+            activeRequest: request,
+            currentSourceID: sourceID,
+            currentFolderID: "inbox",
+            currentReloadRequestID: 2,
+            currentSearchText: "",
+            currentBackendIdentity: ObjectIdentifier(replacementBackend),
+            currentSourceRevision: 5
+        ))
     }
 
     @Test("unscoped page publication selects the view backend and rejects replacement or removal")

@@ -550,4 +550,46 @@ struct PeopleUpdatesClassifierTests {
             #expect((unitValue?.isEmpty == false) || hasVariations, "Missing nb localization for \(key)")
         }
     }
+
+    @Test("Updates bundles and selectable headers rank woken snoozes by effective wake date")
+    func updatesBundlesRespectWakeDateOverrides() {
+        let monday = Date(timeIntervalSince1970: 1_700_000_000)
+        let thursday = monday.addingTimeInterval(3 * 86400)
+        let friday = monday.addingTimeInterval(4 * 86400)
+
+        let wokenMonday = MessageHeader(
+            id: "news-monday",
+            threadID: "t-mon",
+            folderID: "inbox",
+            from: Correspondent(name: "Monday Digest", email: "monday@news.example"),
+            subject: "Monday edition",
+            snippet: "Snoozed until Friday",
+            date: monday
+        )
+        let newerThursday = MessageHeader(
+            id: "news-thursday",
+            threadID: "t-thu",
+            folderID: "inbox",
+            from: Correspondent(name: "Thursday Digest", email: "thursday@news.example"),
+            subject: "Thursday edition",
+            snippet: "Arrived Thursday",
+            date: thursday
+        )
+
+        let overrides = ["news-monday": friday]
+        let bundles = UpdatesSenderBundler.bundle(
+            [wokenMonday, newerThursday],
+            sourceID: Self.source,
+            effectiveDateOverrides: overrides
+        )
+        #expect(bundles.map(\.senderEmail) == ["monday@news.example", "thursday@news.example"])
+
+        let selectable = UpdatesSenderBundler.selectableHeaders(
+            from: [wokenMonday, newerThursday],
+            sourceID: Self.source,
+            expandedBundleIDs: [],
+            effectiveDateOverrides: overrides
+        )
+        #expect(selectable.map(\.id) == ["news-monday", "news-thursday"])
+    }
 }

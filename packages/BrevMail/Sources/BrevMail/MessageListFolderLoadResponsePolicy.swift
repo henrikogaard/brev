@@ -81,6 +81,32 @@ enum MessageListFolderLoadResponsePolicy {
             && MessageListReloadPolicy.operation(forSearchText: currentSearchText) == .folder
     }
 
+    /// Returns `true` when an otherwise-current folder load was rejected solely because
+    /// the global `sourceSectionsRevision` advanced while the request was in flight
+    /// (for example when another account refreshed). Callers should clear `activeRequest`
+    /// and schedule a replacement reload instead of leaving the list stuck loading.
+    static func shouldRestartFolderLoadForSourceRevisionChange(
+        request: MessageListFolderLoadRequest,
+        activeRequest: MessageListFolderLoadRequest?,
+        currentSourceID: MailSourceID? = nil,
+        currentFolderID: String?,
+        currentReloadRequestID: Int,
+        currentSearchText: String,
+        currentBackendIdentity: ObjectIdentifier? = nil,
+        currentSourceRevision: Int? = nil
+    ) -> Bool {
+        guard let requestRevision = request.sourceRevision,
+              requestRevision != currentSourceRevision else {
+            return false
+        }
+        return activeRequest == request
+            && currentSourceID == request.sourceID
+            && currentFolderID == request.folderID
+            && currentReloadRequestID == request.reloadRequestID
+            && (request.backendIdentity == nil || request.backendIdentity == currentBackendIdentity)
+            && MessageListReloadPolicy.operation(forSearchText: currentSearchText) == .folder
+    }
+
     static func ownsSourceAndBackend(
         sourceID: MailSourceID,
         currentSourceID: MailSourceID?,

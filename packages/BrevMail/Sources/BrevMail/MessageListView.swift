@@ -894,7 +894,8 @@ public struct MessageListView: View {
         return UpdatesSenderBundler.selectableHeaders(
             from: presentation.filteredUngroupedHeaders,
             sourceID: sourceID,
-            expandedBundleIDs: expandedUpdateBundleIDs
+            expandedBundleIDs: expandedUpdateBundleIDs,
+            effectiveDateOverrides: presentation.ungroupedDateOverrides
         )
     }
 
@@ -907,7 +908,11 @@ public struct MessageListView: View {
             // Build bundles strictly from filtered ungrouped Updates headers
             // before thread-context expansion adds non-Updates conversation
             // siblings, so archiving a bundle never moves People messages (#295).
-            let bundles = UpdatesSenderBundler.bundle(presentation.filteredUngroupedHeaders, sourceID: sourceID)
+            let bundles = UpdatesSenderBundler.bundle(
+                presentation.filteredUngroupedHeaders,
+                sourceID: sourceID,
+                effectiveDateOverrides: presentation.ungroupedDateOverrides
+            )
             ForEach(bundles) { bundle in
                 if bundle.headers.count > 1 {
                     UpdatesBundleRowView(
@@ -2383,7 +2388,8 @@ public struct MessageListView: View {
                 ),
                 sourceID: sourceID,
                 groupsThreads: groupByThread && backend.groupsMessagesIntoThreads,
-                dateOverrides: listed.dateOverrides
+                dateOverrides: listed.dateOverrides,
+                ungroupedDateOverrides: dateOverrides
             )
         }
     }
@@ -2873,7 +2879,10 @@ public struct MessageListView: View {
         defer { MailUIPerformanceDiagnostics.endInterval(interval) }
         do {
             let page = try await messages(in: folder, pageToken: nil)
-            guard canApplyFolderLoadResponse(request) else { return }
+            guard canApplyFolderLoadResponse(request) else {
+                restartFolderLoadIfSupersededBySourceRevision(request)
+                return
+            }
             let finalHeaders = await applyAutomaticLocalRulesIfNeeded(
                 headers: page.headers,
                 folder: folder
@@ -2907,7 +2916,10 @@ public struct MessageListView: View {
                         return true
                     }
                 )
-                guard canApplyFolderLoadResponse(request) else { return }
+                guard canApplyFolderLoadResponse(request) else {
+                    restartFolderLoadIfSupersededBySourceRevision(request)
+                    return
+                }
                 guard !Task.isCancelled else {
                     finishFolderLoad(request)
                     return
@@ -2916,13 +2928,19 @@ public struct MessageListView: View {
                     mergedHeaders.append(contentsOf: wakeCandidates)
                 }
             } catch is CancellationError {
-                guard canApplyFolderLoadResponse(request) else { return }
+                guard canApplyFolderLoadResponse(request) else {
+                    restartFolderLoadIfSupersededBySourceRevision(request)
+                    return
+                }
                 guard !Task.isCancelled else {
                     finishFolderLoad(request)
                     return
                 }
             } catch {
-                guard canApplyFolderLoadResponse(request) else { return }
+                guard canApplyFolderLoadResponse(request) else {
+                    restartFolderLoadIfSupersededBySourceRevision(request)
+                    return
+                }
                 guard !Task.isCancelled else {
                     finishFolderLoad(request)
                     return
@@ -3107,6 +3125,31 @@ public struct MessageListView: View {
             currentBackendIdentity: currentBackendIdentity,
             currentSourceRevision: sourceSectionsRevisionProvider?()
         )
+    }
+
+    private func restartFolderLoadIfSupersededBySourceRevision(_ request: MessageListFolderLoadRequest) {
+        let currentSourceID = navigation.selectedSourceID
+        let currentBackends = currentBackendsProvider?() ?? [backend]
+        let currentBackendIdentity = MessageListFolderLoadResponsePolicy.currentBackendIdentity(
+            currentSourceID: currentSourceID,
+            viewBackendAccountID: backend.account.id,
+            backends: currentBackends.map { (accountID: $0.account.id, identity: ObjectIdentifier($0)) }
+        )
+        guard currentSourceID.map({ isSourceAvailable?($0) ?? true }) ?? true else { return }
+        guard MessageListFolderLoadResponsePolicy.shouldRestartFolderLoadForSourceRevisionChange(
+            request: request,
+            activeRequest: activeFolderLoadRequest,
+            currentSourceID: currentSourceID,
+            currentFolderID: navigation.selectedFolderID,
+            currentReloadRequestID: navigation.reloadRequestID,
+            currentSearchText: navigation.searchText,
+            currentBackendIdentity: currentBackendIdentity,
+            currentSourceRevision: sourceSectionsRevisionProvider?()
+        ) else {
+            return
+        }
+        finishFolderLoad(request)
+        navigation.requestReload()
     }
 
     private func applyAutomaticLocalRulesIfNeeded(

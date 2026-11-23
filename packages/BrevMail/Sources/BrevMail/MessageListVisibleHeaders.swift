@@ -91,6 +91,9 @@ struct MessageListPresentationSnapshot {
     /// Ungrouped headers matching the active filter/tab BEFORE thread-context
     /// expansion adds non-matching conversation siblings (#295).
     let filteredUngroupedHeaders: [MessageHeader]
+    /// Per-message effective-date overrides (for example woken snoozes) for
+    /// ungrouped projections such as the Updates sender-bundle tab (#297).
+    let ungroupedDateOverrides: [MessageHeader.ID: Date]
     /// Ungrouped filtered reader/navigation context, derived once with the list projection.
     let navigationHeaders: [MessageHeader]
     let dateSections: [MessageListVisibleDateSection]
@@ -120,11 +123,13 @@ struct MessageListPresentationSnapshot {
         navigationHeaders: [MessageHeader]? = nil,
         sourceID: MailSourceID? = nil,
         groupsThreads: Bool = false,
-        dateOverrides: [MessageHeader.ID: Date] = [:]
+        dateOverrides: [MessageHeader.ID: Date] = [:],
+        ungroupedDateOverrides: [MessageHeader.ID: Date]? = nil
     ) {
         self.headers = headers
         self.sourceID = sourceID
         self.filteredUngroupedHeaders = filteredUngroupedHeaders ?? headers
+        self.ungroupedDateOverrides = ungroupedDateOverrides ?? dateOverrides
         self.navigationHeaders = navigationHeaders ?? headers
         let sourceHeaders = sourceHeaders ?? headers
         unreadHeaderCount = sourceHeaders.reduce(into: 0) { count, header in
