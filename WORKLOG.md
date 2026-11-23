@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-23 — Agent — PR #322 (#299 rebase and macOS snapshots)
+
+- Goal: rebase PR #322 onto `origin/main`, record the missing macOS 26 snapshots for `MessageTrackerNote` (blocked and opt-out states) and `PrivacySection` ("Remove tracking pixels" toggle), and resolve the Devin Review snapshot finding.
+- Changes: resolved `WORKLOG.md` and `Localizable.xcstrings` rebase conflicts; added `MessageTrackerNoteSnapshotTests` and `PrivacyTrackingPixelSnapshotTests` with light/dark macOS baselines; registered both suites in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'MessageTrackerNoteSnapshotTests|MessageTrackerStripTests|CountPluralLocalizationTests'`, `swift test --package-path packages/BrevSettings --filter 'PrivacyTrackingPixelSnapshotTests|MailboxViewSettingsTests'`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`; visually inspected all 4 recorded PNGs.
+- Handoff: pushed and marked ready for review; awaiting green CI to merge.
+
 ## 2026-11-21 — Agent — PR #322 CI follow-up
 
 - Goal: resolve CI failures on the tracking-pixel setting PR without changing its draft state.

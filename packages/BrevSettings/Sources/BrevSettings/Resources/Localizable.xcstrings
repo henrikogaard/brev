@@ -1,6 +1,39 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Subscriptions": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abonnementer"
+          }
+        }
+      }
+    },
+    "Drop a compact alert from the top of the screen with Archive, Mark as read, and Reply actions. Auto-dismisses.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis et kompakt varsel øverst på skjermen med Arkiver, Merk som lest og Svar. Lukkes automatisk."
+          }
+        }
+      }
+    },
+    "Show new-mail drop-down panel": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis nedtrekkspanel for ny e-post"
+          }
+        }
+      }
+    },
     " %lld/%lld folders complete, %lld messages indexed": {
       "extractionState": "manual",
       "localizations": {
@@ -151,23 +184,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Støtte på %lld analysefeil%@."
-          }
-        }
-      }
-    },
-    "%lld%% opaque": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld%% opaque"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld%% dekning"
           }
         }
       }
@@ -425,17 +441,6 @@
         }
       }
     },
-    "About & Updates": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Om og oppdateringer"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "Above reply": {
       "extractionState": "manual",
       "localizations": {
@@ -465,17 +470,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Aksentfarge"
-          }
-        }
-      }
-    },
-    "Accent source": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aksentkilde"
           }
         }
       }
@@ -557,17 +551,6 @@
         }
       }
     },
-    "Account type": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kontotype"
-          }
-        }
-      }
-    },
     "Accounts": {
       "extractionState": "manual",
       "localizations": {
@@ -578,17 +561,6 @@
           }
         }
       }
-    },
-    "Accounts & Connections": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kontoer og tilkoblinger"
-          }
-        }
-      },
-      "extractionState": "manual"
     },
     "Action": {
       "extractionState": "manual",
@@ -641,6 +613,210 @@
           "stringUnit": {
             "state": "translated",
             "value": "Legg til"
+          }
+        }
+      }
+    },
+    "Backed by your connected sources.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Støttes av de tilkoblede kildene dine."
+          }
+        }
+      }
+    },
+    "Capabilities and roadmap": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funksjoner og veikart"
+          }
+        }
+      }
+    },
+    "Certificates Brev can use for signing and encryption.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sertifikater Brev kan bruke til signering og kryptering."
+          }
+        }
+      }
+    },
+    "Connect optional Google or DAV sources; available actions depend on the source.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til valgfrie Google- eller DAV-kilder; tilgjengelige handlinger avhenger av kilden."
+          }
+        }
+      }
+    },
+    "Create, complete, and manage tasks on writable task sources.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opprett, fullfør og administrer oppgaver på skrivbare oppgavekilder."
+          }
+        }
+      }
+    },
+    "Fonts": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skrifter"
+          }
+        }
+      }
+    },
+    "Manage key material": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Administrer nøkkelmateriale"
+          }
+        }
+      }
+    },
+    "Pick a font for each part of the mail window. Compose uses the reading font.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg skrift for hver del av e-postvinduet. Skriving bruker leseskriften."
+          }
+        }
+      }
+    },
+    "Reset Appearance": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbakestill utseende"
+          }
+        }
+      }
+    },
+    "Reset appearance to defaults?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vil du tilbakestille utseendet til standard?"
+          }
+        }
+      }
+    },
+    "Reset to Defaults": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbakestill til standard"
+          }
+        }
+      }
+    },
+    "Restores the default themes, accent, fonts, and app icon.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjenoppretter standardtemaer, aksentfarge, skrifter og appikon."
+          }
+        }
+      }
+    },
+    "Restores the default themes, accent, window style, text size, density, fonts, and app icon.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjenoppretter standardtemaer, aksentfarge, vindusstil, tekststørrelse, tetthet, skrifter og appikon."
+          }
+        }
+      }
+    },
+    "Task editing": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgaveredigering"
+          }
+        }
+      }
+    },
+    "Task lists from connected sources, grouped by collection with completion state.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgavelister fra tilkoblede kilder, gruppert etter samling med fullføringsstatus."
+          }
+        }
+      }
+    },
+    "Tasks browsing": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgaveblæddring"
+          }
+        }
+      }
+    },
+    "Use One Font Everywhere": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruk samme skrift overalt"
+          }
+        }
+      }
+    },
+    "addDavSource.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add DAV Source"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legg til DAV-kilde"
           }
         }
       }
@@ -843,16 +1019,6 @@
         }
       }
     },
-    "Adjust spacing in sidebars, mail views, and settings independently of text size.": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Juster avstanden i sidepaneler, e-postvisninger og innstillinger uavhengig av tekststørrelsen."
-          }
-        }
-      }
-    },
     "Advanced": {
       "extractionState": "manual",
       "localizations": {
@@ -974,23 +1140,6 @@
         }
       }
     },
-    "All window backgrounds are solid.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "All window backgrounds are solid."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alle vindusbakgrunner er ugjennomsiktige."
-          }
-        }
-      }
-    },
     "Allow AI features to use this provider after consent.": {
       "extractionState": "manual",
       "localizations": {
@@ -998,17 +1147,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "La AI-funksjoner bruke denne leverandøren etter samtykke."
-          }
-        }
-      }
-    },
-    "Allow Notifications": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tillat varsler"
           }
         }
       }
@@ -1222,17 +1360,6 @@
         }
       }
     },
-    "App icon badge": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Merke på appikon"
-          }
-        }
-      }
-    },
     "App password": {
       "extractionState": "manual",
       "localizations": {
@@ -1277,23 +1404,6 @@
         }
       }
     },
-    "Applies to Mail, Settings, compose windows, and messages opened in separate windows.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Applies to Mail, Settings, compose windows, and messages opened in separate windows."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gjelder E-post, Innstillinger, skrivevinduer og meldinger åpnet i egne vinduer."
-          }
-        }
-      }
-    },
     "Applies to all accounts. Choose how often Brev checks for new mail.": {
       "extractionState": "manual",
       "localizations": {
@@ -1323,16 +1433,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Gjelder lesing og skriving av meldingstekst."
-          }
-        }
-      }
-    },
-    "Applies to sidebars, lists, reading, composing, and settings.": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gjelder sidepaneler, lister, lesing, skriving og innstillinger."
           }
         }
       }
@@ -1579,17 +1679,6 @@
         }
       }
     },
-    "Backed by your connected sources.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Støttes av de tilkoblede kildene dine."
-          }
-        }
-      }
-    },
     "Backend: %@": {
       "extractionState": "manual",
       "localizations": {
@@ -1597,23 +1686,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Serverdel: %@"
-          }
-        }
-      }
-    },
-    "Background effect": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Background effect"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bakgrunnseffekt"
           }
         }
       }
@@ -1805,17 +1877,6 @@
         }
       }
     },
-    "Brev alerts you while it is open or refreshing in the background. iOS decides when background refresh runs, so alerts can arrive late when Brev is closed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Brev varsler deg mens appen er åpen eller oppdaterer i bakgrunnen. iOS bestemmer når bakgrunnsoppdatering kjører, så varsler kan komme sent når Brev er lukket."
-          }
-        }
-      }
-    },
     "Brev asks the operating system to open links in your default browser.": {
       "extractionState": "manual",
       "localizations": {
@@ -1845,17 +1906,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Brev finner DAV-serveren fra adressedomenet."
-          }
-        }
-      }
-    },
-    "Brev forgets this restored account. You can add it again later.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Brev glemmer denne gjenopprettede kontoen. Du kan legge den til igjen senere."
           }
         }
       }
@@ -1900,17 +1950,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Brev fortsetter å kjøre og sjekke e-post uten åpent vindu, og viser status i menylinjen."
-          }
-        }
-      }
-    },
-    "Brev opens the default mailbox first.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Brev åpner standardpostkassen først."
           }
         }
       }
@@ -2201,17 +2240,6 @@
         }
       }
     },
-    "Calendars": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kalendere"
-          }
-        }
-      }
-    },
     "Can encrypt": {
       "extractionState": "manual",
       "localizations": {
@@ -2267,17 +2295,6 @@
         }
       }
     },
-    "Capabilities and roadmap": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Funksjoner og veikart"
-          }
-        }
-      }
-    },
     "Carbon": {
       "extractionState": "manual",
       "localizations": {
@@ -2307,17 +2324,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sertifikatnyttelast (PEM, DER eller base64 PKCS#12)"
-          }
-        }
-      }
-    },
-    "Certificates Brev can use for signing and encryption.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sertifikater Brev kan bruke til signering og kryptering."
           }
         }
       }
@@ -2454,17 +2460,6 @@
         }
       }
     },
-    "Choose Brev's colors and app icon.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Velg Brevs farger og appsymbol."
-          }
-        }
-      }
-    },
     "Choose Brev's colors, window style, and Dock icon.": {
       "extractionState": "manual",
       "localizations": {
@@ -2586,23 +2581,6 @@
         }
       }
     },
-    "Choose the blur style for transparent areas.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose the blur style for transparent areas."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Velg uskarphet for gjennomsiktige områder."
-          }
-        }
-      }
-    },
     "Choose themes": {
       "extractionState": "manual",
       "localizations": {
@@ -2680,23 +2658,6 @@
         }
       }
     },
-    "Choose where the background shows through.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose where the background shows through."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Velg hvor bakgrunnen skal skinne gjennom."
-          }
-        }
-      }
-    },
     "Choose which accounts can produce notifications, badges, and sounds.": {
       "extractionState": "manual",
       "localizations": {
@@ -2708,17 +2669,6 @@
         }
       }
     },
-    "Choose which alerts this account can produce.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Velg hvilke varsler denne kontoen kan gi."
-          }
-        }
-      }
-    },
     "Choose which avatar sources Brev may use when sender images are visible.": {
       "extractionState": "manual",
       "localizations": {
@@ -2726,17 +2676,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Velg hvilke avatarkilder Brev kan bruke når avsenderbilder er synlige."
-          }
-        }
-      }
-    },
-    "Choose which mailboxes appear in Mail. At least one stays on.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Velg hvilke postkasser som vises i Mail. Minst én må være på."
           }
         }
       }
@@ -2847,23 +2786,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Skriving"
-          }
-        }
-      }
-    },
-    "Compose and messages": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Compose and messages"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Skriving og meldinger"
           }
         }
       }
@@ -3033,28 +2955,6 @@
         }
       }
     },
-    "Connect an account to turn this on per mailbox.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Koble til en konto for å slå dette på per postkasse."
-          }
-        }
-      }
-    },
-    "Connect optional Google or DAV sources; available actions depend on the source.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Koble til valgfrie Google- eller DAV-kilder; tilgjengelige handlinger avhenger av kilden."
-          }
-        }
-      }
-    },
     "Consent is %@. AI Writer cannot send anything until you configure a provider.": {
       "extractionState": "manual",
       "localizations": {
@@ -3084,17 +2984,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kontaktredigering"
-          }
-        }
-      }
-    },
-    "Contact groups": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kontaktgrupper"
           }
         }
       }
@@ -3143,17 +3032,6 @@
         }
       }
     },
-    "Contacts stay local; external sender image sources require your permission above.": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kontakter forblir lokale. Eksterne avsenderbilder krever tillatelsen din ovenfor."
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "Contents": {
       "extractionState": "manual",
       "localizations": {
@@ -3186,17 +3064,6 @@
           }
         }
       }
-    },
-    "Control remote images, sender image sources, and trusted senders.": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Velg eksterne bilder, avsenderbilder og betrodde avsendere."
-          }
-        }
-      },
-      "extractionState": "manual"
     },
     "Controls folder and settings sidebars separately.": {
       "extractionState": "manual",
@@ -3238,17 +3105,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Samtalerekkefølge"
-          }
-        }
-      }
-    },
-    "Copy a sign-in code without opening the message.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kopier en innloggingskode uten å åpne meldingen."
           }
         }
       }
@@ -3495,17 +3351,6 @@
         }
       }
     },
-    "Create, complete, and manage tasks on writable task sources.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opprett, fullfør og administrer oppgaver på skrivbare oppgavekilder."
-          }
-        }
-      }
-    },
     "Created with Brev %@": {
       "extractionState": "manual",
       "localizations": {
@@ -3561,16 +3406,6 @@
         }
       }
     },
-    "Customize the whole desktop app without changing message formatting.": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tilpass hele skrivebordsappen uten å endre meldingsformatering."
-          }
-        }
-      }
-    },
     "DAV source connections": {
       "extractionState": "manual",
       "localizations": {
@@ -3622,17 +3457,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mørk metall"
-          }
-        }
-      }
-    },
-    "Dark glass": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mørkt glass"
           }
         }
       }
@@ -3835,17 +3659,6 @@
         }
       }
     },
-    "Delete Smart View": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Slett smartvisning"
-          }
-        }
-      }
-    },
     "Delete local mail data for this account, then rebuild from the server.": {
       "extractionState": "manual",
       "localizations": {
@@ -3897,28 +3710,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Slett mal?"
-          }
-        }
-      }
-    },
-    "Delete this AI provider?": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Slette denne AI-leverandøren?"
-          }
-        }
-      }
-    },
-    "Delete this Smart View?": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Slette denne smartvisningen?"
           }
         }
       }
@@ -4330,17 +4121,6 @@
         }
       }
     },
-    "Drop a compact alert from the top of the screen with Archive, Mark as read, and Reply actions. Auto-dismisses.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vis et kompakt varsel øverst på skjermen med Arkiver, Merk som lest og Svar. Lukkes automatisk."
-          }
-        }
-      }
-    },
     "Due: %@": {
       "extractionState": "manual",
       "localizations": {
@@ -4370,17 +4150,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rediger"
-          }
-        }
-      }
-    },
-    "Edit %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rediger %@"
           }
         }
       }
@@ -4836,6 +4605,23 @@
         }
       }
     },
+    "exportAsMbox.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export as MBOX"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksporter som MBOX"
+          }
+        }
+      }
+    },
     "Export as MBOX…": {
       "extractionState": "manual",
       "localizations": {
@@ -4931,23 +4717,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Eksporterer 1 melding …"
-          }
-        }
-      }
-    },
-    "Extend content behind the title bar. This does not change transparency.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Extend content behind the title bar. This does not change transparency."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Utvid innholdet bak tittellinjen. Dette endrer ikke gjennomsiktigheten."
           }
         }
       }
@@ -5183,17 +4952,6 @@
         }
       }
     },
-    "Fonts": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Skrifter"
-          }
-        }
-      }
-    },
     "Forward to": {
       "extractionState": "manual",
       "localizations": {
@@ -5249,17 +5007,6 @@
         }
       }
     },
-    "Frost": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Frost"
-          }
-        }
-      }
-    },
     "Full calendar editing": {
       "extractionState": "manual",
       "localizations": {
@@ -5278,40 +5025,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Full kontaktadministrasjon"
-          }
-        }
-      }
-    },
-    "Full windows": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Full windows"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hele vinduer"
-          }
-        }
-      }
-    },
-    "Fully opaque": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fully opaque"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Helt ugjennomsiktig"
           }
         }
       }
@@ -5503,17 +5216,6 @@
         }
       }
     },
-    "Hidden": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Skjult"
-          }
-        }
-      }
-    },
     "Hide advanced storage": {
       "extractionState": "manual",
       "localizations": {
@@ -5547,28 +5249,6 @@
         }
       }
     },
-    "Images and web fonts stay blocked until you allow remote content; likely tracking images are removed by default.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bilder og nettfonter holdes blokkert til du tillater eksternt innhold; sannsynlige sporingsbilder fjernes som standard."
-          }
-        }
-      }
-    },
-    "Images, web fonts, and tracking pixels are blocked until you allow them.": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bilder, webfonter og sporingspiksler er blokkert til du tillater dem."
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "Images, web fonts, and tracking pixels remain off unless enabled in Mailbox View.": {
       "extractionState": "manual",
       "localizations": {
@@ -5579,17 +5259,6 @@
           }
         }
       }
-    },
-    "Images, web fonts, and tracking pixels remain off unless you allow remote content.": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bilder, webfonter og sporingspiksler forblir blokkert med mindre du tillater eksternt innhold."
-          }
-        }
-      },
-      "extractionState": "manual"
     },
     "Import / Export": {
       "extractionState": "manual",
@@ -5888,16 +5557,6 @@
         }
       }
     },
-    "Interface density": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tetthet i grensesnittet"
-          }
-        }
-      }
-    },
     "Is flagged": {
       "extractionState": "manual",
       "localizations": {
@@ -6125,17 +5784,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Lys"
-          }
-        }
-      }
-    },
-    "Light glass": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lyst glass"
           }
         }
       }
@@ -6448,23 +6096,6 @@
         }
       }
     },
-    "Lower opacity shows more of the blurred background. Text and icons stay opaque.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lower opacity shows more of the blurred background. Text and icons stay opaque."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lavere dekning viser mer av den uskarpe bakgrunnen. Tekst og ikoner forblir tydelige."
-          }
-        }
-      }
-    },
     "Mail Storage": {
       "extractionState": "manual",
       "localizations": {
@@ -6472,17 +6103,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "E-postlagring"
-          }
-        }
-      }
-    },
-    "Mail and Settings": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "E-post og Innstillinger"
           }
         }
       }
@@ -6586,17 +6206,6 @@
         }
       }
     },
-    "Mailboxes & Reading": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Postkasser og lesing"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "Main and Settings windows use standard title bars until Unified title bar is enabled.": {
       "extractionState": "manual",
       "localizations": {
@@ -6615,17 +6224,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sett som standard"
-          }
-        }
-      }
-    },
-    "Make default account": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sett som standardkonto"
           }
         }
       }
@@ -6652,17 +6250,6 @@
         }
       }
     },
-    "Manage key material": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Administrer nøkkelmateriale"
-          }
-        }
-      }
-    },
     "Manage local signing and encryption defaults plus key/certificate material.": {
       "extractionState": "manual",
       "localizations": {
@@ -6673,17 +6260,6 @@
           }
         }
       }
-    },
-    "Manage recent recipients": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Administrer nylige mottakere"
-          }
-        }
-      },
-      "extractionState": "manual"
     },
     "Manage the mail accounts connected to Brev.": {
       "extractionState": "manual",
@@ -6769,17 +6345,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Samsvar"
-          }
-        }
-      }
-    },
-    "Match all or any of these conditions": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Samsvar med alle eller noen av disse vilkårene"
           }
         }
       }
@@ -6938,17 +6503,6 @@
         }
       }
     },
-    "Messages are not deleted. Only the saved search is removed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Meldinger slettes ikke. Bare det lagrede søket fjernes."
-          }
-        }
-      }
-    },
     "Messages from VIP senders appear in the VIP smart view.": {
       "extractionState": "manual",
       "localizations": {
@@ -7033,23 +6587,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Man"
-          }
-        }
-      }
-    },
-    "More transparent": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "More transparent"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mer gjennomsiktig"
           }
         }
       }
@@ -7593,17 +7130,6 @@
         }
       }
     },
-    "Not available for this account yet. Brev only enables this where the provider's sender checks have been verified.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ikke tilgjengelig for denne kontoen ennå. Brev slår dette på bare der leverandørens avsenderkontroller er verifisert."
-          }
-        }
-      }
-    },
     "Not available yet": {
       "extractionState": "manual",
       "localizations": {
@@ -7699,17 +7225,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Antall dager"
-          }
-        }
-      }
-    },
-    "Obsidian": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Obsidian"
           }
         }
       }
@@ -7824,23 +7339,6 @@
         }
       }
     },
-    "Only the Mail and Settings sidebars are transparent. Messages and compose windows stay solid.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Only the Mail and Settings sidebars are transparent. Messages and compose windows stay solid."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bare sidepanelene i E-post og Innstillinger er gjennomsiktige. Meldinger og skrivevinduer er ugjennomsiktige."
-          }
-        }
-      }
-    },
     "Opaque": {
       "extractionState": "manual",
       "localizations": {
@@ -7870,17 +7368,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Åpne innstillinger for innloggingselementer …"
-          }
-        }
-      }
-    },
-    "Open Settings": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Åpne innstillinger"
           }
         }
       }
@@ -7925,17 +7412,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Åpne en postkasse for å styre oppslag av relatert e-post."
-          }
-        }
-      }
-    },
-    "Open a sign-in link after seeing its real destination.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Åpne en innloggingslenke etter å ha sett det faktiske målet."
           }
         }
       }
@@ -8024,17 +7500,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "OpenAI-kompatibel"
-          }
-        }
-      }
-    },
-    "Opens the list of sync conflicts.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Åpner listen over synkroniseringskonflikter."
           }
         }
       }
@@ -8171,28 +7636,6 @@
         }
       }
     },
-    "Permission": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tillatelse"
-          }
-        }
-      }
-    },
-    "Pick a font for each part of the mail window. Compose uses the reading font.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Velg skrift for hver del av e-postvinduet. Skriving bruker leseskriften."
-          }
-        }
-      }
-    },
     "Pick certificate archive format for export actions.": {
       "extractionState": "manual",
       "localizations": {
@@ -8325,17 +7768,6 @@
         }
       }
     },
-    "Preferences": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Innstillinger"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "Preferences stay on this device.": {
       "extractionState": "manual",
       "localizations": {
@@ -8387,6 +7819,127 @@
           "stringUnit": {
             "state": "translated",
             "value": "Forhåndsvisningslinjer"
+          }
+        }
+      }
+    },
+    "Calendars": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kalendere"
+          }
+        }
+      }
+    },
+    "Sign-in codes and links": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innloggingskoder og -lenker"
+          }
+        }
+      }
+    },
+    "Contact groups": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontaktgrupper"
+          }
+        }
+      }
+    },
+    "Shows a one-time code or sign-in link on screen the moment it arrives. For eligible new messages Brev reads the message body over the account's own connection, and codes may appear over other apps. Nothing is stored, logged, or synced.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser en engangskode eller innloggingslenke på skjermen i det den kommer. For aktuelle nye meldinger leser Brev meldingsteksten over kontoens egen tilkobling, og koder kan vises over andre apper. Ingenting lagres, logges eller synkroniseres."
+          }
+        }
+      }
+    },
+    "Task lists": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgavelister"
+          }
+        }
+      }
+    },
+    "Connect an account to turn this on per mailbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til en konto for å slå dette på per postkasse."
+          }
+        }
+      }
+    },
+    "Show one-time codes": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis engangskoder"
+          }
+        }
+      }
+    },
+    "Copy a sign-in code without opening the message.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopier en innloggingskode uten å åpne meldingen."
+          }
+        }
+      }
+    },
+    "Show sign-in links": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis innloggingslenker"
+          }
+        }
+      }
+    },
+    "Open a sign-in link after seeing its real destination.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne en innloggingslenke etter å ha sett det faktiske målet."
+          }
+        }
+      }
+    },
+    "Not available for this account yet. Brev only enables this where the provider's sender checks have been verified.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgjengelig for denne kontoen ennå. Brev slår dette på bare der leverandørens avsenderkontroller er verifisert."
           }
         }
       }
@@ -8732,17 +8285,6 @@
         }
       }
     },
-    "Reading, list layout, sidebar folders, and links.": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lesing, meldingsliste, mapper og lenker."
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "Rebuild": {
       "extractionState": "manual",
       "localizations": {
@@ -8838,6 +8380,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Anbefalt"
+          }
+        }
+      }
+    },
+    "reconnect.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til på nytt"
           }
         }
       }
@@ -8952,17 +8511,6 @@
         }
       }
     },
-    "Remote content": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eksternt innhold"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "Remote content allowlist": {
       "extractionState": "manual",
       "localizations": {
@@ -8970,17 +8518,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tillatelsesliste for eksternt innhold"
-          }
-        }
-      }
-    },
-    "Remote content from this sender is blocked again.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eksternt innhold fra denne avsenderen blokkeres igjen."
           }
         }
       }
@@ -9095,6 +8632,23 @@
         }
       }
     },
+    "removeSource.menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Source…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern kilde …"
+          }
+        }
+      }
+    },
     "Remove account %@ from Brev": {
       "extractionState": "manual",
       "localizations": {
@@ -9194,28 +8748,6 @@
         }
       }
     },
-    "Remove likely tracking images before they render, even when remote content is allowed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fjern sannsynlige sporingsbilder før de vises, også når eksternt innhold er tillatt."
-          }
-        }
-      }
-    },
-    "Remove restored account?": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fjerne gjenopprettet konto?"
-          }
-        }
-      }
-    },
     "Remove source?": {
       "extractionState": "manual",
       "localizations": {
@@ -9223,28 +8755,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fjern kilde?"
-          }
-        }
-      }
-    },
-    "Remove this allowlist entry?": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fjerne denne tillatelseslisteoppføringen?"
-          }
-        }
-      }
-    },
-    "Remove tracking pixels": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fjern sporingspiksler"
           }
         }
       }
@@ -9425,17 +8935,6 @@
         }
       }
     },
-    "Reset Appearance": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tilbakestill utseende"
-          }
-        }
-      }
-    },
     "Reset and rebuilt local mail data.": {
       "extractionState": "manual",
       "localizations": {
@@ -9447,17 +8946,6 @@
         }
       }
     },
-    "Reset appearance to defaults?": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vil du tilbakestille utseendet til standard?"
-          }
-        }
-      }
-    },
     "Reset counter": {
       "extractionState": "manual",
       "localizations": {
@@ -9465,17 +8953,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nullstill teller"
-          }
-        }
-      }
-    },
-    "Reset to Defaults": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tilbakestill til standard"
           }
         }
       }
@@ -9586,28 +9063,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Gjenopprettede kontoer — logg inn for å fullføre"
-          }
-        }
-      }
-    },
-    "Restores the default themes, accent, fonts, and app icon.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gjenoppretter standardtemaer, aksentfarge, skrifter og appikon."
-          }
-        }
-      }
-    },
-    "Restores the default themes, accent, window style, text size, density, fonts, and app icon.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gjenoppretter standardtemaer, aksentfarge, vindusstil, tekststørrelse, tetthet, skrifter og appikon."
           }
         }
       }
@@ -9776,17 +9231,6 @@
           }
         }
       }
-    },
-    "Rules & Organization": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Regler og organisering"
-          }
-        }
-      },
-      "extractionState": "manual"
     },
     "Rules source": {
       "extractionState": "manual",
@@ -9960,6 +9404,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Lagret bufferperiode; den gjelder etter at gjeldende lagringshandling er ferdig."
+          }
+        }
+      }
+    },
+    "savedInKeychain.badge": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved in Keychain"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagret i Nøkkelringen"
           }
         }
       }
@@ -10191,17 +9652,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Velg mappe …"
-          }
-        }
-      }
-    },
-    "Select the icon shown on your Home Screen.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Velg symbolet som vises på Hjem-skjermen."
           }
         }
       }
@@ -10591,17 +10041,6 @@
         }
       }
     },
-    "Show %@ in Mail": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vis %@ i Mail"
-          }
-        }
-      }
-    },
     "Show %@ in sidebar": {
       "extractionState": "manual",
       "localizations": {
@@ -10701,17 +10140,6 @@
         }
       }
     },
-    "Show in Mail": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vis i Mail"
-          }
-        }
-      }
-    },
     "Show in mailbox list": {
       "extractionState": "manual",
       "localizations": {
@@ -10745,28 +10173,6 @@
         }
       }
     },
-    "Show new-mail drop-down panel": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vis nedtrekkspanel for ny e-post"
-          }
-        }
-      }
-    },
-    "Show one-time codes": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vis engangskoder"
-          }
-        }
-      }
-    },
     "Show or hide standard folders in the mailbox sidebar.": {
       "extractionState": "manual",
       "localizations": {
@@ -10785,17 +10191,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vis avsenderbilder"
-          }
-        }
-      }
-    },
-    "Show sign-in links": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vis innloggingslenker"
           }
         }
       }
@@ -10910,17 +10305,6 @@
         }
       }
     },
-    "Shows a one-time code or sign-in link on screen the moment it arrives. For eligible new messages Brev reads the message body over the account's own connection, and codes may appear over other apps. Nothing is stored, logged, or synced.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Viser en engangskode eller innloggingslenke på skjermen i det den kommer. For aktuelle nye meldinger leser Brev meldingsteksten over kontoens egen tilkobling, og koder kan vises over andre apper. Ingenting lagres, logges eller synkroniseres."
-          }
-        }
-      }
-    },
     "Shows matching Apple Contacts in the composer. Brev never adds or edits Apple Contacts.": {
       "extractionState": "manual",
       "localizations": {
@@ -10943,23 +10327,6 @@
         }
       }
     },
-    "Sidebar background opacity": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sidebar background opacity"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sidepanelets bakgrunnsdekning"
-          }
-        }
-      }
-    },
     "Sidebar icons": {
       "extractionState": "manual",
       "localizations": {
@@ -10978,23 +10345,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sidelinjegjennomsiktighet"
-          }
-        }
-      }
-    },
-    "Sidebars only": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sidebars only"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bare sidepaneler"
           }
         }
       }
@@ -11061,39 +10411,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Logg ut"
-          }
-        }
-      }
-    },
-    "Sign out of %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Logg ut av %@"
-          }
-        }
-      }
-    },
-    "Sign out of this account?": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Logge ut av denne kontoen?"
-          }
-        }
-      }
-    },
-    "Sign-in codes and links": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Innloggingskoder og -lenker"
           }
         }
       }
@@ -11230,17 +10547,6 @@
         }
       }
     },
-    "Size on disk for this account.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Størrelse på disk for denne kontoen."
-          }
-        }
-      }
-    },
     "Skip these recipients (optional)": {
       "extractionState": "manual",
       "localizations": {
@@ -11281,17 +10587,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Smartvisninger"
-          }
-        }
-      }
-    },
-    "Smoke": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Røyk"
           }
         }
       }
@@ -11593,17 +10888,6 @@
         }
       }
     },
-    "Subscriptions": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abonnementer"
-          }
-        }
-      }
-    },
     "Sun": {
       "extractionState": "manual",
       "localizations": {
@@ -11725,39 +11009,6 @@
         }
       }
     },
-    "System accent": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Systemaksent"
-          }
-        }
-      }
-    },
-    "System accent is available on Mac. This device uses the theme accent.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Systemaksent er tilgjengelig på Mac. Denne enheten bruker temaets aksentfarge."
-          }
-        }
-      }
-    },
-    "Tap Edit, then drag the handles to reorder.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Trykk Rediger, og dra i håndtakene for å endre rekkefølge."
-          }
-        }
-      }
-    },
     "Target folder": {
       "extractionState": "manual",
       "localizations": {
@@ -11765,39 +11016,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Målmappe"
-          }
-        }
-      }
-    },
-    "Task editing": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oppgaveredigering"
-          }
-        }
-      }
-    },
-    "Task lists": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oppgavelister"
-          }
-        }
-      }
-    },
-    "Task lists from connected sources, grouped by collection with completion state.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oppgavelister fra tilkoblede kilder, gruppert etter samling med fullføringsstatus."
           }
         }
       }
@@ -11820,17 +11038,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Oppgaver (CalDAV)"
-          }
-        }
-      }
-    },
-    "Tasks browsing": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oppgaveblæddring"
           }
         }
       }
@@ -11897,16 +11104,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Testvarsel"
-          }
-        }
-      }
-    },
-    "Text and spacing": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tekst og avstand"
           }
         }
       }
@@ -12043,17 +11240,6 @@
         }
       }
     },
-    "These settings apply only to the selected mailbox.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Disse innstillingene gjelder bare den valgte postkassen."
-          }
-        }
-      }
-    },
     "This account can push compatible local rules to a Brev-owned server script.": {
       "extractionState": "manual",
       "localizations": {
@@ -12164,40 +11350,6 @@
         }
       }
     },
-    "Transparency": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Transparency"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gjennomsiktighet"
-          }
-        }
-      }
-    },
-    "Transparency preview": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Transparency preview"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Forhåndsvisning av gjennomsiktighet"
-          }
-        }
-      }
-    },
     "Trash": {
       "extractionState": "manual",
       "localizations": {
@@ -12275,17 +11427,6 @@
         }
       }
     },
-    "Turn on Allow Notifications for Brev in Settings.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Slå på Tillat varsler for Brev i Innstillinger."
-          }
-        }
-      }
-    },
     "Turn the compose shortcuts on or off.": {
       "extractionState": "manual",
       "localizations": {
@@ -12293,6 +11434,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Slå skrivegenveiene av eller på."
+          }
+        }
+      }
+    },
+    "form.type": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type"
           }
         }
       }
@@ -12517,17 +11675,6 @@
         }
       }
     },
-    "Use One Font Everywhere": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bruk samme skrift overalt"
-          }
-        }
-      }
-    },
     "Use OpenAI-compatible services, a self-hosted endpoint, or a local model such as Ollama.": {
       "extractionState": "manual",
       "localizations": {
@@ -12667,17 +11814,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bruker bufret vedleggsmetadata. Vedleggsinnhold søkes ikke i."
-          }
-        }
-      }
-    },
-    "Uses the macOS accent, adjusted for readable controls.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bruker aksentfargen i macOS, justert for lesbare kontroller."
           }
         }
       }
@@ -12902,23 +12038,6 @@
         }
       }
     },
-    "Window background opacity": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Window background opacity"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vinduets bakgrunnsdekning"
-          }
-        }
-      }
-    },
     "Window design": {
       "extractionState": "manual",
       "localizations": {
@@ -12941,23 +12060,6 @@
         }
       }
     },
-    "Window transparency": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Window transparency"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vindusgjennomsiktighet"
-          }
-        }
-      }
-    },
     "Woven black": {
       "extractionState": "manual",
       "localizations": {
@@ -12965,39 +12067,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vevd svart"
-          }
-        }
-      }
-    },
-    "Writing": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Skriving"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
-    "You will need to sign in again to read this account's mail in Brev.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Du må logge inn igjen for å lese e-posten til denne kontoen i Brev."
-          }
-        }
-      }
-    },
-    "Your color is saved unchanged. Controls adjust for contrast when needed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fargen din lagres uendret. Kontroller justeres for kontrast ved behov."
           }
         }
       }
@@ -13031,23 +12100,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "^[%lld innstilling](inflect: true) fra en nyere Brev-versjon forblir uberørt."
-          }
-        }
-      }
-    },
-    "addDavSource.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Add DAV Source"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Legg til DAV-kilde"
           }
         }
       }
@@ -13190,40 +12242,6 @@
         }
       }
     },
-    "exportAsMbox.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Export as MBOX"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eksporter som MBOX"
-          }
-        }
-      }
-    },
-    "form.type": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Type"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Type"
-          }
-        }
-      }
-    },
     "granted": {
       "extractionState": "manual",
       "localizations": {
@@ -13290,23 +12308,6 @@
         }
       }
     },
-    "macOS Reduce Transparency is enabled. Backgrounds stay solid until it is turned off in System Settings.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS Reduce Transparency is enabled. Backgrounds stay solid until it is turned off in System Settings."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reduser gjennomsiktighet er aktivert i macOS. Bakgrunnene forblir ugjennomsiktige til dette slås av i Systeminnstillinger."
-          }
-        }
-      }
-    },
     "macOS needs your approval in System Settings first.": {
       "extractionState": "manual",
       "localizations": {
@@ -13362,40 +12363,6 @@
         }
       }
     },
-    "reconnect.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reconnect"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Koble til på nytt"
-          }
-        }
-      }
-    },
-    "removeSource.menu": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Remove Source…"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fjern kilde …"
-          }
-        }
-      }
-    },
     "rule.lower": {
       "extractionState": "manual",
       "localizations": {
@@ -13409,23 +12376,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "regel"
-          }
-        }
-      }
-    },
-    "savedInKeychain.badge": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved in Keychain"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lagret i Nøkkelringen"
           }
         }
       }
@@ -13470,6 +12420,1056 @@
           "stringUnit": {
             "state": "translated",
             "value": "ja"
+          }
+        }
+      }
+    },
+    "Adjust spacing in sidebars, mail views, and settings independently of text size.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Juster avstanden i sidepaneler, e-postvisninger og innstillinger uavhengig av tekststørrelsen."
+          }
+        }
+      }
+    },
+    "Applies to sidebars, lists, reading, composing, and settings.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjelder sidepaneler, lister, lesing, skriving og innstillinger."
+          }
+        }
+      }
+    },
+    "Customize the whole desktop app without changing message formatting.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilpass hele skrivebordsappen uten å endre meldingsformatering."
+          }
+        }
+      }
+    },
+    "Interface density": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tetthet i grensesnittet"
+          }
+        }
+      }
+    },
+    "Text and spacing": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tekst og avstand"
+          }
+        }
+      }
+    },
+    "About & Updates": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Om og oppdateringer"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Accounts & Connections": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontoer og tilkoblinger"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Contacts stay local; external sender image sources require your permission above.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontakter forblir lokale. Eksterne avsenderbilder krever tillatelsen din ovenfor."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Control remote images, sender image sources, and trusted senders.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg eksterne bilder, avsenderbilder og betrodde avsendere."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Images, web fonts, and tracking pixels are blocked until you allow them.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder, webfonter og sporingspiksler er blokkert til du tillater dem."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Images, web fonts, and tracking pixels remain off unless you allow remote content.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder, webfonter og sporingspiksler forblir blokkert med mindre du tillater eksternt innhold."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Mailboxes & Reading": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Postkasser og lesing"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Manage recent recipients": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Administrer nylige mottakere"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Preferences": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innstillinger"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Reading, list layout, sidebar folders, and links.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lesing, meldingsliste, mapper og lenker."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Remote content": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksternt innhold"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Rules & Organization": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regler og organisering"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Writing": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriving"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "All window backgrounds are solid.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All window backgrounds are solid."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle vindusbakgrunner er ugjennomsiktige."
+          }
+        }
+      }
+    },
+    "Applies to Mail, Settings, compose windows, and messages opened in separate windows.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applies to Mail, Settings, compose windows, and messages opened in separate windows."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjelder E-post, Innstillinger, skrivevinduer og meldinger åpnet i egne vinduer."
+          }
+        }
+      }
+    },
+    "Background effect": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background effect"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bakgrunnseffekt"
+          }
+        }
+      }
+    },
+    "Choose the blur style for transparent areas.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose the blur style for transparent areas."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg uskarphet for gjennomsiktige områder."
+          }
+        }
+      }
+    },
+    "Choose where the background shows through.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose where the background shows through."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg hvor bakgrunnen skal skinne gjennom."
+          }
+        }
+      }
+    },
+    "Compose and messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compose and messages"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriving og meldinger"
+          }
+        }
+      }
+    },
+    "Extend content behind the title bar. This does not change transparency.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Extend content behind the title bar. This does not change transparency."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utvid innholdet bak tittellinjen. Dette endrer ikke gjennomsiktigheten."
+          }
+        }
+      }
+    },
+    "Full windows": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full windows"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hele vinduer"
+          }
+        }
+      }
+    },
+    "Fully opaque": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fully opaque"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Helt ugjennomsiktig"
+          }
+        }
+      }
+    },
+    "Lower opacity shows more of the blurred background. Text and icons stay opaque.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lower opacity shows more of the blurred background. Text and icons stay opaque."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lavere dekning viser mer av den uskarpe bakgrunnen. Tekst og ikoner forblir tydelige."
+          }
+        }
+      }
+    },
+    "More transparent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More transparent"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mer gjennomsiktig"
+          }
+        }
+      }
+    },
+    "Only the Mail and Settings sidebars are transparent. Messages and compose windows stay solid.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only the Mail and Settings sidebars are transparent. Messages and compose windows stay solid."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bare sidepanelene i E-post og Innstillinger er gjennomsiktige. Meldinger og skrivevinduer er ugjennomsiktige."
+          }
+        }
+      }
+    },
+    "Sidebar background opacity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sidebar background opacity"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sidepanelets bakgrunnsdekning"
+          }
+        }
+      }
+    },
+    "Sidebars only": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sidebars only"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bare sidepaneler"
+          }
+        }
+      }
+    },
+    "Transparency": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transparency"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjennomsiktighet"
+          }
+        }
+      }
+    },
+    "Transparency preview": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transparency preview"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forhåndsvisning av gjennomsiktighet"
+          }
+        }
+      }
+    },
+    "Window background opacity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Window background opacity"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vinduets bakgrunnsdekning"
+          }
+        }
+      }
+    },
+    "Window transparency": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Window transparency"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vindusgjennomsiktighet"
+          }
+        }
+      }
+    },
+    "macOS Reduce Transparency is enabled. Backgrounds stay solid until it is turned off in System Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS Reduce Transparency is enabled. Backgrounds stay solid until it is turned off in System Settings."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reduser gjennomsiktighet er aktivert i macOS. Bakgrunnene forblir ugjennomsiktige til dette slås av i Systeminnstillinger."
+          }
+        }
+      }
+    },
+    "%lld%% opaque": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%% opaque"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%% dekning"
+          }
+        }
+      }
+    },
+    "Mail and Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-post og Innstillinger"
+          }
+        }
+      }
+    },
+    "Accent source": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aksentkilde"
+          }
+        }
+      }
+    },
+    "Choose Brev's colors and app icon.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg Brevs farger og appsymbol."
+          }
+        }
+      }
+    },
+    "Select the icon shown on your Home Screen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg symbolet som vises på Hjem-skjermen."
+          }
+        }
+      }
+    },
+    "System accent": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemaksent"
+          }
+        }
+      }
+    },
+    "System accent is available on Mac. This device uses the theme accent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemaksent er tilgjengelig på Mac. Denne enheten bruker temaets aksentfarge."
+          }
+        }
+      }
+    },
+    "These settings apply only to the selected mailbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disse innstillingene gjelder bare den valgte postkassen."
+          }
+        }
+      }
+    },
+    "Uses the macOS accent, adjusted for readable controls.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruker aksentfargen i macOS, justert for lesbare kontroller."
+          }
+        }
+      }
+    },
+    "Your color is saved unchanged. Controls adjust for contrast when needed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fargen din lagres uendret. Kontroller justeres for kontrast ved behov."
+          }
+        }
+      }
+    },
+    "Account type": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontotype"
+          }
+        }
+      }
+    },
+    "Allow Notifications": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillat varsler"
+          }
+        }
+      }
+    },
+    "App icon badge": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merke på appikon"
+          }
+        }
+      }
+    },
+    "Brev alerts you while it is open or refreshing in the background. iOS decides when background refresh runs, so alerts can arrive late when Brev is closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev varsler deg mens appen er åpen eller oppdaterer i bakgrunnen. iOS bestemmer når bakgrunnsoppdatering kjører, så varsler kan komme sent når Brev er lukket."
+          }
+        }
+      }
+    },
+    "Brev forgets this restored account. You can add it again later.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev glemmer denne gjenopprettede kontoen. Du kan legge den til igjen senere."
+          }
+        }
+      }
+    },
+    "Brev opens the default mailbox first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev åpner standardpostkassen først."
+          }
+        }
+      }
+    },
+    "Choose which alerts this account can produce.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg hvilke varsler denne kontoen kan gi."
+          }
+        }
+      }
+    },
+    "Choose which mailboxes appear in Mail. At least one stays on.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg hvilke postkasser som vises i Mail. Minst én må være på."
+          }
+        }
+      }
+    },
+    "Delete Smart View": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slett smartvisning"
+          }
+        }
+      }
+    },
+    "Delete this AI provider?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slette denne AI-leverandøren?"
+          }
+        }
+      }
+    },
+    "Delete this Smart View?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slette denne smartvisningen?"
+          }
+        }
+      }
+    },
+    "Edit %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rediger %@"
+          }
+        }
+      }
+    },
+    "Hidden": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skjult"
+          }
+        }
+      }
+    },
+    "Make default account": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sett som standardkonto"
+          }
+        }
+      }
+    },
+    "Match all or any of these conditions": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsvar med alle eller noen av disse vilkårene"
+          }
+        }
+      }
+    },
+    "Messages are not deleted. Only the saved search is removed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldinger slettes ikke. Bare det lagrede søket fjernes."
+          }
+        }
+      }
+    },
+    "Open Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne innstillinger"
+          }
+        }
+      }
+    },
+    "Opens the list of sync conflicts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpner listen over synkroniseringskonflikter."
+          }
+        }
+      }
+    },
+    "Permission": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillatelse"
+          }
+        }
+      }
+    },
+    "Remote content from this sender is blocked again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksternt innhold fra denne avsenderen blokkeres igjen."
+          }
+        }
+      }
+    },
+    "Remove restored account?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjerne gjenopprettet konto?"
+          }
+        }
+      }
+    },
+    "Remove this allowlist entry?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjerne denne tillatelseslisteoppføringen?"
+          }
+        }
+      }
+    },
+    "Show %@ in Mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis %@ i Mail"
+          }
+        }
+      }
+    },
+    "Show in Mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis i Mail"
+          }
+        }
+      }
+    },
+    "Sign out of %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logg ut av %@"
+          }
+        }
+      }
+    },
+    "Sign out of this account?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logge ut av denne kontoen?"
+          }
+        }
+      }
+    },
+    "Size on disk for this account.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Størrelse på disk for denne kontoen."
+          }
+        }
+      }
+    },
+    "Tap Edit, then drag the handles to reorder.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trykk Rediger, og dra i håndtakene for å endre rekkefølge."
+          }
+        }
+      }
+    },
+    "Turn on Allow Notifications for Brev in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå på Tillat varsler for Brev i Innstillinger."
+          }
+        }
+      }
+    },
+    "You will need to sign in again to read this account's mail in Brev.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du må logge inn igjen for å lese e-posten til denne kontoen i Brev."
+          }
+        }
+      }
+    },
+    "Frost": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frost"
+          }
+        }
+      }
+    },
+    "Smoke": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Røyk"
+          }
+        }
+      }
+    },
+    "Obsidian": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obsidian"
+          }
+        }
+      }
+    },
+    "Light glass": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lyst glass"
+          }
+        }
+      }
+    },
+    "Dark glass": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mørkt glass"
+          }
+        }
+      }
+    },
+    "Remove tracking pixels": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern sporingspiksler"
+          }
+        }
+      }
+    },
+    "Remove likely tracking images before they render, even when remote content is allowed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern sannsynlige sporingsbilder før de vises, også når eksternt innhold er tillatt."
+          }
+        }
+      }
+    },
+    "Images and web fonts stay blocked until you allow remote content; likely tracking images are removed by default.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder og nettfonter holdes blokkert til du tillater eksternt innhold; sannsynlige sporingsbilder fjernes som standard."
           }
         }
       }
