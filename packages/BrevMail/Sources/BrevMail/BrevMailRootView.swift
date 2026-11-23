@@ -1174,6 +1174,9 @@ public struct BrevMailRootView: View {
                     guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
                           let section = sidebarSourceSections.first(where: { $0.id == source }), section.loadError == nil,
                           section.folders.contains(where: { $0.id == folderID }) else { return }
+                    if triageSession != nil {
+                        exitTriage()
+                    }
                     navigation.selectFolder(folderID, in: source)
                 },
                 workspaceDestinations: { mailPaletteWorkspaceDestinations() }
@@ -1404,6 +1407,9 @@ public struct BrevMailRootView: View {
             ) {
                 guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
                       selectedAIBackend != nil, navigation.inlineReply == nil else { return }
+                if triageSession != nil {
+                    exitTriage()
+                }
                 navigation.selectAssistantDestination(
                     preserving: navigation.selectedSourceID ?? preferredDefaultSection(in: visibleSourceSections)?.id
                 )
@@ -1426,6 +1432,9 @@ public struct BrevMailRootView: View {
             keywords: "newsletters unsubscribe updates"
         ) {
             guard navigation.presentedSheet == nil, !isCommandMutationBlocked else { return }
+            if triageSession != nil {
+                exitTriage()
+            }
             navigation.selectSubscriptionsSmartView()
         })
         return destinations
