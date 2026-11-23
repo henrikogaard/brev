@@ -2978,10 +2978,45 @@ private actor Store {
         mailboxID: Mailbox.ID
     ) throws {
         guard !snapshots.isEmpty else { return }
-        let messageIDs = Set(snapshots.map { $0.record.draft?.remoteID ?? "draft-\($0.record.draftID)" })
-        let removalEvents = try updateData(mailboxID: mailboxID) { data in
+        let snapshotsByID = Dictionary(
+            snapshots.map { ($0.record.draft?.remoteID ?? "draft-\($0.record.draftID)", $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        let messageIDs = Set(snapshotsByID.keys)
+        let canceledRecords: [MockSendJournalRecord] = snapshots.map { snapshot in
+            var record = snapshot.record
+            record.state = .canceled
+            record.scheduledFor = nil
+            record.scheduleID = nil
+            record.nextAttemptAt = nil
+            record.sentHeader = nil
+            record.sentBody = nil
+            if var draft = record.draft {
+                draft.scheduledFor = nil
+                record.draft = draft
+            }
+            return record
+        }
+        // Persist canceled journal entries before touching folder state so a storage failure
+        // leaves the Trash copy intact.
+        _ = try transactJournal { records in
+            for restored in canceledRecords {
+                records.removeAll { $0.sourceID == restored.sourceID && $0.draftID == restored.draftID }
+                records.append(restored)
+            }
+        }
+        let hasPersistentJournal = journal != nil
+        let events: [MailEvent] = try updateData(mailboxID: mailboxID) { data in
+            let draftsFolderID = Self.ensureDraftsFolderID(in: &data)
+            if !hasPersistentJournal {
+                // In-memory MockBackend skips projectJournalChanges in transactJournal; project directly.
+                for restored in canceledRecords {
+                    Self.projectJournalRecord(restored, mailboxes: mailboxes, in: &data)
+                }
+            }
             var events: [MailEvent] = []
-            for key in data.messagesByFolder.keys {
+            // Remove Trash (and any other non-Drafts) copies after the journal write succeeded.
+            for key in data.messagesByFolder.keys where key != draftsFolderID {
                 let (kept, gone) = (data.messagesByFolder[key] ?? []).reduce(into: (
                     [MessageHeader](),
                     [MessageHeader]()
@@ -2997,37 +3032,22 @@ private actor Store {
                     events.append(.messagesRemoved(folderID: key, messageIDs: gone.map(\.id)))
                 }
             }
-            return events
-        }
-        let canceledRecords: [MockSendJournalRecord] = snapshots.map { snapshot in
-            var record = snapshot.record
-            record.state = .canceled
-            record.scheduledFor = nil
-            record.scheduleID = nil
-            record.nextAttemptAt = nil
-            record.sentHeader = nil
-            record.sentBody = nil
-            if var draft = record.draft {
-                draft.scheduledFor = nil
-                record.draft = draft
+            // Restore original read/flagged state from the captured header snapshot.
+            if var draftHeaders = data.messagesByFolder[draftsFolderID] {
+                for index in draftHeaders.indices {
+                    guard let original = snapshotsByID[draftHeaders[index].id]?.header else { continue }
+                    draftHeaders[index].isRead = original.isRead
+                    draftHeaders[index].isFlagged = original.isFlagged
+                }
+                data.messagesByFolder[draftsFolderID] = draftHeaders
             }
-            return record
-        }
-        _ = try transactJournal { records in
-            for restored in canceledRecords {
-                records.removeAll { $0.sourceID == restored.sourceID && $0.draftID == restored.draftID }
-                records.append(restored)
-            }
-        }
-        let moveEvents: [MailEvent] = try updateData(mailboxID: mailboxID) { data in
-            let draftsFolderID = Self.ensureDraftsFolderID(in: &data)
             guard destinationFolderID != draftsFolderID else {
                 let addedIDs = (data.messagesByFolder[draftsFolderID] ?? [])
                     .map(\.id)
                     .filter { messageIDs.contains($0) }
-                let events: [MailEvent] = addedIDs.isEmpty
-                    ? []
-                    : [.messagesAdded(folderID: draftsFolderID, messageIDs: addedIDs)]
+                if !addedIDs.isEmpty {
+                    events.append(.messagesAdded(folderID: draftsFolderID, messageIDs: addedIDs))
+                }
                 return events
             }
             let (kept, moved) = (data.messagesByFolder[draftsFolderID] ?? []).reduce(into: (
@@ -3043,11 +3063,11 @@ private actor Store {
             data.messagesByFolder[draftsFolderID] = kept
             if !moved.isEmpty {
                 data.messagesByFolder[destinationFolderID, default: []].append(contentsOf: moved)
-                return [.messagesAdded(folderID: destinationFolderID, messageIDs: moved.map(\.id))]
+                events.append(.messagesAdded(folderID: destinationFolderID, messageIDs: moved.map(\.id)))
             }
-            return []
+            return events
         }
-        for event in removalEvents + moveEvents {
+        for event in events {
             emit(event)
         }
         emit(.outboxChanged)

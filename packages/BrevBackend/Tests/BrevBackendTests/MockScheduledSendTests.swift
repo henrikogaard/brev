@@ -1418,6 +1418,8 @@ struct MockScheduledSendTests {
         let trashFolder = folders.first { $0.role == .trash } ?? Folder(id: "trash", name: "Trash", role: .trash)
         let (draftHeadersBefore, _) = try await backend.messages(in: draftsFolder, sourceID: Self.sourceA, pageToken: nil)
         let draftHeader = try #require(draftHeadersBefore.first { $0.subject == "Scheduled undo check" })
+        try await backend.setFlagged(true, for: [draftHeader.id], sourceID: Self.sourceA)
+        try await backend.setRead(false, for: [draftHeader.id], sourceID: Self.sourceA)
 
         let undo = try #require(await backend.moveWithUndo(
             messageIDs: [draftHeader.id],
@@ -1428,9 +1430,15 @@ struct MockScheduledSendTests {
         let scheduler = try #require(backend.extensionService(ScheduledSendManaging.self))
         #expect(scheduler.pendingScheduledSends().isEmpty)
 
-        // Undo the Trash move: draft and attachment must reopen immediately as a regular canceled draft...
+        // Undo the Trash move: draft, flags, and attachment must reopen immediately as a regular canceled draft...
         _ = try await undo.restore()
         #expect(scheduler.pendingScheduledSends().isEmpty)
+        let (draftHeadersAfterUndo, _) = try await backend.messages(in: draftsFolder, sourceID: Self.sourceA, pageToken: nil)
+        let restoredHeader = try #require(draftHeadersAfterUndo.first { $0.id == draftHeader.id })
+        #expect(restoredHeader.isFlagged)
+        #expect(!restoredHeader.isRead)
+        let (trashAfterUndo, _) = try await backend.messages(in: trashFolder, sourceID: Self.sourceA, pageToken: nil)
+        #expect(!trashAfterUndo.contains { $0.id == draftHeader.id })
         let reopened = try #require(await backend.draft(for: draftHeader.id, sourceID: Self.sourceA))
         #expect(reopened.subject == "Scheduled undo check")
         #expect(reopened.attachmentIDs == [attachmentID])
@@ -1450,6 +1458,69 @@ struct MockScheduledSendTests {
         let reloadedAttachment = try #require(reloadedBody.attachments.first { $0.id == attachmentID })
         let reloadedBytes = try await reloaded.downloadAttachment(reloadedAttachment, sourceID: Self.sourceA)
         #expect(reloadedBytes == Data("quarterly-numbers".utf8))
+    }
+
+    @Test("undoing a Trash move restores scheduled draft in in-memory MockBackend and preserves Trash on journal error")
+    func undoTrashMoveInMemoryAndStorageFailure() async throws {
+        // 1. In-memory MockBackend (journal == nil) projects the restored draft back into Drafts.
+        let inMemory = Self.backend(persistenceDirectory: nil)
+        let inMemoryDraft = Draft(
+            id: "in-memory-undo",
+            subject: "In-memory undo",
+            htmlBody: "<p>Body</p>",
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
+        _ = try await inMemory.send(draft: inMemoryDraft, sourceID: Self.sourceA)
+        let folders = try await inMemory.folders(in: Self.sourceA)
+        let draftsFolder = try #require(folders.first { $0.role == .drafts })
+        let trashFolder = folders.first { $0.role == .trash } ?? Folder(id: "trash", name: "Trash", role: .trash)
+        let (inMemoryBefore, _) = try await inMemory.messages(in: draftsFolder, sourceID: Self.sourceA, pageToken: nil)
+        let inMemoryHeader = try #require(inMemoryBefore.first { $0.subject == "In-memory undo" })
+        let inMemoryUndo = try #require(await inMemory.moveWithUndo(
+            messageIDs: [inMemoryHeader.id],
+            from: draftsFolder,
+            to: trashFolder,
+            sourceID: Self.sourceA
+        ))
+        _ = try await inMemoryUndo.restore()
+        let (inMemoryAfter, _) = try await inMemory.messages(in: draftsFolder, sourceID: Self.sourceA, pageToken: nil)
+        #expect(inMemoryAfter.contains { $0.id == inMemoryHeader.id })
+        let (inMemoryTrash, _) = try await inMemory.messages(in: trashFolder, sourceID: Self.sourceA, pageToken: nil)
+        #expect(!inMemoryTrash.contains { $0.id == inMemoryHeader.id })
+        #expect(try await inMemory.draft(for: inMemoryHeader.id, sourceID: Self.sourceA)?.subject == "In-memory undo")
+
+        // 2. If journal persistence fails during undo, the Trash copy stays intact instead of being lost.
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let persistent = Self.backend(persistenceDirectory: directory)
+        let persistentDraft = Draft(
+            id: "undo-journal-failure",
+            subject: "Keep in Trash on error",
+            htmlBody: "<p>Body</p>",
+            scheduledFor: Self.now.addingTimeInterval(3600)
+        )
+        _ = try await persistent.send(draft: persistentDraft, sourceID: Self.sourceA)
+        let (persistentBefore, _) = try await persistent.messages(in: draftsFolder, sourceID: Self.sourceA, pageToken: nil)
+        let persistentHeader = try #require(persistentBefore.first { $0.subject == "Keep in Trash on error" })
+        let persistentUndo = try #require(await persistent.moveWithUndo(
+            messageIDs: [persistentHeader.id],
+            from: draftsFolder,
+            to: trashFolder,
+            sourceID: Self.sourceA
+        ))
+        let journal = MockSendJournal(directoryURL: directory, accountID: Self.account.id)
+        let acceptedJournal = try Data(contentsOf: journal.fileURL)
+        try FileManager.default.removeItem(at: directory)
+
+        await #expect(throws: (any Error).self) {
+            _ = try await persistentUndo.restore()
+        }
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try acceptedJournal.write(to: journal.fileURL, options: .atomic)
+        try await persistent.connect()
+        let (trashAfterError, _) = try await persistent.messages(in: trashFolder, sourceID: Self.sourceA, pageToken: nil)
+        #expect(trashAfterError.contains { $0.id == persistentHeader.id })
     }
 
     private static func backend(
