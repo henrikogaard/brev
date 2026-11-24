@@ -319,6 +319,38 @@ struct NaturalLanguageSearchPlannerTests {
         #expect(NaturalLanguageSearchChipEditing.removing(paddedChip, from: padded.originalText) == "invoice")
     }
 
+    @Test("removing a folder chip skips quoted senders and tolerates extra spaces in the folder clause")
+    func folderChipRemovalRespectsQuotedSenders() throws {
+        let cases: [(query: String, expectedSender: String, expectedAfterRemoval: String)] = [
+            (
+                #"receipt from "News in Archive Weekly" in Sent"#,
+                "News in Archive Weekly",
+                #"receipt from "News in Archive Weekly""#
+            ),
+            (
+                #"receipt from "News in Sent Weekly" in Sent"#,
+                "News in Sent Weekly",
+                #"receipt from "News in Sent Weekly""#
+            ),
+            (
+                #"receipt from "News in Sent Weekly" in   Sent"#,
+                "News in Sent Weekly",
+                #"receipt from "News in Sent Weekly""#
+            )
+        ]
+        for testCase in cases {
+            let planned = NaturalLanguageSearchPlanner.plan(for: testCase.query, execution: .cacheOnly)
+            #expect(planned.query.from == testCase.expectedSender)
+            #expect(planned.folderPhrase?.role == .sent)
+            let folderChip = try #require(planned.chips.first { $0.kind == .folder })
+            let edited = NaturalLanguageSearchChipEditing.removing(folderChip, from: planned.originalText)
+            #expect(edited == testCase.expectedAfterRemoval)
+            let replanned = NaturalLanguageSearchPlanner.plan(for: edited, execution: .cacheOnly)
+            #expect(replanned.query.from == testCase.expectedSender)
+            #expect(replanned.folderPhrase == nil)
+        }
+    }
+
     private func date(
         year: Int,
         month: Int,

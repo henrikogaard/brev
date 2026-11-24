@@ -509,9 +509,7 @@ enum NaturalLanguageSearchChipEditing {
     ) -> String {
         switch chip.kind {
         case .folder:
-            var edited = text
-            guard SearchFolderPhrase.extract(from: &edited)?.text == chip.value else { return text }
-            return cleaned(edited)
+            return removingFolderOutsideQuotedSender(matching: chip.value, from: text)
         case .keyword, .subject:
             return removingLiteral(chip.value, from: text)
         case .sender:
@@ -530,6 +528,35 @@ enum NaturalLanguageSearchChipEditing {
         case .flagged:
             return removingPatternOutsideQuotedSender(NaturalLanguageSearchPlanner.flaggedPattern, from: text)
         }
+    }
+
+    private static func removingFolderOutsideQuotedSender(matching expectedText: String, from text: String) -> String {
+        let normalizedExpected = cleaned(expectedText).lowercased()
+        let quotedSenderPattern = NaturalLanguageSearchPlanner.senderPrefix + #""[^"]+"(?=\s|$)"#
+        if let quotedExpr = try? NSRegularExpression(pattern: quotedSenderPattern, options: [.caseInsensitive]),
+           let match = quotedExpr.firstMatch(
+               in: text,
+               range: NSRange(text.startIndex ..< text.endIndex, in: text)
+           ),
+           let quotedRange = Range(match.range(at: 0), in: text) {
+            var prefix = String(text[..<quotedRange.lowerBound])
+            let preserved = String(text[quotedRange])
+            var suffix = String(text[quotedRange.upperBound...])
+            if let prefixPhrase = SearchFolderPhrase.extract(from: &prefix),
+               cleaned(prefixPhrase.text).lowercased() == normalizedExpected {
+                return cleaned([prefix, preserved, suffix].filter { !$0.isEmpty }.joined(separator: " "))
+            }
+            if let suffixPhrase = SearchFolderPhrase.extract(from: &suffix),
+               cleaned(suffixPhrase.text).lowercased() == normalizedExpected {
+                return cleaned([prefix, preserved, suffix].filter { !$0.isEmpty }.joined(separator: " "))
+            }
+            return text
+        }
+        var edited = text
+        guard let phrase = SearchFolderPhrase.extract(from: &edited),
+              cleaned(phrase.text).lowercased() == normalizedExpected
+        else { return text }
+        return cleaned(edited)
     }
 
     private static func removingPatternOutsideQuotedSender(_ pattern: String, from text: String) -> String {
