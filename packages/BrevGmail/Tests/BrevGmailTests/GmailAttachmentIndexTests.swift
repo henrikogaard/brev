@@ -333,12 +333,30 @@ struct GmailAttachmentIndexTests {
         #expect(await index.recordedQueryTexts().contains(#""Q4 (final)""#))
 
         // Quoted `in:anywhere` is literal phrase text, NOT a Gmail Spam/Trash scope operator;
-        // it must not set `includeSpamTrash = true` or admit trashed local attachment hits.
+        // it must send `includeSpamTrash == false` to Gmail and exclude trashed local attachment hits.
         await index.resetRecordedQueries()
+        await transport.resetRecordedRequests()
         let quotedAnywhereHits: [MessageHeader] = try await backend.search(
             SearchQuery(text: #""memo in:anywhere examples""#)
         )
         #expect(quotedAnywhereHits.map(\.id) == ["msg-online"])
+        #expect(await transport.recordedIncludeSpamTrashFlags() == [false])
+
+        // Escaped quotes inside quoted subject filter (`subject:"15\" laptop" in:trash`) must not
+        // corrupt quote tracking or suppress `includeSpamTrash == true` (both with folderID and inline).
+        await transport.resetRecordedRequests()
+        _ = try await backend.search(SearchQuery(
+            text: "",
+            folderID: "TRASH",
+            subject: #"15" laptop"#
+        ))
+        #expect(await transport.recordedIncludeSpamTrashFlags() == [true])
+
+        await transport.resetRecordedRequests()
+        _ = try await backend.search(SearchQuery(
+            text: #"subject:"15\" laptop" in:trash"#
+        ))
+        #expect(await transport.recordedIncludeSpamTrashFlags() == [true])
 
         // Negation, exact-word `+word`, inline operators, unquoted grouping, and unbalanced quotes
         // must NOT invoke local FTS merge (and `+budget "Q4 (final)"` must not match `Budgeting Q4 (final)`).
@@ -385,11 +403,15 @@ struct GmailAttachmentIndexTests {
 private actor OnlineSearchTransport: GmailAPITransporting {
     private let labels: [GmailLabel]
     private let messagesByID: [String: GmailMessage]
+    private var includeSpamTrashFlags: [Bool] = []
 
     init(labels: [GmailLabel], messagesByID: [String: GmailMessage]) {
         self.labels = labels
         self.messagesByID = messagesByID
     }
+
+    func recordedIncludeSpamTrashFlags() -> [Bool] { includeSpamTrashFlags }
+    func resetRecordedRequests() { includeSpamTrashFlags.removeAll() }
 
     func profile() async throws -> GmailProfile {
         GmailProfile(
@@ -403,11 +425,28 @@ private actor OnlineSearchTransport: GmailAPITransporting {
     func listLabels() async throws -> [GmailLabel] { labels }
 
     func listMessages(
+        labelID: String?,
+        query: String?,
+        pageToken: String?,
+        maxResults: Int
+    ) async throws -> GmailMessagePage {
+        try await listMessages(
+            labelID: labelID,
+            query: query,
+            pageToken: pageToken,
+            maxResults: maxResults,
+            includeSpamTrash: false
+        )
+    }
+
+    func listMessages(
         labelID _: String?,
         query _: String?,
         pageToken _: String?,
-        maxResults _: Int
+        maxResults _: Int,
+        includeSpamTrash: Bool
     ) async throws -> GmailMessagePage {
+        includeSpamTrashFlags.append(includeSpamTrash)
         let refs = messagesByID.keys.sorted().map { GmailMessageReference(id: $0, threadID: messagesByID[$0]?.threadID) }
         return GmailMessagePage(messages: refs, nextPageToken: nil, resultSizeEstimate: refs.count)
     }

@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #353 round-6 review fixes (Issue #7)
+
+- Goal: address both round-6 Devin Review items on PR #353 (`feature/background-recent-indexing`) in one tiny commit.
+- Changes:
+  - `GmailAPIBackend.swift`: tracked backslash-escaped quotes (`\"`, `\\`) inside double-quoted strings in both `containsUnquotedSpamOrTrashOperator(in:)` and `isPlainPositiveSearchText(_:)`, and explicitly honored `query.folderID == "SPAM" || query.folderID == "TRASH"` in `searchScope(for:)`.
+  - `GmailAttachmentIndexTests.swift`: recorded `includeSpamTrash` on `OnlineSearchTransport` and asserted both `"memo in:anywhere examples"` (`includeSpamTrash == false`) and `subject:"15\" laptop" in:trash` / Trash folder with `15" laptop` (`includeSpamTrash == true`).
+- Verification: `swift test --package-path packages/BrevGmail`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
 ## 2026-11-24 — Agent — PR #353 round-5 review fixes (Issue #7)
 
 - Goal: address all 3 round-5 Devin Review items on PR #353 (`feature/background-recent-indexing`) in one surgical commit.

@@ -1066,6 +1066,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     /// `from:`/`subject:`/`has:`/`label:` outside double quotes, and no unbalanced quotes).
     private static func isPlainPositiveSearchText(_ text: String) -> Bool {
         var inQuotes = false
+        var escaping = false
         var currentUnquoted = ""
         var currentQuoted = ""
         var hasContent = false
@@ -1087,23 +1088,28 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
 
         for char in text {
-            if char == "\"" {
-                if inQuotes {
+            if inQuotes {
+                if escaping {
+                    escaping = false
+                    currentQuoted.append(char)
+                } else if char == "\\" {
+                    escaping = true
+                } else if char == "\"" {
                     if !currentQuoted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         hasContent = true
                     }
                     currentQuoted = ""
                     inQuotes = false
                 } else {
-                    if currentUnquoted.hasSuffix("-") || currentUnquoted.hasSuffix("+") || currentUnquoted.hasSuffix(":") {
-                        return false
-                    }
-                    guard isValidUnquotedSegment(currentUnquoted) else { return false }
-                    currentUnquoted = ""
-                    inQuotes = true
+                    currentQuoted.append(char)
                 }
-            } else if inQuotes {
-                currentQuoted.append(char)
+            } else if char == "\"" {
+                if currentUnquoted.hasSuffix("-") || currentUnquoted.hasSuffix("+") || currentUnquoted.hasSuffix(":") {
+                    return false
+                }
+                guard isValidUnquotedSegment(currentUnquoted) else { return false }
+                currentUnquoted = ""
+                inQuotes = true
             } else {
                 currentUnquoted.append(char)
             }
@@ -1115,7 +1121,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     /// Returns `true` when `text` contains an unquoted Gmail Spam/Trash scope operator
     /// (`in:anywhere`, `in:spam`, `in:trash`, `is:spam`, or `is:trash`). Operators inside
-    /// double-quoted phrases (e.g. `"memo in:anywhere examples"`) are ignored.
+    /// double-quoted phrases (e.g. `"memo in:anywhere examples"`) are ignored, and
+    /// backslash-escaped quotes inside quoted strings (`\"`, `\\`) are tracked cleanly.
     private static func containsUnquotedSpamOrTrashOperator(in text: String) -> Bool {
         let spamTrashOperators: Set<String> = [
             "in:anywhere",
@@ -1125,6 +1132,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             "is:trash"
         ]
         var inQuotes = false
+        var escaping = false
         var unquoted = ""
         let delimiters = CharacterSet(charactersIn: "(){}")
 
@@ -1141,13 +1149,19 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
 
         for char in text {
-            if char == "\"" {
-                if !inQuotes {
-                    if segmentMatches(unquoted) { return true }
-                    unquoted = ""
+            if inQuotes {
+                if escaping {
+                    escaping = false
+                } else if char == "\\" {
+                    escaping = true
+                } else if char == "\"" {
+                    inQuotes = false
                 }
-                inQuotes.toggle()
-            } else if !inQuotes {
+            } else if char == "\"" {
+                if segmentMatches(unquoted) { return true }
+                unquoted = ""
+                inQuotes = true
+            } else {
                 unquoted.append(char)
             }
         }
@@ -2992,7 +3006,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             }
         }
         let joined = terms.joined(separator: " ")
-        let includeSpamTrash = Self.containsUnquotedSpamOrTrashOperator(in: joined)
+        let includeSpamTrash = query.folderID == "SPAM"
+            || query.folderID == "TRASH"
+            || Self.containsUnquotedSpamOrTrashOperator(in: joined)
         return SearchScope(labelID: labelID, query: joined, includeSpamTrash: includeSpamTrash)
     }
 
