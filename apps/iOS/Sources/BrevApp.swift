@@ -734,14 +734,13 @@ final class BrevIOSAppDelegate: NSObject, UIApplicationDelegate {
         }
         Task { @MainActor in
             let result = await Self.sharedSession.pushWakeCoordinator.handleWake(payload)
-            switch result {
-            case .synced, .jmapVerificationChallenge:
+            switch result.fetchOutcome {
+            case .newData:
                 completionHandler(.newData)
+            case .noData:
+                completionHandler(.noData)
             case .failed:
                 completionHandler(.failed)
-            case .ignoredDisabled, .ignoredAccountNotOptedIn,
-                 .ignoredAccountNotConnected, .ignoredInvalidPayload:
-                completionHandler(.noData)
             }
         }
     }

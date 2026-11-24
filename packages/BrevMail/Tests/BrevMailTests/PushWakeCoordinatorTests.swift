@@ -390,18 +390,24 @@ struct PushWakeCoordinatorTests {
 
         let wakePayload = PushWakePayload(accountID: Self.workOpaqueToken, stateToken: "s1", eventKind: .newMail)
 
-        // 1. Wake with no newly arrived messages MUST NOT re-notify `oldUnread`.
-        #expect(await coordinator.handleWake(wakePayload) == .synced(accountID: Self.workAccount.id))
+        // 1. Wake with no newly arrived messages MUST NOT re-notify `oldUnread` and reports `.noData`.
+        let wake1 = await coordinator.handleWake(wakePayload)
+        #expect(wake1 == .syncedNoNewData(accountID: Self.workAccount.id))
+        #expect(wake1.fetchOutcome == .noData)
         #expect(deliveredMessages.isEmpty)
 
-        // 2. Wake where `arrivingUnread` and `arrivingRead` arrive notifies ONLY `arrivingUnread`.
+        // 2. Wake where `arrivingUnread` and `arrivingRead` arrive notifies ONLY `arrivingUnread` and reports `.newData`.
         shouldDeliverNewMailOnRefresh = true
-        #expect(await coordinator.handleWake(wakePayload) == .synced(accountID: Self.workAccount.id))
+        let wake2 = await coordinator.handleWake(wakePayload)
+        #expect(wake2 == .synced(accountID: Self.workAccount.id))
+        #expect(wake2.fetchOutcome == .newData)
         #expect(deliveredMessages.map(\.messageID) == [arrivingUnread.id])
 
-        // 3. Subsequent wake with no additional arrivals MUST NOT re-notify `arrivingUnread` or `oldUnread`.
+        // 3. Subsequent wake with no additional arrivals MUST NOT re-notify and reports `.noData`.
         shouldDeliverNewMailOnRefresh = false
-        #expect(await coordinator.handleWake(wakePayload) == .synced(accountID: Self.workAccount.id))
+        let wake3 = await coordinator.handleWake(wakePayload)
+        #expect(wake3 == .syncedNoNewData(accountID: Self.workAccount.id))
+        #expect(wake3.fetchOutcome == .noData)
         #expect(deliveredMessages.map(\.messageID) == [arrivingUnread.id])
     }
 
@@ -474,12 +480,96 @@ struct PushWakeCoordinatorTests {
         let wakePayload = PushWakePayload(accountID: Self.workOpaqueToken, stateToken: "s2", eventKind: .newMail)
 
         // Wake 1 MUST fire the alert for `remoteNewUnread` even though the live server already had it at wake start.
-        #expect(await coordinator.handleWake(wakePayload) == .synced(accountID: Self.workAccount.id))
+        let firstWake = await coordinator.handleWake(wakePayload)
+        #expect(firstWake == .synced(accountID: Self.workAccount.id))
+        #expect(firstWake.fetchOutcome == .newData)
         #expect(deliveredMessages.map(\.messageID) == [remoteNewUnread.id])
 
         // Wake 2 sees `remoteNewUnread` in the local cache and MUST NOT re-notify it.
-        #expect(await coordinator.handleWake(wakePayload) == .synced(accountID: Self.workAccount.id))
+        let secondWake = await coordinator.handleWake(wakePayload)
+        #expect(secondWake == .syncedNoNewData(accountID: Self.workAccount.id))
+        #expect(secondWake.fetchOutcome == .noData)
         #expect(deliveredMessages.map(\.messageID) == [remoteNewUnread.id])
+    }
+
+    @Test("older uncached unread Inbox message below pre-refresh watermark never alerts while fresh arrival does")
+    func olderUncachedUnreadMessageDoesNotAlert() async {
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 3, totalCount: 3)
+        let cachedRecent = MessageHeader(
+            id: "msg-cached-watermark",
+            threadID: "thread-cached",
+            folderID: inbox.id,
+            from: Correspondent(name: "Alice", email: "alice@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Newest cached before wake",
+            snippet: "Watermark message",
+            date: Date(timeIntervalSince1970: 1_750_000_000),
+            isRead: false
+        )
+        let freshArrival = MessageHeader(
+            id: "msg-fresh-arrival",
+            threadID: "thread-fresh",
+            folderID: inbox.id,
+            from: Correspondent(name: "Bob", email: "bob@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Genuine new mail",
+            snippet: "Arrived after watermark",
+            date: Date(timeIntervalSince1970: 1_750_000_600),
+            isRead: false
+        )
+        let olderUncachedUnread = MessageHeader(
+            id: "msg-old-uncached-unread",
+            threadID: "thread-old-uncached",
+            folderID: inbox.id,
+            from: Correspondent(name: "Legacy", email: "legacy@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Old unread outside initial 250-message cache",
+            snippet: "Must NOT alert",
+            date: Date(timeIntervalSince1970: 1_740_000_000),
+            isRead: false
+        )
+
+        let backend = MockBackend(
+            account: Self.workAccount,
+            extendedCapabilities: [.cachedMessageHeaders],
+            folders: [inbox],
+            messagesByFolder: [inbox.id: [freshArrival, cachedRecent, olderUncachedUnread]]
+        )
+        let cacheBox = CachedHeaderBox(headers: [cachedRecent])
+        backend.cachedMessageHeadersHandler = { _, _ in
+            await cacheBox.currentHeaders()
+        }
+
+        var deliveredMessages: [PushWakeArrivedMessage] = []
+        var enabledNotifications = NotificationSettings.defaults
+        enabledNotifications.notificationsEnabled = true
+        let notificationSnapshot = enabledNotifications
+
+        let coordinator = PushWakeCoordinator(
+            settingsProvider: {
+                PushRelaySettings(
+                    isEnabled: true,
+                    mode: .userHostedRelay,
+                    endpointURLString: "https://relay.example.com/push",
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
+                )
+            },
+            notificationSettingsProvider: { notificationSnapshot },
+            backendsProvider: { [backend] },
+            refreshBackends: { _ in nil },
+            deliverNotification: { arrived in
+                deliveredMessages.append(arrived)
+            }
+        )
+
+        let result = await coordinator.handleWake(
+            PushWakePayload(accountID: Self.workOpaqueToken, stateToken: "s3", eventKind: .newMail)
+        )
+        #expect(result == .synced(accountID: Self.workAccount.id))
+        #expect(result.fetchOutcome == .newData)
+        // ONLY `freshArrival` alerts; `olderUncachedUnread` is suppressed by the pre-refresh date watermark.
+        #expect(deliveredMessages.map(\.messageID) == [freshArrival.id])
     }
 
     @Test("multi-account wake continues refreshing and alerting remaining accounts when an earlier account fails")
@@ -551,7 +641,8 @@ struct PushWakeCoordinatorTests {
             },
             deliverNotification: { arrived in
                 deliveredMessages.append(arrived)
-            }
+            },
+            now: { Date(timeIntervalSince1970: 1_750_001_000) }
         )
 
         let stateChangeJSON = Data("""
@@ -565,14 +656,21 @@ struct PushWakeCoordinatorTests {
         """.utf8)
         let result = await orderedCoordinator.handleWakeData(stateChangeJSON)
 
-        // First account failed, yet second account STILL refreshed and posted its arrival alert.
-        #expect(result == .failed(accountID: Self.workAccount.id, message: "Work account timed out"))
+        // First account failed, yet second account STILL refreshed and posted its arrival alert,
+        // so the mixed wake reports `.synced` (`.newData`) rather than `.failed`.
+        #expect(result == .synced(accountID: Self.personalAccount.id))
+        #expect(result.fetchOutcome == .newData)
         #expect(await recorder.syncedAccountIDs() == [[Self.workAccount.id], [Self.personalAccount.id]])
         #expect(deliveredMessages.map(\.messageID) == [personalNewUnread.id])
         #expect(deliveredMessages.map(\.accountID) == [Self.personalAccount.id])
+
+        // Second mixed wake where `work` fails and `personal` succeeds with NO new mail reports `.noData`.
+        let secondMixed = await orderedCoordinator.handleWakeData(stateChangeJSON)
+        #expect(secondMixed == .syncedNoNewData(accountID: Self.personalAccount.id))
+        #expect(secondMixed.fetchOutcome == .noData)
     }
 
-    @Test("AppSession JMAP PushVerification callback verifies matching pending subscription and ignores mismatched IDs")
+    @Test("AppSession JMAP PushVerification callback verifies matching pending subscription and buffers early challenges")
     func appSessionHandlesJMAPVerificationChallenge() async throws {
         let suite = "AppSessionJMAPVerify-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -603,16 +701,20 @@ struct PushWakeCoordinatorTests {
         let verifyOK = Data("""
         {"methodResponses":[["PushSubscription/set",{"updated":{"jmap-sub-pending":null}},"c0"]]}
         """.utf8)
-        let transport = SingleResponsePushTransport(response: (verifyOK, 200))
+        let verifyEarlyOK = Data("""
+        {"methodResponses":[["PushSubscription/set",{"updated":{"jmap-sub-early":null}},"c0"]]}
+        """.utf8)
+        let transport = QueuedPushTransport(responses: [(verifyOK, 200), (verifyEarlyOK, 200)])
         let client = PushRelayClient(transport: transport)
         let session = AppSession(accountStore: InMemoryAccountStore(), tokenStore: StubPushTestTokenStore())
         #expect(session.pushWakeCoordinator.onJMAPVerificationChallenge != nil)
         let verifiedAt = Date(timeIntervalSince1970: 1_800_123_456)
 
-        // Mismatched subscription ID is ignored with zero network requests.
+        // 1. Early challenge for `jmap-sub-early` arrives BEFORE `jmap-sub-early` is persisted:
+        // buffered in memory with zero network calls yet; `jmap-sub-pending` stays untouched.
         await session.handleJMAPVerificationChallenge(
-            subscriptionID: "other-sub-id",
-            verificationCode: "wrong-code",
+            subscriptionID: "jmap-sub-early",
+            verificationCode: "early-code-77",
             settingsStore: store,
             secretStore: secretStore,
             client: client,
@@ -621,7 +723,7 @@ struct PushWakeCoordinatorTests {
         #expect(await transport.recordedRequests().isEmpty)
         #expect(store.pushRelaySettings().activeRegistration?.state == .pendingVerification)
 
-        // Matching subscription ID submits RFC 8620 §7.2.2 update and transitions persisted state to `.active`.
+        // 2. Matching challenge for `jmap-sub-pending` verifies immediately and transitions to `.active`.
         await session.handleJMAPVerificationChallenge(
             subscriptionID: "jmap-sub-pending",
             verificationCode: "challenge-42",
@@ -630,10 +732,10 @@ struct PushWakeCoordinatorTests {
             client: client,
             now: { verifiedAt }
         )
-        let requests = await transport.recordedRequests()
-        #expect(requests.count == 1)
-        #expect(requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer jmap-origin-token")
-        let body = try String(decoding: #require(requests[0].httpBody), as: UTF8.self)
+        let afterFirst = await transport.recordedRequests()
+        #expect(afterFirst.count == 1)
+        #expect(afterFirst[0].value(forHTTPHeaderField: "Authorization") == "Bearer jmap-origin-token")
+        let body = try String(decoding: #require(afterFirst[0].httpBody), as: UTF8.self)
         #expect(body.contains("\"verificationCode\":\"challenge-42\""))
         #expect(body.contains("jmap-sub-pending"))
 
@@ -641,6 +743,32 @@ struct PushWakeCoordinatorTests {
         #expect(updated.activeRegistration?.state == .active)
         #expect(updated.activeRegistration?.registeredAt == verifiedAt)
         #expect(updated.lastRegistrationError == nil)
+
+        // 3. Once `jmap-sub-early` is persisted as `.pendingVerification`, consuming buffered
+        // challenges immediately verifies it with `early-code-77` and transitions it to `.active`.
+        var earlyPending = updated
+        earlyPending.activeRegistration = ActivePushRelayRegistration(
+            mode: .jmapWebPush,
+            endpointURLString: "https://jmap.example.com/api/",
+            webPushDeliveryURLString: "https://webpush.example.com/push/dev1",
+            subscriptionID: "jmap-sub-early",
+            state: .pendingVerification
+        )
+        store.save(earlyPending)
+        await session.consumeBufferedJMAPVerificationChallengeIfNeeded(
+            settingsStore: store,
+            secretStore: secretStore,
+            client: client,
+            now: { verifiedAt.addingTimeInterval(5) }
+        )
+
+        let afterSecond = await transport.recordedRequests()
+        #expect(afterSecond.count == 2)
+        let earlyBody = try String(decoding: #require(afterSecond[1].httpBody), as: UTF8.self)
+        #expect(earlyBody.contains("\"verificationCode\":\"early-code-77\""))
+        #expect(earlyBody.contains("jmap-sub-early"))
+        #expect(store.pushRelaySettings().activeRegistration?.subscriptionID == "jmap-sub-early")
+        #expect(store.pushRelaySettings().activeRegistration?.state == .active)
     }
 }
 
@@ -660,24 +788,25 @@ private actor CachedHeaderBox {
     }
 }
 
-private actor SingleResponsePushTransport: PushRelayHTTPTransport {
-    private let response: (Data, Int)
+private actor QueuedPushTransport: PushRelayHTTPTransport {
+    private var responses: [(Data, Int)]
     private var requests: [URLRequest] = []
 
-    init(response: (Data, Int)) {
-        self.response = response
+    init(responses: [(Data, Int)]) {
+        self.responses = responses
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         requests.append(request)
+        let next = responses.isEmpty ? (Data(), 200) : responses.removeFirst()
         let url = request.url ?? URL(string: "https://jmap.example.com/api/")!
         let http = HTTPURLResponse(
             url: url,
-            statusCode: response.1,
+            statusCode: next.1,
             httpVersion: "HTTP/1.1",
             headerFields: nil
         )!
-        return (response.0, http)
+        return (next.0, http)
     }
 
     func recordedRequests() -> [URLRequest] {

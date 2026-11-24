@@ -354,9 +354,10 @@ public struct PushRelaySettings: Equatable, Sendable {
         } else {
             defaults.removeObject(forKey: Key.lastRegistrationError)
         }
-        if defaults === UserDefaults.standard {
-            NotificationCenter.default.post(name: .brevPushRelaySettingsDidChange, object: nil)
-        }
+        NotificationCenter.default.post(
+            name: .brevPushRelaySettingsDidChange,
+            object: defaults
+        )
     }
 
     /// Removes a deleted account from the device-local push opt-in set and opaque token table.

@@ -485,6 +485,127 @@ struct PushRelaySettingsTests {
         #expect(failRequests[1].value(forHTTPHeaderField: "X-Brev-Subscription-ID") == "sub-prior-1")
     }
 
+    @Test("toggling an account on an open controller after background JMAP auto-verification preserves active state")
+    @MainActor
+    func openControllerPreservesBackgroundAutoVerificationAcrossAccountEdits() async throws {
+        let suite = "PushRelayOpenControllerVerify-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let pending = ActivePushRelayRegistration(
+            mode: .jmapWebPush,
+            endpointURLString: "https://jmap.example.com/api/",
+            webPushDeliveryURLString: "https://webpush.example.com/push/dev1",
+            subscriptionID: "jmap-sub-auto",
+            state: .pendingVerification
+        )
+        store.save(
+            PushRelaySettings(
+                isEnabled: true,
+                mode: .jmapWebPush,
+                endpointURLString: "https://jmap.example.com/api/",
+                webPushDeliveryURLString: "https://webpush.example.com/push/dev1",
+                enabledAccountIDs: ["acct-1"],
+                opaqueAccountTokens: ["acct-1": "acct-opaque-1"],
+                deviceClientID: "brev-dev-1",
+                activeRegistration: pending
+            )
+        )
+
+        // Open controller loads while subscription is still `.pendingVerification`.
+        let controller = PushRelayRegistrationController(
+            settingsStore: store,
+            secretStore: InMemoryPushRelaySecretStore()
+        )
+        #expect(controller.settings.activeRegistration?.state == .pendingVerification)
+        #expect(controller.isAwaitingJMAPVerification)
+
+        // Background auto-verification transitions persisted state to `.active`.
+        var externallyVerified = store.pushRelaySettings()
+        externallyVerified.activeRegistration?.state = .active
+        store.save(externallyVerified)
+
+        // User toggles another account on the already-open controller before UI reload:
+        // MUST preserve `.active` both in memory and in persisted `UserDefaults`.
+        controller.setAccount("acct-2", enabled: true)
+        #expect(controller.settings.activeRegistration?.state == .active)
+        #expect(!controller.isAwaitingJMAPVerification)
+        #expect(store.pushRelaySettings().activeRegistration?.state == .active)
+        #expect(store.pushRelaySettings().enabledAccountIDs == ["acct-1", "acct-2"])
+    }
+
+    @Test("target switch persists new JMAP subscription before old-target cleanup and preserves verification during cleanup")
+    @MainActor
+    func targetSwitchPersistsNewSubscriptionBeforeCleanup() async throws {
+        let suite = "PushRelayTargetSwitchBeforeCleanup-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+        store.save(
+            PushRelaySettings(
+                isEnabled: true,
+                mode: .jmapWebPush,
+                endpointURLString: "https://jmap-old.example.com/api/",
+                webPushDeliveryURLString: "https://webpush-old.example.com/push/dev1",
+                enabledAccountIDs: ["acct-1"],
+                opaqueAccountTokens: ["acct-1": "acct-opaque-1"],
+                deviceClientID: "brev-dev-1",
+                activeRegistration: ActivePushRelayRegistration(
+                    mode: .jmapWebPush,
+                    endpointURLString: "https://jmap-old.example.com/api/",
+                    webPushDeliveryURLString: "https://webpush-old.example.com/push/dev1",
+                    subscriptionID: "sub-old",
+                    state: .active
+                )
+            )
+        )
+
+        let cleanupGate = InFlightRequestGate()
+        let createNewJSON = Data("""
+        {"methodResponses":[["PushSubscription/set",{"created":{"brev-push-sub":{"id":"sub-new"}}},"c0"]]}
+        """.utf8)
+        let destroyOldJSON = Data("""
+        {"methodResponses":[["PushSubscription/set",{"destroyed":["sub-old"]},"c0"]]}
+        """.utf8)
+        let transport = SecondRequestGatedPushTransport(
+            gate: cleanupGate,
+            firstResponse: (createNewJSON, 200),
+            secondResponse: (destroyOldJSON, 200)
+        )
+
+        let controller = PushRelayRegistrationController(
+            settingsStore: store,
+            secretStore: InMemoryPushRelaySecretStore(),
+            client: PushRelayClient(transport: transport)
+        )
+        controller.updateEndpointDraft("https://jmap-new.example.com/api/")
+        controller.updateWebPushDeliveryURLDraft("https://webpush-new.example.com/push/dev2")
+
+        let registerTask = Task { await controller.register() }
+        // Wait until old-target cleanup (request #2) is in flight.
+        await cleanupGate.waitUntilRequestStarted()
+
+        // `sub-new` MUST ALREADY be persisted before `sub-old` cleanup finishes!
+        let persistedMidCleanup = store.pushRelaySettings()
+        #expect(persistedMidCleanup.activeRegistration?.subscriptionID == "sub-new")
+        #expect(persistedMidCleanup.activeRegistration?.state == .pendingVerification)
+
+        // Simulate background JMAP PushVerification arriving & activating `sub-new` BEFORE cleanup completes.
+        var activated = persistedMidCleanup
+        activated.activeRegistration?.state = .active
+        store.save(activated)
+
+        await cleanupGate.release()
+        await registerTask.value
+
+        // After old-target cleanup completes, `sub-new` MUST remain `.active` (never reverted to `.pendingVerification`).
+        #expect(controller.settings.activeRegistration?.subscriptionID == "sub-new")
+        #expect(controller.settings.activeRegistration?.state == .active)
+        #expect(store.pushRelaySettings().activeRegistration?.state == .active)
+    }
+
     @Test("settings search indexes Closed-App Push and scrolls JMAP/push queries to the always-visible group title")
     func settingsSearchIndexesPushRelayWithVisibleTarget() {
         let groupTitle = String(localized: "Closed-App Push (Self-Hosted)", bundle: .module)
@@ -596,5 +717,39 @@ private actor GatedPushTransport: PushRelayHTTPTransport {
 
     func requests() -> [URLRequest] {
         recorded
+    }
+}
+
+private actor SecondRequestGatedPushTransport: PushRelayHTTPTransport {
+    private let gate: InFlightRequestGate
+    private let firstResponse: (Data, Int)
+    private let secondResponse: (Data, Int)
+    private var recorded: [URLRequest] = []
+
+    init(
+        gate: InFlightRequestGate,
+        firstResponse: (Data, Int),
+        secondResponse: (Data, Int)
+    ) {
+        self.gate = gate
+        self.firstResponse = firstResponse
+        self.secondResponse = secondResponse
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        recorded.append(request)
+        let index = recorded.count
+        if index == 2 {
+            await gate.markStartedAndWait()
+        }
+        let next = index == 1 ? firstResponse : secondResponse
+        let url = request.url ?? URL(string: "https://jmap.example.com/api/")!
+        let response = HTTPURLResponse(
+            url: url,
+            statusCode: next.1,
+            httpVersion: "HTTP/1.1",
+            headerFields: nil
+        )!
+        return (next.0, response)
     }
 }

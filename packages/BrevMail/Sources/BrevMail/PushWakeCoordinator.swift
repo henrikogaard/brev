@@ -14,10 +14,22 @@ import BrevBackend
 import BrevSettings
 import Foundation
 
+/// Platform-independent background fetch outcome mapped to `UIBackgroundFetchResult` on iOS (#11).
+public enum PushWakeFetchOutcome: Equatable, Sendable {
+    /// At least one account synced new data or a JMAP verification challenge was handled.
+    case newData
+    /// Wake was ignored or succeeded without new data arriving.
+    case noData
+    /// Every attempted account refresh failed.
+    case failed
+}
+
 /// Outcome of processing an incoming silent-push / self-hosted relay wake (#11).
 public enum PushWakeHandlingResult: Equatable, Sendable {
-    /// Triggered a bounded incremental refresh (and scene-less arrival check) for the opted-in account.
+    /// Triggered a bounded incremental refresh and observed new data/arrivals for an opted-in account.
     case synced(accountID: String)
+    /// Triggered a bounded incremental refresh for an opted-in account with no newly arrived data.
+    case syncedNoNewData(accountID: String)
     /// Received an RFC 8620 §7.2.2 JMAP `PushVerification` challenge for the subscription.
     case jmapVerificationChallenge(subscriptionID: String, verificationCode: String)
     /// Ignored because closed-app push is turned off on this device.
@@ -28,13 +40,26 @@ public enum PushWakeHandlingResult: Equatable, Sendable {
     case ignoredAccountNotConnected(accountID: String)
     /// Ignored because the incoming payload was missing required fields or malformed.
     case ignoredInvalidPayload
-    /// Sync was attempted for the opted-in account and returned an error summary.
+    /// Every attempted account sync failed and returned an error summary.
     case failed(accountID: String, message: String)
+
+    /// Platform-independent fetch outcome suitable for iOS `UIBackgroundFetchResult`.
+    public var fetchOutcome: PushWakeFetchOutcome {
+        switch self {
+        case .synced, .jmapVerificationChallenge:
+            .newData
+        case .syncedNoNewData, .ignoredDisabled, .ignoredAccountNotOptedIn,
+             .ignoredAccountNotConnected, .ignoredInvalidPayload:
+            .noData
+        case .failed:
+            .failed
+        }
+    }
 
     /// Localized diagnostic summary of how the wake event was handled.
     public var statusSummary: String {
         switch self {
-        case .synced:
+        case .synced, .syncedNoNewData:
             String(localized: "Synced account after closed-app push wake.", bundle: .module)
         case .jmapVerificationChallenge:
             String(localized: "Received JMAP push verification challenge.", bundle: .module)
@@ -123,13 +148,19 @@ public final class PushWakeCoordinator {
     /// Optional handler invoked when an RFC 8620 §7.2.2 JMAP `PushVerification` challenge arrives.
     public var onJMAPVerificationChallenge: (@MainActor (_ subscriptionID: String, _ verificationCode: String) async -> Void)?
 
+    /// Fallback arrival window (15 minutes) used only when the local Inbox header cache
+    /// was empty before refresh so ancient unread messages outside initial cache windows
+    /// never trigger bogus closed-app alerts.
+    private static let emptyCacheArrivalWindow: TimeInterval = 15 * 60
+
     private let settingsProvider: () -> PushRelaySettings
     private let notificationSettingsProvider: () -> NotificationSettings
     private let refreshBackends: @Sendable ([any MailBackend]) async -> String?
     private let customNotifyArrivedMail: (@MainActor (any MailBackend, PushWakePayload) async -> Void)?
     private let deliverNotification: @MainActor (PushWakeArrivedMessage) async -> Void
+    private let now: @Sendable () -> Date
 
-    /// Creates a wake coordinator with injectable settings, backend, refresh, and notification seams.
+    /// Creates a wake coordinator with injectable settings, backend, refresh, clock, and notification seams.
     ///
     /// - Parameters:
     ///   - settingsProvider: Reads the current device-local `PushRelaySettings`.
@@ -139,6 +170,7 @@ public final class PushWakeCoordinator {
     ///   - refreshBackends: Performs a bounded refresh for the matched backend.
     ///   - notifyArrivedMail: Optional override replacing the default scene-less arrival diff pipeline.
     ///   - deliverNotification: Injectable delivery sink used by the real arrival-diff pipeline.
+    ///   - now: Clock used for empty-cache wake arrival window filtering.
     public init(
         settingsProvider: @escaping () -> PushRelaySettings = { PushRelaySettings.load() },
         notificationSettingsProvider: @escaping () -> NotificationSettings = { NotificationSettings.load() },
@@ -146,7 +178,8 @@ public final class PushWakeCoordinator {
         ensureAccountsRestored: (@MainActor () async -> Void)? = nil,
         refreshBackends: (@Sendable ([any MailBackend]) async -> String?)? = nil,
         notifyArrivedMail: (@MainActor (any MailBackend, PushWakePayload) async -> Void)? = nil,
-        deliverNotification: (@MainActor (PushWakeArrivedMessage) async -> Void)? = nil
+        deliverNotification: (@MainActor (PushWakeArrivedMessage) async -> Void)? = nil,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.settingsProvider = settingsProvider
         self.notificationSettingsProvider = notificationSettingsProvider
@@ -171,6 +204,7 @@ public final class PushWakeCoordinator {
                 playSound: arrived.playSound
             )
         }
+        self.now = now
     }
 
     /// Processes a decoded opaque wake payload, RFC 8620 `StateChange`, or JMAP verification challenge.
@@ -222,16 +256,34 @@ public final class PushWakeCoordinator {
         }
 
         var syncedAccountIDs: [String] = []
+        var deliveredNewDataAccountIDs: [String] = []
         var failures: [(accountID: String, message: String)] = []
+        let wakeStartedAt = now()
 
         for targetBackend in matchedBackends {
-            let knownInboxIDs: Set<String>? = if customNotifyArrivedMail == nil, payload.eventKind == .newMail {
-                await Self.snapshotCachedInboxMessageIDs(for: targetBackend)
+            let baseline: CachedInboxBaseline? = if customNotifyArrivedMail == nil, payload.eventKind == .newMail {
+                await Self.snapshotCachedInboxBaseline(for: targetBackend)
             } else {
                 nil
             }
 
-            if let failure = await refreshBackends([targetBackend]) {
+            let arrivedCollector = ArrivedInboxIDCollector()
+            let changeTask: Task<Void, Never>? = if let inboxID = baseline?.inboxFolderID {
+                Task {
+                    for await event in targetBackend.subscribeToChanges() {
+                        if case .messagesAdded(let folderID, let messageIDs) = event, folderID == inboxID {
+                            await arrivedCollector.record(messageIDs)
+                        }
+                    }
+                }
+            } else {
+                nil
+            }
+
+            let failure = await refreshBackends([targetBackend])
+            changeTask?.cancel()
+
+            if let failure {
                 failures.append((accountID: targetBackend.account.id, message: failure))
                 continue
             }
@@ -239,15 +291,31 @@ public final class PushWakeCoordinator {
             syncedAccountIDs.append(targetBackend.account.id)
             if let customNotifyArrivedMail {
                 await customNotifyArrivedMail(targetBackend, payload)
+                deliveredNewDataAccountIDs.append(targetBackend.account.id)
             } else {
-                await deliverSceneLessNotificationIfNeeded(
+                let positiveArrivedIDs = await arrivedCollector.recordedIDs()
+                let hadNewArrivals = await deliverSceneLessNotificationIfNeeded(
                     for: targetBackend,
                     payload: payload,
-                    previouslyKnownInboxIDs: knownInboxIDs
+                    baseline: baseline,
+                    positiveArrivedIDs: positiveArrivedIDs,
+                    wakeStartedAt: wakeStartedAt
                 )
+                if hadNewArrivals {
+                    deliveredNewDataAccountIDs.append(targetBackend.account.id)
+                }
             }
         }
 
+        // Report `.newData` when at least one account synced new data/alerts,
+        // `.noData` when at least one account synced cleanly without new data,
+        // and `.failed` only when ALL attempted accounts failed.
+        if let firstWithNewData = deliveredNewDataAccountIDs.first {
+            return .synced(accountID: firstWithNewData)
+        }
+        if let firstSynced = syncedAccountIDs.first {
+            return .syncedNoNewData(accountID: firstSynced)
+        }
         if let firstFailure = failures.first {
             let summary = failures.count == 1
                 ? firstFailure.message
@@ -255,7 +323,7 @@ public final class PushWakeCoordinator {
             return .failed(accountID: firstFailure.accountID, message: summary)
         }
 
-        return .synced(accountID: syncedAccountIDs[0])
+        return .ignoredInvalidPayload
     }
 
     /// Decodes an APNs/remote-notification `userInfo` dictionary and handles the wake.
@@ -278,12 +346,18 @@ public final class PushWakeCoordinator {
         return await handleWake(payload)
     }
 
-    /// Reads the pre-refresh Inbox message ID baseline strictly from the backend's
+    private struct CachedInboxBaseline {
+        let inboxFolderID: String
+        let messageIDs: Set<String>
+        let latestCachedDate: Date?
+    }
+
+    /// Reads the pre-refresh Inbox message ID and date watermark strictly from the backend's
     /// local header cache (`cachedMessageHeaders`) without hitting the live server.
     ///
     /// Reading from the live server before refresh would already include the newly
     /// delivered message that triggered the push wake and suppress the arrival diff.
-    private static func snapshotCachedInboxMessageIDs(for backend: any MailBackend) async -> Set<String>? {
+    private static func snapshotCachedInboxBaseline(for backend: any MailBackend) async -> CachedInboxBaseline? {
         guard backend.extendedCapabilities.contains(.cachedMessageHeaders) else {
             return nil
         }
@@ -297,52 +371,91 @@ public final class PushWakeCoordinator {
         guard let cachedHeaders = try? await backend.cachedMessageHeaders(in: inbox, sourceID: sourceID) else {
             return nil
         }
-        return Set(cachedHeaders.map(\.id))
+        return CachedInboxBaseline(
+            inboxFolderID: inbox.id,
+            messageIDs: Set(cachedHeaders.map(\.id)),
+            latestCachedDate: cachedHeaders.map(\.date).max()
+        )
     }
 
     /// Evaluates `NewMailNotificationPolicy` and posts local notifications ONLY for
-    /// unread Inbox messages that arrived during this wake refresh (absent from
-    /// `previouslyKnownInboxIDs`), preventing re-notification of already-known unread mail.
+    /// genuinely newly arrived unread Inbox messages (preferring positive fresh-delivery
+    /// IDs from `MailEvent.messagesAdded`, and falling back to cache-diff + date watermark
+    /// so older uncached unread messages never trigger bogus alerts).
+    ///
+    /// - Returns: `true` if at least one newly arrived unread message was observed.
     private func deliverSceneLessNotificationIfNeeded(
         for backend: any MailBackend,
         payload: PushWakePayload,
-        previouslyKnownInboxIDs: Set<String>?
-    ) async {
+        baseline: CachedInboxBaseline?,
+        positiveArrivedIDs: Set<String>,
+        wakeStartedAt: Date
+    ) async -> Bool {
         guard payload.eventKind == .newMail,
-              let previouslyKnownInboxIDs
+              let baseline
         else {
-            return
+            return false
         }
         let notificationSettings = notificationSettingsProvider()
         let decision = NewMailNotificationPolicy.decision(
             settings: notificationSettings,
             accountID: backend.account.id
         )
-        guard decision.shouldDeliver else { return }
         guard let folders = try? await backend.folders(),
               let inbox = folders.first(where: { $0.role == .inbox }),
               let page = try? await backend.enumerateMessages(in: inbox, pageToken: nil)
         else {
-            return
+            return false
         }
 
-        let newlyArrivedUnread = page.headers.filter { header in
-            !header.isRead && !previouslyKnownInboxIDs.contains(header.id)
+        let newlyArrivedUnread: [MessageHeader]
+        if !positiveArrivedIDs.isEmpty {
+            newlyArrivedUnread = page.headers.filter { header in
+                !header.isRead && positiveArrivedIDs.contains(header.id)
+            }
+        } else {
+            let watermarkDate = baseline.latestCachedDate
+                ?? wakeStartedAt.addingTimeInterval(-Self.emptyCacheArrivalWindow)
+            newlyArrivedUnread = page.headers.filter { header in
+                !header.isRead
+                    && !baseline.messageIDs.contains(header.id)
+                    && header.date > watermarkDate
+            }
         }
-        for header in newlyArrivedUnread.prefix(5) {
-            let arrived = PushWakeArrivedMessage(
-                messageID: header.id,
-                from: header.from,
-                subject: header.subject,
-                snippet: header.snippet,
-                receivedAt: header.date,
-                accountID: backend.account.id,
-                folderID: inbox.id,
-                folderName: inbox.name,
-                showPreviews: decision.showPreviews,
-                playSound: decision.playSound
-            )
-            await deliverNotification(arrived)
+
+        guard !newlyArrivedUnread.isEmpty else {
+            return false
         }
+
+        if decision.shouldDeliver {
+            for header in newlyArrivedUnread.prefix(5) {
+                let arrived = PushWakeArrivedMessage(
+                    messageID: header.id,
+                    from: header.from,
+                    subject: header.subject,
+                    snippet: header.snippet,
+                    receivedAt: header.date,
+                    accountID: backend.account.id,
+                    folderID: inbox.id,
+                    folderName: inbox.name,
+                    showPreviews: decision.showPreviews,
+                    playSound: decision.playSound
+                )
+                await deliverNotification(arrived)
+            }
+        }
+        return true
+    }
+}
+
+private actor ArrivedInboxIDCollector {
+    private var ids: Set<String> = []
+
+    func record(_ newIDs: [String]) {
+        ids.formUnion(newIDs)
+    }
+
+    func recordedIDs() -> Set<String> {
+        ids
     }
 }

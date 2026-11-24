@@ -41,6 +41,7 @@ public final class PushRelayRegistrationController {
     private let devicePushTokenProvider: () -> String?
     private let now: () -> Date
     private var pendingDisableCleanup = false
+    private var settingsObserverToken: PushRelayNotificationObserverToken?
 
     /// Creates a push relay controller with injectable storage, client, and APNs token seams.
     public init(
@@ -60,6 +61,16 @@ public final class PushRelayRegistrationController {
         endpointDraft = loaded.endpointURLString
         webPushDeliveryURLDraft = loaded.webPushDeliveryURLString
         refreshSavedBearerTokenIndicator()
+        let rawToken = NotificationCenter.default.addObserver(
+            forName: .brevPushRelaySettingsDidChange,
+            object: settingsStore.defaults,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.syncExternalRegistrationStateFromStore()
+            }
+        }
+        settingsObserverToken = PushRelayNotificationObserverToken(rawToken)
     }
 
     /// Current platform-supplied APNs device token, if available on this build.
@@ -134,10 +145,10 @@ public final class PushRelayRegistrationController {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             settings.endpointURLString = ""
-            settingsStore.save(settings)
+            savePreservingLatestActiveRegistration()
         } else if let validated = try? PushRelayEndpointValidator.validate(trimmed) {
             settings.endpointURLString = validated.absoluteString
-            settingsStore.save(settings)
+            savePreservingLatestActiveRegistration()
         }
         let nextOrigin = try? PushRelayEndpointValidator.originKey(from: value)
         if previousOrigin != nextOrigin {
@@ -152,23 +163,23 @@ public final class PushRelayRegistrationController {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             settings.webPushDeliveryURLString = ""
-            settingsStore.save(settings)
+            savePreservingLatestActiveRegistration()
         } else if let validated = try? PushRelayEndpointValidator.validate(trimmed) {
             settings.webPushDeliveryURLString = validated.absoluteString
-            settingsStore.save(settings)
+            savePreservingLatestActiveRegistration()
         }
     }
 
     /// Updates the transport mode without clobbering `activeRegistration`.
     public func setMode(_ mode: PushRelayMode) {
         settings.mode = mode
-        settingsStore.save(settings)
+        savePreservingLatestActiveRegistration()
     }
 
     /// Updates per-account opt-in, generating an opaque device-local account token when enabled.
     public func setAccount(_ accountID: String, enabled: Bool) {
         settings.setAccount(accountID, enabled: enabled)
-        settingsStore.save(settings)
+        savePreservingLatestActiveRegistration()
     }
 
     /// Clears the saved Keychain bearer token strictly for the current draft endpoint's origin.
@@ -304,6 +315,16 @@ public final class PushRelayRegistrationController {
                 return
             }
 
+            // Persist the newly created/refreshed subscription BEFORE cleaning up the superseded
+            // old target so incoming RFC 8620 §7.2.2 PushVerification challenges for `newRegistration`
+            // can immediately match and activate it while old-target cleanup is still in flight.
+            settings.activeRegistration = newRegistration
+            settings.lastRegistrationError = nil
+            if let inlineCode = response.verificationCode, !inlineCode.isEmpty {
+                verificationCodeInput = inlineCode
+            }
+            settingsStore.save(settings)
+
             // Target changed: clean up the superseded registration on the old relay/server.
             var cleanupWarning: String?
             if let previousActive, !matchesPreviousTarget {
@@ -314,12 +335,13 @@ public final class PushRelayRegistrationController {
                 }
             }
 
-            settings.activeRegistration = newRegistration
-            settings.lastRegistrationError = cleanupWarning
-            if let inlineCode = response.verificationCode, !inlineCode.isEmpty {
-                verificationCodeInput = inlineCode
+            // Preserve any background auto-verification update that transitioned `newRegistration`
+            // from `.pendingVerification` to `.active` while old-target cleanup was awaiting network.
+            syncExternalRegistrationStateFromStore()
+            if let cleanupWarning {
+                settings.lastRegistrationError = cleanupWarning
+                settingsStore.save(settings)
             }
-            settingsStore.save(settings)
 
             // Re-check deferred disable in case the user toggled push off during target-switch cleanup.
             if hasPendingDisable {
@@ -396,6 +418,26 @@ public final class PushRelayRegistrationController {
 
     // MARK: - Private helpers
 
+    /// Merges the latest persisted `activeRegistration` (e.g., after background JMAP
+    /// auto-verification transitions `.pendingVerification` → `.active`) before saving
+    /// draft/mode/account edits so an open Settings view never reverts verification state.
+    private func savePreservingLatestActiveRegistration() {
+        syncExternalRegistrationStateFromStore()
+        settingsStore.save(settings)
+    }
+
+    private func syncExternalRegistrationStateFromStore() {
+        let persisted = settingsStore.pushRelaySettings()
+        if let persistedActive = persisted.activeRegistration {
+            if settings.activeRegistration != persistedActive {
+                settings.activeRegistration = persistedActive
+            }
+            if persistedActive.state == .active, persisted.lastRegistrationError == nil {
+                settings.lastRegistrationError = nil
+            }
+        }
+    }
+
     private var hasPendingDisable: Bool {
         pendingDisableCleanup || !settings.isEnabled || !settingsStore.pushRelaySettings().isEnabled
     }
@@ -468,5 +510,17 @@ public final class PushRelayRegistrationController {
             mode: registration.mode,
             bearerToken: bearerToken
         )
+    }
+}
+
+private final class PushRelayNotificationObserverToken: @unchecked Sendable {
+    private let token: NSObjectProtocol
+
+    init(_ token: NSObjectProtocol) {
+        self.token = token
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(token)
     }
 }
