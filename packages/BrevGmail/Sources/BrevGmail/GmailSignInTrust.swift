@@ -195,6 +195,14 @@ final class GmailFreshDeliveryRegistry: @unchecked Sendable {
         }
     }
 
+    /// Returns unexpired fresh-delivery message IDs observed at or after `since`.
+    func messageIDs(since: Date) -> Set<String> {
+        lock.withLock {
+            pruneExpired(at: now())
+            return Set(entries.filter { $0.observedAt >= since }.map(\.id))
+        }
+    }
+
     /// Invalidates delivery provenance when a provider connection ends or restarts.
     func removeAll() {
         lock.withLock { entries.removeAll() }

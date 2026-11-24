@@ -557,7 +557,10 @@ struct PushWakeCoordinatorTests {
             },
             notificationSettingsProvider: { notificationSnapshot },
             backendsProvider: { [backend] },
-            refreshBackends: { _ in nil },
+            refreshBackends: { _ in
+                await cacheBox.setHeaders([freshArrival, cachedRecent, olderUncachedUnread])
+                return nil
+            },
             deliverNotification: { arrived in
                 deliveredMessages.append(arrived)
             }
@@ -726,6 +729,197 @@ struct PushWakeCoordinatorTests {
         #expect(unchangedResult == .syncedNoNewData(accountID: Self.workAccount.id))
         #expect(unchangedResult.fetchOutcome == .noData)
         #expect(deliveredMessages.isEmpty)
+    }
+
+    @Test(
+        "paginated 60-message cached Inbox catches off-page flag change with zero enumerateMessages calls and reports noData when unchanged"
+    )
+    func paginatedCachedInboxCatchesOffPageFlagChangeWithoutLiveFetch() async {
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox, unreadCount: 60, totalCount: 60)
+        // Build 60 cached messages (UIDs 1..60); UID 5 (off-page past top 50) has a newer Date than UID 11 (50th),
+        // and UID 10 (off-page) will be marked read during wake 1.
+        let baseDate = Date(timeIntervalSince1970: 1_750_000_000)
+        var initialCached: [MessageHeader] = (1 ... 60).map { uid in
+            let offsetSeconds: TimeInterval = uid == 5 ? 45 * 60 : TimeInterval(uid * 60)
+            return MessageHeader(
+                id: "INBOX:\(uid)",
+                threadID: "thread-\(uid)",
+                folderID: inbox.id,
+                from: Correspondent(name: "Sender \(uid)", email: "sender\(uid)@example.org"),
+                to: [Correspondent(email: "work@example.org")],
+                subject: "Message \(uid)",
+                snippet: "Body \(uid)",
+                date: baseDate.addingTimeInterval(offsetSeconds),
+                isRead: false
+            )
+        }
+        initialCached.sort { $0.date > $1.date }
+
+        let cacheBox = CachedHeaderBox(headers: initialCached)
+        let enumerateCounter = CallCounter()
+        let backend = MockBackend(
+            account: Self.workAccount,
+            extendedCapabilities: [.cachedMessageHeaders],
+            folders: [inbox],
+            messagesByFolder: [inbox.id: Array(initialCached.prefix(50))]
+        )
+        backend.cachedMessageHeadersHandler = { _, _ in
+            await cacheBox.currentHeaders()
+        }
+        backend.messagesHandler = { _, _ in
+            await enumerateCounter.increment()
+            return (Array(initialCached.prefix(50)), "page-2")
+        }
+
+        var deliveredMessages: [PushWakeArrivedMessage] = []
+        var enabledNotifications = NotificationSettings.defaults
+        enabledNotifications.notificationsEnabled = true
+        let notificationSnapshot = enabledNotifications
+        var mutateOffPageUID10 = true
+
+        let coordinator = PushWakeCoordinator(
+            settingsProvider: {
+                PushRelaySettings(
+                    isEnabled: true,
+                    mode: .userHostedRelay,
+                    endpointURLString: "https://relay.example.com/push",
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
+                )
+            },
+            notificationSettingsProvider: { notificationSnapshot },
+            backendsProvider: { [backend] },
+            refreshBackends: { _ in
+                if await MainActor.run(body: { mutateOffPageUID10 }) {
+                    var updated = await cacheBox.currentHeaders()
+                    if let idx = updated.firstIndex(where: { $0.id == "INBOX:10" }) {
+                        updated[idx].isRead = true
+                    }
+                    await cacheBox.setHeaders(updated)
+                }
+                return nil
+            },
+            deliverNotification: { arrived in
+                deliveredMessages.append(arrived)
+            }
+        )
+
+        let wakePayload = PushWakePayload(
+            accountID: Self.workOpaqueToken,
+            stateToken: "condstore-99",
+            eventKind: .mailboxChanged
+        )
+
+        // 1. Off-page UID 10 marked read -> `.newData`, 0 alerts, and 0 live `enumerateMessages` calls.
+        let mutated = await coordinator.handleWake(wakePayload)
+        #expect(mutated == .synced(accountID: Self.workAccount.id))
+        #expect(mutated.fetchOutcome == .newData)
+        #expect(deliveredMessages.isEmpty)
+        #expect(await enumerateCounter.count() == 0)
+
+        // 2. Unchanged 60-message cached Inbox -> `.noData` (even with off-page newer Date), 0 alerts, 0 live calls.
+        mutateOffPageUID10 = false
+        let unchanged = await coordinator.handleWake(wakePayload)
+        #expect(unchanged == .syncedNoNewData(accountID: Self.workAccount.id))
+        #expect(unchanged.fetchOutcome == .noData)
+        #expect(deliveredMessages.isEmpty)
+        #expect(await enumerateCounter.count() == 0)
+    }
+
+    @Test("delayed Gmail delivery with older Date header alerts via freshDeliveryMessageIDs while uncached backfill does not")
+    func delayedGmailDeliveryAlertsViaFreshDeliveryProvider() async {
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox, unreadCount: 3, totalCount: 3)
+        let cachedNewest = MessageHeader(
+            id: "18f0000000000001",
+            threadID: "t-1",
+            folderID: inbox.id,
+            from: Correspondent(name: "Alice", email: "alice@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Cached newest Gmail message",
+            snippet: "Cached at 10:00",
+            date: Date(timeIntervalSince1970: 1_750_003_600),
+            isRead: false
+        )
+        // Delayed Gmail delivery: non-IMAP opaque hex ID with Date header 1 hour OLDER than `cachedNewest`,
+        // positively identified by Gmail History delta (`freshDeliveryMessageIDs(since:)`).
+        let delayedGmailFresh = MessageHeader(
+            id: "18f0000000000002",
+            threadID: "t-2",
+            folderID: inbox.id,
+            from: Correspondent(name: "Delayed Sender", email: "delayed@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Delayed Gmail delivery",
+            snippet: "Older Date header, fresh History delta",
+            date: Date(timeIntervalSince1970: 1_750_000_000),
+            isRead: false
+        )
+        // Older uncached unread Gmail message NOT in `freshDeliveryMessageIDs(since:)`: must NOT alert.
+        let uncachedBackfill = MessageHeader(
+            id: "18f0000000000003",
+            threadID: "t-3",
+            folderID: inbox.id,
+            from: Correspondent(name: "Newsletter", email: "news@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Older uncached unread Gmail message",
+            snippet: "Not a fresh delivery",
+            date: Date(timeIntervalSince1970: 1_749_000_000),
+            isRead: false
+        )
+
+        let cacheBox = CachedHeaderBox(headers: [cachedNewest])
+        let enumerateCounter = CallCounter()
+        let backend = MockBackend(
+            account: Self.workAccount,
+            extendedCapabilities: [.cachedMessageHeaders],
+            folders: [inbox],
+            messagesByFolder: [inbox.id: [cachedNewest, delayedGmailFresh, uncachedBackfill]]
+        )
+        backend.cachedMessageHeadersHandler = { _, _ in
+            await cacheBox.currentHeaders()
+        }
+        backend.messagesHandler = { _, _ in
+            await enumerateCounter.increment()
+            return ([cachedNewest, delayedGmailFresh, uncachedBackfill], nil)
+        }
+        let wakeTime = Date(timeIntervalSince1970: 1_750_004_000)
+        backend.freshDeliveryMessageIDsHandler = { since in
+            since <= wakeTime ? [delayedGmailFresh.id] : []
+        }
+
+        var deliveredMessages: [PushWakeArrivedMessage] = []
+        var enabledNotifications = NotificationSettings.defaults
+        enabledNotifications.notificationsEnabled = true
+        let notificationSnapshot = enabledNotifications
+
+        let coordinator = PushWakeCoordinator(
+            settingsProvider: {
+                PushRelaySettings(
+                    isEnabled: true,
+                    mode: .userHostedRelay,
+                    endpointURLString: "https://relay.example.com/push",
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
+                )
+            },
+            notificationSettingsProvider: { notificationSnapshot },
+            backendsProvider: { [backend] },
+            refreshBackends: { _ in
+                await cacheBox.setHeaders([cachedNewest, delayedGmailFresh, uncachedBackfill])
+                return nil
+            },
+            deliverNotification: { arrived in
+                deliveredMessages.append(arrived)
+            },
+            now: { wakeTime }
+        )
+
+        let result = await coordinator.handleWake(
+            PushWakePayload(accountID: Self.workOpaqueToken, stateToken: "hist-77", eventKind: .newMail)
+        )
+        #expect(result == .synced(accountID: Self.workAccount.id))
+        #expect(result.fetchOutcome == .newData)
+        #expect(deliveredMessages.map(\.messageID) == [delayedGmailFresh.id])
+        #expect(await enumerateCounter.count() == 0)
     }
 
     @Test("multi-account wake continues refreshing and alerting remaining accounts when an earlier account fails")
@@ -941,6 +1135,18 @@ private actor CachedHeaderBox {
 
     func setHeaders(_ updated: [MessageHeader]) {
         headers = updated
+    }
+}
+
+private actor CallCounter {
+    private var total = 0
+
+    func increment() {
+        total += 1
+    }
+
+    func count() -> Int {
+        total
     }
 }
 

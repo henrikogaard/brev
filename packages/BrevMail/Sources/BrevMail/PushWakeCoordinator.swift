@@ -351,6 +351,7 @@ public final class PushWakeCoordinator {
 
     private struct CachedInboxBaseline {
         let inboxFolderID: String
+        let usesFullLocalCache: Bool
         let messageIDs: Set<String>
         let headerStates: [String: CachedHeaderState]
         let latestCachedDate: Date?
@@ -374,30 +375,37 @@ public final class PushWakeCoordinator {
     /// Reading from the live server before refresh would already include the newly
     /// delivered message that triggered the push wake and suppress the arrival diff.
     private static func snapshotCachedInboxBaseline(for backend: any MailBackend) async -> CachedInboxBaseline? {
-        guard backend.extendedCapabilities.contains(.cachedMessageHeaders) else {
-            return nil
-        }
         guard let folders = try? await backend.folders(),
               let inbox = folders.first(where: { $0.role == .inbox })
         else {
             return nil
         }
-        let mailboxID = await (try? backend.currentMailbox().id) ?? backend.account.id
-        let sourceID = MailSourceID(accountID: backend.account.id, mailboxID: mailboxID)
-        guard let cachedHeaders = try? await backend.cachedMessageHeaders(in: inbox, sourceID: sourceID) else {
+        let headers: [MessageHeader]
+        let usesFullLocalCache: Bool
+        if backend.extendedCapabilities.contains(.cachedMessageHeaders) {
+            let mailboxID = await (try? backend.currentMailbox().id) ?? backend.account.id
+            let sourceID = MailSourceID(accountID: backend.account.id, mailboxID: mailboxID)
+            guard let cachedHeaders = try? await backend.cachedMessageHeaders(in: inbox, sourceID: sourceID) else {
+                return nil
+            }
+            headers = cachedHeaders
+            usesFullLocalCache = true
+        } else {
             return nil
         }
+
         var states: [String: CachedHeaderState] = [:]
-        states.reserveCapacity(cachedHeaders.count)
-        for header in cachedHeaders {
+        states.reserveCapacity(headers.count)
+        for header in headers {
             states[header.id] = headerState(for: header)
         }
-        let maxUID = cachedHeaders.compactMap { extractIMAPUID(from: $0.id, folderID: inbox.id) }.max()
+        let maxUID = headers.compactMap { extractIMAPUID(from: $0.id, folderID: inbox.id) }.max()
         return CachedInboxBaseline(
             inboxFolderID: inbox.id,
-            messageIDs: Set(cachedHeaders.map(\.id)),
+            usesFullLocalCache: usesFullLocalCache,
+            messageIDs: Set(headers.map(\.id)),
             headerStates: states,
-            latestCachedDate: cachedHeaders.map(\.date).max(),
+            latestCachedDate: headers.map(\.date).max(),
             maxCachedIMAPUID: maxUID
         )
     }
@@ -408,9 +416,13 @@ public final class PushWakeCoordinator {
         _ header: MessageHeader,
         inboxFolderID: String,
         baseline: CachedInboxBaseline,
+        freshDeliveryIDs: Set<MessageHeader.ID>,
         wakeStartedAt: Date
     ) -> Bool {
         guard !baseline.messageIDs.contains(header.id) else { return false }
+        if freshDeliveryIDs.contains(header.id) {
+            return true
+        }
         if baseline.messageIDs.isEmpty {
             let emptyCacheCutoff = wakeStartedAt.addingTimeInterval(-Self.emptyCacheArrivalWindow)
             return header.date >= emptyCacheCutoff
@@ -427,10 +439,13 @@ public final class PushWakeCoordinator {
     }
 
     /// Reconciles post-refresh Inbox state against the pre-refresh local-cache baseline:
-    /// - Detects any mailbox state mutation (new arrival, read/flag/label change, or removal)
-    ///   for both `.newMail` and `.mailboxChanged` wakes so iOS receives accurate `.newData` vs `.noData`.
+    /// - When the backend supports cached headers, reads the post-refresh snapshot from
+    ///   `cachedMessageHeaders` (zero extra live `enumerateMessages` network calls, full
+    ///   apples-to-apples Inbox diff including off-page CONDSTORE flag updates).
+    /// - Queries capability-gated `CachedMessageHeaderProviding.freshDeliveryMessageIDs(since:)`
+    ///   so delayed Gmail deliveries with older `Date:` headers are positively detected.
     /// - Posts scene-less local alerts strictly on `.newMail` wakes for genuinely newly arrived
-    ///   unread Inbox messages, avoiding re-alerts and older uncached Gmail backfill spam.
+    ///   unread Inbox messages, avoiding re-alerts and older uncached backfill spam.
     private func reconcilePostRefreshAndNotifyIfNeeded(
         for backend: any MailBackend,
         payload: PushWakePayload,
@@ -439,13 +454,38 @@ public final class PushWakeCoordinator {
     ) async -> Bool {
         guard let baseline,
               let folders = try? await backend.folders(),
-              let inbox = folders.first(where: { $0.role == .inbox }),
-              let page = try? await backend.enumerateMessages(in: inbox, pageToken: nil)
+              let inbox = folders.first(where: { $0.role == .inbox })
         else {
             return false
         }
 
-        let postHeaders = page.headers
+        let postHeaders: [MessageHeader]
+        let comparedFullCache: Bool
+        if baseline.usesFullLocalCache, backend.extendedCapabilities.contains(.cachedMessageHeaders) {
+            let mailboxID = await (try? backend.currentMailbox().id) ?? backend.account.id
+            let sourceID = MailSourceID(accountID: backend.account.id, mailboxID: mailboxID)
+            guard let cachedHeaders = try? await backend.cachedMessageHeaders(in: inbox, sourceID: sourceID) else {
+                return false
+            }
+            postHeaders = cachedHeaders
+            comparedFullCache = true
+        } else {
+            guard let page = try? await backend.enumerateMessages(in: inbox, pageToken: nil) else {
+                return false
+            }
+            postHeaders = page.headers
+            comparedFullCache = false
+        }
+
+        let freshDeliveryIDs: Set<MessageHeader.ID> = if backend.extendedCapabilities.contains(.cachedMessageHeaders),
+                                                         let provider = backend.extensionService(
+                                                             CachedMessageHeaderProviding.self
+                                                         ) {
+            await provider.freshDeliveryMessageIDs(since: wakeStartedAt)
+        } else {
+            []
+        }
+
         var postStates: [String: CachedHeaderState] = [:]
         postStates.reserveCapacity(postHeaders.count)
         for header in postHeaders {
@@ -457,6 +497,7 @@ public final class PushWakeCoordinator {
                 header,
                 inboxFolderID: inbox.id,
                 baseline: baseline,
+                freshDeliveryIDs: freshDeliveryIDs,
                 wakeStartedAt: wakeStartedAt
             )
         }
@@ -464,23 +505,31 @@ public final class PushWakeCoordinator {
             guard let prior = baseline.headerStates[header.id] else { return false }
             return prior != Self.headerState(for: header)
         }
-        let oldestPostDate = postHeaders.map(\.date).min()
-        let hasRemovalInWindow = baseline.headerStates.contains { id, prior in
-            guard postStates[id] == nil else { return false }
-            guard let oldestPostDate else { return true }
-            return prior.date >= oldestPostDate
+        let hasRemoval: Bool
+        if comparedFullCache {
+            hasRemoval = baseline.headerStates.keys.contains { postStates[$0] == nil }
+        } else {
+            let oldestPostDate = postHeaders.map(\.date).min()
+            hasRemoval = baseline.headerStates.contains { id, prior in
+                guard postStates[id] == nil else { return false }
+                guard let oldestPostDate else { return true }
+                return prior.date >= oldestPostDate
+            }
         }
-        let didObserveNewData = hasGenuineAddition || hasFlagOrMetadataMutation || hasRemovalInWindow
+        let didObserveNewData = hasGenuineAddition || hasFlagOrMetadataMutation || hasRemoval
 
         if payload.eventKind == .newMail {
-            let newlyArrivedUnread = postHeaders.filter { header in
-                !header.isRead && Self.isGenuineNewArrival(
-                    header,
-                    inboxFolderID: inbox.id,
-                    baseline: baseline,
-                    wakeStartedAt: wakeStartedAt
-                )
-            }
+            let newlyArrivedUnread = postHeaders
+                .filter { header in
+                    !header.isRead && Self.isGenuineNewArrival(
+                        header,
+                        inboxFolderID: inbox.id,
+                        baseline: baseline,
+                        freshDeliveryIDs: freshDeliveryIDs,
+                        wakeStartedAt: wakeStartedAt
+                    )
+                }
+                .sorted { $0.date > $1.date }
             if !newlyArrivedUnread.isEmpty {
                 let notificationSettings = notificationSettingsProvider()
                 let decision = NewMailNotificationPolicy.decision(

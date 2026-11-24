@@ -57,6 +57,32 @@ struct GmailSignInTrustProvenanceTests {
         #expect(outcome.freshDeliveryIDs.isEmpty)
     }
 
+    @Test("freshDeliveryRegistry filters unexpired IDs observed at or after since")
+    func freshDeliveryRegistryMessageIDsSince() {
+        let lock = NSLock()
+        var currentTime = Date(timeIntervalSince1970: 1_750_000_000)
+        let registry = GmailFreshDeliveryRegistry(
+            now: { lock.withLock { currentTime } },
+            lifetime: 600,
+            capacity: 200
+        )
+
+        registry.record(["msg-earlier"])
+        let wakeStartedAt = Date(timeIntervalSince1970: 1_750_000_030)
+        lock.withLock { currentTime = wakeStartedAt }
+        registry.record(["msg-delayed-fresh"])
+
+        #expect(registry.messageIDs(since: wakeStartedAt) == ["msg-delayed-fresh"])
+        #expect(registry.messageIDs(since: Date(timeIntervalSince1970: 1_750_000_000)) == [
+            "msg-earlier",
+            "msg-delayed-fresh"
+        ])
+
+        // Past lifetime, expired entries are pruned cleanly.
+        lock.withLock { currentTime = wakeStartedAt.addingTimeInterval(601) }
+        #expect(registry.messageIDs(since: Date(timeIntervalSince1970: 1_750_000_000)).isEmpty)
+    }
+
     @Test("fullSync reports no fresh deliveries")
     func fullSyncEmptyProvenance() async throws {
         let client = ProvenanceClient(

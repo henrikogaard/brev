@@ -111,6 +111,17 @@ public protocol CachedMessageHeaderProviding: BackendExtensionService {
         messageID: MessageHeader.ID,
         folderID: Folder.ID
     ) async -> MessageHeader?
+
+    /// Returns message IDs observed as fresh incremental deliveries by the provider
+    /// at or after `since`, excluding initial backfill. Default returns empty.
+    func freshDeliveryMessageIDs(since: Date) async -> Set<MessageHeader.ID>
+}
+
+public extension CachedMessageHeaderProviding {
+    func freshDeliveryMessageIDs(since: Date) async -> Set<MessageHeader.ID> {
+        _ = since
+        return []
+    }
 }
 
 /// Adds or removes provider labels on messages. Offered only by backends that
