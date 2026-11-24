@@ -61,6 +61,27 @@ enum CachedPDFSearch {
         return matches(matched, query: structuredOnly)
     }
 
+    /// Intersects candidate list items with source-scoped cached PDF matches,
+    /// resolving any explicit folder phrase against `folders`.
+    static func filterItems(
+        _ items: [UnifiedInboxItem],
+        plan: NaturalLanguageSearchPlan,
+        backend: any MailBackend,
+        folders: [Folder],
+        sourceID: MailSourceID
+    ) async throws -> [UnifiedInboxItem] {
+        guard plan.searchesCachedPDFs else { return items }
+        guard !items.isEmpty, let resolved = plan.resolvedQuery(in: folders) else { return [] }
+        let pdfs = try await headers(
+            backend: backend,
+            query: resolved,
+            folders: folders,
+            sourceID: sourceID
+        )
+        let ids = Set(pdfs.map(\.id))
+        return items.filter { ids.contains($0.header.id) }
+    }
+
     static func matches(_ messages: [CachedAttachmentMessage], query: SearchQuery) -> [MessageHeader] {
         var remaining = query
         if remaining.hasAttachments == true { remaining.hasAttachments = nil }

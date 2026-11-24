@@ -134,18 +134,26 @@ enum UnifiedInboxSearchPolicy {
         ).query
     }
 
-    static func waitingSearchQuery(
+    static func waitingSearchPlan(
         text: String,
         now: Date = Date(),
         calendar: Calendar = .current
-    ) -> SearchQuery {
+    ) -> NaturalLanguageSearchPlan {
         NaturalLanguageSearchPlanner.plan(
             for: text,
             folderID: nil,
             execution: .cacheOnly,
             now: now,
             calendar: calendar
-        ).query
+        )
+    }
+
+    static func waitingSearchQuery(
+        text: String,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> SearchQuery {
+        waitingSearchPlan(text: text, now: now, calendar: calendar).query
     }
 
     static func searchableSources(

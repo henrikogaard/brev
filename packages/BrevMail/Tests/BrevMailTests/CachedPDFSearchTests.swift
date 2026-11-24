@@ -123,6 +123,184 @@ struct CachedPDFSearchTests {
         )
         #expect(Set(results.map(\.id)) == ["hdr-sub", "idx-only"])
     }
+
+    @Test("Waiting search intersects active candidates with Sent cached PDFs in cache-only mode")
+    func waitingPDFSearchFiltersToCachedPDFsInSent() async throws {
+        let sent = Folder(id: "sent", name: "Sent", role: .sent)
+        let sourceID = MailSourceID(accountID: "acct", mailboxID: "primary")
+        let pdfHeader = MessageHeader(
+            id: "waiting-pdf",
+            threadID: "t1",
+            folderID: sent.id,
+            from: Correspondent(email: "me@example.org"),
+            to: [Correspondent(email: "bob@example.org")],
+            subject: "Signed contract",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 200)
+        )
+        let plainHeader = MessageHeader(
+            id: "waiting-plain",
+            threadID: "t2",
+            folderID: sent.id,
+            from: Correspondent(email: "me@example.org"),
+            to: [Correspondent(email: "bob@example.org")],
+            subject: "Quick check-in",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 100)
+        )
+        let pdfAttachment = BrevBackend.Attachment(
+            id: "a1",
+            name: "contract.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 256,
+            isInline: false
+        )
+        let backend = PrefixIndexPDFStubBackend(
+            cached: [
+                CachedAttachmentMessage(
+                    folder: sent,
+                    header: pdfHeader,
+                    body: MessageBody(messageID: pdfHeader.id, attachments: [pdfAttachment])
+                ),
+                CachedAttachmentMessage(
+                    folder: sent,
+                    header: plainHeader,
+                    body: MessageBody(messageID: plainHeader.id, attachments: [])
+                )
+            ],
+            indexedHits: []
+        )
+        let waitingItems = [pdfHeader, plainHeader].map {
+            UnifiedInboxItem(
+                sourceID: sourceID,
+                folder: sent,
+                header: $0,
+                sourceTitle: "Demo",
+                sourceSubtitle: "demo@example.org",
+                archiveFolder: nil
+            )
+        }
+        let plan = UnifiedInboxSearchPolicy.waitingSearchPlan(text: "pdf")
+        #expect(plan.searchesCachedPDFs)
+        #expect(plan.query.execution == .cacheOnly)
+        let filtered = try await CachedPDFSearch.filterItems(
+            waitingItems,
+            plan: plan,
+            backend: backend,
+            folders: [sent],
+            sourceID: sourceID
+        )
+        #expect(filtered.map(\.header.id) == ["waiting-pdf"])
+        #expect(backend.recordedCachedFolders == [[sent.id]])
+    }
+
+    @Test("Saved PDF search resolves folder phrases per source and returns empty when role is missing")
+    func savedSearchPDFRespectsFolderPhraseAndMissingRole() async throws {
+        let inbox = Folder(id: "in", name: "Inbox", role: .inbox)
+        let sent = Folder(id: "sent", name: "Sent", role: .sent)
+        let sourceA = MailSourceID(accountID: "acct-a", mailboxID: "primary")
+        let sourceB = MailSourceID(accountID: "acct-b", mailboxID: "primary")
+        let inboxPDF = MessageHeader(
+            id: "inbox-pdf",
+            threadID: "t1",
+            folderID: inbox.id,
+            from: Correspondent(email: "ada@example.org"),
+            to: [],
+            subject: "Inbox attachment",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 200)
+        )
+        let sentPDF = MessageHeader(
+            id: "sent-pdf",
+            threadID: "t2",
+            folderID: sent.id,
+            from: Correspondent(email: "me@example.org"),
+            to: [],
+            subject: "Sent attachment",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 150)
+        )
+        let pdfAttachment = BrevBackend.Attachment(
+            id: "a1",
+            name: "invoice.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 128,
+            isInline: false
+        )
+        let backendA = PrefixIndexPDFStubBackend(
+            cached: [
+                CachedAttachmentMessage(
+                    folder: inbox,
+                    header: inboxPDF,
+                    body: MessageBody(messageID: inboxPDF.id, attachments: [pdfAttachment])
+                ),
+                CachedAttachmentMessage(
+                    folder: sent,
+                    header: sentPDF,
+                    body: MessageBody(messageID: sentPDF.id, attachments: [pdfAttachment])
+                )
+            ],
+            indexedHits: []
+        )
+        let rowsA = [
+            UnifiedInboxItem(
+                sourceID: sourceA,
+                folder: inbox,
+                header: inboxPDF,
+                sourceTitle: "A",
+                sourceSubtitle: "a@example.org",
+                archiveFolder: nil
+            ),
+            UnifiedInboxItem(
+                sourceID: sourceA,
+                folder: sent,
+                header: sentPDF,
+                sourceTitle: "A",
+                sourceSubtitle: "a@example.org",
+                archiveFolder: nil
+            )
+        ]
+        let plan = NaturalLanguageSearchPlanner.plan(for: "pdf in Sent", execution: .cacheOnly)
+        let filteredA = try await CachedPDFSearch.filterItems(
+            rowsA,
+            plan: plan,
+            backend: backendA,
+            folders: [inbox, sent],
+            sourceID: sourceA
+        )
+        #expect(filteredA.map(\.header.id) == ["sent-pdf"])
+        #expect(backendA.recordedCachedFolders == [[sent.id]])
+
+        let backendB = PrefixIndexPDFStubBackend(
+            cached: [
+                CachedAttachmentMessage(
+                    folder: inbox,
+                    header: inboxPDF,
+                    body: MessageBody(messageID: inboxPDF.id, attachments: [pdfAttachment])
+                )
+            ],
+            indexedHits: []
+        )
+        let rowsB = [
+            UnifiedInboxItem(
+                sourceID: sourceB,
+                folder: inbox,
+                header: inboxPDF,
+                sourceTitle: "B",
+                sourceSubtitle: "b@example.org",
+                archiveFolder: nil
+            )
+        ]
+        let filteredB = try await CachedPDFSearch.filterItems(
+            rowsB,
+            plan: plan,
+            backend: backendB,
+            folders: [inbox],
+            sourceID: sourceB
+        )
+        #expect(filteredB.isEmpty)
+        #expect(backendB.recordedCachedFolders.isEmpty)
+    }
 }
 
 private final class PrefixIndexPDFStubBackend: MailBackend, @unchecked Sendable {
@@ -130,14 +308,23 @@ private final class PrefixIndexPDFStubBackend: MailBackend, @unchecked Sendable 
     let capabilities: BackendCapabilities = []
     private let cached: [CachedAttachmentMessage]
     private let indexedHits: [MessageHeader]
+    private(set) var recordedCachedFolders: [[Folder.ID]] = []
 
     init(cached: [CachedAttachmentMessage], indexedHits: [MessageHeader]) {
         self.cached = cached
         self.indexedHits = indexedHits
     }
 
-    func cachedAttachmentMessages(in _: [Folder]) async -> [CachedAttachmentMessage] { cached }
-    func cachedAttachmentMessages(in _: [Folder], sourceID _: MailSourceID) async -> [CachedAttachmentMessage] { cached }
+    func cachedAttachmentMessages(in folders: [Folder]) async -> [CachedAttachmentMessage] {
+        recordedCachedFolders.append(folders.map(\.id))
+        let allowed = Set(folders.map(\.id))
+        return cached.filter { allowed.contains($0.folder.id) }
+    }
+
+    func cachedAttachmentMessages(in folders: [Folder], sourceID _: MailSourceID) async -> [CachedAttachmentMessage] {
+        await cachedAttachmentMessages(in: folders)
+    }
+
     func connect() async throws {}
     func disconnect() async {}
     func folders() async throws -> [Folder] { [] }

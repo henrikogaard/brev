@@ -2579,6 +2579,7 @@ struct UnifiedInboxListView: View {
         pageCursors = [:]
 
         guard currentSourceSectionsRevisionProvider() == capturedRevision, isCurrentRequest() else { return }
+        let waitingSearchPlan = UnifiedInboxSearchPolicy.waitingSearchPlan(text: searchText)
         let reminders = followUpSettingsProvider().reminders.filter {
             $0.isAutomaticNoReply && !$0.isDismissed && !$0.isCompleted
         }
@@ -2665,8 +2666,32 @@ struct UnifiedInboxListView: View {
                     archiveFolder: section.folders.first { $0.role == .archive }
                 )
             }
+            let filteredSentItems: [UnifiedInboxItem]
+            if waitingSearchPlan.searchesCachedPDFs {
+                do {
+                    filteredSentItems = try await CachedPDFSearch.filterItems(
+                        sentItems,
+                        plan: waitingSearchPlan,
+                        backend: backend,
+                        folders: sentFolders,
+                        sourceID: section.id
+                    )
+                } catch {
+                    firstError = firstError ?? error.localizedDescription
+                    continue
+                }
+                guard isCurrentRequest(),
+                      currentSourceSectionsRevisionProvider() == capturedRevision,
+                      currentSourceSectionsProvider().contains(where: { $0.id == section.id }),
+                      let currentBackend = (currentBackendsProvider?() ?? backends)
+                      .first(where: { $0.account.id == section.id.accountID }),
+                      ObjectIdentifier(currentBackend as AnyObject) == backendIdentity
+                else { return }
+            } else {
+                filteredSentItems = sentItems
+            }
             loadedItems.removeAll { $0.sourceID == section.id }
-            loadedItems.append(contentsOf: sentItems)
+            loadedItems.append(contentsOf: filteredSentItems)
         }
         guard isCurrentRequest(), currentSourceSectionsRevisionProvider() == capturedRevision else { return }
         let currentReminders = followUpSettingsProvider().reminders.filter {
@@ -2679,14 +2704,15 @@ struct UnifiedInboxListView: View {
             return SourceMessageID(sourceID: metadata.sourceID, messageID: identifier)
         })
         let currentSourceIDs = Set(currentSourceSectionsProvider().map(\.id))
-        let waitingSearchQuery = UnifiedInboxSearchPolicy.waitingSearchQuery(text: searchText)
+        let waitingSearchQuery = waitingSearchPlan.query
         items = UnifiedInboxPagination.sortedItems(loadedItems.filter { item in
             guard item.folder.role == .sent,
                   currentSourceIDs.contains(item.sourceID),
                   let identifier = NoReplyFollowUpReconciler.singleMessageIdentifier(item.header.messageID)
             else { return false }
-            return currentReminderLocations.contains(SourceMessageID(sourceID: item.sourceID, messageID: identifier))
-                && waitingSearchQuery.matches(item.header)
+            guard currentReminderLocations.contains(SourceMessageID(sourceID: item.sourceID, messageID: identifier))
+            else { return false }
+            return waitingSearchPlan.searchesCachedPDFs || waitingSearchQuery.matches(item.header)
         })
         reconcileNavigationAfterItemsChanged()
         if let firstError {
@@ -2724,11 +2750,14 @@ struct UnifiedInboxListView: View {
             guard let backend = byAccount[section.account.id] else { return ([], nil) }
             do {
                 let rows = try await SavedSearchMessageLoader.load(section: section, backend: backend, query: query)
-                guard pdfPlan.searchesCachedPDFs else { return (rows, nil) }
-                let pdfs = try await CachedPDFSearch.headers(backend: backend, query: pdfPlan.query,
-                                                             folders: section.folders, sourceID: section.id)
-                let ids = Set(pdfs.map(\.id))
-                return (rows.filter { ids.contains($0.header.id) }, nil)
+                let filtered = try await CachedPDFSearch.filterItems(
+                    rows,
+                    plan: pdfPlan,
+                    backend: backend,
+                    folders: section.folders,
+                    sourceID: section.id
+                )
+                return (filtered, nil)
             } catch {
                 return ([], error.localizedDescription)
             }
