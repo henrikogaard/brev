@@ -20,21 +20,25 @@ struct AIWriterSection: View {
     @Environment(\.brevTheme) private var theme
     @State private var settings: AIWriterSettings
     @State private var configuredProvider: AIProviderConfiguration?
+    @State private var hasNonOnDeviceAccountOverride = false
 
     private let settingsStore: SettingsPersistenceStore
     private let providerSecretStore: any AIProviderSecretStore
     private let accounts: [BrevAccount]
+    private let appleIntelligenceAvailability: AppleIntelligenceAvailability
     private let onProviderConfigurationChanged: () async -> Void
 
     init(
         settingsStore: SettingsPersistenceStore = .standard,
         providerSecretStore: any AIProviderSecretStore = AIProviderKeychainSecretStore(),
         accounts: [BrevAccount] = [],
+        appleIntelligenceAvailability: AppleIntelligenceAvailability = .current(),
         onProviderConfigurationChanged: @escaping () async -> Void = {}
     ) {
         self.settingsStore = settingsStore
         self.providerSecretStore = providerSecretStore
         self.accounts = accounts
+        self.appleIntelligenceAvailability = appleIntelligenceAvailability
         self.onProviderConfigurationChanged = onProviderConfigurationChanged
         _settings = State(initialValue: settingsStore.aiWriterSettings())
     }
@@ -70,6 +74,7 @@ struct AIWriterSection: View {
                     settingsStore: settingsStore,
                     secretStore: providerSecretStore,
                     accounts: accounts,
+                    appleIntelligenceAvailability: appleIntelligenceAvailability,
                     onProviderConfigurationChanged: {
                         await refreshConfiguredProvider()
                         await onProviderConfigurationChanged()
@@ -123,6 +128,18 @@ struct AIWriterSection: View {
             ? String(localized: "granted", bundle: .module)
             : String(localized: "not granted", bundle: .module)
         if let configuredProvider {
+            if configuredProvider.kind.isOnDevice {
+                if hasNonOnDeviceAccountOverride {
+                    return String(
+                        localized: "Consent is \(consentState). Default AI Writer requests stay on this device (\(configuredProvider.transparencyLabel)); accounts with a custom provider override follow that provider’s policy.",
+                        bundle: .module
+                    )
+                }
+                return String(
+                    localized: "Consent is \(consentState). When you use AI Writer, text is processed locally (\(configuredProvider.transparencyLabel)) and never leaves this device.",
+                    bundle: .module
+                )
+            }
             return String(
                 localized: "Consent is \(consentState). When you use AI Writer, \(configuredProvider.transparencyLabel). Review that provider’s privacy policy before enabling it.",
                 bundle: .module
@@ -138,5 +155,20 @@ struct AIWriterSection: View {
     private func refreshConfiguredProvider() async {
         let configurations = (try? settingsStore.aiProviderConfigurations()) ?? []
         configuredProvider = configurations.first(where: \.isDefault) ?? configurations.first
+        let assignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
+        let providersByID = Dictionary(uniqueKeysWithValues: configurations.map { ($0.id, $0) })
+        let legacyOverrideByAccountID: [String: AIProviderConfiguration] = configurations.reduce(into: [:]) { map, config in
+            guard let accountID = config.assignedAccountID, map[accountID] == nil else { return }
+            map[accountID] = config
+        }
+        let allAccountIDs = Set(accounts.map(\.id)).union(legacyOverrideByAccountID.keys)
+        hasNonOnDeviceAccountOverride = allAccountIDs.contains { accountID in
+            if let assignedProviderID = assignments.providerID(forAccountID: accountID) {
+                guard let provider = providersByID[assignedProviderID] else { return false }
+                return provider.isEnabled && !provider.kind.isOnDevice
+            }
+            guard let legacyProvider = legacyOverrideByAccountID[accountID] else { return false }
+            return legacyProvider.isEnabled && !legacyProvider.kind.isOnDevice
+        }
     }
 }

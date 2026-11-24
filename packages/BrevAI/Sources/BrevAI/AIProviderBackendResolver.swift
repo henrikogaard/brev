@@ -20,15 +20,21 @@ public actor AIProviderBackendResolver {
     private let configurationStore: AIProviderConfigurationStore
     private let assignmentStore: AIProviderAccountAssignmentStore
     private let secretStore: any AIProviderSecretStore
+    private let appleIntelligenceAvailability: @Sendable () -> AppleIntelligenceAvailability
+    private let appleIntelligenceGenerator: any AppleIntelligenceTextGenerating
 
     /// Creates a resolver backed by device-local provider metadata and Keychain secrets.
     public init(
         defaults: UserDefaults = .standard,
-        secretStore: any AIProviderSecretStore = AIProviderKeychainSecretStore()
+        secretStore: any AIProviderSecretStore = AIProviderKeychainSecretStore(),
+        appleIntelligenceAvailability: @escaping @Sendable () -> AppleIntelligenceAvailability = { .current() },
+        appleIntelligenceGenerator: any AppleIntelligenceTextGenerating = SystemAppleIntelligenceGenerator()
     ) {
         configurationStore = AIProviderConfigurationStore(defaults: defaults)
         assignmentStore = AIProviderAccountAssignmentStore(defaults: defaults)
         self.secretStore = secretStore
+        self.appleIntelligenceAvailability = appleIntelligenceAvailability
+        self.appleIntelligenceGenerator = appleIntelligenceGenerator
     }
 
     /// Resolves one backend per account without making a network request.
@@ -82,6 +88,20 @@ public actor AIProviderBackendResolver {
         guard configuration.isEnabled,
               configuration.validationIssues.isEmpty
         else { return nil }
+
+        if configuration.kind == .appleIntelligence {
+            switch appleIntelligenceAvailability() {
+            case .unsupportedOS, .deviceNotEligible:
+                return nil
+            case .available, .modelNotReady, .appleIntelligenceNotEnabled, .unavailable:
+                return AppleIntelligenceAIBackend(
+                    displayName: configuration.displayName,
+                    transparencyLabel: configuration.transparencyLabel,
+                    availability: appleIntelligenceAvailability,
+                    generator: appleIntelligenceGenerator
+                )
+            }
+        }
 
         let apiKey: String?
         if configuration.requiresAPIKey {

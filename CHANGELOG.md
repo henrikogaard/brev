@@ -4,6 +4,13 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- On-device AI with Apple Intelligence (#304, ADR-0094 Slice 1): added
+  `AppleIntelligenceAIBackend` backed by Apple's `FoundationModels` framework on
+  macOS 26+ and iOS 26+ with zero network calls, zero API keys, conservative
+  provider-neutral context budgets (`AIBackendContextBudget.onDevice`), live
+  availability gating with plain-language disabled reasons in Settings → AI, and
+  localized `"On this Mac"` / `"On this iPhone"` / `"On this iPad"` transparency
+  labels wherever AI output appears. AI remains off by default.
 - Searching from any mailbox now searches across all visible accounts by default while letting you narrow to the current folder and keeping source-aware result routing (#296).
 - Search for “pdf” or “med PDF” to filter downloaded mail by attachment type.
 - iOS lock-screen-safe sign-in notifications (#239, ADR-0088 accepted iOS

@@ -70,7 +70,9 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
 
     static func new(kind: AIProviderKind) -> AIProviderSettingsDraft {
         AIProviderSettingsDraft(
-            id: AIProviderID("provider-\(UUID().uuidString)"),
+            id: kind == .appleIntelligence
+                ? AppleIntelligenceAIBackend.providerID
+                : AIProviderID("provider-\(UUID().uuidString)"),
             kind: kind,
             displayName: kind.settingsDisplayName,
             endpointURLString: kind.defaultEndpointString,
@@ -82,7 +84,7 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
     }
 
     var requiresAPIKey: Bool {
-        kind != .ollamaLocal
+        kind != .ollamaLocal && !kind.isOnDevice
     }
 
     var validationIssues: [AIProviderConfigurationValidationIssue] {
@@ -90,23 +92,31 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
         if displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             issues.append(.displayNameRequired)
         }
-        if !hasValidHTTPEndpoint {
-            issues.append(.httpEndpointRequired)
-        }
-        if modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            issues.append(.modelIDRequired)
+        if !kind.isOnDevice {
+            if !hasValidHTTPEndpoint {
+                issues.append(.httpEndpointRequired)
+            }
+            if modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                issues.append(.modelIDRequired)
+            }
         }
         return issues
     }
 
     var configuration: AIProviderConfiguration? {
         guard validationIssues.isEmpty else { return nil }
+        let resolvedEndpoint = kind == .appleIntelligence
+            ? AIProviderConfiguration.appleIntelligenceEndpointURL
+            : URL(string: endpointURLString.trimmingCharacters(in: .whitespacesAndNewlines))
+        let resolvedModelID = kind == .appleIntelligence
+            ? "system-default"
+            : modelID.trimmingCharacters(in: .whitespacesAndNewlines)
         return AIProviderConfiguration(
             id: id,
             kind: kind,
             displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
-            endpointURL: URL(string: endpointURLString.trimmingCharacters(in: .whitespacesAndNewlines)),
-            modelID: modelID.trimmingCharacters(in: .whitespacesAndNewlines),
+            endpointURL: resolvedEndpoint,
+            modelID: resolvedModelID,
             isEnabled: isEnabled,
             isDefault: isDefault,
             assignedAccountID: assignedAccountID
@@ -114,6 +124,9 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
     }
 
     var transparencyPreview: String {
+        if kind == .appleIntelligence {
+            return OnDeviceAIPlatformLabel.transparencyLabel
+        }
         let providerName = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? kind.settingsDisplayName
             : displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -124,6 +137,9 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
     }
 
     var apiKeyStatusText: String {
+        if kind.isOnDevice {
+            return String(localized: "Runs on this device with no API key or network requests.", bundle: .module)
+        }
         if !requiresAPIKey {
             return String(localized: "No API key required for local providers.", bundle: .module)
         }
@@ -162,12 +178,16 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
     }
 
     mutating func applyPreset(_ newKind: AIProviderKind) {
+        // Keep on-device system profiles separate from generic HTTP profiles
+        // so switching presets never overwrites another profile's identity, routing, or API key,
+        // while still allowing an Apple Intelligence profile to restore its own default preset.
+        guard kind.isOnDevice == newKind.isOnDevice else { return }
         kind = newKind
         displayName = newKind.settingsDisplayName
         endpointURLString = newKind.defaultEndpointString
         modelID = newKind.defaultModelID
         pendingAPIKey = ""
-        if newKind == .ollamaLocal {
+        if newKind == .ollamaLocal || newKind.isOnDevice {
             hasSavedAPIKey = false
         }
     }
@@ -300,6 +320,8 @@ enum AIProviderSettingsError: Error, LocalizedError, Sendable {
 extension AIProviderKind {
     var settingsDisplayName: String {
         switch self {
+        case .appleIntelligence:
+            return OnDeviceAIPlatformLabel.appleIntelligenceDisplayName
         case .openAICompatible:
             return String(localized: "OpenAI", bundle: .module)
         case .ollamaLocal:
@@ -311,6 +333,8 @@ extension AIProviderKind {
 
     var settingsTitle: String {
         switch self {
+        case .appleIntelligence:
+            return OnDeviceAIPlatformLabel.appleIntelligenceDisplayName
         case .openAICompatible:
             return String(localized: "OpenAI-compatible", bundle: .module)
         case .ollamaLocal:
@@ -322,6 +346,8 @@ extension AIProviderKind {
 
     var settingsSubtitle: String {
         switch self {
+        case .appleIntelligence:
+            return String(localized: "Built-in on-device language model; works offline with no API key.", bundle: .module)
         case .openAICompatible:
             return String(localized: "Hosted provider with a compatible chat-completions API.", bundle: .module)
         case .ollamaLocal:
@@ -338,13 +364,15 @@ extension AIProviderKind {
                 localized: "On macOS, localhost is this Mac. On iOS devices and Simulator, localhost may not be your Mac-hosted Ollama server.",
                 bundle: .module
             )
-        case .openAICompatible, .customOpenAICompatible:
+        case .appleIntelligence, .openAICompatible, .customOpenAICompatible:
             return nil
         }
     }
 
     var defaultEndpointString: String {
         switch self {
+        case .appleIntelligence:
+            return AIProviderConfiguration.appleIntelligenceEndpointURL.absoluteString
         case .openAICompatible:
             return "https://api.openai.com/v1"
         case .ollamaLocal:
@@ -356,6 +384,8 @@ extension AIProviderKind {
 
     var defaultModelID: String {
         switch self {
+        case .appleIntelligence:
+            return "system-default"
         case .openAICompatible:
             return "gpt-4.1-mini"
         case .ollamaLocal:

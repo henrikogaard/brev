@@ -722,7 +722,11 @@ public struct ThreadConversationView: View {
         guard ThreadAISummaryAvailability.disabledReason(in: aiSummaryAvailabilityState) == nil else {
             return
         }
-        let includedHeaders = ThreadAISummaryContextBuilder.includedHeaders(from: threadHeaders)
+        let budget = aiBackend.contextBudget ?? .standard
+        let includedHeaders = ThreadAISummaryContextBuilder.includedHeaders(
+            from: threadHeaders,
+            maxMessages: budget.maxSourceMessages
+        )
         let request = ThreadAISummaryRequest(
             threadID: threadHeaders.last?.threadID,
             messageIDs: includedHeaders.map(\.id)
@@ -748,7 +752,10 @@ public struct ThreadConversationView: View {
             }
             guard let context = ThreadAISummaryContextBuilder.context(
                 headers: threadHeaders,
-                bodies: bodies
+                bodies: bodies,
+                maxMessages: budget.maxSourceMessages,
+                maxCharacters: budget.maxTotalContextBytes,
+                maxUTF8Bytes: budget.maxTotalContextBytes
             ) else {
                 aiSummaryState = .failure(
                     message: "Couldn't summarize this thread.",

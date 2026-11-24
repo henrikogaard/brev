@@ -13506,6 +13506,83 @@
           }
         }
       }
+    },
+    "Apple Intelligence selected for on-device AI. Requests stay on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Intelligence er valgt for AI på enheten. Forespørsler forblir på denne enheten."
+          }
+        }
+      }
+    },
+    "Built-in on-device language model; works offline with no API key.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innebygd språkmodell på enheten; fungerer uten nett og uten API-nøkkel."
+          }
+        }
+      }
+    },
+    "Choose where Brev processes requests when you invoke an AI feature.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg hvor Brev behandler forespørsler når du bruker en AI-funksjon."
+          }
+        }
+      }
+    },
+    "Consent is %@. When you use AI Writer, text is processed locally (%@) and never leaves this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samtykke er %@. Når du bruker AI-skriver, behandles teksten lokalt (%@) og forlater aldri denne enheten."
+          }
+        }
+      }
+    },
+    "Runs on this device with no API key or network requests.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kjører på denne enheten uten API-nøkkel eller nettverksforespørsler."
+          }
+        }
+      }
+    },
+    "Use on this device": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruk på denne enheten"
+          }
+        }
+      }
+    },
+    "Consent is %@. Default AI Writer requests stay on this device (%@); accounts with a custom provider override follow that provider’s policy.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samtykke er %@. Standardforespørsler fra AI-skriveren forblir på denne enheten (%@); kontoer med egen leverandøroverstyring følger den leverandørens retningslinjer."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

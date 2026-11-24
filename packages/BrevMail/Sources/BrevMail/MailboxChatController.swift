@@ -132,8 +132,10 @@ final class MailboxChatController: ObservableObject {
 
         let search = search
         let sourceID = sourceID
-        let maxMessages = maxMessages
-        let maxBytes = maxBytes
+        let baseMaxMessages = maxMessages
+        let baseMaxBytes = maxBytes
+        let maxMessages = aiBackend.contextBudget.map { min(baseMaxMessages, $0.maxSourceMessages) } ?? baseMaxMessages
+        let maxBytes = aiBackend.contextBudget.map { min(baseMaxBytes, $0.maxTotalContextBytes) } ?? baseMaxBytes
         let scope = scope
         let focusedFolder = focusedFolder
         let actionSourceScope = actionSourceScope

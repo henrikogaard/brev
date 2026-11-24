@@ -51,10 +51,13 @@ public enum AISafetyPolicy {
     }
 
     /// Applies message-count and byte caps, wrapping user mail content as untrusted.
-    public static func boundMessages(_ messages: [AIMessage]) -> BoundedContext {
-        let omittedMessageCount = max(0, messages.count - maxSourceMessages)
+    public static func boundMessages(
+        _ messages: [AIMessage],
+        budget: AIBackendContextBudget = .standard
+    ) -> BoundedContext {
+        let omittedMessageCount = max(0, messages.count - budget.maxSourceMessages)
         let window = omittedMessageCount > 0
-            ? Array(messages.suffix(maxSourceMessages))
+            ? Array(messages.suffix(budget.maxSourceMessages))
             : messages
 
         var bounded: [AIMessage] = []
@@ -67,13 +70,13 @@ public enum AISafetyPolicy {
                 : message.content
             let messageBytes = utf8ByteCount(serialized)
 
-            if usedBytes + messageBytes <= maxTotalContextBytes {
+            if usedBytes + messageBytes <= budget.maxTotalContextBytes {
                 bounded.append(AIMessage(role: message.role, content: serialized))
                 usedBytes += messageBytes
                 continue
             }
 
-            let remaining = maxTotalContextBytes - usedBytes
+            let remaining = budget.maxTotalContextBytes - usedBytes
             guard remaining > 0 else {
                 truncatedByteCount += messageBytes
                 continue
@@ -93,8 +96,11 @@ public enum AISafetyPolicy {
     }
 
     /// Rejects contexts that would be empty after bounding.
-    public static func validatedMessages(_ messages: [AIMessage]) throws -> BoundedContext {
-        let bounded = boundMessages(messages)
+    public static func validatedMessages(
+        _ messages: [AIMessage],
+        budget: AIBackendContextBudget = .standard
+    ) throws -> BoundedContext {
+        let bounded = boundMessages(messages, budget: budget)
         guard !bounded.messages.isEmpty else {
             throw AISafetyPolicyError.emptyContext
         }

@@ -115,6 +115,68 @@ struct ThreadAISummaryTests {
         #expect(presentation.contextNote == "Summarized a bounded thread window.")
     }
 
+    @Test("on-device context budget bounds thread summary window below standard cloud cap")
+    func onDeviceContextBudgetBoundsSummaryWindow() throws {
+        let headers = (1 ... 10).map { index in
+            header(
+                id: "msg-\(index)",
+                sender: "sender\(index)@example.com",
+                subject: "Quarterly roadmap",
+                snippet: "Snippet \(index)",
+                date: Date(timeIntervalSince1970: TimeInterval(index))
+            )
+        }
+        let bodies = Dictionary(uniqueKeysWithValues: headers.map {
+            ($0.id, MessageBody(messageID: $0.id, plainText: String(repeating: "Detail ", count: 400)))
+        })
+        let budget = AIBackendContextBudget.onDevice
+        let included = ThreadAISummaryContextBuilder.includedHeaders(from: headers, maxMessages: budget.maxSourceMessages)
+        #expect(included.count == budget.maxSourceMessages)
+        #expect(included.last?.id == "msg-10")
+
+        let context = try #require(ThreadAISummaryContextBuilder.context(
+            headers: headers,
+            bodies: bodies,
+            maxMessages: budget.maxSourceMessages,
+            maxCharacters: budget.maxTotalContextBytes,
+            maxUTF8Bytes: budget.maxTotalContextBytes
+        ))
+        #expect(context.includedMessageCount == budget.maxSourceMessages)
+        #expect(context.wasTruncated)
+        #expect(context.messages[0].content.count <= budget.maxTotalContextBytes)
+        #expect(AISafetyPolicy.serializeUntrustedMailContent(context.messages[0].content).utf8.count <= budget
+            .maxTotalContextBytes)
+    }
+
+    @Test("multibyte threads under the character cap still report truncation when wrapped UTF-8 exceeds budget")
+    func multibyteSummaryReportsByteTruncation() throws {
+        let headers = [
+            header(
+                id: "msg-jp",
+                sender: "sender@example.com",
+                subject: "会議の議事録",
+                snippet: "要点",
+                date: Date(timeIntervalSince1970: 100)
+            )
+        ]
+        // 4,000 Japanese characters fit well under an 8,000-character limit,
+        // but require ~12,000 UTF-8 bytes and exceed the 8,000-byte on-device cap.
+        let bodies = [
+            "msg-jp": MessageBody(messageID: "msg-jp", plainText: String(repeating: "会議", count: 2000))
+        ]
+        let budget = AIBackendContextBudget.onDevice
+        let context = try #require(ThreadAISummaryContextBuilder.context(
+            headers: headers,
+            bodies: bodies,
+            maxMessages: budget.maxSourceMessages,
+            maxCharacters: budget.maxTotalContextBytes,
+            maxUTF8Bytes: budget.maxTotalContextBytes
+        ))
+        #expect(context.wasTruncated)
+        #expect(AISafetyPolicy.serializeUntrustedMailContent(context.messages[0].content).utf8.count <= budget
+            .maxTotalContextBytes)
+    }
+
     private func header(
         id: String,
         sender: String,
