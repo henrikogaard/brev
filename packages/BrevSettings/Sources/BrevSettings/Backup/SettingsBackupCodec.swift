@@ -53,6 +53,7 @@ struct SettingsBackupPayload: Codable, Equatable {
     var mailboxSource: MailboxSourcePreferences?
     var folderVisibility: FolderVisibilityPreferences?
     var preferenceSync: PreferenceSyncSettings?
+    var backgroundIndexing: BackgroundIndexingSettings?
     /// Account IDs with persistent related-mail auto-load consent enabled.
     var relatedMailAutoLoadAccountIDs: [String]?
 
@@ -67,7 +68,8 @@ struct SettingsBackupPayload: Codable, Equatable {
         "smartMailbox", "localRules", "folderPreferences", "vipSender",
         "followUp", "messageTemplate", "fetchSchedule", "calDAV",
         "encryption", "accountMailboxSync", "mailboxSource",
-        "folderVisibility", "preferenceSync", "relatedMailAutoLoadAccountIDs"
+        "folderVisibility", "preferenceSync", "backgroundIndexing",
+        "relatedMailAutoLoadAccountIDs"
     ]
 }
 
@@ -188,6 +190,7 @@ enum SettingsBackupCodec {
             mailboxSource: store.mailboxSourcePreferences(),
             folderVisibility: store.folderVisibilityPreferences(),
             preferenceSync: store.preferenceSyncSettings(),
+            backgroundIndexing: store.backgroundIndexingSettings(),
             relatedMailAutoLoadAccountIDs: consentStore.autoLoadEnabledAccountIDs(among: accountIDs)
         )
     }
@@ -275,6 +278,8 @@ enum SettingsBackupCodec {
                read: { store.folderVisibilityPreferences() }, write: { store.save($0) })
         scalar("preferenceSync", payload.preferenceSync,
                read: { store.preferenceSyncSettings() }, write: { store.save($0) })
+        scalar("backgroundIndexing", payload.backgroundIndexing,
+               read: { store.backgroundIndexingSettings() }, write: { store.save($0) })
 
         mergeable("signature", payload.signature,
                   read: { store.signatureSettings() }, write: { store.save($0) }) { local, incoming in

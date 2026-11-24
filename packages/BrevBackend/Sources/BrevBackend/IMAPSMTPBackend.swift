@@ -3552,6 +3552,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         case ObjectIdentifier(CachedConversationProviding.self):
             guard localSearchIndex is any MailConversationIndex else { return nil }
             return self as? Service
+        case ObjectIdentifier(LocalAttachmentTextIndexing.self):
+            guard localSearchIndex != nil else { return nil }
+            return self as? Service
         case ObjectIdentifier(RelatedConversationLoading.self):
             guard searchRelatedHeadersOperation != nil, relatedConversationConsent != nil else { return nil }
             return self as? Service
@@ -6145,5 +6148,28 @@ extension IMAPSMTPBackend: CachedListUnsubscribeProviding {
             return false
         }
         return IMAPMessageBodyParser().cachedIsBulkPrecedence(rawMessage: source.rawMessage)
+    }
+}
+
+extension IMAPSMTPBackend: LocalAttachmentTextIndexing {
+    public func indexAttachmentText(
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws {
+        try await localSearchIndex?.indexAttachmentText(
+            accountID: account.id,
+            messageID: messageID,
+            folderID: folderID,
+            attachmentID: attachmentID,
+            name: name,
+            text: text
+        )
+    }
+
+    public func indexedAttachmentMessageIDs() async -> Set<MessageHeader.ID> {
+        await localSearchIndex?.indexedAttachmentMessageIDs(accountID: account.id) ?? []
     }
 }

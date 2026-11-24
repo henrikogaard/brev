@@ -49,6 +49,18 @@ public enum AttachmentTextExtractor {
     /// Default per-attachment extraction timeout (ADR-0078 §3).
     public static let defaultTimeout: Duration = .seconds(10)
 
+    /// Returns `true` when `extract(data:mimeType:fileName:)` supports extracting
+    /// searchable text from an attachment with this MIME type or filename.
+    /// Callers can check this before downloading attachment bytes.
+    public static func isSupported(mimeType: String, fileName: String) -> Bool {
+        switch Kind(mimeType: mimeType, fileName: fileName) {
+        case .pdf, .plainText, .rtf, .html:
+            true
+        case .officeOpenXML, .unsupported:
+            false
+        }
+    }
+
     /// Extracts searchable text, or `nil` when the format is unsupported or
     /// the document is encrypted. Respects the input/output bounds and
     /// cancellation between steps.

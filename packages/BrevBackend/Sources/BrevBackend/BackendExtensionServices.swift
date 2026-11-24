@@ -292,3 +292,20 @@ public protocol CachedMessageBodyProviding: AnyObject, Sendable {
     ///   - sourceID: Optional mailbox source; `nil` targets the backend's default mailbox.
     func cachedBody(for messageID: MessageHeader.ID, sourceID: MailSourceID?) async -> MessageBody?
 }
+
+/// Persists extracted searchable attachment text into the backend's local FTS index.
+/// Discovered through `MailBackend.extensionService(_:)` so callers never branch on
+/// concrete backend types.
+public protocol LocalAttachmentTextIndexing: BackendExtensionService {
+    /// Inserts or replaces extracted text for one attachment in the local search index.
+    func indexAttachmentText(
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws
+
+    /// Returns message IDs that already have at least one indexed attachment row locally.
+    func indexedAttachmentMessageIDs() async -> Set<MessageHeader.ID>
+}

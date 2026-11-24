@@ -1,5 +1,23 @@
 # Worklog
 
+## 2026-11-24 — Agent — Issue #7 (Background recent-mail & attachment indexing)
+
+- Goal: implement opt-in background recent-mail and attachment indexing (`docs/design/search-and-inbox.md`, `docs/design/privacy-and-security.md`) on `feature/background-recent-indexing` with strictly off-by-default privacy posture, network/power gating, Settings UI, tests, macOS 26+ snapshots, and documentation updates.
+- Changes:
+  - `BrevBackend` / `BrevGmail`: added `AttachmentTextExtractor.isSupported(mimeType:fileName:)`, `LocalAttachmentTextIndexing` backend extension service protocol, and conformances on `IMAPSMTPBackend` and `GmailAPIBackend`.
+  - `BrevSettings`: added `BackgroundIndexingSettings` (`isEnabled = false` default, 30/90/365-day `BackgroundIndexingWindow`, `indexAttachments = true`, `requireUnmeteredNetworkAndPower = true`), `BackgroundIndexingProgressStore`, `BackgroundIndexingStatusModel`, `BackgroundIndexingStatusPresentation`, `BackgroundIndexingSettingsGroup` mounted in `MailStorageSection` and indexed in `SettingsSearch`, `SettingsBackupCodec` round-trip support (while excluded from `PreferenceSyncAllowlist`), account-removal cleanup in `SettingsPersistenceStore`, and `en`/`nb` String Catalog entries.
+  - `BrevMail` & apps: added `BackgroundRecentIndexingCoordinator` (strictly zero network when disabled, Trash/Spam excluded, read-flag-safe, newest-first throttled batching with pacing/yield, attachment type/size filtering up to 10 MiB, live `NetworkReachabilityMonitor` metering + Low Power Mode pausing/auto-resume, immediate cancellation on opt-out/account removal), extended `NetworkReachabilityMonitor` with `isExpensive`/`isConstrained`/`onPathChange`, wired into `AppSession`, `BackgroundMailCoordinator`, `apps/macOS/Sources/BrevApp.swift`, and `apps/iOS/Sources/BrevApp.swift`.
+  - Docs & CI: documented the opt-in background fetch in `PRIVACY.md`, External Network Calls Ledger in `docs/design/privacy-and-security.md`, `docs/design/search-and-inbox.md`, and `CHANGELOG.md`; registered `BackgroundIndexingSettingsSnapshotTests` in both the macOS<26 skip list and `snapshot-macos` job in `.github/workflows/build.yml`.
+- Verification:
+  - `swift test --package-path packages/BrevBackend --filter AttachmentTextExtractorTests` (12/12 passed)
+  - `swift test --package-path packages/BrevGmail --filter GmailAttachmentIndexTests` (passed)
+  - `swift test --package-path packages/BrevSettings --filter 'BackgroundIndexingSettingsTests|BackupTests|MailStorageSectionTests|SettingsSearchPlatformTests'` (passed)
+  - `swift test --package-path packages/BrevMail --filter 'BackgroundRecentIndexingCoordinatorTests|BackgroundMailCoordinatorTests'` (13/13 passed)
+  - `xcodebuild -scheme BrevSettings -destination 'platform=macOS,arch=arm64' -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevSettingsTests/BackgroundIndexingSettingsSnapshotTests -only-testing:BrevSettingsTests/MailStorageSectionSnapshotTests test` (10/10 light/dark snapshots passed and visually inspected)
+  - `swift test --package-path packages/BrevSyncEngine --filter AttachmentSearchIndexTests` (passed; full `BrevSyncEngine` run had 1 pre-existing macOS 27.2 SQLite `EXPLAIN QUERY PLAN` mismatch in untouched `Transactional IMAP page windows`)
+  - Python verification of all `scripts/privacy-audit.sh` regexes (all passed; `rg` is not installed locally), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+- Skipped: full iOS Simulator build/test left for GitHub Actions CI (`BrevIOS` matrix job).
+
 ## 2026-11-24 — Agent — Proactive Opt-In On-Device AI (#4, PR #352 CI race fix)
 
 - Goal: fix the CI failure in `OnDeviceThreadTriageStoreTests.scheduleVisibleThreadsUpgradesSnippetSummaryOnceBodyIsCached` and eliminate the underlying body-upgrade scheduling race under heavy parallel CI load.

@@ -149,6 +149,25 @@ open, shows its status in the menu bar, and can optionally register to open
 at login. It contacts only the mail servers the added accounts already use;
 no new destinations are contacted. Defaults to off.
 
+### Background recent-mail and attachment indexing
+
+If enabled: Brev politely pre-fetches missing recent message bodies (within
+your chosen 30-, 90-, or 365-day window, newest first, excluding Trash and
+Spam) and, when **Index attachment text** is on, eligible text-extractable
+attachments (PDF, plain text, RTF, and HTML up to 10 MB) into your device's
+local search index so offline and attachment search respond immediately.
+
+All requests go exclusively to the already-configured mail provider for each
+signed-in account (using read-only fetches that never mark unread mail as
+read); no new endpoint or third-party service is contacted, and extracted text
+never leaves your device. With **Wi-Fi & power friendly** enabled (the default
+when opted in), indexing pauses automatically on cellular, Low Data Mode, or
+Low Power Mode. Turning the setting off cancels in-flight indexing immediately.
+The setting is device-local and excluded from iCloud preference sync.
+
+**How to disable:** Settings → Sync & Storage → Mail Storage → "Index recent
+mail & attachments in background". Defaults to off.
+
 ### Remote HTML assets
 
 When remote content is allowed, Brev lets message HTML load remote images

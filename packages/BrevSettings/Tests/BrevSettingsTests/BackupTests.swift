@@ -427,7 +427,7 @@ struct BackupTests {
             "messageTemplateSettings", "fetchScheduleSettings", "calDAVSettings",
             "encryptionSettings", "accountMailboxSyncSettings",
             "mailboxSourcePreferences", "folderVisibilityPreferences",
-            "preferenceSyncSettings"
+            "preferenceSyncSettings", "backgroundIndexingSettings"
         ]
         let excluded: [String: String] = [
             "developerSettings": "developer tooling, not portable user settings",
@@ -443,9 +443,9 @@ struct BackupTests {
         // payload field must land in `excluded` instead.
         let payloadFields = SettingsBackupPayload.knownKeys
             .subtracting(["relatedMailAutoLoadAccountIDs"])
-        #expect(payloadFields.count == 25)
-        #expect(included.count == 25)
-        #expect(allAccessors.count == 30)
+        #expect(payloadFields.count == 26)
+        #expect(included.count == 26)
+        #expect(allAccessors.count == 31)
         #expect(excluded.count == 5)
     }
 

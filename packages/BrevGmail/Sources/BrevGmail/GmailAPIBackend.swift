@@ -1784,6 +1784,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         case ObjectIdentifier(RelatedConversationLoading.self):
             guard relatedConversationConsent != nil else { return nil }
             return self as? Service
+        case ObjectIdentifier(LocalAttachmentTextIndexing.self):
+            guard localSearchIndex != nil else { return nil }
+            return self as? Service
         case ObjectIdentifier(ProgressiveMailSearching.self),
              ObjectIdentifier(LocalDraftAttachmentProviding.self),
              ObjectIdentifier(DraftIdentityResolving.self):
@@ -3018,5 +3021,30 @@ extension GmailAPIBackend: CachedListUnsubscribeProviding {
             precedence: headers["precedence"],
             autoSubmitted: headers["auto-submitted"]
         )
+    }
+}
+
+extension GmailAPIBackend: LocalAttachmentTextIndexing {
+    /// Stores extracted searchable text for a Gmail message attachment in the local FTS index.
+    public func indexAttachmentText(
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws {
+        try await localSearchIndex?.indexAttachmentText(
+            accountID: account.id,
+            messageID: messageID,
+            folderID: folderID,
+            attachmentID: attachmentID,
+            name: name,
+            text: text
+        )
+    }
+
+    /// Returns message IDs that already have indexed attachment text for this Gmail account.
+    public func indexedAttachmentMessageIDs() async -> Set<MessageHeader.ID> {
+        await localSearchIndex?.indexedAttachmentMessageIDs(accountID: account.id) ?? []
     }
 }

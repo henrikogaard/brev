@@ -603,6 +603,7 @@ struct MailStorageSection: View {
     /// Durable local-mail backend (ADR-0077); its size is shown alongside the
     /// cache sizes with "not a cache" copy.
     private let localBackend: LocalMailBackend?
+    private let backgroundIndexingModel: BackgroundIndexingStatusModel?
 
     @State private var breakdown: MailStorageBreakdown?
     @State private var localFoldersBytes: Int64?
@@ -624,12 +625,14 @@ struct MailStorageSection: View {
         backend: (any MailBackend)?,
         settingsStore: SettingsPersistenceStore,
         localBackend: LocalMailBackend? = nil,
+        backgroundIndexingModel: BackgroundIndexingStatusModel? = nil,
         initiallyAdvancedExpanded: Bool = false
     ) {
         self.account = account
         self.backend = backend
         self.settingsStore = settingsStore
         self.localBackend = localBackend
+        self.backgroundIndexingModel = backgroundIndexingModel
         _syncSettings = State(initialValue: settingsStore.accountMailboxSyncSettings())
         _isAdvancedExpanded = State(initialValue: initiallyAdvancedExpanded)
     }
@@ -652,8 +655,16 @@ struct MailStorageSection: View {
                         message: String(localized: "Add or select an account to inspect local mail storage.", bundle: .module),
                         tone: .info
                     )
+                    BackgroundIndexingSettingsGroup(
+                        settingsStore: settingsStore,
+                        statusModel: backgroundIndexingModel
+                    )
                 } else {
                     storageSummaryGroup
+                    BackgroundIndexingSettingsGroup(
+                        settingsStore: settingsStore,
+                        statusModel: backgroundIndexingModel
+                    )
                     advancedDisclosureControl
                     if MailStoragePresentation.showsAdvancedContent(isExpanded: isAdvancedExpanded) {
                         storageBreakdownGroup

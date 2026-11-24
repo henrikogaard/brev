@@ -42,6 +42,9 @@ public final class BackgroundMailCoordinator {
 
     /// Supplies the currently connected backends at each refresh.
     public var backendsProvider: @MainActor () -> [any MailBackend]
+    /// Optional hook fired after a successful refresh tick so opt-in background
+    /// indexing can catch up on newly synced recent headers.
+    public var onRefreshCompleted: (@MainActor () -> Void)?
     private let refresh: @Sendable ([any MailBackend]) async -> String?
     private let tickSource: @Sendable (TimeInterval) -> AsyncStream<Void>
     private let now: @Sendable () -> Date
@@ -119,6 +122,7 @@ public final class BackgroundMailCoordinator {
             lastSuccessfulRefresh = Date()
             lastFailureSummary = nil
             backoff.recordOutcome(succeeded: true)
+            onRefreshCompleted?()
         }
     }
 }
