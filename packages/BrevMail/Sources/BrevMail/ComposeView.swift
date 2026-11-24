@@ -2534,6 +2534,7 @@ public struct ComposeView: View {
             ComposePreservedQuoteSection(
                 preservedQuotedHTML: preservedQuotedHTML,
                 inheritedDirection: restoredBody.inheritedDirection,
+                leadingContextText: bodyText,
                 stripTrackingPixels: stripTrackingPixels,
                 fontFamily: composeFontFamily,
                 textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium,

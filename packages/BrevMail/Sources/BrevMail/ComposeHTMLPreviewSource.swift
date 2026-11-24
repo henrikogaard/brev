@@ -44,18 +44,83 @@ enum ComposeHTMLPreviewSource {
     }
 
     /// Returns preview-safe HTML for a preserved quote fragment, wrapping it in
-    /// any inherited text direction (`dir="rtl"` / `"ltr"` / `"auto"`) so mixed-
-    /// direction quoted content renders identically to the original wrapper.
+    /// any inherited text direction (`dir="rtl"` / `"ltr"` / resolved `"auto"`)
+    /// so mixed-direction quoted content renders identically to the original wrapper.
+    ///
+    /// When `inheritedDirection == "auto"`, resolves the explicit direction from
+    /// `leadingContextText` followed by the quoted text using the HTML5 first-strong-
+    /// directional-character rule so a quote-only preview does not flip direction
+    /// when the enclosing document begins with text in another script.
     static func sanitizedQuotePreviewHTML(
         _ html: String,
-        inheritedDirection: String? = nil
+        inheritedDirection: String? = nil,
+        leadingContextText: String = ""
     ) -> String {
         let sanitized = sanitizedPreviewHTML(html)
-        guard let dir = inheritedDirection?.lowercased(),
-              dir == "rtl" || dir == "ltr" || dir == "auto" else {
+        guard let dir = resolvedQuotePreviewDirection(
+            inheritedDirection,
+            leadingContextText: leadingContextText,
+            quoteHTML: html
+        ) else {
             return sanitized
         }
         return "<div dir=\"\(dir)\">\(sanitized)</div>"
+    }
+
+    private static func resolvedQuotePreviewDirection(
+        _ inheritedDirection: String?,
+        leadingContextText: String,
+        quoteHTML: String
+    ) -> String? {
+        switch inheritedDirection?.lowercased() {
+        case "rtl":
+            return "rtl"
+        case "ltr":
+            return "ltr"
+        case "auto":
+            let combined = leadingContextText.isEmpty
+                ? ComposeQuoteTextPolicy.htmlToPlainText(quoteHTML)
+                : "\(leadingContextText)\n\(ComposeQuoteTextPolicy.htmlToPlainText(quoteHTML))"
+            return firstStrongDirection(in: combined)
+        default:
+            return nil
+        }
+    }
+
+    /// Implements the HTML5 `dir="auto"` first-strong-directional-character rule,
+    /// returning `"rtl"` when the first strong directional scalar is RTL (Hebrew,
+    /// Arabic, Syriac, Thaana, NKo, etc.) and `"ltr"` otherwise.
+    private static func firstStrongDirection(in text: String) -> String {
+        for scalar in text.unicodeScalars {
+            let value = scalar.value
+            if value == 0x200F || value == 0x061C {
+                return "rtl"
+            }
+            if value == 0x200E {
+                return "ltr"
+            }
+            guard scalar.properties.isAlphabetic else {
+                continue
+            }
+            if isStrongRTLScalar(value) {
+                return "rtl"
+            }
+            return "ltr"
+        }
+        return "ltr"
+    }
+
+    private static func isStrongRTLScalar(_ value: UInt32) -> Bool {
+        switch value {
+        case 0x0590 ... 0x08FF, // Hebrew, Arabic, Syriac, Thaana, NKo, Samaritan, Mandaic, Arabic Extended
+             0xFB1D ... 0xFDFF, // Hebrew & Arabic Presentation Forms-A
+             0xFE70 ... 0xFEFC, // Arabic Presentation Forms-B
+             0x10800 ... 0x10FFF, // Historic RTL scripts
+             0x1E800 ... 0x1EFFF: // Mende Kikakui, Adlam, Arabic Math
+            return true
+        default:
+            return false
+        }
     }
 
     /// Strips active script/embed blocks, inline event handlers, and executable

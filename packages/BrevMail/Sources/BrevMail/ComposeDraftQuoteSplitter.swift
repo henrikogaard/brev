@@ -116,12 +116,14 @@ enum ComposeDraftQuoteSplitter {
         "p", "li", "dt", "dd", "td", "th", "tr", "thead", "tbody", "tfoot", "colgroup", "option"
     ]
 
-    /// Block-level opening tags that implicitly close an open `<p>` per HTML5.
+    /// Block-level and enclosing optional-close opening tags that implicitly close
+    /// an open `<p>` per HTML5 (including `<li>`, `<dt>`, `<dd>`, and table cells/rows
+    /// so nested optional tags such as `<ul><li><p>One<li><p>Two</ul>` unwind cleanly).
     private static let pClosingBlockElements: Set<String> = [
-        "address", "article", "aside", "blockquote", "details", "div", "dl",
-        "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
-        "h4", "h5", "h6", "header", "hgroup", "hr", "main", "menu", "nav", "ol",
-        "p", "pre", "section", "table", "ul"
+        "address", "article", "aside", "blockquote", "dd", "details", "div", "dl",
+        "dt", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
+        "h4", "h5", "h6", "header", "hgroup", "hr", "li", "main", "menu", "nav", "ol",
+        "p", "pre", "section", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul"
     ]
 
     /// Attempts to split `html` at the first balanced complex/explicit quoted-thread boundary.
@@ -144,10 +146,14 @@ enum ComposeDraftQuoteSplitter {
         guard let nodes = parseTopLevelNodes(in: html, sliceRange: sliceRange) else {
             return nil
         }
-        // Only split at a complex/styled/nested blockquote or explicit webmail quote
+        // Prefer a complex/styled/nested blockquote or explicit webmail quote
         // container so user-typed flat `<blockquote>...</blockquote>` lines above a
-        // preserved thread remain editable on reopen.
-        guard let quoteNodeIndex = nodes.firstIndex(where: { isComplexOrExplicitQuoteContainer($0, in: html) }) else {
+        // preserved thread remain editable on reopen. Fall back to a plain blockquote
+        // only when it is immediately preceded by an explicit prelude or standalone
+        // attribution block (e.g. a styled `<div style="...">On Mon, Ada wrote:</div>`).
+        let quoteNodeIndex = nodes.firstIndex(where: { isComplexOrExplicitQuoteContainer($0, in: html) })
+            ?? fallbackAttributedBlockquoteIndex(in: nodes, html: html)
+        guard let quoteNodeIndex else {
             if allowUnwrapDepth > 0, let unwrapped = singlePlainWrapper(in: nodes, html: html) {
                 var nextWrapper = wrapper
                 nextWrapper.openHTML += String(unwrapped.open.rawTag)
@@ -634,11 +640,12 @@ enum ComposeDraftQuoteSplitter {
 
     /// True when `node` is an explicit webmail quote container (`.gmail_quote`,
     /// `#divRplyFwdMsg`, etc.) OR a `<blockquote>` that cannot be imported flat
-    /// into Brev's editor (has attributes, nested quotes, or rich inner markup).
+    /// into Brev's editor (has attributes, noncanonical tag casing, nested quotes,
+    /// or rich inner markup).
     private static func isComplexOrExplicitQuoteContainer(_ node: TopLevelNode, in html: String) -> Bool {
-        guard case .element(let open, _, _, let innerRange) = node else { return false }
+        guard case .element(let open, let close, _, let innerRange) = node else { return false }
         if open.name == "blockquote" {
-            return !isFlatImportableBlockquote(open: open, innerHTML: html[innerRange])
+            return !isFlatImportableBlockquote(open: open, close: close, innerHTML: html[innerRange])
         }
         guard open.name == "div" else { return false }
         if let id = attribute("id", in: open.rawTag)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
@@ -654,10 +661,38 @@ enum ComposeDraftQuoteSplitter {
         return false
     }
 
+    /// Fallback boundary for a canonical plain `<blockquote>...</blockquote>` that
+    /// is immediately preceded by an explicit quote prelude or standalone attribution
+    /// element (for example, a styled `<div style="...">On Mon, Ada wrote:</div>`
+    /// that prevented flat import).
+    private static func fallbackAttributedBlockquoteIndex(
+        in nodes: [TopLevelNode],
+        html: String
+    ) -> Int? {
+        for index in nodes.indices {
+            guard isBlockquoteElement(nodes[index]) else { continue }
+            var scan = index - 1
+            while scan >= 0, isInsignificantSeparator(nodes[scan], in: html) {
+                scan -= 1
+            }
+            guard scan >= 0 else { continue }
+            let preceding = nodes[scan]
+            if isExplicitQuotePrelude(preceding, isOutlookBoundary: false)
+                || isStandaloneAttributionElement(preceding, in: html) {
+                return index
+            }
+        }
+        return nil
+    }
+
     /// Matches the exact flat `<blockquote>...</blockquote>` form that
     /// `ComposeDraftBodyRestoration.quoteLinesHTML` imports into editable `> ` lines.
-    private static func isFlatImportableBlockquote(open: TagToken, innerHTML: Substring) -> Bool {
-        guard open.rawTag == "<blockquote>" else { return false }
+    private static func isFlatImportableBlockquote(
+        open: TagToken,
+        close: TagToken,
+        innerHTML: Substring
+    ) -> Bool {
+        guard open.rawTag == "<blockquote>", close.rawTag == "</blockquote>" else { return false }
         return !innerHTML.replacingOccurrences(of: "<br>", with: "").contains("<")
     }
 

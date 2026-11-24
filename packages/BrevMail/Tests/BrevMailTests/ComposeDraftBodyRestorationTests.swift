@@ -370,6 +370,73 @@ struct ComposeDraftBodyRestorationTests {
         #expect(!restored.preservedQuotedPlainText.contains("y'"))
     }
 
+    @Test("styled attribution before plain blockquote and uppercase </BLOCKQUOTE> reopen cleanly")
+    func styledAttributionBeforePlainBlockquoteAndNoncanonicalCase() async throws {
+        let attributedQuoteTail = "<div style=\"color:gray\">On Monday, Ada wrote:</div><blockquote>Original note</blockquote>"
+        let attributedHTML = "Reply<br>\(attributedQuoteTail)"
+        let attributedRestored = try await prepare(attributedHTML, format: .richTextHTML)
+
+        #expect(attributedRestored.attributedText.string == "Reply")
+        #expect(attributedRestored.originalHTML == attributedHTML)
+        #expect(attributedRestored.preservedQuotedHTML == attributedQuoteTail)
+        #expect(attributedRestored.quoteSeparatorHTML == "<br>")
+
+        let uppercaseCloseHTML = "Reply<br><blockquote>Original</BLOCKQUOTE>"
+        let uppercaseRestored = try await prepare(uppercaseCloseHTML, format: .richTextHTML)
+
+        #expect(uppercaseRestored.attributedText.string == "Reply")
+        #expect(uppercaseRestored.originalHTML == uppercaseCloseHTML)
+        #expect(uppercaseRestored.preservedQuotedHTML == "<blockquote>Original</BLOCKQUOTE>")
+    }
+
+    @Test("nested optional HTML5 closing tags like <li><p>One<li><p>Two</ul> inside preserved quotes reopen cleanly")
+    func nestedOptionalClosingTagsInsidePreservedQuotes() async throws {
+        let nestedListQuote = "<blockquote type=\"cite\"><ul><li><p>One<li><p>Two</ul><table><tr><td><p>A<td><p>B</table></blockquote>"
+        let html = "Looks good<br>\(nestedListQuote)"
+        let restored = try await prepare(html, format: .richTextHTML)
+
+        #expect(restored.attributedText.string == "Looks good")
+        #expect(restored.originalHTML == html)
+        #expect(restored.preservedQuotedHTML == nestedListQuote)
+        #expect(restored.preservedQuotedPlainText.contains("One"))
+        #expect(restored.preservedQuotedPlainText.contains("Two"))
+    }
+
+    @Test("dir=auto outer wrapper resolves quote-only preview direction from full document while saving dir=auto verbatim")
+    func dirAutoResolvesQuotePreviewDirectionFromLeadingReply() async throws {
+        let quoteTail = "<blockquote type=\"cite\">שלום</blockquote>"
+        let html = "<div dir=\"auto\">Thanks<br>\(quoteTail)</div>"
+        let restored = try await prepare(html, format: .richTextHTML)
+
+        #expect(restored.attributedText.string == "Thanks")
+        #expect(restored.inheritedDirection == "auto")
+        #expect(restored.outerWrapperOpenHTML == "<div dir=\"auto\">")
+        #expect(restored.outerWrapperCloseHTML == "</div>")
+
+        let quotePreview = ComposeHTMLPreviewSource.sanitizedQuotePreviewHTML(
+            quoteTail,
+            inheritedDirection: restored.inheritedDirection,
+            leadingContextText: restored.attributedText.string
+        )
+        #expect(quotePreview == "<div dir=\"ltr\">\(quoteTail)</div>")
+
+        // When leading text is empty, dir="auto" falls through to the Hebrew quote -> "rtl".
+        let quoteOnlyPreview = ComposeHTMLPreviewSource.sanitizedQuotePreviewHTML(
+            quoteTail,
+            inheritedDirection: "auto",
+            leadingContextText: ""
+        )
+        #expect(quoteOnlyPreview == "<div dir=\"rtl\">\(quoteTail)</div>")
+
+        // Saved HTML preserves dir="auto" verbatim.
+        let edited = restored.htmlBodyForSave(
+            currentBodyText: "Thanks updated",
+            currentBodyHTML: "Thanks updated",
+            editedTopHTML: "Thanks updated"
+        )
+        #expect(edited == "<div dir=\"auto\">Thanks updated<br>\(quoteTail)</div>")
+    }
+
     private func prepare(
         _ html: String,
         format: ComposeBodyFormat
