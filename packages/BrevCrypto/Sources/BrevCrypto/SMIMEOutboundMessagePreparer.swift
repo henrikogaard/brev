@@ -23,11 +23,20 @@ public struct SMIMESigningMaterial: @unchecked Sendable {
     public let identity: SecIdentity
     /// Supporting intermediate CA certificates to embed in CMS `SignedData.certificates`.
     public let intermediateCertificates: [SecCertificate]
+    /// Optional RAII lifetime guard (for example an isolated temporary macOS
+    /// `SecKeychain` lease) released automatically once signing completes.
+    private let lifetimeToken: (any Sendable)?
 
-    /// Creates signing material with optional supporting intermediate certificates.
-    public init(identity: SecIdentity, intermediateCertificates: [SecCertificate] = []) {
+    /// Creates signing material with optional supporting intermediate certificates
+    /// and an optional lifetime guard tied to the identity's backing store.
+    public init(
+        identity: SecIdentity,
+        intermediateCertificates: [SecCertificate] = [],
+        lifetimeToken: (any Sendable)? = nil
+    ) {
         self.identity = identity
         self.intermediateCertificates = intermediateCertificates
+        self.lifetimeToken = lifetimeToken
     }
 }
 
@@ -92,6 +101,57 @@ public struct SMIMEOutboundMessagePreparer: OutboundMessagePreparing {
         self.micalg = micalg
         self.encodingBackend = encodingBackend
         self.boundaryProvider = boundaryProvider
+    }
+
+    public func validate(request: OutboundMessageSecurityRequest) async throws {
+        guard request.mode != .none else { return }
+
+        let signingMaterial = request.mode.requiresSigning
+            ? await resolver.signingMaterial(forSenderEmail: request.senderEmail)
+            : nil
+        let recipients = orderedRecipients(for: request)
+        let recipientCerts = request.mode.requiresEncryption
+            ? await resolver.encryptionCertificates(forRecipients: recipients)
+            : [:]
+
+        let availability = OutboundSecurityAvailability(
+            hasTrustedSigningIdentity: signingMaterial != nil,
+            trustedEncryptionRecipients: Set(recipientCerts.keys)
+        )
+        let plan = try OutboundMessageSecurityPolicy.prepare(request: request, availability: availability)
+
+        if plan.requiresSigning {
+            guard let signingMaterial else {
+                throw OutboundMessageSecurityError.missingSigningIdentity(senderEmail: request.senderEmail)
+            }
+            if usesPureSwiftEncoder {
+                try PureSwiftCMSEncoder.validateSigningIdentity(signingMaterial.identity)
+            }
+        }
+        if plan.requiresEncryption {
+            let certs = try plan.encryptionRecipients.map { recipient -> SecCertificate in
+                guard let cert = recipientCerts[recipient] else {
+                    throw OutboundMessageSecurityError.missingEncryptionRecipients([recipient])
+                }
+                return cert
+            }
+            if usesPureSwiftEncoder {
+                try PureSwiftCMSEncoder.validateEncryptionCertificates(certs)
+            }
+        }
+    }
+
+    private var usesPureSwiftEncoder: Bool {
+        switch encodingBackend {
+        case .pureSwift:
+            return true
+        case .platformDefault:
+            #if os(macOS)
+            return false
+            #else
+            return true
+            #endif
+        }
     }
 
     public func prepare(

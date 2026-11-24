@@ -28,6 +28,14 @@ import Foundation
 /// (decision #4). The view layer never sees this protocol; it is injected into
 /// the backend by the app target.
 public protocol OutboundMessagePreparing: Sendable {
+    /// Verifies that signing/encryption key material is available and usable
+    /// for `request` without allocating or encrypting the message payload.
+    ///
+    /// Used before streaming multi-envelope encrypted sends (such as isolated
+    /// Bcc envelopes) so missing or incompatible certificates fail closed
+    /// before any SMTP transaction starts.
+    func validate(request: OutboundMessageSecurityRequest) async throws
+
     /// Returns the prepared (signed/encrypted) MIME bytes for `mimeData`.
     ///
     /// - Parameters:
@@ -40,6 +48,10 @@ public protocol OutboundMessagePreparing: Sendable {
         mimeData: Data,
         request: OutboundMessageSecurityRequest
     ) async throws -> Data
+}
+
+public extension OutboundMessagePreparing {
+    func validate(request _: OutboundMessageSecurityRequest) async throws {}
 }
 
 /// Thrown when a draft requests signing/encryption but no crypto engine is

@@ -40,6 +40,21 @@ public enum OutboundMessagePreparerFactory {
             )
         )
     }
+
+    /// Creates an outbound S/MIME preparer forced onto the cross-platform
+    /// pure-Swift CMS encoder (mirrors the iOS production encoding path on macOS).
+    static func makePureSwift(
+        settingsProvider: @escaping @Sendable () -> SecurityKeyMaterialSettings,
+        materialStore: any SecurityKeyMaterialStore
+    ) -> any OutboundMessagePreparing {
+        SMIMEOutboundMessagePreparer(
+            resolver: KeychainSMIMEResolver(
+                settingsProvider: settingsProvider,
+                materialStore: materialStore
+            ),
+            encodingBackend: .pureSwift
+        )
+    }
 }
 
 /// Resolves S/MIME (CMS) key material from the local Keychain key store for the
@@ -140,50 +155,40 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
         return address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    /// Imports a PKCS#12 blob and returns its first identity alongside any
-    /// intermediate CA certificates from `kSecImportItemCertChain`, or nil if
-    /// the blob can't be decoded (e.g. wrong passphrase) — never throwing, so
-    /// the caller fails closed rather than crashing.
+    /// Imports a PKCS#12 blob in isolation (via an ephemeral macOS keychain so
+    /// the user's default login Keychain is never polluted) and returns its
+    /// first identity alongside any intermediate CA certificates from
+    /// `kSecImportItemCertChain`, or nil if the blob can't be decoded (e.g.
+    /// wrong passphrase) — never throwing, so the caller fails closed.
     private static func signingMaterial(
         fromPKCS12 data: Data,
         passphrase: String
     ) -> SMIMESigningMaterial? {
-        let options = [kSecImportExportPassphrase as String: passphrase] as CFDictionary
-        var itemsOpt: CFArray?
-        let status = SecPKCS12Import(data as CFData, options, &itemsOpt)
-        guard status == errSecSuccess, let items = itemsOpt as? [[String: Any]] else { return nil }
-        for item in items {
-            guard let value = item[kSecImportItemIdentity as String] else { continue }
-            let identity = (value as! SecIdentity) // key presence guarantees the type
-            var leafCertOpt: SecCertificate?
-            let leafDER: Data? = if SecIdentityCopyCertificate(identity, &leafCertOpt) == errSecSuccess,
-                                    let leafCert = leafCertOpt {
-                SecCertificateCopyData(leafCert) as Data
-            } else {
-                nil
-            }
-            let rawChain = (item[kSecImportItemCertChain as String] as? [SecCertificate]) ?? []
-            let intermediates = rawChain.filter { cert in
-                guard let leafDER else { return true }
-                return (SecCertificateCopyData(cert) as Data) != leafDER
-            }
-            return SMIMESigningMaterial(
-                identity: identity,
-                intermediateCertificates: intermediates
-            )
+        guard let imported = SecurityKeyMaterialPayloadDecoder.importPKCS12(data, passphrase: passphrase) else {
+            return nil
         }
-        return nil
+        return SMIMESigningMaterial(
+            identity: imported.identity,
+            intermediateCertificates: imported.intermediateCertificates,
+            lifetimeToken: imported.lifetimeToken
+        )
     }
 
-    /// Builds a recipient certificate from stored material: a DER certificate if
-    /// possible, otherwise the leaf certificate of a PKCS#12 identity.
+    /// Builds a pure in-memory recipient certificate from stored material: a
+    /// DER certificate if possible, otherwise the leaf certificate of a PKCS#12
+    /// identity imported in isolation (never writing to the default Keychain).
     private static func certificate(fromMaterial data: Data, passphrase: String) -> SecCertificate? {
         if let cert = SecCertificateCreateWithData(nil, data as CFData) {
             return cert
         }
-        guard let material = signingMaterial(fromPKCS12: data, passphrase: passphrase) else { return nil }
+        guard let imported = SecurityKeyMaterialPayloadDecoder.importPKCS12(data, passphrase: passphrase) else {
+            return nil
+        }
         var certOpt: SecCertificate?
-        guard SecIdentityCopyCertificate(material.identity, &certOpt) == errSecSuccess else { return nil }
-        return certOpt
+        guard SecIdentityCopyCertificate(imported.identity, &certOpt) == errSecSuccess,
+              let cert = certOpt
+        else { return nil }
+        let der = SecCertificateCopyData(cert) as Data
+        return SecCertificateCreateWithData(nil, der as CFData)
     }
 }

@@ -5284,8 +5284,10 @@ public struct BrevMailRootView: View {
             existingDraftIsServerSourced: existingDraftIsServerSourced,
             aiBackend: aiBackend(for: composeBackend.account),
             signatureContext: signatureContextProvider?(composeBackend.account),
-            composeSecurityDefaults: (composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled)
-                .gated(by: composeBackend.extendedCapabilities),
+            // Pass ungated S/MIME feature settings so ComposeView can enable
+            // the Security menu when the user switches From Gmail -> IMAP,
+            // while gating initial toggles on the active backend's capability.
+            composeSecurityDefaults: composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled,
             hasTrustedSigningIdentity: (trustedSigningIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
             hasTrustedEncryptionIdentity: (trustedEncryptionIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
             isWorkBlocked: isComposeWorkBlocked,

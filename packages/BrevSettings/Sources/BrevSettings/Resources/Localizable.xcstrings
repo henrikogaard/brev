@@ -7680,6 +7680,17 @@
         }
       }
     },
+    "This item can't be exported in the selected format. Choose a matching S/MIME export format.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dette elementet kan ikke eksporteres i det valgte formatet. Velg et passende S/MIME-eksportformat."
+          }
+        }
+      }
+    },
     "Pane": {
       "extractionState": "manual",
       "localizations": {

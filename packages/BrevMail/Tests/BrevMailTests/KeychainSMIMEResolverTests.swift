@@ -177,4 +177,182 @@ struct KeychainSMIMEResolverTests {
         #expect(text.contains("application/pkcs7-signature"))
         #expect(text.contains("smime.p7s"))
     }
+
+    #if os(macOS)
+    @Test(
+        "production KeychainSMIMEResolver embeds intermediate CA chain through both macOS CMSEncoder and pureSwift paths without polluting default Keychain"
+    )
+    func productionChainVerifiesAgainstRootCAAlone() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-mail-chain-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        @discardableResult
+        func runOpenSSL(_ args: [String], stdin: Data? = nil) throws -> Data {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/openssl")
+            p.arguments = args
+            let outPipe = Pipe()
+            let errPipe = Pipe()
+            p.standardOutput = outPipe
+            p.standardError = errPipe
+            if let stdin {
+                let inPipe = Pipe()
+                p.standardInput = inPipe
+                try p.run()
+                inPipe.fileHandleForWriting.write(stdin)
+                inPipe.fileHandleForWriting.closeFile()
+            } else {
+                try p.run()
+            }
+            let out = outPipe.fileHandleForReading.readDataToEndOfFile()
+            let err = errPipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            guard p.terminationStatus == 0 else {
+                Issue.record("openssl failed: \(String(decoding: err, as: UTF8.self))")
+                throw NSError(domain: "OpenSSL", code: Int(p.terminationStatus))
+            }
+            return out
+        }
+
+        let uniqueCN = "Brev-ProdChain-\(UUID().uuidString)"
+        let rootKey = dir.appendingPathComponent("root.key")
+        let rootCert = dir.appendingPathComponent("root.pem")
+        try runOpenSSL([
+            "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", rootKey.path, "-out", rootCert.path,
+            "-days", "7", "-subj", "/CN=Brev Prod Root CA",
+            "-extensions", "v3_ca", "-config", "/System/Library/OpenSSL/openssl.cnf"
+        ])
+
+        let interKey = dir.appendingPathComponent("inter.key")
+        let interCSR = dir.appendingPathComponent("inter.csr")
+        let interCert = dir.appendingPathComponent("inter.pem")
+        let interExt = dir.appendingPathComponent("inter.ext")
+        try "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\n"
+            .write(to: interExt, atomically: true, encoding: .utf8)
+        try runOpenSSL([
+            "req", "-new", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", interKey.path, "-out", interCSR.path,
+            "-subj", "/CN=Brev Prod Intermediate CA"
+        ])
+        try runOpenSSL([
+            "x509", "-req", "-in", interCSR.path,
+            "-CA", rootCert.path, "-CAkey", rootKey.path, "-CAcreateserial",
+            "-out", interCert.path, "-days", "7", "-extfile", interExt.path
+        ])
+
+        let leafKey = dir.appendingPathComponent("leaf.key")
+        let leafCSR = dir.appendingPathComponent("leaf.csr")
+        let leafCert = dir.appendingPathComponent("leaf.pem")
+        let leafExt = dir.appendingPathComponent("leaf.ext")
+        try "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=emailProtection\n"
+            .write(to: leafExt, atomically: true, encoding: .utf8)
+        try runOpenSSL([
+            "req", "-new", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", leafKey.path, "-out", leafCSR.path,
+            "-subj", "/CN=\(uniqueCN)/emailAddress=\(smimeEmail)"
+        ])
+        try runOpenSSL([
+            "x509", "-req", "-in", leafCSR.path,
+            "-CA", interCert.path, "-CAkey", interKey.path, "-CAcreateserial",
+            "-out", leafCert.path, "-days", "7", "-extfile", leafExt.path
+        ])
+
+        let p12URL = dir.appendingPathComponent("chain.p12")
+        try runOpenSSL([
+            "pkcs12", "-export",
+            "-inkey", leafKey.path,
+            "-in", leafCert.path,
+            "-certfile", interCert.path,
+            "-out", p12URL.path,
+            "-passout", "pass:\(smimePassphrase)"
+        ])
+
+        let store = SecurityKeychainMaterialStore(
+            service: "KeychainSMIMEResolverChainTests-\(UUID().uuidString)"
+        )
+        let record = signingRecord(id: "chain-record-1")
+        try await store.setMaterial(Data(contentsOf: p12URL), for: record.id)
+        try await store.setPassphrase(smimePassphrase, for: record.id)
+        defer {
+            Task { try? await store.deleteMaterial(for: record.id) }
+        }
+
+        let mimeLines = [
+            "From: Chain Test <\(smimeEmail)>",
+            "To: Peer <peer@brev.example>",
+            "Subject: Chain Verification",
+            "MIME-Version: 1.0",
+            "Content-Type: text/plain; charset=utf-8",
+            "",
+            "Signed with full intermediate chain.",
+            ""
+        ]
+        let mime = Data(mimeLines.joined(separator: "\r\n").utf8)
+        let request = OutboundMessageSecurityRequest(
+            senderEmail: smimeEmail,
+            to: ["peer@brev.example"],
+            mode: .sign
+        )
+
+        func verifyPreparedMIME(_ prepared: Data, label: String) throws {
+            let text = String(decoding: prepared, as: UTF8.self)
+            let bStart = try #require(text.range(of: "boundary=\""))
+            let bEnd = try #require(text.range(of: "\"", range: bStart.upperBound ..< text.endIndex))
+            let boundary = String(text[bStart.upperBound ..< bEnd.lowerBound])
+            let firstMarker = Data("--\(boundary)\r\n".utf8)
+            let nextMarker = Data("\r\n--\(boundary)\r\n".utf8)
+            let m1 = try #require(prepared.range(of: firstMarker))
+            let m2 = try #require(prepared.range(of: nextMarker, in: m1.upperBound ..< prepared.endIndex))
+            let signedEntity = Data(prepared[m1.upperBound ..< m2.lowerBound])
+            let entityURL = dir.appendingPathComponent("entity-\(label)-\(UUID().uuidString).bin")
+            try signedEntity.write(to: entityURL)
+
+            let sigMarker = try #require(text.range(of: "filename=\"smime.p7s\""))
+            let blank = try #require(text.range(of: "\r\n\r\n", range: sigMarker.upperBound ..< text.endIndex))
+            let rest = text[blank.upperBound...]
+            let endSig = try #require(rest.range(of: "\r\n--"))
+            let sigDER = try #require(
+                Data(base64Encoded: String(rest[..<endSig.lowerBound]), options: .ignoreUnknownCharacters)
+            )
+            // Verify with ONLY root.pem (no separate intermediate CA file).
+            _ = try runOpenSSL(
+                [
+                    "cms", "-verify", "-binary", "-inform", "DER",
+                    "-content", entityURL.path,
+                    "-CAfile", rootCert.path,
+                    "-purpose", "any",
+                    "-out", "/dev/null"
+                ],
+                stdin: sigDER
+            )
+        }
+
+        // 1. Production macOS path (CMSEncoder + CMSEncoderAddSupportingCerts)
+        let macPreparer = OutboundMessagePreparerFactory.makeStandard(
+            settingsProvider: { settings([record]) },
+            materialStore: store
+        )
+        try await verifyPreparedMIME(macPreparer.prepare(mimeData: mime, request: request), label: "macOS")
+
+        // 2. Production iOS encoder path (PureSwiftCMSEncoder)
+        let pureSwiftPreparer = OutboundMessagePreparerFactory.makePureSwift(
+            settingsProvider: { settings([record]) },
+            materialStore: store
+        )
+        try await verifyPreparedMIME(pureSwiftPreparer.prepare(mimeData: mime, request: request), label: "pureSwift")
+
+        // 3. Delete Keychain record and confirm default login Keychain was NOT polluted.
+        try await store.deleteMaterial(for: record.id)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassCertificate,
+            kSecMatchSubjectContains as String: uniqueCN,
+            kSecReturnRef as String: true
+        ]
+        var found: CFTypeRef?
+        #expect(SecItemCopyMatching(query as CFDictionary, &found) == errSecItemNotFound)
+    }
+    #endif
 }

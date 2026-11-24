@@ -215,6 +215,11 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     /// draft that already went out (#14). Optional/opt-in: wired in production,
     /// left nil (a no-op) by default so it doesn't add shared state to tests.
     private let sentMessageLedger: SentMessageLedger?
+    /// In-memory fallback tracking per-envelope acceptance during multi-envelope
+    /// encrypted Bcc sends so retries within the same session never duplicate
+    /// already-accepted envelopes even when no persisted ledger is injected.
+    private let acceptedEnvelopesLock = NSLock()
+    private var acceptedEnvelopeKeys: Set<String> = []
     /// Cancellation-aware polling loop for delivering due scheduled drafts.
     /// Guarded by `scheduledSendTaskLock`: `connect()` (start) and `disconnect()`
     /// (stop) run on the cooperative pool and can race, so this reference must be
@@ -2323,26 +2328,37 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             from: from,
             attachments: attachments
         ).build()
-        // Apply outbound signing/encryption before transmitting anything
-        // (`docs/design/privacy-and-security.md`). Encrypted drafts with Bcc
-        // recipients generate an isolated envelope for To/Cc plus one per-Bcc
-        // envelope so To/Cc (and other Bcc recipients) never receive a hidden
-        // recipient's `KeyTransRecipientInfo` certificate metadata. All
-        // envelopes are prepared up front so any missing certificate fails
-        // closed before a single SMTP submission runs.
-        let submissions = try await preparedOutboundSubmissions(
-            messageData,
+        // Pre-validate signing/encryption material up front so any missing or
+        // incompatible certificate fails closed BEFORE any SMTP transaction
+        // starts, then stream envelopes one at a time so multi-Bcc encrypted
+        // sends with large attachments never retain all encrypted buffers in
+        // memory simultaneously and retries skip already-accepted envelopes.
+        let envelopePlans = try await outboundEnvelopePlans(
             draft: draft,
             recipientEmails: recipientEmails
         )
-        let sentCopyData = submissions[0].messageData
         if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) {
             throw ScheduledSendEditingError.sessionChanged
         }
+
+        var sentCopyData: Data?
         var lastResult = SendResult(sentMessageID: nil, scheduledFor: nil)
         var accumulatedWarnings: [SendResultWarning] = []
         var activeCredential = credential
-        for submission in submissions {
+
+        for (index, plan) in envelopePlans.enumerated() {
+            if isEnvelopeAccepted(draftID: draft.id, envelopeKey: plan.envelopeKey) {
+                continue
+            }
+            let preparedData = try await preparedSingleEnvelopeData(
+                messageData,
+                securityRequest: plan.securityRequest
+            )
+            let submission = SMTPMessageSubmission(
+                messageData: preparedData,
+                senderEmail: configuration.emailAddress,
+                recipientEmails: plan.recipientEmails
+            )
             let submissionResult: SendResult
             do {
                 submissionResult = try await sendMessageOperation(configuration, activeCredential, submission)
@@ -2369,6 +2385,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     submission
                 )
             }
+            recordEnvelopeAccepted(draftID: draft.id, envelopeKey: plan.envelopeKey)
+            if index == 0 {
+                sentCopyData = preparedData
+            }
             lastResult = submissionResult
             accumulatedWarnings.append(contentsOf: submissionResult.warnings)
         }
@@ -2377,8 +2397,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             scheduledFor: lastResult.scheduledFor,
             warnings: accumulatedWarnings
         )
-        // The server accepted the message; record it so a later replay of the
-        // same draft (e.g. the entry wasn't cleared before a crash) is skipped.
+        // All envelopes were accepted; record the full draft so a later replay
+        // of the same draft skips delivery completely.
         if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) { return result }
         if let scheduledGeneration {
             do {
@@ -2389,7 +2409,16 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         } else {
             sentMessageLedger?.record(draftID: draft.id, accountID: account.id)
         }
-        let (sentCopyUID, sentCopyWarning) = await appendSentCopyIfPossible(sentCopyData)
+        clearInMemoryAcceptedEnvelopes(for: draft.id)
+        let finalSentCopyData: Data = if let sentCopyData {
+            sentCopyData
+        } else {
+            try await preparedSingleEnvelopeData(
+                messageData,
+                securityRequest: envelopePlans[0].securityRequest
+            )
+        }
+        let (sentCopyUID, sentCopyWarning) = await appendSentCopyIfPossible(finalSentCopyData)
         if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) { return result }
         let draftCleanupWarning = await deleteRemoteDraftIfPossible(draft.remoteID)
         await finishSentDraftCleanup(draft, scheduledGeneration: scheduledGeneration)
@@ -2415,21 +2444,29 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
     }
 
-    /// Builds the SMTP submission(s) for `draft`.
+    private struct OutboundEnvelopePlan {
+        let envelopeKey: String
+        let securityRequest: OutboundMessageSecurityRequest?
+        let recipientEmails: [String]
+    }
+
+    /// Plans the SMTP envelope(s) for `draft` and pre-validates signing and
+    /// encryption material for ALL recipients before any SMTP transmission.
     ///
-    /// For encrypted sends with Bcc recipients, produces one envelope for visible
-    /// recipients (`To` + `Cc`) and a separate envelope per `Bcc` recipient so no
-    /// recipient's `EnvelopedData` leaks Bcc `IssuerAndSerialNumber` metadata.
-    private func preparedOutboundSubmissions(
-        _ messageData: Data,
+    /// For encrypted sends with Bcc recipients, returns one descriptor for
+    /// visible recipients (`To` + `Cc`) and one per `Bcc` recipient so each
+    /// envelope can be encrypted, sent, and released one at a time without
+    /// leaking Bcc `IssuerAndSerialNumber` metadata or holding all encrypted
+    /// buffers in memory concurrently.
+    private func outboundEnvelopePlans(
         draft: Draft,
         recipientEmails: [String]
-    ) async throws -> [SMTPMessageSubmission] {
+    ) async throws -> [OutboundEnvelopePlan] {
         guard draft.securityMode != .none else {
             return [
-                SMTPMessageSubmission(
-                    messageData: messageData,
-                    senderEmail: configuration.emailAddress,
+                OutboundEnvelopePlan(
+                    envelopeKey: "plain",
+                    securityRequest: nil,
                     recipientEmails: recipientEmails
                 )
             ]
@@ -2446,66 +2483,92 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             draft.bcc.map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         ).filter { !visibleNormalized.contains($0.lowercased()) }
 
+        // Pre-validate all signing + encryption material for every recipient
+        // up front (fail closed before sending the first envelope).
+        let aggregateRequest = OutboundMessageSecurityRequest(
+            senderEmail: configuration.emailAddress,
+            to: visibleTo,
+            cc: visibleCc,
+            bcc: isolatedBccEmails,
+            mode: draft.securityMode
+        )
+        try await outboundMessagePreparer.validate(request: aggregateRequest)
+
         guard draft.securityMode.requiresEncryption, !isolatedBccEmails.isEmpty else {
-            let request = OutboundMessageSecurityRequest(
-                senderEmail: configuration.emailAddress,
-                to: visibleTo,
-                cc: visibleCc,
-                bcc: draft.bcc.map(\.email),
-                mode: draft.securityMode
-            )
-            let prepared = try await outboundMessagePreparer.prepare(mimeData: messageData, request: request)
             return [
-                SMTPMessageSubmission(
-                    messageData: prepared,
-                    senderEmail: configuration.emailAddress,
+                OutboundEnvelopePlan(
+                    envelopeKey: "single",
+                    securityRequest: aggregateRequest,
                     recipientEmails: recipientEmails
                 )
             ]
         }
 
-        var submissions: [SMTPMessageSubmission] = []
+        var plans: [OutboundEnvelopePlan] = []
         if !visibleEmails.isEmpty {
-            let visibleRequest = OutboundMessageSecurityRequest(
-                senderEmail: configuration.emailAddress,
-                to: visibleTo,
-                cc: visibleCc,
-                bcc: [],
-                mode: draft.securityMode
-            )
-            let visiblePrepared = try await outboundMessagePreparer.prepare(
-                mimeData: messageData,
-                request: visibleRequest
-            )
-            submissions.append(
-                SMTPMessageSubmission(
-                    messageData: visiblePrepared,
-                    senderEmail: configuration.emailAddress,
+            plans.append(
+                OutboundEnvelopePlan(
+                    envelopeKey: "visible",
+                    securityRequest: OutboundMessageSecurityRequest(
+                        senderEmail: configuration.emailAddress,
+                        to: visibleTo,
+                        cc: visibleCc,
+                        bcc: [],
+                        mode: draft.securityMode
+                    ),
                     recipientEmails: visibleEmails
                 )
             )
         }
         for bccEmail in isolatedBccEmails {
-            let bccRequest = OutboundMessageSecurityRequest(
-                senderEmail: configuration.emailAddress,
-                to: [],
-                cc: [],
-                bcc: [bccEmail],
-                mode: draft.securityMode
-            )
-            let bccPrepared = try await outboundMessagePreparer.prepare(
-                mimeData: messageData,
-                request: bccRequest
-            )
-            submissions.append(
-                SMTPMessageSubmission(
-                    messageData: bccPrepared,
-                    senderEmail: configuration.emailAddress,
+            plans.append(
+                OutboundEnvelopePlan(
+                    envelopeKey: "bcc:\(bccEmail.lowercased())",
+                    securityRequest: OutboundMessageSecurityRequest(
+                        senderEmail: configuration.emailAddress,
+                        to: [],
+                        cc: [],
+                        bcc: [bccEmail],
+                        mode: draft.securityMode
+                    ),
                     recipientEmails: [bccEmail]
                 )
             )
         }
-        return submissions
+        return plans
+    }
+
+    private func preparedSingleEnvelopeData(
+        _ messageData: Data,
+        securityRequest: OutboundMessageSecurityRequest?
+    ) async throws -> Data {
+        guard let securityRequest else { return messageData }
+        guard let outboundMessagePreparer else {
+            throw OutboundCryptoEngineUnavailableError(mode: securityRequest.mode)
+        }
+        return try await outboundMessagePreparer.prepare(mimeData: messageData, request: securityRequest)
+    }
+
+    private func isEnvelopeAccepted(draftID: String, envelopeKey: String) -> Bool {
+        if let sentMessageLedger,
+           sentMessageLedger.contains(draftID: draftID, envelopeKey: envelopeKey, accountID: account.id) {
+            return true
+        }
+        let memoryKey = "\(draftID)#env:\(envelopeKey)"
+        return acceptedEnvelopesLock.withLock { acceptedEnvelopeKeys.contains(memoryKey) }
+    }
+
+    private func recordEnvelopeAccepted(draftID: String, envelopeKey: String) {
+        sentMessageLedger?.record(draftID: draftID, envelopeKey: envelopeKey, accountID: account.id)
+        let memoryKey = "\(draftID)#env:\(envelopeKey)"
+        acceptedEnvelopesLock.withLock { _ = acceptedEnvelopeKeys.insert(memoryKey) }
+    }
+
+    private func clearInMemoryAcceptedEnvelopes(for draftID: String) {
+        let prefix = "\(draftID)#env:"
+        acceptedEnvelopesLock.withLock {
+            acceptedEnvelopeKeys = acceptedEnvelopeKeys.filter { !$0.hasPrefix(prefix) }
+        }
     }
 
     private static func deduplicatedRecipientEmails(_ emails: [String]) -> [String] {

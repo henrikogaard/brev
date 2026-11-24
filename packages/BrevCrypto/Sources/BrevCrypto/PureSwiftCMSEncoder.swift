@@ -92,6 +92,48 @@ public enum PureSwiftCMSEncoder: Sendable {
     private static let aes256KeyLength = kCCKeySizeAES256 // 32 bytes
     private static let aesBlockSize = kCCBlockSizeAES128 // 16 bytes
 
+    /// Validates that `identity` exposes a parseable X.509 certificate and a
+    /// supported RSA or ECDSA SHA-256 signing private key without signing any data.
+    public static func validateSigningIdentity(_ identity: SecIdentity) throws {
+        var certOpt: SecCertificate?
+        let certStatus = SecIdentityCopyCertificate(identity, &certOpt)
+        guard certStatus == errSecSuccess, let certificate = certOpt else {
+            throw PureSwiftCMSError.missingSigningCertificate(certStatus)
+        }
+        var keyOpt: SecKey?
+        let keyStatus = SecIdentityCopyPrivateKey(identity, &keyOpt)
+        guard keyStatus == errSecSuccess, let privateKey = keyOpt else {
+            throw PureSwiftCMSError.missingSigningPrivateKey(keyStatus)
+        }
+        _ = try resolveSigningSpec(for: privateKey)
+        _ = try X509CertificateParser.extractIssuerAndSerialNumber(
+            from: SecCertificateCopyData(certificate) as Data
+        )
+    }
+
+    /// Validates that every recipient certificate is non-empty, parseable, and
+    /// carries an RSA public key suitable for CMS `KeyTransRecipientInfo` wrapping.
+    public static func validateEncryptionCertificates(_ certificates: [SecCertificate]) throws {
+        guard !certificates.isEmpty else {
+            throw PureSwiftCMSError.emptyRecipients
+        }
+        for certificate in certificates {
+            _ = try X509CertificateParser.extractIssuerAndSerialNumber(
+                from: SecCertificateCopyData(certificate) as Data
+            )
+            guard let publicKey = SecCertificateCopyKey(certificate) else {
+                throw PureSwiftCMSError.missingRecipientPublicKey
+            }
+            let attributes = SecKeyCopyAttributes(publicKey) as? [String: Any]
+            let keyType = attributes?[kSecAttrKeyType as String] as? String
+            guard keyType == (kSecAttrKeyTypeRSA as String),
+                  SecKeyIsAlgorithmSupported(publicKey, .encrypt, .rsaEncryptionPKCS1)
+            else {
+                throw PureSwiftCMSError.unsupportedEncryptionKeyAlgorithm
+            }
+        }
+    }
+
     /// Produces a DER-encoded CMS `ContentInfo(id-signedData, SignedData)`
     /// containing a detached SHA-256 signature, the signer's certificate, and
     /// any supporting intermediate CA certificates.

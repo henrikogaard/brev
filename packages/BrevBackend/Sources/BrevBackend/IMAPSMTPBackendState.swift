@@ -792,6 +792,13 @@ public final class SentMessageLedger: @unchecked Sendable {
         lock.withLock { load(accountID: accountID).contains(draftID) }
     }
 
+    func contains(draftID: String, envelopeKey: String, accountID: BrevAccount.ID) -> Bool {
+        contains(
+            draftID: Self.envelopeLedgerID(draftID: draftID, envelopeKey: envelopeKey),
+            accountID: accountID
+        )
+    }
+
     func record(draftID: String, accountID: BrevAccount.ID) {
         lock.withLock {
             var ids = load(accountID: accountID)
@@ -802,6 +809,17 @@ public final class SentMessageLedger: @unchecked Sendable {
             }
             persist(ids, accountID: accountID)
         }
+    }
+
+    func record(draftID: String, envelopeKey: String, accountID: BrevAccount.ID) {
+        record(
+            draftID: Self.envelopeLedgerID(draftID: draftID, envelopeKey: envelopeKey),
+            accountID: accountID
+        )
+    }
+
+    private static func envelopeLedgerID(draftID: String, envelopeKey: String) -> String {
+        "\(draftID)#env:\(envelopeKey)"
     }
 
     /// Removes an account's ledger from the standard store without a live

@@ -10727,6 +10727,17 @@
         }
       }
     },
+    "This account doesn't support S/MIME signing or encryption. Switch to a supported account or turn off message security before sending.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kontoen støtter ikke S/MIME-signering eller -kryptering. Bytt til en støttet konto eller slå av meldingssikkerhet før du sender."
+          }
+        }
+      }
+    },
     "No unsubscribe request is sent until you choose one of these actions.": {
       "extractionState": "manual",
       "localizations": {

@@ -21,12 +21,25 @@ import Testing
 private final class CapturingPreparer: OutboundMessagePreparing, @unchecked Sendable {
     static let preparedMarker = Data("PREPARED-CIPHERTEXT".utf8)
     private let lock = NSLock()
+    private(set) var validatedRequests: [OutboundMessageSecurityRequest] = []
     private(set) var requests: [OutboundMessageSecurityRequest] = []
     private(set) var receivedPlaintext: [Data] = []
+    private let validateHandler: (@Sendable (OutboundMessageSecurityRequest) throws -> Void)?
     private let handler: (@Sendable (Data, OutboundMessageSecurityRequest) throws -> Data)?
 
-    init(handler: (@Sendable (Data, OutboundMessageSecurityRequest) throws -> Data)? = nil) {
+    init(
+        validateHandler: (@Sendable (OutboundMessageSecurityRequest) throws -> Void)? = nil,
+        handler: (@Sendable (Data, OutboundMessageSecurityRequest) throws -> Data)? = nil
+    ) {
+        self.validateHandler = validateHandler
         self.handler = handler
+    }
+
+    func validate(request: OutboundMessageSecurityRequest) async throws {
+        lock.withLock {
+            validatedRequests.append(request)
+        }
+        try validateHandler?(request)
     }
 
     func prepare(mimeData: Data, request: OutboundMessageSecurityRequest) async throws -> Data {
@@ -246,10 +259,10 @@ struct OutboundPreparationSendTests {
     @Test("encrypted send isolates Bcc recipients into separate envelopes without leaking Bcc metadata to To/Cc")
     func encryptedSendIsolatesBccRecipientsIntoSeparateEnvelopes() async throws {
         let capture = DataCapture()
-        let preparer = CapturingPreparer { _, request in
+        let preparer = CapturingPreparer(handler: { _, request in
             let tag = "ENV:to=\(request.to.joined(separator: ","));cc=\(request.cc.joined(separator: ","));bcc=\(request.bcc.joined(separator: ","))"
             return Data(tag.utf8)
-        }
+        })
         let backend = Fixtures.makeBackend(capture: capture, preparer: preparer)
         try await backend.connect()
 
@@ -283,12 +296,14 @@ struct OutboundPreparationSendTests {
     @Test("encrypted send with Bcc fails closed before any SMTP send if a Bcc certificate is missing")
     func encryptedBccSendFailsClosedBeforeAnySubmission() async throws {
         let capture = DataCapture()
-        let preparer = CapturingPreparer { _, request in
-            if request.bcc.contains("missing@example.org") {
-                throw OutboundMessageSecurityError.missingEncryptionRecipients(["missing@example.org"])
-            }
-            return Data("OK".utf8)
-        }
+        let preparer = CapturingPreparer(
+            validateHandler: { request in
+                if request.bcc.contains("missing@example.org") {
+                    throw OutboundMessageSecurityError.missingEncryptionRecipients(["missing@example.org"])
+                }
+            },
+            handler: { _, _ in Data("OK".utf8) }
+        )
         let backend = Fixtures.makeBackend(capture: capture, preparer: preparer)
         try await backend.connect()
 
@@ -304,8 +319,85 @@ struct OutboundPreparationSendTests {
         await #expect(throws: OutboundMessageSecurityError.missingEncryptionRecipients(["missing@example.org"])) {
             _ = try await backend.send(draft: bccDraft)
         }
-        // Must not have transmitted the To envelope before failing on the Bcc recipient!
+        // Pre-validation failed closed BEFORE preparing or transmitting any envelope!
+        #expect(preparer.requests.isEmpty)
         #expect(await capture.submissions.isEmpty)
         #expect(await capture.appendData.isEmpty)
+    }
+
+    @Test("partial Bcc retry skips already-accepted envelopes without duplicating earlier recipients")
+    func partialBccRetrySkipsAlreadyAcceptedEnvelopes() async throws {
+        let suiteName = "brev.ledger.test.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let ledger = SentMessageLedger(defaults: defaults)
+
+        let capture = DataCapture()
+        let preparer = CapturingPreparer(handler: { _, request in
+            let tag = "ENV:to=\(request.to.joined(separator: ","));bcc=\(request.bcc.joined(separator: ","))"
+            return Data(tag.utf8)
+        })
+
+        actor FlakySMTP {
+            private var failedOnce = false
+            func handle(_ submission: SMTPMessageSubmission) throws -> SendResult {
+                if submission.recipientEmails == ["secret@example.org"], !failedOnce {
+                    failedOnce = true
+                    throw URLError(.networkConnectionLost)
+                }
+                return SendResult(sentMessageID: "smtp-ok-\(submission.recipientEmails.joined(separator: ","))")
+            }
+        }
+        let flakySMTP = FlakySMTP()
+
+        func makeBackendWithLedger() -> IMAPSMTPBackend {
+            IMAPSMTPBackend(
+                account: Fixtures.account,
+                configuration: Fixtures.configuration,
+                credential: Fixtures.credential,
+                listFolders: { _, _ in [
+                    IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
+                    IMAPFolderListing(path: "Sent", displayName: "Sent", delimiter: "/", flags: ["sent"], role: .sent),
+                ] },
+                sendMessage: { _, _, submission in
+                    let result = try await flakySMTP.handle(submission)
+                    await capture.recordSubmission(submission)
+                    return result
+                },
+                appendSentMessage: { _, _, _, messageData, _ in
+                    await capture.recordAppend(messageData)
+                    return 1
+                },
+                outboundMessagePreparer: preparer,
+                sentMessageLedger: ledger
+            )
+        }
+
+        let bccDraft = Draft(
+            id: "draft-bcc-partial-retry",
+            to: [Correspondent(email: "bob@example.org")],
+            bcc: [Correspondent(email: "secret@example.org")],
+            subject: "Retry Idempotency",
+            htmlBody: "<p>Body</p>",
+            securityMode: .encrypt
+        )
+
+        // Attempt 1: visible To envelope succeeds, Bcc envelope fails transiently.
+        let firstAttemptBackend = makeBackendWithLedger()
+        try await firstAttemptBackend.connect()
+        await #expect(throws: Error.self) {
+            _ = try await firstAttemptBackend.send(draft: bccDraft)
+        }
+        #expect(await capture.submissions.map(\.recipientEmails) == [["bob@example.org"]])
+
+        // Attempt 2 (even on a freshly recreated backend using the same persisted ledger):
+        // skips already-accepted To envelope and sends ONLY the remaining Bcc envelope!
+        let retryBackend = makeBackendWithLedger()
+        try await retryBackend.connect()
+        _ = try await retryBackend.send(draft: bccDraft)
+
+        let allSubmissions = await capture.submissions
+        #expect(allSubmissions.map(\.recipientEmails) == [["bob@example.org"], ["secret@example.org"]])
+        #expect(await capture.appendData.count == 1)
     }
 }

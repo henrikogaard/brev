@@ -26,6 +26,23 @@ public struct CompositeOutboundMessagePreparer: OutboundMessagePreparing {
         self.preparers = preparers
     }
 
+    public func validate(request: OutboundMessageSecurityRequest) async throws {
+        guard request.mode != .none else { return }
+
+        var lastError: any Error = OutboundCryptoEngineUnavailableError(mode: request.mode)
+        for preparer in preparers {
+            do {
+                try await preparer.validate(request: request)
+                return
+            } catch let error as OutboundMessageSecurityError {
+                lastError = error
+            } catch let error as OutboundCryptoEngineUnavailableError {
+                lastError = error
+            }
+        }
+        throw lastError
+    }
+
     public func prepare(
         mimeData: Data,
         request: OutboundMessageSecurityRequest
