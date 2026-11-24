@@ -53,6 +53,7 @@ struct SettingsBackupPayload: Codable, Equatable {
     var mailboxSource: MailboxSourcePreferences?
     var folderVisibility: FolderVisibilityPreferences?
     var preferenceSync: PreferenceSyncSettings?
+    var backgroundIndexing: BackgroundIndexingBackupSettings?
     /// Account IDs with persistent related-mail auto-load consent enabled.
     var relatedMailAutoLoadAccountIDs: [String]?
 
@@ -67,7 +68,8 @@ struct SettingsBackupPayload: Codable, Equatable {
         "smartMailbox", "localRules", "folderPreferences", "vipSender",
         "followUp", "messageTemplate", "fetchSchedule", "calDAV",
         "encryption", "accountMailboxSync", "mailboxSource",
-        "folderVisibility", "preferenceSync", "relatedMailAutoLoadAccountIDs"
+        "folderVisibility", "preferenceSync", "backgroundIndexing",
+        "relatedMailAutoLoadAccountIDs"
     ]
 }
 
@@ -117,6 +119,22 @@ struct CalDAVBackupSettings: Codable, Equatable {
         calendarName = settings.calendarName
         collectionPath = settings.collectionPath
         useLocalBasicAuth = settings.useLocalBasicAuth
+    }
+}
+
+/// `BackgroundIndexingSettings` minus `isEnabled` — the opt-in background
+/// network consent is device-bound and must never be silently enabled by
+/// restoring a backup on another device. Lookback window, attachment indexing,
+/// and Wi-Fi/power preferences round-trip while local `isEnabled` is preserved.
+struct BackgroundIndexingBackupSettings: Codable, Equatable {
+    var windowDays: BackgroundIndexingWindow
+    var indexAttachments: Bool
+    var requireUnmeteredNetworkAndPower: Bool
+
+    init(_ settings: BackgroundIndexingSettings) {
+        windowDays = settings.windowDays
+        indexAttachments = settings.indexAttachments
+        requireUnmeteredNetworkAndPower = settings.requireUnmeteredNetworkAndPower
     }
 }
 
@@ -188,6 +206,7 @@ enum SettingsBackupCodec {
             mailboxSource: store.mailboxSourcePreferences(),
             folderVisibility: store.folderVisibilityPreferences(),
             preferenceSync: store.preferenceSyncSettings(),
+            backgroundIndexing: BackgroundIndexingBackupSettings(store.backgroundIndexingSettings()),
             relatedMailAutoLoadAccountIDs: consentStore.autoLoadEnabledAccountIDs(among: accountIDs)
         )
     }
@@ -275,6 +294,22 @@ enum SettingsBackupCodec {
                read: { store.folderVisibilityPreferences() }, write: { store.save($0) })
         scalar("preferenceSync", payload.preferenceSync,
                read: { store.preferenceSyncSettings() }, write: { store.save($0) })
+
+        // Background indexing: device-local opt-in (`isEnabled`) always keeps its local value
+        // so restoring a backup can never silently enable background network downloads.
+        if let incoming = payload.backgroundIndexing {
+            categories.append(BackupCategoryApplication(
+                name: "backgroundIndexing",
+                read: { store.backgroundIndexingSettings() },
+                write: { store.save($0) }
+            ) {
+                var merged = store.backgroundIndexingSettings()
+                merged.windowDays = incoming.windowDays
+                merged.indexAttachments = incoming.indexAttachments
+                merged.requireUnmeteredNetworkAndPower = incoming.requireUnmeteredNetworkAndPower
+                store.save(merged)
+            })
+        }
 
         mergeable("signature", payload.signature,
                   read: { store.signatureSettings() }, write: { store.save($0) }) { local, incoming in

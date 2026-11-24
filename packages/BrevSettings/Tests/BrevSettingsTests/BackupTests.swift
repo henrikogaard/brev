@@ -119,6 +119,37 @@ struct BackupTests {
         #expect(!expectedFamilies.isEmpty)
     }
 
+    @Test("Background indexing opt-in is never silently enabled by backup restore")
+    func backgroundIndexingOptInNeverEnabledByBackupRestore() async throws {
+        let directory = try await makeDirectory("bg-indexing-optin")
+        let sourceStore = try makeStore("source")
+        sourceStore.save(BackgroundIndexingSettings(
+            isEnabled: true,
+            windowDays: .days365,
+            indexAttachments: false,
+            requireUnmeteredNetworkAndPower: false
+        ))
+        let payload = SettingsBackupCodec.export(from: sourceStore)
+        let url = try await writeBackup(to: directory, settings: payload)
+
+        let preview = try BackupReader.validate(url: url)
+        let targetStore = try makeStore("target")
+        #expect(targetStore.backgroundIndexingSettings().isEnabled == false)
+
+        await BackupRestorer.apply(
+            preview: preview,
+            mode: .replace,
+            store: targetStore,
+            signedInEmails: []
+        )
+
+        let restored = targetStore.backgroundIndexingSettings()
+        #expect(restored.isEnabled == false)
+        #expect(restored.windowDays == .days365)
+        #expect(restored.indexAttachments == false)
+        #expect(restored.requireUnmeteredNetworkAndPower == false)
+    }
+
     @Test("Tampered payload fails its SHA-256 check")
     func tamperedPayloadIsCorrupted() async throws {
         let directory = try await makeDirectory("tampered")
@@ -427,7 +458,7 @@ struct BackupTests {
             "messageTemplateSettings", "fetchScheduleSettings", "calDAVSettings",
             "encryptionSettings", "accountMailboxSyncSettings",
             "mailboxSourcePreferences", "folderVisibilityPreferences",
-            "preferenceSyncSettings"
+            "preferenceSyncSettings", "backgroundIndexingSettings"
         ]
         let excluded: [String: String] = [
             "developerSettings": "developer tooling, not portable user settings",
@@ -443,9 +474,9 @@ struct BackupTests {
         // payload field must land in `excluded` instead.
         let payloadFields = SettingsBackupPayload.knownKeys
             .subtracting(["relatedMailAutoLoadAccountIDs"])
-        #expect(payloadFields.count == 25)
-        #expect(included.count == 25)
-        #expect(allAccessors.count == 30)
+        #expect(payloadFields.count == 26)
+        #expect(included.count == 26)
+        #expect(allAccessors.count == 31)
         #expect(excluded.count == 5)
     }
 

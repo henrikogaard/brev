@@ -14183,6 +14183,499 @@
           }
         }
       }
+    },
+    "Last 30 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 30 days"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siste 30 dager"
+          }
+        }
+      }
+    },
+    "Last 90 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 90 days"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siste 90 dager"
+          }
+        }
+      }
+    },
+    "Last 365 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 365 days"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siste 365 dager"
+          }
+        }
+      }
+    },
+    "Background indexing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background indexing"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bakgrunnsindeksering"
+          }
+        }
+      }
+    },
+    "Pre-fetch recent mail locally so offline and attachment search respond immediately.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pre-fetch recent mail locally so offline and attachment search respond immediately."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hent nylig e-post lokalt på forhånd slik at frakoblet søk og vedleggssøk svarer umiddelbart."
+          }
+        }
+      }
+    },
+    "Index recent mail & attachments in background": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Index recent mail & attachments in background"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekser nylig e-post og vedlegg i bakgrunnen"
+          }
+        }
+      }
+    },
+    "Downloads recent message bodies and eligible attachment text locally for instant offline search. Off by default.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloads recent message bodies and eligible attachment text locally for instant offline search. Off by default."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster ned nyere meldingstekst og søkbar vedleggstekst lokalt for raskt frakoblet søk. Av som standard."
+          }
+        }
+      }
+    },
+    "Indexing window": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indexing window"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekseringsvindu"
+          }
+        }
+      }
+    },
+    "Only messages received inside this window are fetched automatically. Trash and Spam are skipped.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only messages received inside this window are fetched automatically. Trash and Spam are skipped."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bare meldinger mottatt innenfor dette tidsrommet hentes automatisk. Papirkurv og søppelpost hoppes over."
+          }
+        }
+      }
+    },
+    "Index attachment text": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Index attachment text"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekser vedleggstekst"
+          }
+        }
+      }
+    },
+    "Downloads eligible PDF, text, RTF, and HTML attachments up to 10 MB for local full-text search.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloads eligible PDF, text, RTF, and HTML attachments up to 10 MB for local full-text search."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster ned støttede PDF-, tekst-, RTF- og HTML-vedlegg opptil 10 MB for lokalt fulltekstsøk."
+          }
+        }
+      }
+    },
+    "Wi-Fi & power friendly": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wi-Fi & power friendly"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wi-Fi- og strømvennlig"
+          }
+        }
+      }
+    },
+    "Pause automatically on cellular, Low Data Mode, or Low Power Mode.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause automatically on cellular, Low Data Mode, or Low Power Mode."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sett automatisk på pause på mobildata, lavdatabruk eller spareblussmodus."
+          }
+        }
+      }
+    },
+    "Index now": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Index now"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekser nå"
+          }
+        }
+      }
+    },
+    "Pause": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause"
+          }
+        }
+      }
+    },
+    "Resume": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsett"
+          }
+        }
+      }
+    },
+    "Reset index state": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset index state"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbakestill indekstilstand"
+          }
+        }
+      }
+    },
+    "Off. Brev does not download message bodies or attachments in the background.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off. Brev does not download message bodies or attachments in the background."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Av. Brev laster ikke ned meldingstekst eller vedlegg i bakgrunnen."
+          }
+        }
+      }
+    },
+    "Idle. Last indexed %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Idle. Last indexed %@."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inaktiv. Sist indeksert %@."
+          }
+        }
+      }
+    },
+    "Idle. Ready to index recent mail from the last %lld days.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Idle. Ready to index recent mail from the last %lld days."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inaktiv. Klar til å indeksere nylig e-post fra de siste %lld dagene."
+          }
+        }
+      }
+    },
+    "Indexing %lld of %lld recent messages…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indexing %lld of %lld recent messages…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekserer %lld av %lld nylige meldinger …"
+          }
+        }
+      }
+    },
+    "Indexing recent messages…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indexing recent messages…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekserer nylige meldinger …"
+          }
+        }
+      }
+    },
+    "Paused. Resume to continue background indexing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused. Resume to continue background indexing."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satt på pause. Fortsett for å gjenoppta bakgrunnsindeksering."
+          }
+        }
+      }
+    },
+    "Paused while offline. Resumes automatically when reconnected.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused while offline. Resumes automatically when reconnected."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satt på pause uten nett. Fortsetter automatisk når tilkoblingen er tilbake."
+          }
+        }
+      }
+    },
+    "Paused on cellular or Low Data Mode. Resumes automatically on Wi-Fi.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused on cellular or Low Data Mode. Resumes automatically on Wi-Fi."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satt på pause på mobildata eller lavdatabruk. Fortsetter automatisk på Wi-Fi."
+          }
+        }
+      }
+    },
+    "Paused in Low Power Mode. Resumes automatically when battery saver turns off.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused in Low Power Mode. Resumes automatically when battery saver turns off."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satt på pause i spareblussmodus. Fortsetter automatisk når sparebluss slås av."
+          }
+        }
+      }
+    },
+    "Indexed %lld messages and %lld attachments.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indexed %lld messages and %lld attachments."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekserte %lld meldinger og %lld vedlegg."
+          }
+        }
+      }
+    },
+    "%@ Last indexed %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ Last indexed %@."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ Sist indeksert %@."
+          }
+        }
+      }
+    },
+    "Background indexing stopped: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background indexing stopped: %@"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bakgrunnsindeksering stoppet: %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

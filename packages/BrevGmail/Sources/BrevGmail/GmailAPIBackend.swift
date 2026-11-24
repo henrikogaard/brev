@@ -997,10 +997,174 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             throw Self.providerNeutralError(error)
         }
         try checkSearch(generation)
+        if query.execution != .serverOnly {
+            let localAttachmentHits = try await localAttachmentSearchMatches(
+                for: query,
+                scope: scope,
+                labels: labels,
+                excluding: seen,
+                generation: generation
+            )
+            if !localAttachmentHits.isEmpty {
+                result.append(contentsOf: localAttachmentHits)
+                await onUpdate?(MailSearchUpdate(headers: localAttachmentHits, coverage: .server))
+            }
+        }
+        try checkSearch(generation)
         await onUpdate?(MailSearchUpdate(headers: [], coverage: .server, isComplete: true))
         try Task.checkCancellation()
         try requireConnectionGeneration(generation)
         return result
+    }
+
+    private func localAttachmentSearchMatches(
+        for query: SearchQuery,
+        scope: SearchScope,
+        labels: [GmailLabel],
+        excluding seen: Set<MessageHeader.ID>,
+        generation: UUID
+    ) async throws -> [MessageHeader] {
+        let trimmedText = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty,
+              Self.isPlainPositiveSearchText(trimmedText),
+              let localSearchIndex
+        else { return [] }
+        let attachmentHitIDs = await localSearchIndex.matchingAttachmentMessageIDs(
+            for: query,
+            account: account
+        )
+        try checkSearch(generation)
+        let candidateIDs = attachmentHitIDs.subtracting(seen)
+        guard !candidateIDs.isEmpty else { return [] }
+
+        var matches: [MessageHeader] = []
+        for messageID in candidateIDs {
+            try checkSearch(generation)
+            guard let message = try? await store.message(accountID: account.id, messageID: messageID) else {
+                continue
+            }
+            if !scope.includeSpamTrash {
+                guard !message.labelIDs.contains("SPAM"), !message.labelIDs.contains("TRASH") else { continue }
+            }
+            if let folderID = query.folderID, !folderID.isEmpty, folderID != "ALL_MAIL" {
+                guard message.labelIDs.contains(folderID) else { continue }
+            }
+            let header = Self.header(
+                from: message,
+                folderID: query.folderID ?? Self.primaryFolderID(for: message, labels: labels),
+                labels: labels
+            )
+            guard query.matchesMetadata(header) else { continue }
+            matches.append(header)
+        }
+        return matches.sorted { $0.date == $1.date ? $0.id > $1.id : $0.date > $1.date }
+    }
+
+    /// Returns `true` only when free-text search terms contain plain positive keywords
+    /// or balanced quoted phrases without backslash escapes (no negations like `-draft`,
+    /// exact-word `+budget`, Gmail boolean/grouping syntax like `OR`/`{}`/`()`, inline
+    /// Gmail operators like `from:`/`subject:`/`has:`/`label:` outside double quotes,
+    /// backslash-escaped quotes inside phrases, or unbalanced quotes).
+    private static func isPlainPositiveSearchText(_ text: String) -> Bool {
+        var inQuotes = false
+        var currentUnquoted = ""
+        var currentQuoted = ""
+        var hasContent = false
+
+        func isValidUnquotedSegment(_ segment: String) -> Bool {
+            if segment.contains(where: { $0 == "(" || $0 == ")" || $0 == "{" || $0 == "}" }) {
+                return false
+            }
+            for rawToken in segment.split(whereSeparator: \.isWhitespace) {
+                let token = String(rawToken)
+                if token.hasPrefix("-") || token.hasPrefix("+") { return false }
+                if token == "OR" || token == "AND" || token == "NOT" { return false }
+                if token.range(of: #"^[A-Za-z][A-Za-z0-9_-]*:"#, options: .regularExpression) != nil {
+                    return false
+                }
+                hasContent = true
+            }
+            return true
+        }
+
+        for char in text {
+            if inQuotes {
+                if char == "\\" {
+                    // Local FTS phrase tokenizers split on `"` without unescaping `\"`;
+                    // defer backslash-escaped phrases to Gmail's server search.
+                    return false
+                } else if char == "\"" {
+                    if !currentQuoted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        hasContent = true
+                    }
+                    currentQuoted = ""
+                    inQuotes = false
+                } else {
+                    currentQuoted.append(char)
+                }
+            } else if char == "\"" {
+                if currentUnquoted.hasSuffix("-") || currentUnquoted.hasSuffix("+") || currentUnquoted.hasSuffix(":") {
+                    return false
+                }
+                guard isValidUnquotedSegment(currentUnquoted) else { return false }
+                currentUnquoted = ""
+                inQuotes = true
+            } else {
+                currentUnquoted.append(char)
+            }
+        }
+        guard !inQuotes else { return false }
+        guard isValidUnquotedSegment(currentUnquoted) else { return false }
+        return hasContent
+    }
+
+    /// Returns `true` when `text` contains an unquoted Gmail Spam/Trash scope operator
+    /// (`in:anywhere`, `in:spam`, `in:trash`, `is:spam`, or `is:trash`). Operators inside
+    /// double-quoted phrases (e.g. `"memo in:anywhere examples"`) are ignored, and
+    /// backslash-escaped quotes inside quoted strings (`\"`, `\\`) are tracked cleanly.
+    private static func containsUnquotedSpamOrTrashOperator(in text: String) -> Bool {
+        let spamTrashOperators: Set<String> = [
+            "in:anywhere",
+            "in:spam",
+            "in:trash",
+            "is:spam",
+            "is:trash"
+        ]
+        var inQuotes = false
+        var escaping = false
+        var unquoted = ""
+        let delimiters = CharacterSet(charactersIn: "(){}")
+
+        func segmentMatches(_ segment: String) -> Bool {
+            for rawToken in segment.split(whereSeparator: \.isWhitespace) {
+                let trimmed = rawToken
+                    .trimmingCharacters(in: delimiters)
+                    .lowercased()
+                if spamTrashOperators.contains(trimmed) {
+                    return true
+                }
+            }
+            return false
+        }
+
+        for char in text {
+            if inQuotes {
+                if escaping {
+                    escaping = false
+                } else if char == "\\" {
+                    escaping = true
+                } else if char == "\"" {
+                    inQuotes = false
+                }
+            } else if char == "\"" {
+                if segmentMatches(unquoted) { return true }
+                unquoted = ""
+                inQuotes = true
+            } else {
+                unquoted.append(char)
+            }
+        }
+        return !inQuotes && segmentMatches(unquoted)
     }
 
     private func checkSearch(_ generation: UUID) throws {
@@ -1028,6 +1192,17 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         previewOnly: Bool,
         onUpdate: MailSearchProgressHandler?
     ) async throws -> [MessageHeader] {
+        let trimmedText = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let attachmentHitIDs: Set<MessageHeader.ID>
+        if !trimmedText.isEmpty, Self.isPlainPositiveSearchText(trimmedText), let localSearchIndex {
+            attachmentHitIDs = await localSearchIndex.matchingAttachmentMessageIDs(
+                for: query,
+                account: account
+            )
+        } else {
+            attachmentHitIDs = []
+        }
+
         var cursor: String?
         var results: [MessageHeader] = []
         var first = true
@@ -1048,7 +1223,15 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
                     folderID: query.folderID ?? Self.primaryFolderID(for: message, labels: labels),
                     labels: labels
                 )
-                if query.matches(header) { batch.append(header) }
+                if query.matches(header) {
+                    batch.append(header)
+                } else if !trimmedText.isEmpty, query.matchesMetadata(header) {
+                    if attachmentHitIDs.contains(message.id) {
+                        batch.append(header)
+                    } else if await cachedBodyMatchesQuery(messageID: message.id, query: query) {
+                        batch.append(header)
+                    }
+                }
             }
             results.append(contentsOf: batch)
             if !previewOnly || !batch.isEmpty {
@@ -1068,6 +1251,22 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             try checkSearch(generation)
         }
         return results.sorted { $0.date == $1.date ? $0.id > $1.id : $0.date > $1.date }
+    }
+
+    private func cachedBodyMatchesQuery(
+        messageID: MessageHeader.ID,
+        query: SearchQuery
+    ) async -> Bool {
+        guard let body = await cachedBody(for: messageID, sourceID: nil) else { return false }
+        if let plain = body.plainText, !plain.isEmpty, query.matchesText(plain) {
+            return true
+        }
+        if let html = body.html, !html.isEmpty,
+           let stripped = try? HTMLTextStripper.visibleText(from: Data(html.utf8)),
+           query.matchesText(stripped) {
+            return true
+        }
+        return false
     }
 
     private func searchHeaders(
@@ -1783,6 +1982,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             return self as? Service
         case ObjectIdentifier(RelatedConversationLoading.self):
             guard relatedConversationConsent != nil else { return nil }
+            return self as? Service
+        case ObjectIdentifier(LocalAttachmentTextIndexing.self):
+            guard localSearchIndex != nil else { return nil }
             return self as? Service
         case ObjectIdentifier(ProgressiveMailSearching.self),
              ObjectIdentifier(LocalDraftAttachmentProviding.self),
@@ -2803,8 +3005,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             }
         }
         let joined = terms.joined(separator: " ")
-        let includeSpamTrash = joined
-            .range(of: #"(?:^|\s)in:(?:anywhere|spam|trash)(?:\s|$)"#, options: .regularExpression) != nil
+        let includeSpamTrash = query.folderID == "SPAM"
+            || query.folderID == "TRASH"
+            || Self.containsUnquotedSpamOrTrashOperator(in: joined)
         return SearchScope(labelID: labelID, query: joined, includeSpamTrash: includeSpamTrash)
     }
 
@@ -3018,5 +3221,35 @@ extension GmailAPIBackend: CachedListUnsubscribeProviding {
             precedence: headers["precedence"],
             autoSubmitted: headers["auto-submitted"]
         )
+    }
+}
+
+extension GmailAPIBackend: LocalAttachmentTextIndexing {
+    /// Stores extracted searchable text for a Gmail message attachment in the local FTS index.
+    public func indexAttachmentText(
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws {
+        try await localSearchIndex?.indexAttachmentText(
+            accountID: account.id,
+            messageID: messageID,
+            folderID: folderID,
+            attachmentID: attachmentID,
+            name: name,
+            text: text
+        )
+    }
+
+    /// Returns message IDs that already have indexed attachment text for this Gmail account.
+    public func indexedAttachmentMessageIDs() async -> Set<MessageHeader.ID> {
+        await localSearchIndex?.indexedAttachmentMessageIDs(accountID: account.id) ?? []
+    }
+
+    /// Returns per-message sets of attachment IDs currently indexed for this Gmail account.
+    public func indexedAttachmentIDs() async -> [MessageHeader.ID: Set<String>] {
+        await localSearchIndex?.indexedAttachmentIDs(accountID: account.id) ?? [:]
     }
 }

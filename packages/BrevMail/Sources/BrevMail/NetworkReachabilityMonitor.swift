@@ -23,10 +23,15 @@ import SwiftUI
 @MainActor
 public final class NetworkReachabilityMonitor {
     public private(set) var isOnline = true
+    public private(set) var isExpensive = false
+    public private(set) var isConstrained = false
     public private(set) var connectionType = "unknown"
     /// Optional session-scoped callback fired whenever connectivity transitions
     /// from offline to online so pending mutations replay even with no window mounted.
     public var onReconnect: (@MainActor () -> Void)?
+    /// Optional session-scoped callback fired whenever reachability or network
+    /// metering (`isOnline`, `isExpensive`, `isConstrained`) changes.
+    public var onPathChange: (@MainActor () -> Void)?
 
     private let monitor: NWPathMonitor
     private let queue: DispatchQueue
@@ -43,7 +48,10 @@ public final class NetworkReachabilityMonitor {
                 let wasOnline = self.isOnline
                 let nowOnline = path.status == .satisfied
                 self.isOnline = nowOnline
+                self.isExpensive = path.isExpensive
+                self.isConstrained = path.isConstrained
                 self.connectionType = self.describe(path)
+                self.onPathChange?()
                 if nowOnline, !wasOnline {
                     self.onReconnect?()
                 }

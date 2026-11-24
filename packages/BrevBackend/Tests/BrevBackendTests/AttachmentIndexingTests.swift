@@ -68,6 +68,22 @@ struct AttachmentTextExtractorTests {
         #expect(bad == nil)
     }
 
+    @Test("isSupported distinguishes extractable document formats from binaries and OOXML")
+    func supportedFormats() {
+        #expect(AttachmentTextExtractor.isSupported(mimeType: "application/pdf", fileName: "report.pdf"))
+        #expect(AttachmentTextExtractor.isSupported(mimeType: "text/plain", fileName: "notes.txt"))
+        #expect(AttachmentTextExtractor.isSupported(mimeType: "application/octet-stream", fileName: "data.csv"))
+        #expect(AttachmentTextExtractor.isSupported(mimeType: "text/rtf", fileName: "doc.rtf"))
+        #expect(AttachmentTextExtractor.isSupported(mimeType: "text/html", fileName: "page.html"))
+        #expect(!AttachmentTextExtractor.isSupported(mimeType: "application/zip", fileName: "archive.zip"))
+        #expect(!AttachmentTextExtractor.isSupported(mimeType: "video/mp4", fileName: "clip.mp4"))
+        #expect(!AttachmentTextExtractor.isSupported(mimeType: "image/png", fileName: "photo.png"))
+        #expect(!AttachmentTextExtractor.isSupported(
+            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            fileName: "doc.docx"
+        ))
+    }
+
     @Test("Office documents return nil (importer may resolve external relationships)")
     func officeDocumentsSkipped() async throws {
         let text = try await AttachmentTextExtractor.extract(

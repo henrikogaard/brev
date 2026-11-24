@@ -266,4 +266,205 @@ struct AttachmentSearchIndexTests {
         #expect(store.indexedAttachmentMessageIDs(accountID: account.id).isEmpty)
         #expect(store.indexedAttachmentMessageIDs(accountID: other.id) == [header.id])
     }
+
+    @Test("indexBodyText makes body-only words searchable without storing raw MIME bytes")
+    func indexBodyTextEnablesOfflineSearch() throws {
+        let url = Self.databaseURL()
+        defer { Self.removeDatabase(at: url) }
+        let account = Self.account()
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let header = Self.header("INBOX:42", folder: "INBOX", subject: "Weekly check-in")
+        try store.ensureAccount(id: account.id)
+        try store.upsertHeaders([header], accountID: account.id)
+
+        // Before body indexing, the body-only keyword does not match.
+        #expect(store.searchHeaders(SearchQuery(text: "platypus-budget"), accountID: account.id, limit: 20).isEmpty)
+
+        // Structured body text indexing persists into FTS without touching message_bodies.
+        try store.indexBodyText("Please review the platypus-budget appendix.", accountID: account.id, messageID: header.id)
+        let hits = store.searchHeaders(SearchQuery(text: "platypus-budget"), accountID: account.id, limit: 20)
+        #expect(hits.map(\.id) == [header.id])
+        #expect(store.body(accountID: account.id, messageID: header.id) == nil)
+    }
+
+    @Test("indexBodyText preserves raw-MIME search rows including attachment filenames")
+    func indexBodyTextPreservesRawMIMESearchRow() throws {
+        let url = Self.databaseURL()
+        defer { Self.removeDatabase(at: url) }
+        let account = Self.account()
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let header = Self.header("INBOX:43", folder: "INBOX", subject: "Office layout")
+        try store.ensureAccount(id: account.id)
+        try store.upsertHeaders([header], accountID: account.id)
+
+        let rawMIME = Data("""
+        From: sender@example.org\r
+        Subject: Office layout\r
+        MIME-Version: 1.0\r
+        Content-Type: multipart/mixed; boundary="mix-bound"\r
+        \r
+        --mix-bound\r
+        Content-Type: text/plain; charset="utf-8"\r
+        \r
+        See the attached drawing.\r
+        --mix-bound\r
+        Content-Type: image/png; name="floorplan.png"\r
+        Content-Disposition: attachment; filename="floorplan.png"\r
+        Content-Transfer-Encoding: base64\r
+        \r
+        iVBORw0KGgo=\r
+        --mix-bound--\r
+        """.utf8)
+        try store.storeBody(rawMIME, accountID: account.id, messageID: header.id)
+
+        // Filename-only search succeeds before background indexing.
+        let before = store.searchHeaders(SearchQuery(text: "floorplan.png"), accountID: account.id, limit: 20)
+        #expect(before.map(\.id) == [header.id])
+
+        // Background structured-body write must not overwrite the richer raw-MIME search row.
+        try store.indexBodyText("See the attached drawing.", accountID: account.id, messageID: header.id)
+
+        let after = store.searchHeaders(SearchQuery(text: "floorplan.png"), accountID: account.id, limit: 20)
+        #expect(after.map(\.id) == [header.id])
+    }
+
+    @Test("indexBodyText populates FTS when an unconfirmed legacy raw body is quarantined without unlocking it")
+    func indexBodyTextAllowsStructuredBodyWhenLegacyRawBodyIsQuarantined() throws {
+        let url = Self.databaseURL()
+        defer { Self.removeDatabase(at: url) }
+        let account = Self.account()
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let header = Self.header("INBOX:7", folder: "INBOX", subject: "Current subject")
+        try store.ensureAccount(id: account.id)
+
+        // Seed an old raw body and quarantine it via legacy snapshot import.
+        try store.storeOriginalBody(
+            Data("quarantined-legacy-secret".utf8),
+            accountID: account.id,
+            messageID: header.id
+        )
+        let legacySnapshot = IMAPMailboxHeaderCacheSnapshot(
+            headers: [header],
+            uidValidity: 1
+        )
+        try store.storeIMAPSnapshot(legacySnapshot, accountID: account.id, folderID: "INBOX", importingLegacy: true)
+
+        // Confirm the current server header while its legacy raw body remains unconfirmed/quarantined.
+        let page = IMAPHeaderPageWrite(
+            folderID: "INBOX",
+            pageToken: nil,
+            headers: [header],
+            uidValidity: 1,
+            highestModSeq: nil,
+            nextPageToken: nil
+        )
+        try store.storeIMAPPage(page, accountID: account.id)
+
+        #expect(store.body(accountID: account.id, messageID: header.id) == nil)
+        #expect(store.searchHeaders(SearchQuery(text: "quarantined-legacy-secret"), accountID: account.id, limit: 20).isEmpty)
+
+        // Fresh structured body text must populate FTS without unlocking the quarantined raw body.
+        try store.indexBodyText("fresh-structured-body-token", accountID: account.id, messageID: header.id)
+
+        #expect(store.searchHeaders(SearchQuery(text: "fresh-structured-body-token"), accountID: account.id, limit: 20)
+            .map(\.id) == [header.id])
+        #expect(store.searchHeaders(SearchQuery(text: "quarantined-legacy-secret"), accountID: account.id, limit: 20).isEmpty)
+        #expect(store.body(accountID: account.id, messageID: header.id) == nil)
+    }
+
+    @Test("indexedAttachmentIDs tracks per-attachment IDs and matchingAttachmentMessageIDs works without message_headers")
+    func perAttachmentIDsAndAttachmentOnlyMatching() throws {
+        let url = Self.databaseURL()
+        defer { Self.removeDatabase(at: url) }
+        let account = Self.account()
+        let store = try SQLiteSyncStore(databaseURL: url)
+        try store.ensureAccount(id: account.id)
+
+        // Simulate Gmail: rows in attachment_search with no rows in message_headers.
+        try store.indexAttachmentText(
+            accountID: account.id,
+            messageID: "gmail-msg-1",
+            folderID: "INBOX",
+            attachmentID: "att-1",
+            name: "contract.pdf",
+            text: "unique-quartz-clause"
+        )
+        try store.indexAttachmentText(
+            accountID: account.id,
+            messageID: "gmail-msg-1",
+            folderID: "INBOX",
+            attachmentID: "att-2",
+            name: "addendum.txt",
+            text: "second attachment body"
+        )
+
+        let perMessage = store.indexedAttachmentIDs(accountID: account.id)
+        #expect(perMessage["gmail-msg-1"] == ["att-1", "att-2"])
+
+        let matches = store.matchingAttachmentMessageIDs(
+            SearchQuery(text: "unique-quartz-clause"),
+            accountID: account.id
+        )
+        #expect(matches == ["gmail-msg-1"])
+    }
+
+    @Test("quoted phrases enforce adjacency in FTS and InMemorySyncStore while unquoted prefix search stays intact")
+    func quotedPhraseAdjacencyInSQLiteAndInMemoryStores() async throws {
+        let url = Self.databaseURL()
+        defer { Self.removeDatabase(at: url) }
+        let account = Self.account()
+        let sqlite = try SQLiteSyncStore(databaseURL: url)
+        try sqlite.ensureAccount(id: account.id)
+        let inMemory = InMemorySyncStore()
+        try await inMemory.ensureAccount(id: account.id)
+
+        let adjacentHeader = Self.header("INBOX:50", folder: "INBOX", subject: "Budget")
+        let nonAdjacentHeader = Self.header("INBOX:51", folder: "INBOX", subject: "Summary")
+        try sqlite.upsertHeaders([adjacentHeader, nonAdjacentHeader], accountID: account.id)
+        try await inMemory.upsertHeaders([adjacentHeader, nonAdjacentHeader], accountID: account.id)
+
+        for (id, text) in [
+            (adjacentHeader.id, "Approved Q4 (final) budget spreadsheet"),
+            (nonAdjacentHeader.id, "Approved Q4 report final draft")
+        ] {
+            try sqlite.indexAttachmentText(
+                accountID: account.id,
+                messageID: id,
+                folderID: "INBOX",
+                attachmentID: "att-\(id)",
+                name: "sheet.pdf",
+                text: text
+            )
+            try await inMemory.indexAttachmentText(
+                accountID: account.id,
+                messageID: id,
+                folderID: "INBOX",
+                attachmentID: "att-\(id)",
+                name: "sheet.pdf",
+                text: text
+            )
+        }
+
+        // Quoted phrase `"Q4 (final)"` matches adjacent tokens and excludes non-adjacent `Q4 report final`.
+        let quotedQuery = SearchQuery(text: #""Q4 (final)""#)
+        #expect(sqlite.matchingAttachmentMessageIDs(quotedQuery, accountID: account.id) == [adjacentHeader.id])
+        #expect(await inMemory.matchingAttachmentMessageIDs(quotedQuery, accountID: account.id) == [adjacentHeader.id])
+        #expect(sqlite.searchHeaders(quotedQuery, accountID: account.id, limit: 10).map(\.id) == [adjacentHeader.id])
+
+        // Unquoted prefix search continues matching both rows.
+        let unquotedPrefixQuery = SearchQuery(text: "Q4 fin")
+        #expect(sqlite.matchingAttachmentMessageIDs(unquotedPrefixQuery, accountID: account.id) == [
+            adjacentHeader.id,
+            nonAdjacentHeader.id
+        ])
+        #expect(await inMemory.matchingAttachmentMessageIDs(unquotedPrefixQuery, accountID: account.id) == [
+            adjacentHeader.id,
+            nonAdjacentHeader.id
+        ])
+
+        // A quoted phrase spanning filename + extracted text boundary must not match in either store.
+        let crossColumnPhrase = SearchQuery(text: #""pdf Approved""#)
+        #expect(sqlite.matchingAttachmentMessageIDs(crossColumnPhrase, accountID: account.id).isEmpty)
+        #expect(await inMemory.matchingAttachmentMessageIDs(crossColumnPhrase, accountID: account.id).isEmpty)
+    }
 }

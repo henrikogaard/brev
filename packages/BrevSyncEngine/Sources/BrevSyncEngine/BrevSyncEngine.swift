@@ -391,6 +391,14 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         await storeBody(data, for: messageID, account: account)
     }
 
+    public func indexBodyText(
+        _ bodyText: String,
+        for messageID: MessageHeader.ID,
+        account: BrevAccount
+    ) async {
+        try? await store.indexBodyText(bodyText, accountID: account.id, messageID: messageID)
+    }
+
     public func deleteMessages(
         _ messageIDs: [MessageHeader.ID],
         account: BrevAccount
@@ -481,6 +489,17 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
 
     public func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID> {
         await store.indexedAttachmentMessageIDs(accountID: accountID)
+    }
+
+    public func indexedAttachmentIDs(accountID: String) async -> [MessageHeader.ID: Set<String>] {
+        await store.indexedAttachmentIDs(accountID: accountID)
+    }
+
+    public func matchingAttachmentMessageIDs(
+        for query: SearchQuery,
+        account: BrevAccount
+    ) async -> Set<MessageHeader.ID> {
+        await store.matchingAttachmentMessageIDs(query, accountID: account.id)
     }
 
     public func matchedAttachmentNames(

@@ -108,6 +108,14 @@ protocol SyncStoreProtocol: Sendable {
     /// Stores original MIME data and its provenance atomically.
     func storeOriginalBody(_ data: Data, accountID: String, messageID: MessageHeader.ID) async throws
 
+    /// Indexes extracted plain-text body content into the FTS search row for an
+    /// already-stored header without writing raw RFC 5322 bytes.
+    func indexBodyText(
+        _ bodyText: String,
+        accountID: String,
+        messageID: MessageHeader.ID
+    ) async throws
+
     func storeBody(
         _ data: Data,
         accountID: String,
@@ -155,6 +163,15 @@ protocol SyncStoreProtocol: Sendable {
 
     /// Message IDs that already have at least one indexed attachment.
     func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID>
+
+    /// Per-message sets of attachment IDs currently stored in `attachment_search`.
+    func indexedAttachmentIDs(accountID: String) async -> [MessageHeader.ID: Set<String>]
+
+    /// Message IDs whose indexed attachment content matches `query.text`.
+    func matchingAttachmentMessageIDs(
+        _ query: SearchQuery,
+        accountID: String
+    ) async -> Set<MessageHeader.ID>
 
     /// Deterministic matched-attachment name per message for hits that came
     /// from `attachment_search` only (not `message_search`).
@@ -210,6 +227,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
     }
 
     private var bodies: [String: StoredBody] = [:]
+    private var indexedBodyTexts: [String: String] = [:]
     // element format: "\(accountID)|\(messageID)"
     private var dirty: Set<String> = []
     private struct StoredAttachmentText {
@@ -618,6 +636,10 @@ actor InMemorySyncStore: SyncStoreProtocol {
         guard query.hasSearchCriteria, limit > 0 else { return [] }
         let prefix = "\(accountID)|"
         var bodyTextByID: [MessageHeader.ID: String] = [:]
+        for (key, text) in indexedBodyTexts where key.hasPrefix(prefix) {
+            let messageID = String(key.dropFirst(prefix.count))
+            bodyTextByID[messageID] = text
+        }
         for (key, data) in bodies {
             guard key.hasPrefix(prefix), recovery[key]?.sourceConfirmed != false else { continue }
             let messageID = String(key.dropFirst(prefix.count))
@@ -689,15 +711,50 @@ actor InMemorySyncStore: SyncStoreProtocol {
         })
     }
 
+    func indexBodyText(_ bodyText: String, accountID: String, messageID: MessageHeader.ID) throws {
+        let key = "\(accountID)|\(messageID)"
+        let hasConfirmedBody = bodies[key] != nil && recovery[key]?.sourceConfirmed != false
+        guard !hasConfirmedBody else { return }
+        indexedBodyTexts[key] = bodyText
+    }
+
+    func indexedAttachmentIDs(accountID: String) -> [MessageHeader.ID: Set<String>] {
+        let prefix = "\(accountID)|"
+        var result: [MessageHeader.ID: Set<String>] = [:]
+        for (key, rows) in attachmentTexts where key.hasPrefix(prefix) {
+            let messageID = String(key.dropFirst(prefix.count))
+            result[messageID] = Set(rows.map(\.attachmentID))
+        }
+        return result
+    }
+
+    func matchingAttachmentMessageIDs(
+        _ query: SearchQuery,
+        accountID: String
+    ) -> Set<MessageHeader.ID> {
+        let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let terms = Self.searchTerms(for: text)
+        guard !terms.isEmpty else { return [] }
+        let prefix = "\(accountID)|"
+        var result = Set<MessageHeader.ID>()
+        for (key, rows) in attachmentTexts where key.hasPrefix(prefix) {
+            let messageID = String(key.dropFirst(prefix.count))
+            let matched = rows.contains { row in
+                Self.attachmentRowMatches(name: row.name, text: row.text, terms: terms)
+            }
+            if matched { result.insert(messageID) }
+        }
+        return result
+    }
+
     func attachmentMatchNames(
         _ query: SearchQuery,
         accountID: String,
         messageIDs: [MessageHeader.ID]
     ) -> [MessageHeader.ID: String] {
         let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tokens = Self.searchTokens(for: text)
-        guard !tokens.isEmpty else { return [:] }
-        let normalizedTokens = tokens.map(Self.normalizedSearchText)
+        let terms = Self.searchTerms(for: text)
+        guard !terms.isEmpty else { return [:] }
         var bodyTextByID: [MessageHeader.ID: String] = [:]
         for (key, data) in bodies where key.hasPrefix("\(accountID)|") {
             guard recovery[key]?.sourceConfirmed != false else { continue }
@@ -717,8 +774,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
             }
             let matchingNames = rows
                 .filter { row in
-                    let haystack = Self.normalizedSearchText(row.name + " " + row.text)
-                    return normalizedTokens.allSatisfy { haystack.contains($0) }
+                    Self.attachmentRowMatches(name: row.name, text: row.text, terms: terms)
                 }
                 .map(\.name)
             if let name = matchingNames.min(by: {
@@ -728,6 +784,21 @@ actor InMemorySyncStore: SyncStoreProtocol {
             }
         }
         return result
+    }
+
+    /// Evaluates each search term against attachment `name` and `text` as separate
+    /// columns, matching SQLite FTS5 so quoted phrases never span across the filename
+    /// and extracted-text boundary.
+    private static func attachmentRowMatches(
+        name: String,
+        text: String,
+        terms: [SearchTerm]
+    ) -> Bool {
+        guard !terms.isEmpty else { return false }
+        let columns = [normalizedSearchText(name), normalizedSearchText(text)]
+        return terms.allSatisfy { term in
+            columns.contains { haystackMatches($0, terms: [term]) }
+        }
     }
 
     // MARK: Private
@@ -769,12 +840,77 @@ actor InMemorySyncStore: SyncStoreProtocol {
         if query.matches(header) { return true }
         let searchableText = normalizedSearchText(searchableText(for: header, bodyText: bodyText))
         let normalizedText = normalizedSearchText(text)
-        if searchableText.contains(normalizedText) {
+        if !text.contains("\""), searchableText.contains(normalizedText) {
             return true
         }
-        let tokens = searchTokens(for: text)
-        return !tokens.isEmpty && tokens.allSatisfy {
-            searchableText.contains(normalizedSearchText($0))
+        let terms = searchTerms(for: text)
+        return haystackMatches(searchableText, terms: terms)
+    }
+
+    private enum SearchTerm {
+        case phrase([String])
+        case token(String)
+    }
+
+    private static func searchTerms(for text: String) -> [SearchTerm] {
+        var terms: [SearchTerm] = []
+        var inQuotes = false
+        var current = ""
+
+        func flushUnquoted(_ segment: String) {
+            for token in searchTokens(for: segment) {
+                terms.append(.token(token))
+            }
+        }
+
+        for char in text {
+            if char == "\"" {
+                if inQuotes {
+                    let phraseTokens = searchTokens(for: current)
+                    if !phraseTokens.isEmpty {
+                        terms.append(.phrase(phraseTokens))
+                    }
+                    current = ""
+                    inQuotes = false
+                } else {
+                    flushUnquoted(current)
+                    current = ""
+                    inQuotes = true
+                }
+            } else {
+                current.append(char)
+            }
+        }
+        flushUnquoted(current)
+        return terms
+    }
+
+    private static func haystackMatches(_ normalizedHaystack: String, terms: [SearchTerm]) -> Bool {
+        guard !terms.isEmpty else { return false }
+        var cachedTokens: [String]?
+        return terms.allSatisfy { term in
+            switch term {
+            case .token(let rawToken):
+                return normalizedHaystack.contains(normalizedSearchText(rawToken))
+            case .phrase(let rawTokens):
+                let needle = rawTokens.flatMap { searchTokens(for: normalizedSearchText($0)) }
+                guard !needle.isEmpty else { return false }
+                let haystackTokens: [String]
+                if let existing = cachedTokens {
+                    haystackTokens = existing
+                } else {
+                    let computed = searchTokens(for: normalizedHaystack)
+                    cachedTokens = computed
+                    haystackTokens = computed
+                }
+                guard needle.count <= haystackTokens.count else { return false }
+                for start in 0 ... (haystackTokens.count - needle.count) {
+                    if Array(haystackTokens[start ..< (start + needle.count)]) == needle {
+                        return true
+                    }
+                }
+                return false
+            }
         }
     }
 

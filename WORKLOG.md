@@ -1,5 +1,114 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #353 CI flake fix (Issue #7)
+
+- Goal: fix the `BackgroundRecentIndexingCoordinatorTests` CI race (`multiBatchBacklogAndForegroundArrivalWake` failing with `.running(completed: 0, total: 1)` under parallel CI load) and commit locally without pushing.
+- Changes:
+  - `BackgroundRecentIndexingCoordinatorTests.swift`: added a 10-second `waitUntil` helper and updated `multiBatchBacklogAndForegroundArrivalWake` to wait for BOTH `spy.bodyFetchIDs.contains("m0-fresh")` and `coordinator.state == .completed` (previously it exited as soon as the spy recorded `m0-fresh` before the coordinator resumed on `@MainActor` to transition to `.completed`); also raised `pausesOnMeteredOrLowPowerAndResumes` from a 400ms poll to the same 10-second `waitUntil`.
+  - `BackgroundRecentIndexingCoordinator.swift`: honored `needsFollowUpSweep` in the `.moreRemaining(canContinue: false)` exit path so a wake arriving while a sweep finishes with deferred items is never dropped.
+- Verification: 3× `swift test --package-path packages/BrevMail --filter BackgroundRecentIndexingCoordinatorTests`, `swift test --package-path packages/BrevMail --skip SnapshotTests`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #353 round-7 review fix (Issue #7)
+
+- Goal: address round-7 Devin Review item (`PRRT_kwDOUHC-Ds67d4bA`) on PR #353 (`feature/background-recent-indexing`).
+- Changes:
+  - `GmailAPIBackend.isPlainPositiveSearchText(_:)`: reject backslash escapes (`\`) inside quoted phrases so escaped-quote queries like `"15\" laptop"` skip local FTS lookup/merging and defer to Gmail server search, while keeping `containsUnquotedSpamOrTrashOperator(in:)` escape-aware.
+  - `GmailAttachmentIndexTests.swift`: added tests for `"15\" laptop"` (online Auto & `.cacheOnly`, verifying `recordedQueryTexts().isEmpty` and no non-adjacent match) and `"memo \" in:anywhere examples"` (verifying `includeSpamTrash == false`).
+- Verification: `swift test --package-path packages/BrevGmail`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #353 round-6 review fixes (Issue #7)
+
+- Goal: address both round-6 Devin Review items on PR #353 (`feature/background-recent-indexing`) in one tiny commit.
+- Changes:
+  - `GmailAPIBackend.swift`: tracked backslash-escaped quotes (`\"`, `\\`) inside double-quoted strings in both `containsUnquotedSpamOrTrashOperator(in:)` and `isPlainPositiveSearchText(_:)`, and explicitly honored `query.folderID == "SPAM" || query.folderID == "TRASH"` in `searchScope(for:)`.
+  - `GmailAttachmentIndexTests.swift`: recorded `includeSpamTrash` on `OnlineSearchTransport` and asserted both `"memo in:anywhere examples"` (`includeSpamTrash == false`) and `subject:"15\" laptop" in:trash` / Trash folder with `15" laptop` (`includeSpamTrash == true`).
+- Verification: `swift test --package-path packages/BrevGmail`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #353 round-5 review fixes (Issue #7)
+
+- Goal: address all 3 round-5 Devin Review items on PR #353 (`feature/background-recent-indexing`) in one surgical commit.
+- Changes:
+  - `GmailAPIBackend.searchScope(for:)`: added `containsUnquotedSpamOrTrashOperator(in:)` so `in:anywhere`/`in:spam`/`in:trash`/`is:spam`/`is:trash` only set `includeSpamTrash = true` outside double-quoted phrases.
+  - `GmailAPIBackend.isPlainPositiveSearchText(_:)`: rejected unquoted `+word` / `+"phrase"` exact-word Gmail operators so local FTS prefix matching cannot over-match.
+  - `InMemorySyncStore`: added `attachmentRowMatches(name:text:terms:)` matching attachment filename and extracted text as separate columns (parity with SQLite FTS5) so quoted phrases cannot span across the filename/content boundary.
+  - Added regression tests in `AttachmentSearchIndexTests` and `GmailAttachmentIndexTests`.
+- Verification: `swift test --package-path packages/BrevSyncEngine --filter AttachmentSearchIndexTests`, `swift test --package-path packages/BrevGmail`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #353 round-4 review fixes (Issue #7)
+
+- Goal: address both round-4 Devin Review items on PR #353 (`feature/background-recent-indexing`) in one surgical commit.
+- Changes:
+  - Quote-aware `GmailAPIBackend.isPlainPositiveSearchText(_:)`: parse balanced double-quoted phrases so parentheses/operators inside quotes (e.g. `"Q4 (final)"`) remain eligible for local attachment merge while unquoted grouping (`(foo OR bar)`), negations (`-draft`), inline operators (`from:`), and unbalanced quotes skip local merge.
+  - Quoted phrase adjacency in `SQLiteSyncStore` and `InMemorySyncStore`: emit FTS5 phrase clauses (`"token1 token2"`) and enforce contiguous token adjacency for quoted phrases while keeping unquoted prefix search (`token*`) unchanged.
+  - Strengthened `StubLocalSearchIndex` in `GmailAttachmentIndexTests` with token-wise permissive matching and query call recording to prove blocked operator/negation/grouping queries never invoke `matchingAttachmentMessageIDs`, plus quoted `"Q4 (final)"` vs `Q4 report final` tests in both `BrevSyncEngine` and `BrevGmail`.
+- Verification: `swift test --package-path packages/BrevSyncEngine --filter AttachmentSearchIndexTests`, `swift test --package-path packages/BrevGmail --filter GmailAttachmentIndexTests`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #353 round-3 review fixes (Issue #7)
+
+- Goal: address all 4 round-3 Devin Review findings on PR #353 (`feature/background-recent-indexing`) in one commit.
+- Changes:
+  - `GmailAPIBackend.localAttachmentSearchMatches`: enforce `!scope.includeSpamTrash` exclusion unconditionally across custom-label searches as well as `ALL_MAIL` / unscoped searches, and skip local attachment FTS merge when free-text query contains negations (`-term`), boolean/grouping operators (`OR`/`AND`/`NOT`/`{}`/`()`), or inline Gmail operators (`from:`, `subject:`, `has:`, `label:`, etc.).
+  - `SQLiteSyncStore.indexBodyText` & `InMemorySyncStore.indexBodyText`: only preserve an existing raw-MIME search row when the stored raw body is confirmed (`recoveryState?.sourceConfirmed != false`), allowing fresh structured body text to populate FTS without unlocking quarantined legacy raw bodies.
+  - `BackgroundRecentIndexingCoordinatorTests`: replaced the two-continuation race in `resetIndexStateBlocksStaleCancelledGenerationWrites` with a race-free `AsyncPauseGate` actor.
+- Verification:
+  - `swift test --package-path packages/BrevSyncEngine --filter 'AttachmentSearchIndexTests|IMAPLegacyRecoveryTests'`
+  - `swift test --package-path packages/BrevGmail --filter GmailAttachmentIndexTests`
+  - `swift test --package-path packages/BrevMail --filter BackgroundRecentIndexingCoordinatorTests`
+  - `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #353 round-2 review fixes (Issue #7)
+
+- Goal: address all 4 round-2 Devin Review edge cases on PR #353 (`feature/background-recent-indexing`) in one commit.
+- Changes:
+  - Raw-MIME preservation & structured body FTS parity: guarded `SQLiteSyncStore.indexBodyText` and `InMemorySyncStore.indexBodyText` so structured background writes never overwrite an existing raw-MIME-derived search row; updated `IMAPSMTPBackend.indexSearchableBodyTextIfAvailable` to index plain text + stripped HTML alternative + attachment filenames (matching `searchableBodyText`).
+  - Continuous backlog draining across fully-deferred batches: scoped sweep deferrals by `(accountID, messageID)` (`ScopedMessageKey`), deferred any `resolvedBody == nil` candidate cleanly, and continued `executeBacklog` while non-deferred eligible candidates remain and at least one candidate advanced or deferred.
+  - Cancelled-generation write guard after `resetIndexState`: added `saveProgressIfActive(_:accountID:generation:)` checking `generation == activeGeneration && !Task.isCancelled` on every `progressStore.save`, removed unconditional saves from `CancellationError` / `!isStillEligible` unwind paths, and persisted deterministic skips incrementally while active.
+  - Gmail online search attachment FTS merge: updated `GmailAPIBackend.performSearch` to merge deduplicated local attachment FTS hits (respecting `query.execution != .serverOnly`, folder/label scope, `scope.includeSpamTrash`, and `query.matchesMetadata(header)`) alongside online Gmail server results.
+- Verification:
+  - `swift test --package-path packages/BrevBackend --filter 'AttachmentTextExtractorTests|IMAPBackgroundIndexingTests'`
+  - `swift test --package-path packages/BrevSyncEngine --filter AttachmentSearchIndexTests`
+  - `swift test --package-path packages/BrevGmail --filter GmailAttachmentIndexTests`
+  - `swift test --package-path packages/BrevSettings --filter 'BackgroundIndexingSettingsTests|BackupTests|MailStorageSectionTests|SettingsSearchPlatformTests'`
+  - `swift test --package-path packages/BrevMail --filter 'BackgroundRecentIndexingCoordinatorTests|BackgroundMailCoordinatorTests|AppSessionTests'`
+  - `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+- Skipped: macOS snapshots unchanged (no UI layout edits); iOS Simulator build/test left for GitHub Actions CI.
+
+## 2026-11-24 — Agent — PR #353 review fixes (Issue #7)
+
+- Goal: address all 10 Codex and Devin review findings on PR #353 (`feature/background-recent-indexing`) in a single batched commit.
+- Changes:
+  - Continuous backlog draining & foreground wake: updated `BackgroundRecentIndexingCoordinator` to loop across throttled batches past `maxBatchSize` (40), added `notifyNewHeadersAvailable()` + `.brevForegroundMailDidSync`, and wired wakes from `AppSession` and `BrevMailRootView` (visible inbox refreshes + `.messagesAdded`).
+  - IMAP background body indexing, priority & bounded fallback: added `BackgroundBodyIndexing` protocol (`BrevBackend`) implemented by `IMAPSMTPBackend` so background body fetches never call `beginForegroundIMAPRead()` (never preempting folder refreshes or draft discovery), persist extracted plain/stripped-HTML body text into `localSearchIndex` (`SQLiteSyncStore.indexBodyText` / `InMemorySyncStore.indexBodyText`) without forcing raw MIME downloads, and skip unbounded `BODY.PEEK[]` fallback above `maxFallbackSourceBytes`.
+  - Attachment pass reliability & invalidation: updated `BackgroundRecentIndexingCoordinator` to inspect cached body attachments even when IMAP headers report `hasAttachments == false`, persist per-attachment progress (`ftsIndexedAttachmentIDsByMessage` + `skippedAttachmentIDsByMessage`) after each attachment so mid-message pauses preserve completed attachments and transient download/timeout/FTS errors retry on subsequent passes while deterministic skips stay recorded, reconcile progress against live FTS attachment IDs (`LocalAttachmentTextIndexing.indexedAttachmentIDs()`), and invalidate stored progress from `MailStorageSection` via `.brevBackgroundAttachmentIndexDidInvalidate` on attachment index removal or full cache reset.
+  - Gmail multi-label Trash/Spam exclusion & offline search: excluded multi-label messages carrying Trash or Spam (`\Trash`, `\Junk`, `TRASH`, `SPAM`, or membership in `.trash`/`.spam` folders) across folders; extended `GmailAPIBackend.cachedSearch` to include cached plain/HTML bodies (via public `HTMLTextStripper.visibleText`) and FTS `matchingAttachmentMessageIDs` gated by `SearchQuery.matchesMetadata(_:)` and folder/label scope.
+  - Backup opt-in safety & privacy docs: updated `SettingsBackupCodec` to strip `backgroundIndexing.isEnabled` from backup payloads and preserve the restoring device's local `isEnabled` value; clarified IMAP structured `BODYSTRUCTURE` fetches, bounded fallback skipping, dual-label Trash/Spam exclusion, and backup opt-in preservation in `PRIVACY.md` and `docs/design/privacy-and-security.md`.
+- Verification:
+  - `swift test --package-path packages/BrevBackend --filter 'AttachmentTextExtractorTests|IMAPBackgroundIndexingTests'`
+  - `swift test --package-path packages/BrevSyncEngine --filter AttachmentSearchIndexTests`
+  - `swift test --package-path packages/BrevGmail --filter GmailAttachmentIndexTests`
+  - `swift test --package-path packages/BrevSettings --filter 'BackgroundIndexingSettingsTests|BackupTests|MailStorageSectionTests|SettingsSearchPlatformTests'`
+  - `swift test --package-path packages/BrevMail --filter 'BackgroundRecentIndexingCoordinatorTests|BackgroundMailCoordinatorTests|AppSessionTests'`
+  - `scripts/format.sh`, `scripts/lint.sh`, Python verification of all `scripts/privacy-audit.sh` regexes (`rg` unavailable locally), and `git diff --check origin/main`.
+- Skipped: macOS snapshot tests unchanged (no UI layout changes in this review batch); iOS Simulator build/test left for GitHub Actions CI.
+
+## 2026-11-24 — Agent — Issue #7 (Background recent-mail & attachment indexing)
+
+- Goal: implement opt-in background recent-mail and attachment indexing (`docs/design/search-and-inbox.md`, `docs/design/privacy-and-security.md`) on `feature/background-recent-indexing` with strictly off-by-default privacy posture, network/power gating, Settings UI, tests, macOS 26+ snapshots, and documentation updates.
+- Changes:
+  - `BrevBackend` / `BrevGmail`: added `AttachmentTextExtractor.isSupported(mimeType:fileName:)`, `LocalAttachmentTextIndexing` backend extension service protocol, and conformances on `IMAPSMTPBackend` and `GmailAPIBackend`.
+  - `BrevSettings`: added `BackgroundIndexingSettings` (`isEnabled = false` default, 30/90/365-day `BackgroundIndexingWindow`, `indexAttachments = true`, `requireUnmeteredNetworkAndPower = true`), `BackgroundIndexingProgressStore`, `BackgroundIndexingStatusModel`, `BackgroundIndexingStatusPresentation`, `BackgroundIndexingSettingsGroup` mounted in `MailStorageSection` and indexed in `SettingsSearch`, `SettingsBackupCodec` round-trip support (while excluded from `PreferenceSyncAllowlist`), account-removal cleanup in `SettingsPersistenceStore`, and `en`/`nb` String Catalog entries.
+  - `BrevMail` & apps: added `BackgroundRecentIndexingCoordinator` (strictly zero network when disabled, Trash/Spam excluded, read-flag-safe, newest-first throttled batching with pacing/yield, attachment type/size filtering up to 10 MiB, live `NetworkReachabilityMonitor` metering + Low Power Mode pausing/auto-resume, immediate cancellation on opt-out/account removal), extended `NetworkReachabilityMonitor` with `isExpensive`/`isConstrained`/`onPathChange`, wired into `AppSession`, `BackgroundMailCoordinator`, `apps/macOS/Sources/BrevApp.swift`, and `apps/iOS/Sources/BrevApp.swift`.
+  - Docs & CI: documented the opt-in background fetch in `PRIVACY.md`, External Network Calls Ledger in `docs/design/privacy-and-security.md`, `docs/design/search-and-inbox.md`, and `CHANGELOG.md`; registered `BackgroundIndexingSettingsSnapshotTests` in both the macOS<26 skip list and `snapshot-macos` job in `.github/workflows/build.yml`.
+- Verification:
+  - `swift test --package-path packages/BrevBackend --filter AttachmentTextExtractorTests` (12/12 passed)
+  - `swift test --package-path packages/BrevGmail --filter GmailAttachmentIndexTests` (passed)
+  - `swift test --package-path packages/BrevSettings --filter 'BackgroundIndexingSettingsTests|BackupTests|MailStorageSectionTests|SettingsSearchPlatformTests'` (passed)
+  - `swift test --package-path packages/BrevMail --filter 'BackgroundRecentIndexingCoordinatorTests|BackgroundMailCoordinatorTests'` (13/13 passed)
+  - `xcodebuild -scheme BrevSettings -destination 'platform=macOS,arch=arm64' -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevSettingsTests/BackgroundIndexingSettingsSnapshotTests -only-testing:BrevSettingsTests/MailStorageSectionSnapshotTests test` (10/10 light/dark snapshots passed and visually inspected)
+  - `swift test --package-path packages/BrevSyncEngine --filter AttachmentSearchIndexTests` (passed; full `BrevSyncEngine` run had 1 pre-existing macOS 27.2 SQLite `EXPLAIN QUERY PLAN` mismatch in untouched `Transactional IMAP page windows`)
+  - Python verification of all `scripts/privacy-audit.sh` regexes (all passed; `rg` is not installed locally), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+- Skipped: full iOS Simulator build/test left for GitHub Actions CI (`BrevIOS` matrix job).
+
 ## 2026-11-24 — Agent — Proactive Opt-In On-Device AI (#4, PR #352 CI race fix)
 
 - Goal: fix the CI failure in `OnDeviceThreadTriageStoreTests.scheduleVisibleThreadsUpgradesSnippetSummaryOnceBodyIsCached` and eliminate the underlying body-upgrade scheduling race under heavy parallel CI load.

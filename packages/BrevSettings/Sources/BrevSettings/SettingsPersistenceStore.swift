@@ -298,9 +298,20 @@ public struct SettingsPersistenceStore: Equatable {
         settings.save(to: defaults)
     }
 
+    /// Loads device-local background recent-mail indexing preferences.
+    public func backgroundIndexingSettings() -> BackgroundIndexingSettings {
+        BackgroundIndexingSettings.load(from: defaults)
+    }
+
+    /// Saves device-local background recent-mail indexing preferences.
+    public func save(_ settings: BackgroundIndexingSettings) {
+        settings.save(to: defaults)
+    }
+
     public func removeAccountScopedState(accountID: String) {
         RecentRecipientStore(defaults: defaults).removeAccount(accountID)
         RelatedConversationConsentStore(defaults: defaults).revokeConsent(accountID: accountID)
+        BackgroundIndexingProgressStore(defaults: defaults).clear(accountID: accountID)
         LocalMessageWorkflowStateStorage.removeAccount(accountID, from: defaults)
         var followUps = FollowUpSettings.load(from: defaults)
         let previous = followUps

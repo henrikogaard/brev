@@ -5,7 +5,7 @@ import Foundation
 /// Pure-string HTML markup stripping shared by snippet normalization and the
 /// attachment text extractor. Never invokes a document importer, so it can be
 /// applied to untrusted bytes without any chance of a remote subresource load.
-enum HTMLTextStripper {
+public enum HTMLTextStripper {
     private static let blockElements: Set<String> = [
         "address", "article", "aside", "blockquote", "br", "div", "dl", "dt", "dd",
         "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
@@ -252,7 +252,7 @@ enum HTMLTextStripper {
     /// `deadline` bounds the work cooperatively between stages — a long regex
     /// pass over a multi-megabyte document cannot notice task cancellation,
     /// so the extraction timeout relies on these checks to stay honest.
-    static func visibleText(
+    public static func visibleText(
         from data: Data,
         deadline: ContinuousClock.Instant? = nil
     ) throws -> String {

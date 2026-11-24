@@ -455,7 +455,8 @@ struct BrevApp: App {
                 },
                 onSignInCodeConsentChanged: { accountID in
                     session.cancelSignInCodeArrival(accountID: accountID)
-                }
+                },
+                backgroundIndexingModel: session.backgroundIndexing.statusModel
             )
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)

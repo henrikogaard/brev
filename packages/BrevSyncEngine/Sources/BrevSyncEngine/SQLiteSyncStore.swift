@@ -1155,6 +1155,44 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         try storeBody(data, accountID: accountID, messageID: messageID, isOriginal: isOriginal, confirmedSource: true)
     }
 
+    func indexBodyText(_ bodyText: String, accountID: String, messageID: MessageHeader.ID) throws {
+        try lock.withLock {
+            guard let header = header(accountID: accountID, messageID: messageID) else { return }
+            let isQuarantinedRawBody = try recoveryState(
+                accountID: accountID,
+                messageID: messageID
+            )?.sourceConfirmed == false
+            // Preserve search rows derived from a confirmed raw MIME source so structured
+            // background passes never downgrade a full raw-source index row, while still
+            // allowing fresh structured body text to populate FTS when a legacy raw row
+            // is quarantined (without unlocking the quarantined raw body).
+            if !isQuarantinedRawBody, hasStoredBody(accountID: accountID, messageID: messageID) {
+                return
+            }
+            try inTransaction {
+                try upsertSearchRow(
+                    header,
+                    accountID: accountID,
+                    bodyText: bodyText
+                )
+            }
+        }
+    }
+
+    private func hasStoredBody(accountID: String, messageID: MessageHeader.ID) -> Bool {
+        var stmt: OpaquePointer?
+        let sql = """
+            SELECT 1 FROM message_bodies
+            WHERE account_id = ? AND message_id = ?
+            LIMIT 1;
+        """
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+        sqlite3_bind_text(stmt, 2, messageID, -1, Self.transient)
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
     private func storeBody(
         _ data: Data,
         accountID: String,
@@ -1573,6 +1611,56 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             while sqlite3_step(stmt) == SQLITE_ROW {
                 guard let ptr = sqlite3_column_text(stmt, 0) else { continue }
                 result.insert(String(cString: ptr))
+            }
+            return result
+        }
+    }
+
+    func indexedAttachmentIDs(accountID: String) -> [MessageHeader.ID: Set<String>] {
+        lock.withLock {
+            var stmt: OpaquePointer?
+            let sql = """
+                SELECT message_id, attachment_id FROM attachment_search
+                WHERE account_id = ?;
+            """
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [:] }
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+            var result: [MessageHeader.ID: Set<String>] = [:]
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                guard let msgPtr = sqlite3_column_text(stmt, 0),
+                      let attPtr = sqlite3_column_text(stmt, 1)
+                else { continue }
+                result[String(cString: msgPtr), default: []].insert(String(cString: attPtr))
+            }
+            return result
+        }
+    }
+
+    func matchingAttachmentMessageIDs(
+        _ query: SearchQuery,
+        accountID: String
+    ) -> Set<MessageHeader.ID> {
+        let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ftsQueries = Self.ftsQueries(for: text)
+        guard !ftsQueries.isEmpty else { return [] }
+        return lock.withLock {
+            var result = Set<MessageHeader.ID>()
+            for ftsQuery in ftsQueries {
+                var stmt: OpaquePointer?
+                let sql = """
+                    SELECT DISTINCT message_id FROM attachment_search
+                    WHERE attachment_search MATCH ?
+                      AND account_id = ?;
+                """
+                guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { continue }
+                defer { sqlite3_finalize(stmt) }
+                sqlite3_bind_text(stmt, 1, ftsQuery, -1, Self.transient)
+                sqlite3_bind_text(stmt, 2, accountID, -1, Self.transient)
+                while sqlite3_step(stmt) == SQLITE_ROW {
+                    guard let ptr = sqlite3_column_text(stmt, 0) else { continue }
+                    result.insert(String(cString: ptr))
+                }
             }
             return result
         }
@@ -2524,19 +2612,23 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return true }
         if query.matches(header) { return true }
-        let searchableText = normalizedSearchText(searchableText(for: header, bodyText: bodyText))
+        let searchableText = searchableText(for: header, bodyText: bodyText)
+        let normalizedHaystack = normalizedSearchText(searchableText)
         let normalizedText = normalizedSearchText(text)
-        if searchableText.contains(normalizedText) {
+        if !text.contains("\""), normalizedHaystack.contains(normalizedText) {
             return true
         }
-        let tokens = searchTokens(for: text)
-        return !tokens.isEmpty && tokens.allSatisfy {
-            searchableText.contains(normalizedSearchText($0))
-        }
+        let terms = searchTerms(for: text)
+        return haystackMatches(normalizedHaystack, terms: terms)
+    }
+
+    private enum SearchTerm {
+        case phrase([String])
+        case token(String)
     }
 
     private static func ftsQueries(for text: String) -> [String] {
-        [ftsQuery(for: text), ftsQuery(for: normalizedSearchText(text))]
+        [ftsQuery(for: text, normalize: false), ftsQuery(for: text, normalize: true)]
             .compactMap(\.self)
             .reduce(into: []) { queries, query in
                 guard !queries.contains(query) else { return }
@@ -2544,10 +2636,86 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             }
     }
 
-    private static func ftsQuery(for text: String) -> String? {
-        let tokens = searchTokens(for: text)
-        guard !tokens.isEmpty else { return nil }
-        return tokens.map { "\($0)*" }.joined(separator: " ")
+    private static func ftsQuery(for text: String, normalize: Bool) -> String? {
+        let terms = searchTerms(for: text)
+        guard !terms.isEmpty else { return nil }
+        let clauses: [String] = terms.compactMap { term in
+            switch term {
+            case .phrase(let rawTokens):
+                let tokens = rawTokens.flatMap { normalize ? searchTokens(for: normalizedSearchText($0)) : [$0] }
+                guard !tokens.isEmpty else { return nil }
+                return "\"\(tokens.joined(separator: " "))\""
+            case .token(let rawToken):
+                let tokens = normalize ? searchTokens(for: normalizedSearchText(rawToken)) : [rawToken]
+                guard !tokens.isEmpty else { return nil }
+                return tokens.map { "\($0)*" }.joined(separator: " ")
+            }
+        }
+        guard !clauses.isEmpty else { return nil }
+        return clauses.joined(separator: " ")
+    }
+
+    private static func searchTerms(for text: String) -> [SearchTerm] {
+        var terms: [SearchTerm] = []
+        var inQuotes = false
+        var current = ""
+
+        func flushUnquoted(_ segment: String) {
+            for token in searchTokens(for: segment) {
+                terms.append(.token(token))
+            }
+        }
+
+        for char in text {
+            if char == "\"" {
+                if inQuotes {
+                    let phraseTokens = searchTokens(for: current)
+                    if !phraseTokens.isEmpty {
+                        terms.append(.phrase(phraseTokens))
+                    }
+                    current = ""
+                    inQuotes = false
+                } else {
+                    flushUnquoted(current)
+                    current = ""
+                    inQuotes = true
+                }
+            } else {
+                current.append(char)
+            }
+        }
+        // Unbalanced trailing quote falls back to regular token matching.
+        flushUnquoted(current)
+        return terms
+    }
+
+    private static func haystackMatches(_ normalizedHaystack: String, terms: [SearchTerm]) -> Bool {
+        guard !terms.isEmpty else { return false }
+        var cachedTokens: [String]?
+        return terms.allSatisfy { term in
+            switch term {
+            case .token(let rawToken):
+                return normalizedHaystack.contains(normalizedSearchText(rawToken))
+            case .phrase(let rawTokens):
+                let needle = rawTokens.flatMap { searchTokens(for: normalizedSearchText($0)) }
+                guard !needle.isEmpty else { return false }
+                let haystackTokens: [String]
+                if let existing = cachedTokens {
+                    haystackTokens = existing
+                } else {
+                    let computed = searchTokens(for: normalizedHaystack)
+                    cachedTokens = computed
+                    haystackTokens = computed
+                }
+                guard needle.count <= haystackTokens.count else { return false }
+                for start in 0 ... (haystackTokens.count - needle.count) {
+                    if Array(haystackTokens[start ..< (start + needle.count)]) == needle {
+                        return true
+                    }
+                }
+                return false
+            }
+        }
     }
 
     private static func searchTokens(for text: String) -> [String] {

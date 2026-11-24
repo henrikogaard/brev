@@ -82,6 +82,13 @@ public final class AppSession {
     /// in the background" setting is on (ADR-0075). Inert until the app
     /// target calls `start(interval:)`.
     public let backgroundMail: BackgroundMailCoordinator
+    /// Session-owned throttled, power/network-aware recent-mail and attachment
+    /// indexer. Strictly inert and zero-network while `BackgroundIndexingSettings.isEnabled` is false.
+    public let backgroundIndexing: BackgroundRecentIndexingCoordinator
+    private var backgroundIndexingSettingsObserver: NSObjectProtocol?
+    private var backgroundIndexingPowerObserver: NSObjectProtocol?
+    private var backgroundIndexingSyncObserver: NSObjectProtocol?
+    private var backgroundIndexingInvalidationObserver: NSObjectProtocol?
     /// Session-owned executor for Mark-as-read and Archive notification
     /// actions (#307, ADR-0075). Works even when no mail window is open.
     public let notificationActionExecutor: NotificationActionExecutor
@@ -441,6 +448,7 @@ public final class AppSession {
         self.pendingMutationCleanup = pendingMutationCleanup
         self.localBackend = localBackend
         backgroundMail = BackgroundMailCoordinator()
+        backgroundIndexing = BackgroundRecentIndexingCoordinator()
         notificationActionExecutor = NotificationActionExecutor()
         let panelController = SignInCodePanelController()
         let notificationPresenter = SignInCodeNotificationPresenter()
@@ -461,6 +469,48 @@ public final class AppSession {
             await self?.reextractSignInCodeForNotificationAction(route: route)
         }
         backgroundMail.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
+        backgroundMail.onRefreshCompleted = { [weak self] in
+            self?.backgroundIndexing.reconcile()
+        }
+        backgroundIndexing.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
+        backgroundIndexingSettingsObserver = notificationCenter.addObserver(
+            forName: .brevBackgroundIndexingSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.backgroundIndexing.reconcile()
+            }
+        }
+        backgroundIndexingPowerObserver = notificationCenter.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.backgroundIndexing.handleEnvironmentChanged()
+            }
+        }
+        backgroundIndexingSyncObserver = notificationCenter.addObserver(
+            forName: .brevForegroundMailDidSync,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.backgroundIndexing.notifyNewHeadersAvailable()
+            }
+        }
+        backgroundIndexingInvalidationObserver = notificationCenter.addObserver(
+            forName: .brevBackgroundAttachmentIndexDidInvalidate,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let accountID = note.userInfo?["accountID"] as? String
+            Task { @MainActor [weak self] in
+                guard let self, let accountID else { return }
+                backgroundIndexing.invalidateAttachmentProgress(accountID: accountID)
+            }
+        }
         notificationActionExecutor.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         notificationActionExecutor.prepareBackends = { [weak self] in
             await self?.ensureAccountsRestored()
@@ -611,14 +661,33 @@ public final class AppSession {
         }
     }
 
-    /// Attaches session-scoped reconnect mutation replay to `monitor` and starts it.
+    /// Attaches session-scoped reconnect mutation replay and background indexing
+    /// network-metering awareness to `monitor` and starts it.
     public func startReconnectMutationReplay(monitor: NetworkReachabilityMonitor) {
+        attachNetworkMonitor(monitor)
         monitor.onReconnect = { [weak self] in
             Task { @MainActor [weak self] in
                 await self?.replayOfflineMutationsForAllBackends()
             }
         }
         monitor.start()
+    }
+
+    /// Connects `monitor` to session-owned background recent-mail indexing so it
+    /// automatically pauses on offline, cellular/expensive, or Low Data Mode paths.
+    public func attachNetworkMonitor(_ monitor: NetworkReachabilityMonitor) {
+        backgroundIndexing.environmentProvider = { [weak monitor] in
+            BackgroundIndexingEnvironmentSnapshot(
+                isOnline: monitor?.isOnline ?? true,
+                isExpensiveNetwork: monitor?.isExpensive ?? false,
+                isConstrainedNetwork: monitor?.isConstrained ?? false,
+                isLowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled
+            )
+        }
+        monitor.onPathChange = { [weak self] in
+            self?.backgroundIndexing.handleEnvironmentChanged()
+        }
+        backgroundIndexing.reconcile()
     }
 
     #if os(macOS)
@@ -1309,6 +1378,7 @@ public final class AppSession {
 
     public func signOut(account: BrevAccount) async {
         cancelSignInCodeArrival(accountID: account.id, removeConsent: false)
+        backgroundIndexing.cancelAccount(account.id, clearProgress: false)
         await endAccountSession(
             account,
             shouldRunSignOutCoordinator: true,
@@ -1440,6 +1510,7 @@ public final class AppSession {
         deleteLinkedSourceCache: Bool = false
     ) async {
         cancelSignInCodeArrival(accountID: account.id, removeConsent: true)
+        backgroundIndexing.cancelAccount(account.id, clearProgress: true)
         await endAccountSession(
             account,
             shouldRunSignOutCoordinator: true,

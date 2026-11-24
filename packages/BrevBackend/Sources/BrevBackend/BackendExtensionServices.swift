@@ -292,3 +292,43 @@ public protocol CachedMessageBodyProviding: AnyObject, Sendable {
     ///   - sourceID: Optional mailbox source; `nil` targets the backend's default mailbox.
     func cachedBody(for messageID: MessageHeader.ID, sourceID: MailSourceID?) async -> MessageBody?
 }
+
+/// Persists extracted searchable attachment text into the backend's local FTS index.
+/// Discovered through `MailBackend.extensionService(_:)` so callers never branch on
+/// concrete backend types.
+public protocol LocalAttachmentTextIndexing: BackendExtensionService {
+    /// Inserts or replaces extracted text for one attachment in the local search index.
+    func indexAttachmentText(
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws
+
+    /// Returns message IDs that already have at least one indexed attachment row locally.
+    func indexedAttachmentMessageIDs() async -> Set<MessageHeader.ID>
+
+    /// Returns the per-message sets of attachment IDs currently stored in the local FTS index.
+    func indexedAttachmentIDs() async -> [MessageHeader.ID: Set<String>]
+}
+
+public extension LocalAttachmentTextIndexing {
+    /// Default returns empty for adapters that only report message-level IDs.
+    func indexedAttachmentIDs() async -> [MessageHeader.ID: Set<String>] { [:] }
+}
+
+/// Low-priority, size-bounded body fetch and FTS indexing seam used by
+/// background recent-mail indexing so it never preempts foreground refreshes
+/// or triggers unbounded full-source downloads.
+public protocol BackgroundBodyIndexing: BackendExtensionService {
+    /// Fetches (or reads from cache) a message body at background priority,
+    /// indexes its searchable body text into the local FTS index before returning,
+    /// and skips unbounded raw-source fallback above `maxFallbackSourceBytes`.
+    /// Returns `nil` when structured fetch failed and raw fallback was skipped.
+    func indexBackgroundBody(
+        for messageID: MessageHeader.ID,
+        sourceID: MailSourceID,
+        maxFallbackSourceBytes: Int
+    ) async throws -> MessageBody?
+}

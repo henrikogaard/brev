@@ -4,6 +4,7 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Opt-in background recent-mail and attachment indexing (#7): added device-local **Settings → Sync & Storage → Mail Storage → Background indexing** (strictly off by default, excluded from iCloud preference sync, included in portable settings backups without enabling `isEnabled` on restore) with 30/90/365-day lookback windows, optional text extraction for eligible non-inline attachments up to 10 MiB (PDF, plain text, RTF, HTML), automatic pausing on cellular/Low Data Mode/Low Power Mode via **Wi-Fi & power friendly**, Trash/Spam exclusion (including multi-label messages), unread-flag preservation, persisted per-account progress cursors, and live status/Pause/Resume/Index now/Reset controls wired into `AppSession` and `BackgroundMailCoordinator`.
 - Proactive opt-in on-device AI summaries and priority triage: added
   `AIBackend.isOnDeviceZeroNetwork` (enabled only for zero-network on-device
   backends such as `AppleIntelligenceAIBackend`), the opt-in

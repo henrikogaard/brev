@@ -88,18 +88,18 @@ struct MailStorageSectionSnapshotTests {
             settingsStore: SettingsPersistenceStore(defaults: defaults),
             initiallyAdvancedExpanded: true
         )
-        .frame(width: 560, height: 720)
+        .frame(width: 560, height: 900)
         .brevTheme(theme)
         .environment(\.colorScheme, theme.mode.colorScheme)
         let host = NSHostingController(rootView: view)
         host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
-        host.view.frame.size = CGSize(width: 560, height: 720)
+        host.view.frame.size = CGSize(width: 560, height: 900)
         host.view.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
         host.view.layoutSubtreeIfNeeded()
         assertSnapshot(
             of: host,
-            as: .image(size: CGSize(width: 560, height: 720)),
+            as: .image(size: CGSize(width: 560, height: 900)),
             named: "mailstorage-attachment-index-" + mode,
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )

@@ -157,6 +157,7 @@ struct BrevApp: App {
             onSignInCodeConsentChanged: { accountID in
                 session.cancelSignInCodeArrival(accountID: accountID)
             },
+            backgroundIndexingModel: session.backgroundIndexing.statusModel,
             onClose: { showSettings = false }
         )
         .environment(\.openURL, browserOpenURLAction)
@@ -401,6 +402,7 @@ struct BrevApp: App {
                 await session.ensureAccountsRestored()
                 sessionRestoreAttempted = true
                 session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
+                session.attachNetworkMonitor(networkMonitor)
                 BrevIOSAppDelegate.currentBackends = session.visibleBackends
                 if session.visibleBackends.isEmpty {
                     installUnavailableNotificationReplyHandler()

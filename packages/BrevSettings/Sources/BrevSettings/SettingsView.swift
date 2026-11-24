@@ -67,6 +67,7 @@ public struct SettingsView: View {
     private let onSignInRestoredAccount: (AccountBackupEntry) -> Void
     private let onAIProviderConfigurationChanged: () async -> Void
     private let onSignInCodeConsentChanged: (BrevAccount.ID) -> Void
+    private let backgroundIndexingModel: BackgroundIndexingStatusModel?
     private let onClose: (() -> Void)?
     private let allFolders: [Folder]
     private let currentFolderSourceID: MailSourceID?
@@ -106,6 +107,7 @@ public struct SettingsView: View {
         onSignInRestoredAccount: @escaping (AccountBackupEntry) -> Void = { _ in },
         onAIProviderConfigurationChanged: @escaping () async -> Void = {},
         onSignInCodeConsentChanged: @escaping (BrevAccount.ID) -> Void = { _ in },
+        backgroundIndexingModel: BackgroundIndexingStatusModel? = nil,
         onClose: (() -> Void)? = nil
     ) {
         self.accountStore = accountStore
@@ -165,6 +167,7 @@ public struct SettingsView: View {
         self.linkedSourcesProvider = linkedSourcesProvider
         self.onAIProviderConfigurationChanged = onAIProviderConfigurationChanged
         self.onSignInCodeConsentChanged = onSignInCodeConsentChanged
+        self.backgroundIndexingModel = backgroundIndexingModel
         self.onSignInRestoredAccount = onSignInRestoredAccount
         self.onClose = onClose
     }
@@ -628,7 +631,8 @@ public struct SettingsView: View {
                 account: currentAccount,
                 backend: currentBackend,
                 settingsStore: settingsStore,
-                localBackend: backendProvider(LocalMailBackend.accountID) as? LocalMailBackend
+                localBackend: backendProvider(LocalMailBackend.accountID) as? LocalMailBackend,
+                backgroundIndexingModel: backgroundIndexingModel
             )
             .id(selectedSourceID?.accountID)
         case .calendarContacts:
