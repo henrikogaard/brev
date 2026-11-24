@@ -133,8 +133,16 @@ struct SignInCodeNotificationTests {
         #expect(linkCategory.actions.map(\.identifier) == [SignInCodeNotificationPolicy.openLinkActionIdentifier])
     }
 
+    private func isolatedProvenanceDefaults() -> (defaults: UserDefaults, suiteName: String) {
+        let suiteName = "eu.brevmail.tests.signin-notif.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        return (defaults, suiteName)
+    }
+
     @Test("Copy code copies concealed value, removes delivered notification, and drops in-memory entry")
     func copyCodeActionSuccess() async {
+        let (provenanceDefaults, suiteName) = isolatedProvenanceDefaults()
+        defer { provenanceDefaults.removePersistentDomain(forName: suiteName) }
         let scheduler = MockSignInNotificationScheduler()
         let pasteboard = RecordingSignInPasteboard()
         let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
@@ -145,7 +153,8 @@ struct SignInCodeNotificationTests {
             scheduler: scheduler,
             pasteboard: pasteboard,
             settings: { consent },
-            now: { currentNow }
+            now: { currentNow },
+            provenanceDefaults: provenanceDefaults
         )
         presenter.present(SignInCodePresentation(
             accountID: "acct-1",
@@ -172,6 +181,8 @@ struct SignInCodeNotificationTests {
 
     @Test("Copy code fails closed when consent is withdrawn or 10-minute window expires")
     func copyCodeFailsClosedOnConsentOrExpiry() async {
+        let (provenanceDefaults, suiteName) = isolatedProvenanceDefaults()
+        defer { provenanceDefaults.removePersistentDomain(forName: suiteName) }
         let scheduler = MockSignInNotificationScheduler()
         let pasteboard = RecordingSignInPasteboard()
         let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
@@ -185,7 +196,8 @@ struct SignInCodeNotificationTests {
                 consent.setAccountOverride(accountID: "acct-1", codesEnabled: codesEnabled, linksEnabled: false)
                 return consent
             },
-            now: { currentNow }
+            now: { currentNow },
+            provenanceDefaults: provenanceDefaults
         )
 
         // Withdrawn consent fails closed.
@@ -224,6 +236,8 @@ struct SignInCodeNotificationTests {
 
     @Test("Open link stages foreground host confirmation without leaking link in descriptions")
     func openLinkStagesHostConfirmation() async throws {
+        let (provenanceDefaults, suiteName) = isolatedProvenanceDefaults()
+        defer { provenanceDefaults.removePersistentDomain(forName: suiteName) }
         let scheduler = MockSignInNotificationScheduler()
         let pasteboard = RecordingSignInPasteboard()
         var consent = SignInCodeSettings()
@@ -231,7 +245,8 @@ struct SignInCodeNotificationTests {
         let presenter = SignInCodeNotificationPresenter(
             scheduler: scheduler,
             pasteboard: pasteboard,
-            settings: { consent }
+            settings: { consent },
+            provenanceDefaults: provenanceDefaults
         )
         let urlString = "https://login.northwind.example/verify?t=secret999"
         presenter.present(SignInCodePresentation(
@@ -257,6 +272,8 @@ struct SignInCodeNotificationTests {
 
     @Test("dismiss(accountID:) and pruneExpired() remove only targeted notifications")
     func dismissAndPruneCleanup() async {
+        let (provenanceDefaults, suiteName) = isolatedProvenanceDefaults()
+        defer { provenanceDefaults.removePersistentDomain(forName: suiteName) }
         let scheduler = MockSignInNotificationScheduler()
         let pasteboard = RecordingSignInPasteboard()
         let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
@@ -265,7 +282,8 @@ struct SignInCodeNotificationTests {
             scheduler: scheduler,
             pasteboard: pasteboard,
             settings: { SignInCodeSettings() },
-            now: { currentNow }
+            now: { currentNow },
+            provenanceDefaults: provenanceDefaults
         )
         presenter.present(SignInCodePresentation(
             accountID: "acct-1",
@@ -305,7 +323,8 @@ struct SignInCodeNotificationTests {
             scheduler: relaunchedScheduler,
             pasteboard: pasteboard,
             settings: { SignInCodeSettings() },
-            now: { currentNow }
+            now: { currentNow },
+            provenanceDefaults: provenanceDefaults
         )
         relaunchedPresenter.pruneExpired()
         await Task.yield()
@@ -315,6 +334,8 @@ struct SignInCodeNotificationTests {
 
     @Test("freshness window anchors to original message receivedAt date rather than presentation time")
     func freshnessAnchorsToReceivedDate() async {
+        let (provenanceDefaults, suiteName) = isolatedProvenanceDefaults()
+        defer { provenanceDefaults.removePersistentDomain(forName: suiteName) }
         let scheduler = MockSignInNotificationScheduler()
         let pasteboard = RecordingSignInPasteboard()
         let receivedDate = Date(timeIntervalSince1970: 1_700_000_000)
@@ -326,7 +347,8 @@ struct SignInCodeNotificationTests {
             scheduler: scheduler,
             pasteboard: pasteboard,
             settings: { consent },
-            now: { currentNow }
+            now: { currentNow },
+            provenanceDefaults: provenanceDefaults
         )
         presenter.present(SignInCodePresentation(
             accountID: "acct-1",
