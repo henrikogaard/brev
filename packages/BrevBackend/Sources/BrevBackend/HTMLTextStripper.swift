@@ -6,31 +6,18 @@ import Foundation
 /// attachment text extractor. Never invokes a document importer, so it can be
 /// applied to untrusted bytes without any chance of a remote subresource load.
 enum HTMLTextStripper {
-    /// Removes style/script content, comments, tags, and a final tag cut in
-    /// half by a byte-limited read, leaving the text content behind.
+    private static let blockElements: Set<String> = [
+        "address", "article", "aside", "blockquote", "br", "div", "dl", "dt", "dd",
+        "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
+        "h4", "h5", "h6", "header", "hr", "li", "main", "nav", "ol", "p", "pre",
+        "section", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul"
+    ]
+
+    /// Removes style/script content, comments, tags (respecting quoted attribute
+    /// values containing `>`), and a final tag cut in half by a byte-limited read,
+    /// leaving the text content behind.
     static func stripMarkup(_ text: String) -> String {
-        text
-            .replacingOccurrences(
-                of: #"(?is)<(style|script)\b[^>]*>.*?</\1\s*>"#,
-                with: " ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(?is)<(style|script)\b[^>]*>.*\z"#,
-                with: " ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(?s)<!--.*?-->"#,
-                with: " ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
-            .replacingOccurrences(
-                of: #"(?s)<[^>]*\z"#,
-                with: " ",
-                options: .regularExpression
-            )
+        scanAndReplaceTags(in: text, preserveBlockLineBreaks: false)
     }
 
     /// Replaces the common named entities plus numeric character references.
@@ -50,33 +37,13 @@ enum HTMLTextStripper {
 
     /// Converts HTML to readable plain text for `text/plain` alternatives and
     /// quote-style surfaces: style/script/comments removed, `<br>`, `<hr>` and
-    /// block-level boundaries become newlines, remaining tags become spaces,
+    /// block-level boundaries become newlines, remaining tags become spaces
+    /// (respecting single- and double-quoted attributes containing `>`),
     /// entities are unescaped, per-line whitespace is collapsed, and blank
     /// runs are merged. Unlike `stripMarkup` this keeps paragraph breaks.
     static func plainText(from html: String) -> String {
-        var text = html
-        for pattern in [
-            "(?is)<style[^>]*>.*?</style>",
-            "(?is)<script[^>]*>.*?</script>",
-            "(?s)<!--.*?-->",
-        ] {
-            text = text.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
-        }
-
-        // Soft breaks and horizontal rules become hard line breaks.
-        for pattern in [
-            #"(?i)<br\s*/?>"#,
-            #"(?i)<hr\b[^>]*>"#,
-            // Block-level boundaries become newlines before tags are removed.
-            #"(?i)</?(?:address|article|aside|blockquote|div|dl|dt|dd|fieldset|figcaption|figure|footer|form|h[1-6]|header|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul)\b[^>]*>"#,
-        ] {
-            text = text.replacingOccurrences(of: pattern, with: "\n", options: .regularExpression)
-        }
-
-        // Remaining tags (inline links, spans, formatting) become spaces so
-        // adjacent labels like `</a><a>` do not concatenate into one word.
-        text = text.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
-        text = unescapingEntities(text)
+        let stripped = scanAndReplaceTags(in: html, preserveBlockLineBreaks: true)
+        let text = unescapingEntities(stripped)
 
         let lines = text
             .replacingOccurrences(of: "\r\n", with: "\n")
@@ -98,6 +65,185 @@ enum HTMLTextStripper {
             collapsed.removeLast()
         }
         return collapsed.joined(separator: "\n")
+    }
+
+    /// Linearly scans HTML tags while respecting `"..."` and `'...'` quoted
+    /// attribute values so `>` inside attributes never terminates a tag early.
+    private static func scanAndReplaceTags(
+        in html: String,
+        preserveBlockLineBreaks: Bool
+    ) -> String {
+        var output = ""
+        output.reserveCapacity(html.count)
+        var cursor = html.startIndex
+        let end = html.endIndex
+
+        while cursor < end {
+            guard let lt = html[cursor ..< end].firstIndex(of: "<") else {
+                output.append(contentsOf: html[cursor ..< end])
+                break
+            }
+            if cursor < lt {
+                output.append(contentsOf: html[cursor ..< lt])
+            }
+            let remaining = html[lt ..< end]
+
+            // HTML comment: <!-- ... -->
+            if remaining.hasPrefix("<!--") {
+                let afterOpen = html.index(lt, offsetBy: 4)
+                output.append(" ")
+                if let closeRange = html[afterOpen ..< end].range(of: "-->") {
+                    cursor = closeRange.upperBound
+                } else {
+                    break
+                }
+                continue
+            }
+
+            // Doctype / declaration / processing instruction: <!...> or <?...>
+            if remaining.hasPrefix("<!") || remaining.hasPrefix("<?") {
+                output.append(" ")
+                if let gt = findTagClose(in: html, from: lt, limit: end) {
+                    cursor = html.index(after: gt)
+                } else {
+                    break
+                }
+                continue
+            }
+
+            let afterLT = html.index(after: lt)
+            guard afterLT < end else {
+                output.append(" ")
+                break
+            }
+            let nextChar = html[afterLT]
+            let startsTag = nextChar == "/" || (nextChar.isASCII && nextChar.isLetter)
+            guard startsTag else {
+                output.append("<")
+                cursor = afterLT
+                continue
+            }
+
+            guard let gt = findTagClose(in: html, from: lt, limit: end) else {
+                // Truncated tag at EOF (e.g. byte-limited snippet).
+                output.append(" ")
+                break
+            }
+            let nextIndex = html.index(after: gt)
+            let (tagName, isClosing) = parseTagName(in: html[lt ..< nextIndex])
+
+            if !isClosing, tagName == "style" || tagName == "script" {
+                output.append(" ")
+                if let closeEnd = findRawTextCloseEnd(named: tagName, in: html, from: nextIndex, limit: end) {
+                    cursor = closeEnd
+                } else {
+                    break
+                }
+                continue
+            }
+
+            if preserveBlockLineBreaks, blockElements.contains(tagName) {
+                output.append("\n")
+            } else {
+                output.append(" ")
+            }
+            cursor = nextIndex
+        }
+        return output
+    }
+
+    private static func findTagClose(
+        in html: String,
+        from lt: String.Index,
+        limit: String.Index
+    ) -> String.Index? {
+        var idx = html.index(after: lt)
+        var quote: Character?
+        while idx < limit {
+            let ch = html[idx]
+            if let activeQuote = quote {
+                if ch == activeQuote {
+                    quote = nil
+                }
+            } else if ch == "\"" || ch == "'" {
+                quote = ch
+            } else if ch == ">" {
+                return idx
+            }
+            idx = html.index(after: idx)
+        }
+        return nil
+    }
+
+    private static func parseTagName(in rawTag: Substring) -> (name: String, isClosing: Bool) {
+        let inner = rawTag.dropFirst().dropLast()
+        var idx = inner.startIndex
+        while idx < inner.endIndex, inner[idx].isWhitespace {
+            idx = inner.index(after: idx)
+        }
+        var isClosing = false
+        if idx < inner.endIndex, inner[idx] == "/" {
+            isClosing = true
+            idx = inner.index(after: idx)
+            while idx < inner.endIndex, inner[idx].isWhitespace {
+                idx = inner.index(after: idx)
+            }
+        }
+        let nameStart = idx
+        while idx < inner.endIndex,
+              let ascii = inner[idx].asciiValue,
+              (ascii >= 65 && ascii <= 90)
+              || (ascii >= 97 && ascii <= 122)
+              || (ascii >= 48 && ascii <= 57) {
+            idx = inner.index(after: idx)
+        }
+        return (String(inner[nameStart ..< idx]).lowercased(), isClosing)
+    }
+
+    private static func findRawTextCloseEnd(
+        named name: String,
+        in html: String,
+        from start: String.Index,
+        limit: String.Index
+    ) -> String.Index? {
+        let nameBytes = Array(name.utf8)
+        var cursor = start
+        while cursor < limit {
+            guard let lt = html[cursor ..< limit].firstIndex(of: "<") else {
+                return nil
+            }
+            var idx = html.index(after: lt)
+            guard idx < limit, html[idx] == "/" else {
+                cursor = idx
+                continue
+            }
+            idx = html.index(after: idx)
+            var matched = true
+            for expectedByte in nameBytes {
+                guard idx < limit, let ascii = html[idx].asciiValue else {
+                    matched = false
+                    break
+                }
+                let lower = (ascii >= 65 && ascii <= 90) ? ascii + 32 : ascii
+                if lower != expectedByte {
+                    matched = false
+                    break
+                }
+                idx = html.index(after: idx)
+            }
+            guard matched else {
+                cursor = html.index(after: lt)
+                continue
+            }
+            while idx < limit, html[idx] == " " || html[idx] == "\t" || html[idx] == "\n" || html[idx] == "\r" {
+                idx = html.index(after: idx)
+            }
+            if idx < limit, html[idx] == ">" {
+                return html.index(after: idx)
+            }
+            cursor = idx > lt ? idx : html.index(after: lt)
+        }
+        return nil
     }
 
     /// Decodes untrusted HTML bytes (UTF-8, then the declared `<meta>` charset,

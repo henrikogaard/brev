@@ -8207,3 +8207,89 @@ buttons, and package-aware localization.
 - Changes: flipped `ADRs/0094-on-device-ai-apple-intelligence-and-local-models.md` and `ADRs/README.md` to `Accepted (2026-11-23)`; added `AIBackendContextBudget`, `AppleIntelligenceAvailability`, `OnDeviceAIPlatformLabel`, `AppleIntelligenceAIBackend`, `.appleIntelligence` `AIProviderKind` + `AIProviderBackendResolver` support, and `AISafetyPolicy` budget overload in `BrevAI`; wired `aiBackend.contextBudget` in `MailboxChatController` and `ThreadConversationView`; updated `AIProviderSettings`, `AIProviderSettingsPanel`, and `AIWriterSection` in `BrevSettings` with live availability gating and plain-language disabled reasons; added Norwegian (`nb`) catalog entries, unit tests across `BrevAI`/`BrevSettings`/`BrevMail`, macOS 26+ snapshots (`AIOnDeviceSettingsSnapshotTests`, registered in `.github/workflows/build.yml`), and updated `PRIVACY.md` and `CHANGELOG.md`.
 - Verification: `swift test --package-path packages/BrevAI`, `swift test --package-path packages/BrevSettings --filter 'AIProviderSettingsTests|AIWriterSettingsTests|AIOnDeviceSettingsSnapshotTests|AIWriterSectionMacSnapshotTests/providerSetupRenders'`, `swift test --package-path packages/BrevMail --filter 'ThreadAISummaryTests|MailboxChat'`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`.
 - Skipped: Slice 2 (`LocalDownloadedModelAIBackend` weight download) remains a separate slice per ADR-0094 once Henrik selects the local inference engine dependency (`mlx-swift-lm` vs `llama.cpp`).
+
+## 2026-11-24 — Agent — Issue #278 (lossless draft reopening for nested/styled quotes & webmail HTML)
+
+- **Goal:** Implement lossless, non-destructive draft reopening for nested/styled `<blockquote>` elements, Apple Mail `<blockquote type="cite">`, Gmail `.gmail_quote`, Outlook `#divRplyFwdMsg`, and webmail quoted HTML (Issue #278, `docs/design/compose-and-drafts.md`) while keeping all existing fail-closed safety guards intact.
+- **Changes:**
+  - Added `ComposeDraftQuoteSplitter.swift` with a linear balanced-tag HTML scanner (handling nested tags, quoted `>` in attributes, comments, raw `<style>`/`<script>` blocks, HTML5 void elements, plain/direction-only outer wrappers, and attribution/prelude lookback) that splits complex quoted drafts into `editablePrefixHTML`, `quoteSeparatorHTML`, and byte-for-byte `preservedQuotedHTML`, failing closed on malformed/unbalanced markup or missing quote boundaries.
+  - Updated `ComposeDraftBodyRestoration.swift` (`ComposeRestoredBody` + `prepare(draft:format:)`) to keep canonical flat drafts on the existing path and split nested/styled/webmail quotes into an editable top attributed string plus `preservedQuotedHTML`, enforcing lossless prefix round-trip and plain-text mode fail-closed guards.
+  - Added `ComposePreservedQuoteSection.swift` and wired it into `ComposeView.swift` (collapsible, theme-tokenized, localized `en`/`nb` "Quoted message preserved" footer with read-only `HTMLBodyWebView` preview using `allowRemoteContent: false` and script-sanitized preview HTML).
+  - Updated `ComposeHTMLPreviewSource.swift`, `ComposeDraftBuilder.swift`, and `ComposeView.swift` so no-edit Save/autosave preserves `originalHTML` byte-for-byte, edits reassemble `editedTopHTML + joiner + preservedQuotedHTML` verbatim, HTML Preview displays the combined message safely, and quote-only drafts remain saveable.
+  - Added `en` + `nb` String Catalog entries in `packages/BrevMail/Sources/BrevMail/Resources/Localizable.xcstrings`, updated `docs/design/compose-and-drafts.md` and `CHANGELOG.md`, added comprehensive Swift Testing coverage in `ComposeDraftBodyRestorationTests.swift`, updated `ComposeDraftPreservationTests.swift`, `ComposeDraftReopeningTests.swift`, and `ComposeCopyLocalizationTests.swift`, and added macOS light/dark snapshots in `ComposeViewMacOSSnapshotTests.swift`.
+- **Verification:** `swift test --package-path packages/BrevMail` (focused compose restoration/quote/preservation/localization suites: 138 tests in 13 suites passed), `xcodebuild -scheme BrevMail -destination 'platform=macOS,arch=arm64' -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevMailTests/ComposeViewMacOSSnapshotTests test` (light + dark PNGs visually inspected), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check`.
+- **Skipped:** `scripts/privacy-audit.sh` could not run locally because `rg` is not installed on this host; `scripts/lint.sh` (`swiftlint --strict` + coverage self-test) passed and enforces the telemetry/Realm/literal-color rules. Live native acceptance on #278/#279 remains for Henrik.
+
+## 2026-11-24 — Agent — PR #350 review fixes (Issue #278)
+
+- **Goal:** Address all 7 distinct Codex and Devin Review findings on PR #350 (`68d07f52`).
+- **Changes:**
+  - Captured enclosing plain/direction-only wrapper tags (`outerWrapperOpenHTML`/`outerWrapperCloseHTML`) and `inheritedDirection` (`rtl`/`ltr`/`auto`) in `ComposeDraftQuoteSplitter` and `ComposeRestoredBody`, re-applying the wrapper on edited reassembly and wrapping quote previews (`ComposeHTMLPreviewSource.sanitizedQuotePreviewHTML`, `ComposePreservedQuoteSection`, `ComposeView`).
+  - Replaced `findRawTextCloseTag`'s per-`<` forward tag scan with a strictly O(n) linear `</style>` / `</script>` matcher in `ComposeDraftQuoteSplitter`.
+  - Restricted quote-boundary detection in `ComposeDraftQuoteSplitter` to complex/styled/nested blockquotes and explicit webmail containers so user-typed flat `>` quote lines (`<blockquote>...</blockquote>`) above a preserved thread remain editable on reopen.
+  - Tightened `isStandaloneAttributionElement` so a `<div>`/`<p>` containing ordinary reply text before `<br>` + attribution line is never pulled into `preservedQuotedHTML`.
+  - Replaced `[^>]*` regexes in `HTMLTextStripper` (`BrevBackend`) and `ComposeQuoteTextPolicy` (`BrevMail`) with quote-aware linear tag scanners so `>` inside single- or double-quoted attributes never leaks into outgoing `text/plain` MIME parts.
+  - Added HTML5 optional closing tag handling (`<td>`, `<th>`, `<tr>`, `<thead>`, `<tbody>`, `<tfoot>`, `<li>`, `<p>`, `<dt>`, `<dd>`, `<colgroup>`, `<option>`) strictly inside open quote containers so compact webmail tables reopen cleanly while malformed/unclosed structural tags still fail closed.
+  - Added regression tests across `ComposeDraftBodyRestorationTests.swift` and `IMAPSMTPConfigurationTests.swift` plus integrated editor + long expanded preserved-quote light/dark snapshots in `ComposeViewMacOSSnapshotTests.swift` (visually inspected).
+- **Verification:** `swift test --package-path packages/BrevBackend` (1219 tests in 119 suites passed), `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (474 tests in 79 suites passed), `xcodebuild -scheme BrevMail -destination 'platform=macOS,arch=arm64' -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevMailTests/ComposeViewMacOSSnapshotTests test` (4 tests / 8 cases passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check`. Note: an earlier full unskipped `BrevMail` run hit 4 unrelated `MessageListRowGestureTests` AppKit hover-tracking timeouts in the backgrounded host session while all other 364 suites passed.
+
+## 2026-11-24 — Agent — PR #350 review round 2 (Issue #278)
+
+- **Goal:** Address the 3 follow-up Devin Review findings on `1b7cdef7`.
+- **Changes:**
+  - Updated `ComposeDraftQuoteSplitter` so flat-importable `<blockquote>` matching requires canonical lowercase `<blockquote>` and `</blockquote>` (so `</BLOCKQUOTE>` splits cleanly) and added an attributed-blockquote fallback so plain `<blockquote>` preceded by a styled/unimportable standalone attribution or quote prelude reopens instead of failing closed, while keeping user-typed `>` lines above a preserved thread editable.
+  - Added enclosing optional-close sibling tags (`li`, `dt`, `dd`, `td`, `th`, `tr`, `thead`, `tbody`, `tfoot`) to `pClosingBlockElements` in `ComposeDraftQuoteSplitter` so nested optional HTML5 closing tags (such as `<ul><li><p>One<li><p>Two</ul>` and `<table><tr><td><p>A<td><p>B</table>`) unwind cleanly inside preserved quotes.
+  - Updated `ComposeHTMLPreviewSource.sanitizedQuotePreviewHTML`, `ComposePreservedQuoteSection`, and `ComposeView` to resolve `dir="auto"` via HTML5's first-strong-directional-character rule over the editable reply + quote text for quote-only previews while keeping `dir="auto"` verbatim in saved HTML.
+  - Added unit tests for all 3 cases in `ComposeDraftBodyRestorationTests.swift`.
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (477 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check`.
+
+## 2026-11-24 — Agent — PR #350 review round 3 (Issue #278)
+
+- **Goal:** Address the final Devin Review findings on `e503d71a`: attribution word-boundary matching, provider-marked prelude precedence, and final-source macOS snapshot verification.
+- **Changes:**
+  - Added word-boundary checking (`hasWordBoundedSuffix`) in `ComposeDraftQuoteSplitter.matchesAttributionLine` so words like `"rewrote:"` never falsely match `"wrote:"`.
+  - Updated `ComposeDraftQuoteSplitter.fallbackAttributedBlockquoteIndex` to rank explicit provider-marked preludes (`.gmail_attr`, `.moz-cite-prefix`, `#appendonsend`, etc.) strictly ahead of inferred plain-text attributions.
+  - Added `attributionWordBoundaryAndProviderPreludePrecedence` regression test in `ComposeDraftBodyRestorationTests.swift`.
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `xcodebuild -scheme BrevMail -destination 'platform=macOS,arch=arm64' -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevMailTests/ComposeViewMacOSSnapshotTests test` (4 tests / 8 cases passed on final source), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check`.
+
+## 2026-11-24 — Agent — PR #350 review round 4 (Issue #278)
+
+- **Goal:** Handle the remaining edge case where a preferred later provider-marked prelude leaves an earlier styled attribution inside `editablePrefixHTML`.
+- **Changes:**
+  - Added `ComposeDraftQuoteSplitter.candidateSplits(_:)` returning ordered candidate splits (complex/explicit containers first, then provider-marked attributed plain blockquotes, then earlier inferred/styled-attribution plain blockquotes).
+  - Updated `ComposeDraftBodyRestoration.prepare(draft:format:)` to select the first candidate whose `editablePrefixHTML` passes `importableBody(from:)`.
+  - Added regression coverage in `ComposeDraftBodyRestorationTests.swift` for `Reply<br><div style="color:gray">On Monday, Ada wrote:</div><blockquote>First note</blockquote><div class="gmail_attr">On Sunday, Bob wrote:</div><blockquote>Older note</blockquote>`.
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check`.
+
+## 2026-11-24 — Agent — PR #350 review round 5 (Issue #278)
+
+- **Goal:** Address round-5 Devin Review findings on `f3f52359`: prevent fallback quote splitting from locking standalone styled reply paragraphs and evaluate candidate split boundaries lazily without eager full-draft `String` copies.
+- **Changes:**
+  - Replaced eager `ComposeDraftQuoteSplitter.candidateSplits(_:)` with lazy `firstSplit(in:matchPrefix:)` backed by lightweight index-range computation (`SplitRanges` / `computeSplitRanges`), only materializing `quoteSeparatorHTML` and `preservedQuotedHTML` once a candidate prefix passes.
+  - Added `isPureQuoteChain(between:and:in:html:)` in `ComposeDraftQuoteSplitter` so falling back from a preferred later provider boundary to an earlier attributed blockquote is only allowed when every intervening node is exclusively quote/attribution/separator markup (failing closed when standalone styled reply content such as `<div style="color:blue">Thoughts?</div>` sits in between).
+  - Updated `ComposeDraftBodyRestoration.prepare(draft:format:)` to call `ComposeDraftQuoteSplitter.firstSplit(in:matchPrefix:)`.
+  - Added paired fail-closed regression coverage in `ComposeDraftBodyRestorationTests.swift` alongside the existing dual-quote styled-attribution + `.gmail_attr` test.
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #350 review round 6 (Issue #278)
+
+- **Goal:** Address round-6 Devin Review edge case (`PRRT_kwDOUHC-Ds67b1d3`) on `cdd185a4`: accept standalone plain-text attribution nodes immediately preceding a blockquote in `ComposeDraftQuoteSplitter.isPureQuoteChain`.
+- **Changes:**
+  - Added `isStandaloneAttributionText(at:in:limit:html:)` to `ComposeDraftQuoteSplitter` and wired it into `isPureQuoteChain(between:and:in:html:)` so an intervening text node immediately preceding a `<blockquote>` (through `<br>`/whitespace separators) is accepted when the entire trimmed text node matches `looksLikeStandaloneAttributionHeader`, while text nodes containing reply text before an attribution continue to fail closed.
+  - Added regression coverage in `ComposeDraftBodyRestorationTests.swift` for both an intervening plain-text attributed quote (`On Tuesday, Bea wrote:<br><blockquote>Middle note</blockquote>`) and a reply-plus-attribution text node (`Thoughts?\nOn Tuesday, Bea wrote:<br><blockquote>Middle note</blockquote>`).
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #350 review round 7 & rebase onto main (Issue #278)
+
+- **Goal:** Address Devin Review note (`PRRT_kwDOUHC-Ds67b_vj`) on `f34e71c6` and rebase `feature/lossless-quote-draft-reopen` cleanly onto updated `origin/main` (after PR #347 merged).
+- **Changes:**
+  - Updated `ComposeDraftQuoteSplitter.isStandaloneAttributionText` to skip `isQuoteGapNode` (including blank divider elements such as `<div><br></div>`), matching `isPureQuoteChain`, and added regression coverage in `ComposeDraftBodyRestorationTests.swift`.
+  - Rebased onto `origin/main` (`9492a7ce`), cleanly preserving both PR #347 and PR #350 entries in `CHANGELOG.md`, `WORKLOG.md`, `Localizable.xcstrings` (JSON-validated), and `IMAPSMTPConfigurationTests.swift`.
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'`, `swift test --package-path packages/BrevBackend --filter 'IMAPSMTPConfigurationTests'`, `scripts/format.sh`, `scripts/lint.sh`, `python3 -m json.tool packages/BrevMail/Sources/BrevMail/Resources/Localizable.xcstrings`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #350 CI triage (Issue #278)
+
+- **Goal:** Fix the CI failure in `ComposeDraftBodyRestoration` (`test (BrevMail)` job `138556731917` on macOS 15 runner).
+- **Root cause:** `linearScanOnRepeatedAngleBracketsInStyle` wrapped `try await prepare(html, format: .richTextHTML)` in `#expect(elapsed < .seconds(2))`. Because `prepare` suspends twice across `@MainActor` WebKit `MessageHTMLImporter.importAttributedHTML` calls, parallel execution of 2,670 tests on a 3-core macOS 15 CI runner queued `@MainActor` tasks for ~13s, tripping the 2s wall-clock budget even though `ComposeDraftQuoteSplitter` itself ran in sub-millisecond linear time.
+- **Changes:** Updated `linearScanOnRepeatedAngleBracketsInStyle` in `ComposeDraftBodyRestorationTests.swift` to time only the synchronous `ComposeDraftQuoteSplitter.split(html)` call (zero `await` / zero `@MainActor` suspension) and run `prepare(html, format: .richTextHTML)` outside the timed window.
+- **Verification:** `swift test --package-path packages/BrevMail --filter ComposeDraftBodyRestoration`, `swift test --package-path packages/BrevMail --skip SnapshotTests`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.

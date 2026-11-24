@@ -17246,6 +17246,74 @@
           }
         }
       }
+    },
+    "Hide quoted message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide quoted message"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skjul sitert melding"
+          }
+        }
+      }
+    },
+    "Kept intact when saving or sending": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kept intact when saving or sending"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Holdes uendret ved lagring og sending"
+          }
+        }
+      }
+    },
+    "Quoted message preserved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quoted message preserved"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sitert melding bevart"
+          }
+        }
+      }
+    },
+    "Show quoted message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show quoted message"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis sitert melding"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

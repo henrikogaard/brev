@@ -98,5 +98,105 @@ struct ComposeViewMacOSSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    /// Reopened drafts with nested/styled quoted HTML display a clean, theme-aware
+    /// preserved-quote indicator and expandable read-only preview below the editor (#278).
+    @Test("preserved quoted HTML section renders collapsed and expanded", arguments: ["light", "dark"])
+    func preservedQuoteSection(mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let quoteHTML = """
+        <div class="gmail_quote">\
+        <div class="gmail_attr">On Mon, Jan 1, 2026, Ada &lt;ada@example.org&gt; wrote:</div>\
+        <blockquote type="cite" style="border-left: 2px solid #ccc">\
+        <div>Let's review the release checklist tomorrow morning.</div>\
+        <blockquote><div>Earlier thread note from Henrik.</div></blockquote>\
+        </blockquote>\
+        </div>
+        """
+        let view = VStack(alignment: .leading, spacing: 16) {
+            ComposePreservedQuoteSection(
+                preservedQuotedHTML: quoteHTML,
+                renderingMode: mode == "dark" ? .dark : .original,
+                initiallyExpanded: false
+            )
+            ComposePreservedQuoteSection(
+                preservedQuotedHTML: quoteHTML,
+                renderingMode: mode == "dark" ? .dark : .original,
+                initiallyExpanded: true
+            )
+        }
+        .frame(width: 700, height: 340, alignment: .top)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .htmlBodyRenderTarget(.staticSnapshot)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 700, height: 340)
+        host.view.needsLayout = true
+        host.view.layoutSubtreeIfNeeded()
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 700, height: 340)),
+            named: "compose-preserved-quote-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    /// Integrated compose body layout combining the editable compose editor area
+    /// above an expanded long preserved quote: the quote preview stays capped so
+    /// the editor retains usable vertical space in both light and dark modes (#278).
+    @Test("compose body keeps editable space above long expanded preserved quote", arguments: ["light", "dark"])
+    func editorWithExpandedLongPreservedQuote(mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let paragraphs = (1 ... 14).map { index in
+            "<p>Quoted thread paragraph \(index): confirming milestone notes, migration checks, and follow-up dates for the release.</p>"
+        }.joined()
+        let longQuoteHTML = """
+        <div class="gmail_quote">\
+        <div class="gmail_attr">On Mon, Jan 1, 2026, Ada wrote:</div>\
+        <blockquote type="cite" style="border-left: 2px solid #ccc">\(paragraphs)</blockquote>\
+        </div>
+        """
+        let replyText = "Hi Ada,\n\nThanks for sending the updated rollout schedule. Everything looks good for Thursday."
+        let view = VStack(spacing: 0) {
+            ComposeBodyEditor(
+                text: .constant(replyText),
+                richHTML: .constant(nil),
+                selection: .constant(nil),
+                insertionPoint: .constant(nil),
+                bodyFormat: .richTextHTML,
+                appearance: mode == "dark" ? .dark : .light,
+                textCheckingConfiguration: ComposeTextCheckingPolicy.configuration(isEnabled: false)
+            )
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            ComposePreservedQuoteSection(
+                preservedQuotedHTML: longQuoteHTML,
+                renderingMode: mode == "dark" ? .dark : .original,
+                initiallyExpanded: true
+            )
+        }
+        .frame(width: 700, height: 560)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .htmlBodyRenderTarget(.staticSnapshot)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 700, height: 560)
+        host.view.needsLayout = true
+        host.view.layoutSubtreeIfNeeded()
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 700, height: 560)),
+            named: "compose-editor-with-long-preserved-quote-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
 }
 #endif

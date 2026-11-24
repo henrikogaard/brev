@@ -4,6 +4,16 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Lossless draft reopening for nested, styled, and webmail quoted HTML (#278):
+  drafts containing nested `<blockquote>` threads, Apple Mail `<blockquote type="cite">`,
+  Gmail `.gmail_quote`, Outlook `#divRplyFwdMsg`, or rich webmail tables inside
+  the quoted section now reopen cleanly in rich compose instead of being
+  refused. Brev splits the editable top reply from the quoted thread using a
+  balanced-tag HTML scanner, keeps the quoted HTML tail byte-for-byte intact
+  across Save, autosave, and Send, shows a collapsible non-editable **Quoted
+  message preserved** preview below the editor, and continues to fail closed on
+  malformed quotes, unsupported editable-prefix markup, plain-text mode on rich
+  drafts, and pending/failed/cancelled draft loads.
 - Trusted-sender remote image tier (#8): added opt-in **Settings → Privacy & Security → Privacy → Load remote images for trusted senders** (off by default, excluded from iCloud preference sync) to automatically load remote images from exact addresses in local Contacts or people you have previously emailed/replied to without prompting for Contacts access or making extra network calls, while continuing to strip tracking pixels before rendering in both single-message and thread readers.
 - Local MCP `create_draft` tool (#6): local MCP clients can now propose
   plain-text drafts (with optional reply threading via an in-scope

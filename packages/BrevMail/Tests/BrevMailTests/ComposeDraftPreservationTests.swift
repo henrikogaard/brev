@@ -647,12 +647,17 @@ struct ComposeDraftPreservationTests {
         #expect(try await backend.draft(for: original.remoteID ?? original.id) == original)
     }
 
+    // Nested blockquotes now reopen non-destructively in richText mode (#278) while
+    // plainText mode, malformed quotes, and unsupported editable-prefix markup fail closed.
     @Test("unsafe, lossy, inline and plain-mode formatted drafts fail closed", arguments: [
         ("<img src=\"https://example.invalid/image.png\">", "richText"),
         ("<img src=\"cid:local\">", "richText"),
         ("<style>body { background: url(https://example.invalid/bg) }</style>Text", "richText"),
         ("<table><tr><td>Table</td></tr></table>", "richText"),
-        ("<blockquote><blockquote>Nested quote</blockquote></blockquote>", "richText"),
+        ("<blockquote><blockquote>Nested quote</blockquote></blockquote>", "plainText"),
+        ("<blockquote>Unclosed quote", "richText"),
+        ("<table><tr><td>Top</td></tr></table><blockquote type=\"cite\">Quoted</blockquote>", "richText"),
+        ("<script>alert(1)</script>Top<blockquote type=\"cite\">Quoted</blockquote>", "richText"),
         ("<strong>Formatted</strong>", "plainText")
     ])
     func unsafeRefused(fixture: (String, String)) async throws {
@@ -674,6 +679,93 @@ struct ComposeDraftPreservationTests {
         #expect(try await backend.draft(for: original.remoteID ?? original.id) == original)
         harness.mounted?.close()
         #expect(harness.closeCount == 1)
+    }
+
+    @Test("reopened drafts with nested, styled, Gmail, and Outlook quotes preserve originalHTML on no-edit Save and autosave",
+          arguments: [
+              "<strong>Reply</strong><br><br><blockquote>Outer<blockquote>Inner</blockquote></blockquote>",
+              "<p>Reply</p><blockquote type=\"cite\" style=\"border-left: 2px solid #ccc\"><div>Styled quote</div></blockquote>",
+              "<div dir=\"ltr\">Reply</div><br><div class=\"gmail_quote\"><div class=\"gmail_attr\">On Mon, Alice wrote:<br></div><blockquote class=\"gmail_quote\" style=\"margin:0\"><table><tr><td>Webmail table</td></tr></table></blockquote></div>",
+              "<div dir=\"ltr\">Reply</div><div id=\"divRplyFwdMsg\" dir=\"ltr\"><b>From:</b> Alice</div><div><p>Outlook body</p></div>"
+          ], [false, true])
+    func preservedQuoteNoEditSave(html: String, autosave: Bool) async throws {
+        let backend = MockBackend()
+        let original = try await backend.save(draft: Draft(
+            id: UUID().uuidString,
+            threadID: "thread-preserved",
+            inReplyToMessageID: "<parent@example.invalid>",
+            to: [Correspondent(email: "recipient@example.invalid")],
+            subject: "Re: Preserved thread",
+            htmlBody: html
+        ))
+        let harness = try Harness(backend: backend, original: original)
+        defer { harness.dispose() }
+        try await harness.prepare()
+
+        let native = try #require(harness.editor)
+        #expect(native.string == "Reply")
+        let mounted = try #require(harness.mounted)
+        if autosave {
+            await mounted.autoSaveDraftAfterInactivity()
+        } else {
+            await mounted.saveDraft()
+        }
+        let persisted = try #require(await backend.draft(for: original.remoteID ?? original.id))
+        #expect(persisted.htmlBody == html)
+        #expect(persisted.threadID == original.threadID)
+        #expect(persisted.inReplyToMessageID == original.inReplyToMessageID)
+    }
+
+    @Test("editing top reply preserves rich formatting and keeps quoted HTML tail byte-for-byte on Save and Send",
+          arguments: [false, true])
+    func preservedQuoteEditRoundTrip(send: Bool) async throws {
+        let backend = MockBackend()
+        let quoteTail = """
+        <div class="gmail_quote"><div dir="ltr" class="gmail_attr">On Mon, Alice wrote:<br></div>\
+        <blockquote class="gmail_quote" style="margin:0;border-left:1px solid #ccc">\
+        <table><tr><td style="padding:4px">Nested webmail cell</td></tr></table>\
+        </blockquote></div>
+        """
+        let originalHTML = "<strong>Thanks</strong> for sending<br><br>\(quoteTail)"
+        let subject = "Re: Preserved edit \(UUID().uuidString)"
+        let original = try await backend.save(draft: Draft(
+            id: UUID().uuidString,
+            threadID: "thread-edit-quote",
+            inReplyToMessageID: "<parent-edit@example.invalid>",
+            to: [Correspondent(email: "recipient@example.invalid")],
+            subject: subject,
+            htmlBody: originalHTML
+        ))
+        let harness = try Harness(backend: backend, original: original)
+        defer { harness.dispose() }
+        try await harness.prepare()
+
+        let native = try #require(harness.editor)
+        #expect(native.string == "Thanks for sending")
+        native.insertText(" this over!", replacementRange: NSRange(location: (native.string as NSString).length, length: 0))
+        harness.host?.layoutSubtreeIfNeeded()
+
+        let mounted = try #require(harness.mounted)
+        let resultingHTML: String
+        if send {
+            await mounted.send(bypassingSendGuard: true)
+            let sent = try #require(await backend.folders().first { $0.role == .sent })
+            let header = try #require(await backend.messages(in: sent, pageToken: nil).0.first { $0.subject == subject })
+            let body = try await backend.body(for: header.id)
+            resultingHTML = try #require(body.html)
+            let plainText = try #require(body.plainText)
+            #expect(plainText.contains("Thanks for sending this over!"))
+            #expect(plainText.contains("Nested webmail cell"))
+        } else {
+            await mounted.saveDraft()
+            let saved = try #require(await backend.draft(for: original.remoteID ?? original.id))
+            #expect(saved.threadID == original.threadID)
+            #expect(saved.inReplyToMessageID == original.inReplyToMessageID)
+            resultingHTML = saved.htmlBody
+        }
+
+        #expect(resultingHTML.contains("<strong>Thanks</strong> for sending this over!"))
+        #expect(resultingHTML.hasSuffix("<br><br>\(quoteTail)"))
     }
 
     @Test("legacy bodyText snapshot without canonical local proof opens a blank message and is not saved")
