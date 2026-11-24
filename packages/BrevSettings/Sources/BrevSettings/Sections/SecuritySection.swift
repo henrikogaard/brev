@@ -603,6 +603,35 @@ struct SecuritySection: View {
     }
 
     private func exportPreviewSheet(_ preview: ExportPreview) -> some View {
+        SecurityMaterialExportPreviewSheet(preview: preview) {
+            exportPreview = nil
+        }
+    }
+
+    private func trustLabel(for trust: SecurityKeyMaterialTrustState) -> String {
+        switch trust {
+        case .trusted: return String(localized: "Trusted", bundle: .module)
+        case .untrusted: return String(localized: "Untrusted", bundle: .module)
+        case .revoked: return String(localized: "Revoked", bundle: .module)
+        case .expired: return String(localized: "Expired", bundle: .module)
+        }
+    }
+
+    private func smimeLabel(for format: SecuritySMIMEExportFormat) -> String {
+        switch format {
+        case .pem: return String(localized: "PEM", bundle: .module)
+        case .der: return String(localized: "DER", bundle: .module)
+        case .pkcs12: return String(localized: "PKCS#12", bundle: .module)
+        }
+    }
+}
+
+struct SecurityMaterialExportPreviewSheet: View {
+    @Environment(\.brevTheme) private var theme
+    let preview: ExportPreview
+    let onDismiss: () -> Void
+
+    var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
                 Text(preview.title)
@@ -624,7 +653,7 @@ struct SecuritySection: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     SettingsButton(String(localized: "Done", bundle: .module), style: .primary) {
-                        exportPreview = nil
+                        onDismiss()
                     }
                 }
             }
@@ -633,26 +662,9 @@ struct SecuritySection: View {
         .frame(minWidth: 520, minHeight: 360)
         #endif
     }
-
-    private func trustLabel(for trust: SecurityKeyMaterialTrustState) -> String {
-        switch trust {
-        case .trusted: return String(localized: "Trusted", bundle: .module)
-        case .untrusted: return String(localized: "Untrusted", bundle: .module)
-        case .revoked: return String(localized: "Revoked", bundle: .module)
-        case .expired: return String(localized: "Expired", bundle: .module)
-        }
-    }
-
-    private func smimeLabel(for format: SecuritySMIMEExportFormat) -> String {
-        switch format {
-        case .pem: return String(localized: "PEM", bundle: .module)
-        case .der: return String(localized: "DER", bundle: .module)
-        case .pkcs12: return String(localized: "PKCS#12", bundle: .module)
-        }
-    }
 }
 
-private struct ExportPreview: Identifiable {
+struct ExportPreview: Identifiable {
     let title: String
     let payload: String
     let formatNote: String?

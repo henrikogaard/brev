@@ -2354,6 +2354,17 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
 
         var sentCopyData: Data?
+        // When no pending envelope will produce the full visible Sent copy
+        // (for example, visible recipients were already accepted on a prior
+        // attempt and only Bcc or newly added recipients remain), prepare the
+        // fallback Bcc-free Sent archive BEFORE submitting any pending SMTP
+        // envelope or recording draft-level completion.
+        if !sendPlan.envelopes.contains(where: \.isSentCopyCandidate) {
+            sentCopyData = try await preparedSingleEnvelopeData(
+                messageData,
+                securityRequest: sendPlan.sentCopySecurityRequest
+            )
+        }
         var lastResult = SendResult(sentMessageID: nil, scheduledFor: nil)
         var accumulatedWarnings: [SendResultWarning] = []
         var activeCredential = credential
@@ -2410,8 +2421,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             scheduledFor: lastResult.scheduledFor,
             warnings: accumulatedWarnings
         )
-        // All recipients were accepted; record the full draft so a later replay
-        // of the same draft skips delivery completely.
+        // All recipients were accepted and the Sent copy is ready; record the
+        // full draft (pruning intermediate per-recipient entries) so a later
+        // replay of the same draft skips delivery completely.
         if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) { return result }
         if let scheduledGeneration {
             do {
@@ -2423,14 +2435,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             sentMessageLedger?.record(draftID: draft.id, accountID: account.id)
         }
         clearInMemoryAcceptedRecipients(for: draft.id)
-        let finalSentCopyData: Data = if let sentCopyData {
-            sentCopyData
-        } else {
-            try await preparedSingleEnvelopeData(
-                messageData,
-                securityRequest: sendPlan.sentCopySecurityRequest
-            )
-        }
+        let finalSentCopyData = sentCopyData ?? messageData
         let (sentCopyUID, sentCopyWarning) = await appendSentCopyIfPossible(finalSentCopyData)
         if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) { return result }
         let draftCleanupWarning = await deleteRemoteDraftIfPossible(draft.remoteID)
@@ -2486,10 +2491,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         let visibleTo = draft.to.map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let visibleCc = draft.cc.map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let visibleEmails = Self.deduplicatedRecipientEmails(visibleTo + visibleCc)
-        let visibleNormalized = Set(visibleEmails.map { $0.lowercased() })
+        let visibleNormalized = Set(visibleEmails.map(SentMessageLedger.normalizedSMTPRecipientKey))
         let isolatedBccEmails = Self.deduplicatedRecipientEmails(
             draft.bcc.map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        ).filter { !visibleNormalized.contains($0.lowercased()) }
+        ).filter { !visibleNormalized.contains(SentMessageLedger.normalizedSMTPRecipientKey($0)) }
 
         func isPending(_ email: String) -> Bool {
             !isRecipientAccepted(
@@ -2500,7 +2505,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
 
         guard draft.securityMode != .none else {
-            let pendingAll = recipientEmails.filter(isPending)
+            let pendingAll = Self.deduplicatedRecipientEmails(recipientEmails).filter(isPending)
             guard !pendingAll.isEmpty else {
                 return OutboundSendPlan(envelopes: [], sentCopySecurityRequest: nil)
             }
@@ -2520,9 +2525,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
 
         let pendingVisibleTo = Self.deduplicatedRecipientEmails(visibleTo).filter(isPending)
-        let pendingVisibleToLower = Set(pendingVisibleTo.map { $0.lowercased() })
+        let pendingVisibleToKeys = Set(pendingVisibleTo.map(SentMessageLedger.normalizedSMTPRecipientKey))
         let pendingVisibleCc = Self.deduplicatedRecipientEmails(visibleCc).filter { email in
-            !pendingVisibleToLower.contains(email.lowercased()) && isPending(email)
+            !pendingVisibleToKeys.contains(SentMessageLedger.normalizedSMTPRecipientKey(email)) && isPending(email)
         }
         let pendingVisibleEmails = Self.deduplicatedRecipientEmails(pendingVisibleTo + pendingVisibleCc)
         let pendingBccEmails = isolatedBccEmails.filter(isPending)
@@ -2649,6 +2654,19 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         feed(securityToken)
         feed(draft.inReplyToMessageID ?? "")
         feed(draft.forwardedMessageID ?? "")
+        if let readReceiptResponse = draft.readReceiptResponse {
+            feed("mdn:1")
+            feed(readReceiptResponse.finalRecipient)
+            feed(readReceiptResponse.originalMessageID ?? "")
+        } else {
+            feed("mdn:0")
+            if let readReceiptRequest = draft.readReceiptRequest {
+                feed("dnt:1")
+                feed(readReceiptRequest.notificationTo)
+            } else {
+                feed("dnt:0")
+            }
+        }
         var attachmentCount = UInt64(attachments.count).bigEndian
         withUnsafeBytes(of: &attachmentCount) { hasher.update(bufferPointer: $0) }
         for attachment in attachments {
@@ -2668,7 +2686,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         contentFingerprint: String,
         recipientEmail: String
     ) -> Bool {
-        let normalized = recipientEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalized = SentMessageLedger.normalizedSMTPRecipientKey(recipientEmail)
         if let sentMessageLedger,
            sentMessageLedger.containsRecipient(
                draftID: draftID,
@@ -2695,7 +2713,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         )
         acceptedRecipientsLock.withLock {
             for email in recipientEmails {
-                let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let normalized = SentMessageLedger.normalizedSMTPRecipientKey(email)
                 _ = acceptedRecipientKeys.insert("\(draftID)#fp:\(contentFingerprint)#rcpt:\(normalized)")
             }
         }
@@ -2712,7 +2730,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         var seen = Set<String>()
         var result: [String] = []
         for email in emails {
-            let key = email.lowercased()
+            let key = SentMessageLedger.normalizedSMTPRecipientKey(email)
             if seen.insert(key).inserted {
                 result.append(email)
             }

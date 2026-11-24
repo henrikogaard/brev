@@ -811,7 +811,10 @@ public final class SentMessageLedger: @unchecked Sendable {
     func record(draftID: String, accountID: BrevAccount.ID) {
         lock.withLock {
             var ids = load(accountID: accountID)
-            ids.removeAll { $0 == draftID }
+            let recipientPrefix = Self.recipientLedgerPrefix(draftID: draftID)
+            // Prune intermediate per-recipient entries once the draft completes
+            // so a completed send consumes only 1 slot of `maxEntries`.
+            ids.removeAll { $0 == draftID || $0.hasPrefix(recipientPrefix) }
             ids.append(draftID)
             if ids.count > maxEntries {
                 ids.removeFirst(ids.count - maxEntries)
@@ -845,12 +848,29 @@ public final class SentMessageLedger: @unchecked Sendable {
         }
     }
 
+    /// Normalizes an SMTP recipient address for envelope deduplication and
+    /// per-recipient delivery tracking: trims whitespace and lowercases ONLY
+    /// the domain, preserving RFC 5321 local-part case.
+    static func normalizedSMTPRecipientKey(_ email: String) -> String {
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let atIndex = trimmed.lastIndex(of: "@") else {
+            return trimmed
+        }
+        let localPart = trimmed[..<atIndex]
+        let domain = trimmed[trimmed.index(after: atIndex)...].lowercased()
+        return "\(localPart)@\(domain)"
+    }
+
+    private static func recipientLedgerPrefix(draftID: String) -> String {
+        "\(draftID)#fp:"
+    }
+
     private static func recipientLedgerID(
         draftID: String,
         contentFingerprint: String,
         recipientEmail: String
     ) -> String {
-        "\(draftID)#fp:\(contentFingerprint)#rcpt:\(recipientEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+        "\(draftID)#fp:\(contentFingerprint)#rcpt:\(normalizedSMTPRecipientKey(recipientEmail))"
     }
 
     /// Removes an account's ledger from the standard store without a live

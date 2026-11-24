@@ -581,5 +581,155 @@ struct OutboundPreparationSendTests {
             ["bob@example.org"],
             ["bob@example.org"],
         ])
+
+        // Toggling Request Read Receipt also changes the delivery content fingerprint
+        // and starts a fresh delivery snapshot.
+        let receiptInitial = Draft(
+            id: "draft-bcc-read-receipt",
+            to: [Correspondent(email: "bob@example.org")],
+            bcc: [Correspondent(email: "secret@example.org")],
+            subject: "Receipt check",
+            htmlBody: "<p>Same body</p>",
+            securityMode: .encrypt
+        )
+        let attempt5 = makeBackendWithLedger(failBcc: true)
+        try await attempt5.connect()
+        await #expect(throws: Error.self) {
+            _ = try await attempt5.send(draft: receiptInitial)
+        }
+        var receiptRetry = receiptInitial
+        receiptRetry.readReceiptRequest = ReadReceiptRequest(notificationTo: "person@example.org")
+        receiptRetry.bcc = []
+        let attempt6 = makeBackendWithLedger(failBcc: false)
+        try await attempt6.connect()
+        _ = try await attempt6.send(draft: receiptRetry)
+
+        #expect(await capture.submissions.map(\.recipientEmails) == [
+            ["bob@example.org"],
+            ["bob@example.org"],
+            ["bob@example.org"],
+            ["bob@example.org"],
+            ["bob@example.org"],
+        ])
+
+        // Draft-level completion prunes intermediate per-recipient entries from SentMessageLedger
+        // so completed drafts consume only 1 slot of the ledger cap.
+        let storedLedger = try #require(defaults.data(forKey: "sentMessageLedger.\(Fixtures.account.id)"))
+        let entries = try JSONDecoder().decode([String].self, from: storedLedger)
+        #expect(entries.contains("draft-bcc-remove-last"))
+        #expect(!entries.contains(where: { $0.hasPrefix("draft-bcc-remove-last#fp:") }))
+        #expect(entries.contains("draft-bcc-read-receipt"))
+        #expect(!entries.contains(where: { $0.hasPrefix("draft-bcc-read-receipt#fp:") }))
+    }
+
+    @Test("fallback Sent copy failure aborts before sending pending Bcc or marking draft complete")
+    func fallbackSentCopyPreparedBeforePendingSubmissionOrCompletion() async throws {
+        let suiteName = "brev.ledger.sentcopy.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let ledger = SentMessageLedger(defaults: defaults)
+
+        let capture = DataCapture()
+        final class FlagBox: @unchecked Sendable {
+            private let lock = NSLock()
+            private var value = false
+            var isSet: Bool { lock.withLock { value } }
+            func set(_ newValue: Bool) { lock.withLock { value = newValue } }
+        }
+        let bobCertRemoved = FlagBox()
+        let preparer = CapturingPreparer(
+            validateHandler: { request in
+                if bobCertRemoved.isSet, request.to.contains("bob@example.org") {
+                    throw OutboundMessageSecurityError.missingEncryptionRecipients(["bob@example.org"])
+                }
+            },
+            handler: { _, request in
+                if bobCertRemoved.isSet, request.to.contains("bob@example.org") {
+                    throw OutboundMessageSecurityError.missingEncryptionRecipients(["bob@example.org"])
+                }
+                return Data("ENV:to=\(request.to.joined(separator: ","));bcc=\(request.bcc.joined(separator: ","))".utf8)
+            }
+        )
+
+        func makeBackend(failBcc: Bool) -> IMAPSMTPBackend {
+            IMAPSMTPBackend(
+                account: Fixtures.account,
+                configuration: Fixtures.configuration,
+                credential: Fixtures.credential,
+                listFolders: { _, _ in [
+                    IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
+                    IMAPFolderListing(path: "Sent", displayName: "Sent", delimiter: "/", flags: ["sent"], role: .sent),
+                ] },
+                sendMessage: { _, _, submission in
+                    if failBcc, submission.recipientEmails == ["secret@example.org"] {
+                        throw URLError(.networkConnectionLost)
+                    }
+                    await capture.recordSubmission(submission)
+                    return SendResult(sentMessageID: "ok")
+                },
+                appendSentMessage: { _, _, _, messageData, _ in
+                    await capture.recordAppend(messageData)
+                    return 1
+                },
+                outboundMessagePreparer: preparer,
+                sentMessageLedger: ledger
+            )
+        }
+
+        let bccDraft = Draft(
+            id: "draft-fallback-sent-copy",
+            to: [Correspondent(email: "bob@example.org")],
+            bcc: [Correspondent(email: "secret@example.org")],
+            subject: "Sent Copy Precheck",
+            htmlBody: "<p>Secret</p>",
+            securityMode: .encrypt
+        )
+
+        // Attempt 1: Bob accepted, secret fails transiently.
+        let attempt1 = makeBackend(failBcc: true)
+        try await attempt1.connect()
+        await #expect(throws: Error.self) {
+            _ = try await attempt1.send(draft: bccDraft)
+        }
+        #expect(await capture.submissions.map(\.recipientEmails) == [["bob@example.org"]])
+
+        // Before Attempt 2, Bob's certificate is removed. Preparing the fallback
+        // visible Sent archive MUST fail before sending secret or marking draft complete.
+        bobCertRemoved.set(true)
+        let attempt2 = makeBackend(failBcc: false)
+        try await attempt2.connect()
+        await #expect(throws: OutboundMessageSecurityError.missingEncryptionRecipients(["bob@example.org"])) {
+            _ = try await attempt2.send(draft: bccDraft)
+        }
+
+        #expect(await capture.submissions.map(\.recipientEmails) == [["bob@example.org"]])
+        #expect(await capture.appendData.isEmpty)
+        #expect(!ledger.contains(draftID: bccDraft.id, accountID: Fixtures.account.id))
+    }
+
+    @Test("signing-only send preserves SMTP local-part case while deduplicating domain case")
+    func signingOnlySendPreservesSMTPLocalPartCase() async throws {
+        let capture = DataCapture()
+        let preparer = CapturingPreparer()
+        let backend = Fixtures.makeBackend(capture: capture, preparer: preparer)
+        try await backend.connect()
+
+        let caseSensitiveDraft = Draft(
+            id: "draft-case-sensitive-rcpt",
+            to: [
+                Correspondent(email: "Sales@example.org"),
+                Correspondent(email: "sales@example.org"),
+                Correspondent(email: "Sales@EXAMPLE.ORG"),
+            ],
+            subject: "Case-sensitive local parts",
+            htmlBody: "<p>Signed announcement</p>",
+            securityMode: .sign
+        )
+
+        _ = try await backend.send(draft: caseSensitiveDraft)
+
+        let submissions = await capture.submissions
+        #expect(submissions.count == 1)
+        #expect(submissions[0].recipientEmails == ["Sales@example.org", "sales@example.org"])
     }
 }

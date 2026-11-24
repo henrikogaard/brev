@@ -73,6 +73,43 @@ struct SecuritySectionSnapshotTests {
         )
     }
 
+    @Test("Export preview sheet renders PEM fallback note for standalone public certificate", arguments: ["light", "dark"])
+    func exportPreviewSheetPEMFallbackRenders(_ mode: String) {
+        guard #available(macOS 26.0, *) else { return }
+
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let samplePEM = [
+            "-----BEGIN CERTIFICATE-----",
+            "MIIDXTCCAkWgAwIBAgIJAJC1HiIAZAiUMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV",
+            "BAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMSEwHwYDVQQKDBhOb3J0aHdpbmQg",
+            "U2VjdXJpdHkgQ2VydDAeFw0yNjAxMDEwMDAwMDBaFw0yNzAxMDEwMDAwMDBaMEUx",
+            "-----END CERTIFICATE-----",
+        ].joined(separator: "\n")
+        let preview = ExportPreview(
+            title: "Peer Public Certificate",
+            payload: samplePEM,
+            formatNote: "Exported as PEM because this record is a public certificate without a private key."
+        )
+
+        let view = SecurityMaterialExportPreviewSheet(preview: preview) {}
+            .frame(width: 560, height: 380)
+            .background(theme.bgPrimary.color)
+            .brevTheme(theme)
+            .tint(theme.accent.color)
+            .environment(\.colorScheme, theme.mode.colorScheme)
+            .environment(\.locale, Locale(identifier: "en_US"))
+            .transaction { $0.animation = nil }
+
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(
+            of: Self.retinaImage(of: host, size: CGSize(width: 560, height: 380)),
+            as: .image(precision: 0.99),
+            named: "security-export-preview-pem-fallback-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     private static func retinaImage<Content: View>(
         of host: NSHostingController<Content>,
         size: CGSize
