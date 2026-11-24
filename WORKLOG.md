@@ -8286,3 +8286,10 @@ buttons, and package-aware localization.
   - Updated `ComposeDraftQuoteSplitter.isStandaloneAttributionText` to skip `isQuoteGapNode` (including blank divider elements such as `<div><br></div>`), matching `isPureQuoteChain`, and added regression coverage in `ComposeDraftBodyRestorationTests.swift`.
   - Rebased onto `origin/main` (`9492a7ce`), cleanly preserving both PR #347 and PR #350 entries in `CHANGELOG.md`, `WORKLOG.md`, `Localizable.xcstrings` (JSON-validated), and `IMAPSMTPConfigurationTests.swift`.
 - **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'`, `swift test --package-path packages/BrevBackend --filter 'IMAPSMTPConfigurationTests'`, `scripts/format.sh`, `scripts/lint.sh`, `python3 -m json.tool packages/BrevMail/Sources/BrevMail/Resources/Localizable.xcstrings`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #350 CI triage (Issue #278)
+
+- **Goal:** Fix the CI failure in `ComposeDraftBodyRestoration` (`test (BrevMail)` job `138556731917` on macOS 15 runner).
+- **Root cause:** `linearScanOnRepeatedAngleBracketsInStyle` wrapped `try await prepare(html, format: .richTextHTML)` in `#expect(elapsed < .seconds(2))`. Because `prepare` suspends twice across `@MainActor` WebKit `MessageHTMLImporter.importAttributedHTML` calls, parallel execution of 2,670 tests on a 3-core macOS 15 CI runner queued `@MainActor` tasks for ~13s, tripping the 2s wall-clock budget even though `ComposeDraftQuoteSplitter` itself ran in sub-millisecond linear time.
+- **Changes:** Updated `linearScanOnRepeatedAngleBracketsInStyle` in `ComposeDraftBodyRestorationTests.swift` to time only the synchronous `ComposeDraftQuoteSplitter.split(html)` call (zero `await` / zero `@MainActor` suspension) and run `prepare(html, format: .richTextHTML)` outside the timed window.
+- **Verification:** `swift test --package-path packages/BrevMail --filter ComposeDraftBodyRestoration`, `swift test --package-path packages/BrevMail --skip SnapshotTests`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.

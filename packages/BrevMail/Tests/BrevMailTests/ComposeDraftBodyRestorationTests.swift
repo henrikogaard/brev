@@ -288,13 +288,20 @@ struct ComposeDraftBodyRestorationTests {
         let quoteTail = "<blockquote type=\"cite\"><style>/* \(repeatedAngles) */</style><div>Fast quote</div></blockquote>"
         let html = "Reply<br>\(quoteTail)"
 
+        // Time only the synchronous scanner — wrapping `await prepare(...)` in a
+        // wall-clock budget flakes under parallel CI load when `@MainActor` HTML
+        // imports queue behind thousands of other tests.
         let start = ContinuousClock.now
-        let restored = try await prepare(html, format: .richTextHTML)
+        let split = try #require(ComposeDraftQuoteSplitter.split(html))
         let elapsed = ContinuousClock.now - start
 
+        #expect(split.editablePrefixHTML == "Reply")
+        #expect(split.preservedQuotedHTML == quoteTail)
+        #expect(elapsed < .seconds(2))
+
+        let restored = try await prepare(html, format: .richTextHTML)
         #expect(restored.attributedText.string == "Reply")
         #expect(restored.preservedQuotedHTML == quoteTail)
-        #expect(elapsed < .seconds(2))
     }
 
     @Test("typing a > quote line above a preserved Gmail thread keeps both lines editable after save and reopen")
