@@ -64,12 +64,30 @@ struct ComposeDraftReopeningTests {
         #expect(body.originalHTML == html)
     }
 
-    @Test("markup outside the accepted subset stays refused", arguments: [
+    @Test("complex, nested, styled, and webmail quotes reopen with preserved quoted HTML in rich mode", arguments: [
         "<blockquote style=\"color:red\">first</blockquote>",
         "<blockquote><blockquote>first</blockquote></blockquote>",
         "<blockquote><strong>first</strong></blockquote>",
-        "<blockquote>first",
         "<div class=\"gmail_quote\">first</div>",
+        "<blockquote><ul><li>first</li></ul></blockquote>"
+    ])
+    func preservedQuotedHTMLReopens(html: String) async throws {
+        let body = try await prepare(html, format: .richTextHTML)
+        #expect(body.attributedText.string == "")
+        #expect(body.originalHTML == html)
+        #expect(body.preservedQuotedHTML == html)
+
+        await #expect(throws: (any Error).self) {
+            _ = try await prepare(html, format: .plainText)
+        }
+    }
+
+    // Complex/nested/styled quotes moved to `preservedQuotedHTMLReopens` (#278):
+    // they now reopen non-destructively below the editable reply area in rich mode
+    // instead of refusing the draft. Malformed quotes and unsupported non-quote
+    // markup remain fail-closed here.
+    @Test("markup outside the accepted subset stays refused", arguments: [
+        "<blockquote>first",
         "<div dir=\"ltr\" style=\"color:red\">first</div>",
         "<div><div>first</div></div>",
         "<p>One<div>Two</div></p>",
@@ -78,7 +96,6 @@ struct ComposeDraftReopeningTests {
         "<ul class=\"x\"><li>first</li></ul>",
         "<li>first</li>",
         "<ul><li>first</li>",
-        "<blockquote><ul><li>first</li></ul></blockquote>",
         "<ul><li><div>first</div></li></ul>",
         "<img src=\"cid:one\">"
     ])

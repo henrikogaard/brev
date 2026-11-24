@@ -98,5 +98,50 @@ struct ComposeViewMacOSSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    /// Reopened drafts with nested/styled quoted HTML display a clean, theme-aware
+    /// preserved-quote indicator and expandable read-only preview below the editor (#278).
+    @Test("preserved quoted HTML section renders collapsed and expanded", arguments: ["light", "dark"])
+    func preservedQuoteSection(mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let quoteHTML = """
+        <div class="gmail_quote">\
+        <div class="gmail_attr">On Mon, Jan 1, 2026, Ada &lt;ada@example.org&gt; wrote:</div>\
+        <blockquote type="cite" style="border-left: 2px solid #ccc">\
+        <div>Let's review the release checklist tomorrow morning.</div>\
+        <blockquote><div>Earlier thread note from Henrik.</div></blockquote>\
+        </blockquote>\
+        </div>
+        """
+        let view = VStack(alignment: .leading, spacing: 16) {
+            ComposePreservedQuoteSection(
+                preservedQuotedHTML: quoteHTML,
+                renderingMode: mode == "dark" ? .dark : .original,
+                initiallyExpanded: false
+            )
+            ComposePreservedQuoteSection(
+                preservedQuotedHTML: quoteHTML,
+                renderingMode: mode == "dark" ? .dark : .original,
+                initiallyExpanded: true
+            )
+        }
+        .frame(width: 700, height: 340, alignment: .top)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .htmlBodyRenderTarget(.staticSnapshot)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 700, height: 340)
+        host.view.needsLayout = true
+        host.view.layoutSubtreeIfNeeded()
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 700, height: 340)),
+            named: "compose-preserved-quote-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
 }
 #endif

@@ -294,9 +294,11 @@ enum ComposeDraftBuilder {
         bcc: [String],
         subject: String,
         bodyText: String,
-        hasAttachments: Bool
+        hasAttachments: Bool,
+        hasPreservedQuotedHTML: Bool = false
     ) -> Bool {
         hasAttachments
+            || hasPreservedQuotedHTML
             || !recipientAddresses(from: to + cc + bcc).isEmpty
             || !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

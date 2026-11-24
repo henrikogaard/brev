@@ -23,6 +23,89 @@ struct ComposeRestoredBody {
     let originalHTML: String
     let initialEditorHTML: String
     let editorFormat: ComposeBodyFormat
+    /// Preserved byte-for-byte quoted HTML tail when a draft contains nested,
+    /// styled, or webmail quoted thread markup that the native rich-text editor
+    /// should keep intact below the editable reply region.
+    let preservedQuotedHTML: String?
+    /// Separator HTML (such as `<br><br>` or `<div><br></div>`) that appeared
+    /// between the editable prefix and `preservedQuotedHTML` in `originalHTML`.
+    let quoteSeparatorHTML: String
+    /// Plain-text fallback extracted from `preservedQuotedHTML`.
+    let preservedQuotedPlainText: String
+
+    init(
+        attributedText: NSAttributedString,
+        originalHTML: String,
+        initialEditorHTML: String,
+        editorFormat: ComposeBodyFormat,
+        preservedQuotedHTML: String? = nil,
+        quoteSeparatorHTML: String = "",
+        preservedQuotedPlainText: String = ""
+    ) {
+        self.attributedText = attributedText
+        self.originalHTML = originalHTML
+        self.initialEditorHTML = initialEditorHTML
+        self.editorFormat = editorFormat
+        self.preservedQuotedHTML = preservedQuotedHTML
+        self.quoteSeparatorHTML = quoteSeparatorHTML
+        self.preservedQuotedPlainText = preservedQuotedPlainText
+    }
+
+    /// Produces the persisted HTML body for the current editor state.
+    ///
+    /// - Returns `originalHTML` byte-for-byte when the editable region is untouched.
+    /// - Reassembles `editedTopHTML` with `preservedQuotedHTML` intact when edited.
+    /// - Returns `nil` when there is no preserved tail and the user edited the body.
+    func htmlBodyForSave(
+        currentBodyText: String,
+        currentBodyHTML: String?,
+        editedTopHTML: String
+    ) -> String? {
+        let isUnedited = currentBodyText == attributedText.string
+            && (editorFormat == .plainText || currentBodyHTML == initialEditorHTML)
+        if isUnedited {
+            return originalHTML
+        }
+        guard let preservedQuotedHTML else { return nil }
+        return Self.reassembledHTML(
+            editedTopHTML: editedTopHTML,
+            separatorHTML: quoteSeparatorHTML,
+            preservedQuotedHTML: preservedQuotedHTML
+        )
+    }
+
+    /// Reassembles serialized top reply HTML with a byte-for-byte preserved quote tail.
+    static func reassembledHTML(
+        editedTopHTML: String,
+        separatorHTML: String,
+        preservedQuotedHTML: String
+    ) -> String {
+        guard !editedTopHTML.isEmpty else {
+            return preservedQuotedHTML
+        }
+        let joiner: String
+        if !separatorHTML.isEmpty {
+            joiner = separatorHTML
+        } else if editedTopHTML.hasSuffix("<br>") {
+            joiner = "<br>"
+        } else {
+            joiner = "<br><br>"
+        }
+        return editedTopHTML + joiner + preservedQuotedHTML
+    }
+
+    /// Combines edited top plain text with extracted quoted plain text without
+    /// modifying the preserved HTML tail.
+    func combinedPlainText(editedTopPlainText: String) -> String {
+        guard !preservedQuotedPlainText.isEmpty else {
+            return editedTopPlainText
+        }
+        let trimmedTop = editedTopPlainText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTop.isEmpty else {
+            return preservedQuotedPlainText
+        }
+        return "\(editedTopPlainText)\n\n\(preservedQuotedPlainText)"
+    }
 }
 
 enum ComposeDraftBodyRestoration {
@@ -31,9 +114,33 @@ enum ComposeDraftBodyRestoration {
         try Task.checkCancellation()
         let html = draft.htmlBody
         // No resource-bearing or lossy markup reaches the native HTML parser.
-        guard html.utf8.count <= 1_048_576, let importable = importableBody(from: html) else {
+        guard html.utf8.count <= 1_048_576 else {
             throw MailBackendError.backendSpecific(message: unsupportedMessage)
         }
+
+        let importable: ImportableBody
+        let preservedQuotedHTML: String?
+        let quoteSeparatorHTML: String
+        if let flat = importableBody(from: html) {
+            importable = flat
+            preservedQuotedHTML = nil
+            quoteSeparatorHTML = ""
+        } else if let split = ComposeDraftQuoteSplitter.split(html) {
+            let trimmedPrefix = split.editablePrefixHTML.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedPrefix.isEmpty {
+                importable = ImportableBody(html: "", listLines: [:])
+            } else {
+                guard let prefixImportable = importableBody(from: split.editablePrefixHTML) else {
+                    throw MailBackendError.backendSpecific(message: unsupportedMessage)
+                }
+                importable = prefixImportable
+            }
+            preservedQuotedHTML = split.preservedQuotedHTML
+            quoteSeparatorHTML = split.quoteSeparatorHTML
+        } else {
+            throw MailBackendError.backendSpecific(message: unsupportedMessage)
+        }
+
         let attributed: NSAttributedString
         if importable.html.isEmpty {
             attributed = NSAttributedString(string: "")
@@ -56,14 +163,19 @@ enum ComposeDraftBodyRestoration {
         }
         try Task.checkCancellation()
         let requiresRichText = serialized.range(of: #"<(strong|em|u|a|ul|ol)\b"#, options: .regularExpression) != nil
+            || preservedQuotedHTML != nil
         guard format != .plainText || !requiresRichText else {
             throw MailBackendError.backendSpecific(message: unsupportedMessage)
         }
+        let preservedQuotedPlainText = preservedQuotedHTML.map(ComposeQuoteTextPolicy.htmlToPlainText) ?? ""
         return ComposeRestoredBody(
             attributedText: attributed,
             originalHTML: html,
             initialEditorHTML: serialized,
-            editorFormat: format
+            editorFormat: format,
+            preservedQuotedHTML: preservedQuotedHTML,
+            quoteSeparatorHTML: quoteSeparatorHTML,
+            preservedQuotedPlainText: preservedQuotedPlainText
         )
     }
 

@@ -2502,11 +2502,14 @@ public struct ComposeView: View {
         } else {
             #if os(macOS)
             ZStack {
-                composeBodyEditor
-                    .opacity(showsHTMLPreview ? 0 : 1)
-                    .disabled(showsHTMLPreview)
-                    .allowsHitTesting(!showsHTMLPreview)
-                    .accessibilityHidden(showsHTMLPreview)
+                VStack(spacing: 0) {
+                    composeBodyEditor
+                    preservedQuotedSection
+                }
+                .opacity(showsHTMLPreview ? 0 : 1)
+                .disabled(showsHTMLPreview)
+                .allowsHitTesting(!showsHTMLPreview)
+                .accessibilityHidden(showsHTMLPreview)
                 if showsHTMLPreview {
                     composeHTMLPreview
                         .padding(BrevSpacing.lg)
@@ -2516,9 +2519,26 @@ public struct ComposeView: View {
             }
             .background(contrastingBodyBackground)
             #else
-            composeBodyEditor
-                .background(contrastingBodyBackground)
+            VStack(spacing: 0) {
+                composeBodyEditor
+                preservedQuotedSection
+            }
+            .background(contrastingBodyBackground)
             #endif
+        }
+    }
+
+    @ViewBuilder
+    private var preservedQuotedSection: some View {
+        if let preservedQuotedHTML = restoredBody?.preservedQuotedHTML {
+            ComposePreservedQuoteSection(
+                preservedQuotedHTML: preservedQuotedHTML,
+                stripTrackingPixels: stripTrackingPixels,
+                fontFamily: composeFontFamily,
+                textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium,
+                renderingMode: ComposeHTMLPreviewSource.renderingMode(for: bodyAppearance)
+            )
+            .environment(\.colorScheme, bodyAppearance.colorScheme)
         }
     }
 
@@ -2579,7 +2599,12 @@ public struct ComposeView: View {
     private var composeHTMLPreview: some View {
         let fontFamily = composeFontFamily
         let textSize = MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium
-        let html = ComposeHTMLPreviewSource.html(richHTML: bodyHTML, plainBody: bodyText)
+        let html = ComposeHTMLPreviewSource.html(
+            richHTML: bodyHTML,
+            plainBody: bodyText,
+            preservedQuotedHTML: restoredBody?.preservedQuotedHTML,
+            quoteSeparatorHTML: restoredBody?.quoteSeparatorHTML ?? ""
+        )
         return ScrollView {
             HTMLBodyWebView(
                 store: htmlPreviewWebViewStore,
@@ -3582,7 +3607,8 @@ public struct ComposeView: View {
             bcc: resolvedBccRecipients,
             subject: subject,
             bodyText: bodyTextExcludingManagedSignature,
-            hasAttachments: !pendingAttachments.isEmpty
+            hasAttachments: !pendingAttachments.isEmpty,
+            hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil
         ) && !ComposeQuotedBodyUpgradePolicy.blocksSending(
             isUpgradePending: isQuotedBodyUpgradePending
         )
@@ -3796,7 +3822,9 @@ public struct ComposeView: View {
                 encryptMessage = draft.securityMode.requiresEncryption
                 requestReadReceipt = draft.readReceiptRequest != nil
                 pendingAttachments = ComposeDraftRestoration.pendingAttachments(from: resolved.attachments)
-                quoteProtection = draft.quoteBoundary.map(ComposeQuoteProtection.init(boundary:))
+                quoteProtection = body.preservedQuotedHTML == nil
+                    ? draft.quoteBoundary.map(ComposeQuoteProtection.init(boundary:))
+                    : nil
                 bodyText = body.attributedText.string
                 bodyHTML = body.initialEditorHTML
                 restoredBody = body
@@ -3917,7 +3945,8 @@ public struct ComposeView: View {
             bcc: resolvedBccRecipients,
             subject: subject,
             bodyText: bodyTextExcludingManagedSignature,
-            hasAttachments: !pendingAttachments.isEmpty
+            hasAttachments: !pendingAttachments.isEmpty,
+            hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil
         ) else { return }
         let request = startComposeOperation(kind: .autoSaveDraft)
         defer { finishComposeOperation(request) }
@@ -4147,9 +4176,12 @@ public struct ComposeView: View {
             draft.readReceiptResponse = restoredDraft.readReceiptResponse
         }
         if let restoredBody,
-           bodyText == restoredBody.attributedText.string,
-           composeBodyFormat == .plainText || bodyHTML == restoredBody.initialEditorHTML {
-            draft.htmlBody = restoredBody.originalHTML
+           let preservedHTML = restoredBody.htmlBodyForSave(
+               currentBodyText: bodyText,
+               currentBodyHTML: bodyHTML,
+               editedTopHTML: draft.htmlBody
+           ) {
+            draft.htmlBody = preservedHTML
         }
         return draft
     }
