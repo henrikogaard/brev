@@ -290,7 +290,7 @@ struct GmailAttachmentIndexTests {
             ("msg-local-att", "INBOX", "solstice-clause-88"),
             ("msg-trashed-att", "Label_Work", "solstice-clause-88 memo in:anywhere examples"),
             ("msg-quoted-adjacent", "INBOX", "Budgeting Q4 (final) budget"),
-            ("msg-quoted-split", "INBOX", "Approved Q4 report final")
+            ("msg-quoted-split", "INBOX", "Approved Q4 report final; 15 desktop and laptop repairs")
         ] {
             try await index.indexAttachmentText(
                 accountID: Self.account.id,
@@ -357,6 +357,33 @@ struct GmailAttachmentIndexTests {
             text: #"subject:"15\" laptop" in:trash"#
         ))
         #expect(await transport.recordedIncludeSpamTrashFlags() == [true])
+
+        // Escaped quote inside a quoted phrase keeps `in:anywhere` inside quotes (`includeSpamTrash == false`).
+        await transport.resetRecordedRequests()
+        await index.resetRecordedQueries()
+        let escapedQuotedAnywhere: [MessageHeader] = try await backend.search(SearchQuery(
+            text: #""memo \" in:anywhere examples""#
+        ))
+        #expect(escapedQuotedAnywhere.map(\.id) == ["msg-online"])
+        #expect(await transport.recordedIncludeSpamTrashFlags() == [false])
+        #expect(await index.recordedQueryTexts().isEmpty)
+
+        // Backslash-escaped quote phrase (`"15\" laptop"`) skips local FTS merge in both Auto and cacheOnly
+        // so it cannot split into non-adjacent matches (`15 desktop and laptop repairs`).
+        await index.resetRecordedQueries()
+        let escapedAutoHits: [MessageHeader] = try await backend.search(SearchQuery(
+            text: #""15\" laptop""#
+        ))
+        #expect(escapedAutoHits.map(\.id) == ["msg-online"])
+        #expect(await index.recordedQueryTexts().isEmpty)
+
+        await index.resetRecordedQueries()
+        let escapedCachedHits: [MessageHeader] = try await backend.search(SearchQuery(
+            text: #""15\" laptop""#,
+            execution: .cacheOnly
+        ))
+        #expect(escapedCachedHits.isEmpty)
+        #expect(await index.recordedQueryTexts().isEmpty)
 
         // Negation, exact-word `+word`, inline operators, unquoted grouping, and unbalanced quotes
         // must NOT invoke local FTS merge (and `+budget "Q4 (final)"` must not match `Budgeting Q4 (final)`).

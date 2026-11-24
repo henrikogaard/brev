@@ -1061,12 +1061,12 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     }
 
     /// Returns `true` only when free-text search terms contain plain positive keywords
-    /// or balanced quoted phrases (no negations like `-draft`, exact-word `+budget`,
-    /// Gmail boolean/grouping syntax like `OR`/`{}`/`()`, or inline Gmail operators like
-    /// `from:`/`subject:`/`has:`/`label:` outside double quotes, and no unbalanced quotes).
+    /// or balanced quoted phrases without backslash escapes (no negations like `-draft`,
+    /// exact-word `+budget`, Gmail boolean/grouping syntax like `OR`/`{}`/`()`, inline
+    /// Gmail operators like `from:`/`subject:`/`has:`/`label:` outside double quotes,
+    /// backslash-escaped quotes inside phrases, or unbalanced quotes).
     private static func isPlainPositiveSearchText(_ text: String) -> Bool {
         var inQuotes = false
-        var escaping = false
         var currentUnquoted = ""
         var currentQuoted = ""
         var hasContent = false
@@ -1089,11 +1089,10 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
         for char in text {
             if inQuotes {
-                if escaping {
-                    escaping = false
-                    currentQuoted.append(char)
-                } else if char == "\\" {
-                    escaping = true
+                if char == "\\" {
+                    // Local FTS phrase tokenizers split on `"` without unescaping `\"`;
+                    // defer backslash-escaped phrases to Gmail's server search.
+                    return false
                 } else if char == "\"" {
                     if !currentQuoted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         hasContent = true

@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #353 round-7 review fix (Issue #7)
+
+- Goal: address round-7 Devin Review item (`PRRT_kwDOUHC-Ds67d4bA`) on PR #353 (`feature/background-recent-indexing`).
+- Changes:
+  - `GmailAPIBackend.isPlainPositiveSearchText(_:)`: reject backslash escapes (`\`) inside quoted phrases so escaped-quote queries like `"15\" laptop"` skip local FTS lookup/merging and defer to Gmail server search, while keeping `containsUnquotedSpamOrTrashOperator(in:)` escape-aware.
+  - `GmailAttachmentIndexTests.swift`: added tests for `"15\" laptop"` (online Auto & `.cacheOnly`, verifying `recordedQueryTexts().isEmpty` and no non-adjacent match) and `"memo \" in:anywhere examples"` (verifying `includeSpamTrash == false`).
+- Verification: `swift test --package-path packages/BrevGmail`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
 ## 2026-11-24 — Agent — PR #353 round-6 review fixes (Issue #7)
 
 - Goal: address both round-6 Devin Review items on PR #353 (`feature/background-recent-indexing`) in one tiny commit.
