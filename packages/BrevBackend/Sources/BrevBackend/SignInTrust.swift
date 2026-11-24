@@ -60,4 +60,15 @@ public protocol SignInTrustAssessing: Sendable {
     /// Returns the trust assessment for one cached provider message.
     /// - Parameter messageID: the backend's stable message identifier.
     func signInTrustAssessment(for messageID: String) async -> SignInTrustAssessment
+
+    /// Re-assesses a message whose fresh delivery was already verified by Brev before a process
+    /// restart, preserving Inbox, freshness window, and authentication alignment checks while
+    /// avoiding treating arbitrary reconnect backfill as fresh.
+    func signInTrustAssessmentForDeliveredNotification(for messageID: String) async -> SignInTrustAssessment
+}
+
+public extension SignInTrustAssessing {
+    func signInTrustAssessmentForDeliveredNotification(for messageID: String) async -> SignInTrustAssessment {
+        await signInTrustAssessment(for: messageID)
+    }
 }

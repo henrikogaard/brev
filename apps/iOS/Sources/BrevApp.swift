@@ -230,6 +230,7 @@ struct BrevApp: App {
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
                         notificationActionExecutor: session.notificationActionExecutor,
+                        signInCodeArrivalController: session.signInCodeArrivalController,
                         pimSyncScheduler: session.pimSyncScheduler,
                         localBackend: session.localBackend,
                         onLocalFoldersChanged: { session.refreshLocalFolders() },
@@ -311,6 +312,30 @@ struct BrevApp: App {
                 Text(
                     "One or more accounts couldn't be restored. Open Settings → Accounts to update credentials or remove the affected account."
                 )
+            }
+            .alert(
+                session.signInCodeNotificationPresenter.pendingLinkConfirmation?.alertTitle ?? "",
+                isPresented: Binding(
+                    get: { session.signInCodeNotificationPresenter.pendingLinkConfirmation != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            session.signInCodeNotificationPresenter.clearPendingLinkConfirmation()
+                        }
+                    }
+                ),
+                presenting: session.signInCodeNotificationPresenter.pendingLinkConfirmation
+            ) { confirmation in
+                Button(confirmation.openButtonTitle) {
+                    if let url = confirmation.destinationURL {
+                        _ = browserLinkOpener.open(url)
+                    }
+                    session.signInCodeNotificationPresenter.clearPendingLinkConfirmation()
+                }
+                Button(confirmation.cancelButtonTitle, role: .cancel) {
+                    session.signInCodeNotificationPresenter.clearPendingLinkConfirmation()
+                }
+            } message: { confirmation in
+                Text(confirmation.alertMessage)
             }
             // While Settings is open it presents the add-account sheet itself.
             .sheet(isPresented: Binding(
@@ -412,6 +437,7 @@ struct BrevApp: App {
                     // Foreground: cancel any pending background-refresh request and
                     // let the foreground MailFetchScheduler drive refreshes instead.
                     BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BrevBackgroundRefreshCoordinator.taskIdentifier)
+                    session.signInCodeNotificationPresenter.pruneExpired()
                 case .background:
                     // Background: flush deferred cache writes before suspension
                     // (disconnect() never runs), keep the delegate's backend list

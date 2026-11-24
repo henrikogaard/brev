@@ -4,6 +4,14 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- iOS lock-screen-safe sign-in notifications (#239, ADR-0088 accepted iOS
+  amendment): opted-in accounts with `.trustedSignInAssessment` post
+  time-sensitive iOS notifications containing only the sender and generic copy
+  (zero raw codes or links in Notification Center), with biometric-gated
+  background **Copy code** (`.localOnly`, 60-second expiration), foreground
+  host-confirming **Open link**, and automatic Notification Center cleanup on
+  use, consent withdrawal, or 10-minute expiry. Gmail's
+  `.trustedSignInAssessment` capability remains off pending live E1–E5 evidence.
 - Search for messages by sender name and relative date in English or Norwegian, for example “from Maya last week” or “fra Maya forrige uke”. Remove a chip to broaden the results (#296).
 - The reader flags sender domains that resemble a familiar correspondent or brand. Expand the warning to check the address and see why it was flagged (#301).
 - On Mac, press ⌘K to search menu commands, accounts, mailboxes and settings.

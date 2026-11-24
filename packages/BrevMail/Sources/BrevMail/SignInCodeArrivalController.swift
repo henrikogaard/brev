@@ -32,11 +32,33 @@ public struct SignInCodePresentation: Equatable, Sendable, CustomStringConvertib
     public let accountID: String
     /// The message the content was read from.
     public let messageID: String
+    /// Optional folder ID for notification route correlation.
+    public let folderID: String?
     /// Sender display name (falls back to the address).
     public let sender: String
     public let content: Content
     /// How long the panel stays visible.
     public let timeout: TimeInterval
+    /// Message arrival date used to enforce the 10-minute freshness cutoff on notification actions.
+    public let receivedAt: Date?
+
+    public init(
+        accountID: String,
+        messageID: String,
+        folderID: String? = nil,
+        sender: String,
+        content: Content,
+        timeout: TimeInterval,
+        receivedAt: Date? = nil
+    ) {
+        self.accountID = accountID
+        self.messageID = messageID
+        self.folderID = folderID
+        self.sender = sender
+        self.content = content
+        self.timeout = timeout
+        self.receivedAt = receivedAt
+    }
 
     public var description: String { "SignInCodePresentation(redacted)" }
     public var debugDescription: String { description }
@@ -158,7 +180,7 @@ public final class SignInCodeArrivalController {
             content = .link(destination: destination, host: host)
         }
         guard !Task.isCancelled else { return }
-        let sender = await senderName(for: messageID, in: folder, backend: backend)
+        let metadata = await senderMetadata(for: messageID, in: folder, backend: backend)
         guard !Task.isCancelled else { return }
         let latestConsent = settings().accountOverride(for: accountID)
         switch content {
@@ -169,9 +191,11 @@ public final class SignInCodeArrivalController {
             SignInCodePresentation(
                 accountID: accountID,
                 messageID: messageID,
-                sender: sender,
+                folderID: folderID,
+                sender: metadata.sender,
                 content: content,
-                timeout: SignInCodeSettings.panelTimeout
+                timeout: SignInCodeSettings.panelTimeout,
+                receivedAt: Date()
             )
         )
     }
@@ -181,16 +205,15 @@ public final class SignInCodeArrivalController {
         return consent.codesEnabled || consent.linksEnabled
     }
 
-    /// The sender's display name from the folder's first page; the
-    /// address when the header is not on that page.
-    private func senderName(
+    /// The sender's display name and message date from the folder's first page.
+    private func senderMetadata(
         for messageID: String,
         in folder: Folder,
         backend: any MailBackend
-    ) async -> String {
+    ) async -> (sender: String, receivedAt: Date?) {
         let headers = await (try? backend.messages(in: folder, pageToken: nil).headers) ?? []
-        guard let header = headers.first(where: { $0.id == messageID }) else { return "" }
+        guard let header = headers.first(where: { $0.id == messageID }) else { return ("", nil) }
         let name = header.from.name?.trimmingCharacters(in: .whitespaces) ?? ""
-        return name.isEmpty ? header.from.email : name
+        return (name.isEmpty ? header.from.email : name, header.date)
     }
 }

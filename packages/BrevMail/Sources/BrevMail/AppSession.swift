@@ -110,8 +110,11 @@ public final class AppSession {
     private var hasCompletedInitialRestore = false
     /// Session-owned floating panel presenter for sign-in codes and links (#239, ADR-0088).
     public let signInCodePanelController: SignInCodePanelController
+    /// Session-owned lock-screen-safe iOS sign-in notification presenter (#239, ADR-0088).
+    public let signInCodeNotificationPresenter: SignInCodeNotificationPresenter
     /// Session-owned arrival controller for opted-in, trust-assessed accounts (#239, ADR-0088).
     public let signInCodeArrivalController: SignInCodeArrivalController
+    private let notificationCenter: NotificationCenter
     #if os(macOS)
     private var signInCodeSubscriptionTasks: [BrevAccount.ID: (identity: ObjectIdentifier, task: Task<Void, Never>)] = [:]
     private var signInCodeSettingsObserver: NSObjectProtocol?
@@ -356,6 +359,7 @@ public final class AppSession {
         accountStore: any AccountStore,
         tokenStore: any TokenStore,
         themeDefaults: UserDefaults = .standard,
+        notificationCenter: NotificationCenter = .default,
         loginCoordinator: LoginCoordinator? = nil,
         imapAccountSetupCoordinator: IMAPAccountSetupCoordinator? = nil,
         imapAccountValidationCoordinator: IMAPAccountValidationCoordinator? = nil,
@@ -403,6 +407,7 @@ public final class AppSession {
         self.googleDriveFeature = googleDriveFeature
         self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
         self.themeDefaults = themeDefaults
+        self.notificationCenter = notificationCenter
         self.theme = theme ?? ThemePreferences.load(defaults: themeDefaults)
         signInError = initialSignInError
         self.backend = backend
@@ -429,13 +434,23 @@ public final class AppSession {
         backgroundMail = BackgroundMailCoordinator()
         notificationActionExecutor = NotificationActionExecutor()
         let panelController = SignInCodePanelController()
+        let notificationPresenter = SignInCodeNotificationPresenter()
         signInCodePanelController = panelController
+        signInCodeNotificationPresenter = notificationPresenter
+        #if os(iOS)
+        let arrivalPresenter: any SignInCodePresenting = notificationPresenter
+        #else
+        let arrivalPresenter: any SignInCodePresenting = panelController
+        #endif
         signInCodeArrivalController = SignInCodeArrivalController(
             settings: { SignInCodeSettings.load(from: .standard) },
-            presenter: panelController
+            presenter: arrivalPresenter
         )
         pimSyncScheduler = PIMSyncScheduler()
         panelController.themeProvider = { [weak self] in self?.theme ?? .brevMonoLight }
+        notificationPresenter.backgroundReextractor = { [weak self] route in
+            await self?.reextractSignInCodeForNotificationAction(route: route)
+        }
         backgroundMail.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         notificationActionExecutor.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         notificationActionExecutor.prepareBackends = { [weak self] in
@@ -467,12 +482,70 @@ public final class AppSession {
     /// launch and keep working when no main window is open (#307, ADR-0075).
     public func installNotificationActionHandlers(on delegate: BrevNotificationDelegate) {
         let executor = notificationActionExecutor
+        let signInPresenter = signInCodeNotificationPresenter
         delegate.onMarkRead = { route in
             _ = await executor.markRead(route: route)
         }
         delegate.onArchive = { route in
             _ = await executor.archive(route: route)
         }
+        delegate.onCopySignInCode = { route in
+            _ = await signInPresenter.handleCopyCodeAction(route: route)
+        }
+        delegate.onOpenSignInLink = { route in
+            _ = await signInPresenter.handleOpenLinkAction(route: route)
+        }
+    }
+
+    private func reextractSignInCodeForNotificationAction(
+        route: NotificationMailRoute
+    ) async -> SignInCodePresentation? {
+        await ensureAccountsRestored()
+        guard let backend = backends[route.accountID],
+              backend.extendedCapabilities.contains(.trustedSignInAssessment),
+              let assessor = backend as? any SignInTrustAssessing
+        else { return nil }
+        let hasDeliveredProvenance = signInCodeNotificationPresenter.hasValidDeliveredProvenance(
+            accountID: route.accountID,
+            messageID: route.messageID
+        )
+        let assessment: SignInTrustAssessment
+        if hasDeliveredProvenance {
+            assessment = await assessor.signInTrustAssessmentForDeliveredNotification(for: route.messageID)
+        } else {
+            assessment = await assessor.signInTrustAssessment(for: route.messageID)
+        }
+        guard case .pass = assessment else {
+            return nil
+        }
+        guard let body = try? await backend.body(for: route.messageID),
+              let plainText = body.plainText,
+              let candidate = SignInCodeDetector.detect(in: plainText)
+        else { return nil }
+        let content: SignInCodePresentation.Content
+        switch candidate {
+        case .code(let code):
+            content = .code(code)
+        case .link(let destination, let host):
+            content = .link(destination: destination, host: host)
+        }
+        var sender = ""
+        let folderList = await (try? backend.folders()) ?? []
+        if let folder = folderList.first(where: { $0.id == route.folderID && $0.role == .inbox }) {
+            let headers = await (try? backend.messages(in: folder, pageToken: nil).headers) ?? []
+            if let header = headers.first(where: { $0.id == route.messageID }) {
+                let name = header.from.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                sender = name.isEmpty ? header.from.email : name
+            }
+        }
+        return SignInCodePresentation(
+            accountID: route.accountID,
+            messageID: route.messageID,
+            folderID: route.folderID,
+            sender: sender,
+            content: content,
+            timeout: SignInCodeSettings.panelTimeout
+        )
     }
 
     /// Ensures stored accounts have been restored at least once, coalescing
@@ -527,7 +600,7 @@ public final class AppSession {
     /// immediately when either preference is off.
     public func syncBackgroundPanelSubscriptions() {
         if panelSettingsObserver == nil {
-            panelSettingsObserver = NotificationCenter.default.addObserver(
+            panelSettingsObserver = notificationCenter.addObserver(
                 forName: .brevNotificationSettingsDidChange,
                 object: nil,
                 queue: .main
@@ -1260,7 +1333,7 @@ public final class AppSession {
         signInCodeSettings: SignInCodeSettings
     ) {
         if signInCodeSettingsObserver == nil {
-            signInCodeSettingsObserver = NotificationCenter.default.addObserver(
+            signInCodeSettingsObserver = notificationCenter.addObserver(
                 forName: .brevNotificationSettingsDidChange,
                 object: nil,
                 queue: .main

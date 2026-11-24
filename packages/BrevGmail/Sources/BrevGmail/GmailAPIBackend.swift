@@ -2849,14 +2849,27 @@ extension GmailAPIBackend: SignInTrustAssessing {
     /// failure is closed; no caller is wired until the E1-E5 evidence is
     /// recorded, so this is reachable from tests only.
     public func signInTrustAssessment(for messageID: String) async -> SignInTrustAssessment {
+        await evaluateSignInTrust(for: messageID, requireLiveFreshDelivery: true)
+    }
+
+    public func signInTrustAssessmentForDeliveredNotification(for messageID: String) async -> SignInTrustAssessment {
+        await evaluateSignInTrust(for: messageID, requireLiveFreshDelivery: false)
+    }
+
+    private func evaluateSignInTrust(
+        for messageID: String,
+        requireLiveFreshDelivery: Bool
+    ) async -> SignInTrustAssessment {
         guard account.backendIdentifier == BrevAccount.gmailAPIBackendIdentifier else {
             return .unavailable(.unsupportedAccount)
         }
         guard let generation = lock.withLock({ isConnected ? connectionGeneration : nil }) else {
             return .unavailable(.notFreshDelivery)
         }
-        guard freshDeliveryRegistry.contains(messageID) else {
-            return .unavailable(.notFreshDelivery)
+        if requireLiveFreshDelivery {
+            guard freshDeliveryRegistry.contains(messageID) else {
+                return .unavailable(.notFreshDelivery)
+            }
         }
         guard let cached = try? await store.message(accountID: account.id, messageID: messageID) else {
             return .unavailable(.notFreshDelivery)
