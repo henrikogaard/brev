@@ -62,7 +62,7 @@ enum CachedPDFSearch {
     }
 
     /// Intersects candidate list items with source-scoped cached PDF matches,
-    /// resolving any explicit folder phrase against `folders`.
+    /// resolving any explicit folder phrase against every matching folder in `folders`.
     static func filterItems(
         _ items: [UnifiedInboxItem],
         plan: NaturalLanguageSearchPlan,
@@ -71,15 +71,34 @@ enum CachedPDFSearch {
         sourceID: MailSourceID
     ) async throws -> [UnifiedInboxItem] {
         guard plan.searchesCachedPDFs else { return items }
-        guard !items.isEmpty, let resolved = plan.resolvedQuery(in: folders) else { return [] }
-        let pdfs = try await headers(
-            backend: backend,
-            query: resolved,
-            folders: folders,
-            sourceID: sourceID
-        )
-        let ids = Set(pdfs.map(\.id))
-        return items.filter { ids.contains($0.header.id) }
+        guard !items.isEmpty else { return [] }
+        let matchedIDs: Set<MessageHeader.ID>
+        if let folderPhrase = plan.folderPhrase {
+            let matchingFolders = folders.filter { $0.role == folderPhrase.role }
+            guard !matchingFolders.isEmpty else { return [] }
+            var unionIDs: Set<MessageHeader.ID> = []
+            for folder in matchingFolders {
+                var folderQuery = plan.query
+                folderQuery.folderID = folder.id
+                let pdfs = try await headers(
+                    backend: backend,
+                    query: folderQuery,
+                    folders: [folder],
+                    sourceID: sourceID
+                )
+                unionIDs.formUnion(pdfs.map(\.id))
+            }
+            matchedIDs = unionIDs
+        } else {
+            let pdfs = try await headers(
+                backend: backend,
+                query: plan.query,
+                folders: folders,
+                sourceID: sourceID
+            )
+            matchedIDs = Set(pdfs.map(\.id))
+        }
+        return items.filter { matchedIDs.contains($0.header.id) }
     }
 
     static func matches(_ messages: [CachedAttachmentMessage], query: SearchQuery) -> [MessageHeader] {

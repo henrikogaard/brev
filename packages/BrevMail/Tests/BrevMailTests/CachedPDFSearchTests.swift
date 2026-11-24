@@ -12,6 +12,7 @@
 
 import BrevBackend
 @testable import BrevMail
+import BrevSettings
 import Foundation
 import Testing
 
@@ -136,7 +137,8 @@ struct CachedPDFSearchTests {
             to: [Correspondent(email: "bob@example.org")],
             subject: "Signed contract",
             snippet: "",
-            date: Date(timeIntervalSince1970: 200)
+            date: Date(timeIntervalSince1970: 200),
+            messageID: "<waiting-pdf@example.org>"
         )
         let plainHeader = MessageHeader(
             id: "waiting-plain",
@@ -146,7 +148,19 @@ struct CachedPDFSearchTests {
             to: [Correspondent(email: "bob@example.org")],
             subject: "Quick check-in",
             snippet: "",
-            date: Date(timeIntervalSince1970: 100)
+            date: Date(timeIntervalSince1970: 100),
+            messageID: "<waiting-plain@example.org>"
+        )
+        let unremindedPDFHeader = MessageHeader(
+            id: "unreminded-pdf",
+            threadID: "t3",
+            folderID: sent.id,
+            from: Correspondent(email: "me@example.org"),
+            to: [Correspondent(email: "carol@example.org")],
+            subject: "No reminder contract",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 250),
+            messageID: "<unreminded-pdf@example.org>"
         )
         let pdfAttachment = BrevBackend.Attachment(
             id: "a1",
@@ -166,11 +180,40 @@ struct CachedPDFSearchTests {
                     folder: sent,
                     header: plainHeader,
                     body: MessageBody(messageID: plainHeader.id, attachments: [])
+                ),
+                CachedAttachmentMessage(
+                    folder: sent,
+                    header: unremindedPDFHeader,
+                    body: MessageBody(messageID: unremindedPDFHeader.id, attachments: [pdfAttachment])
                 )
             ],
             indexedHits: []
         )
-        let waitingItems = [pdfHeader, plainHeader].map {
+        let reminders = [pdfHeader, plainHeader].map { header in
+            FollowUpReminder(
+                id: "rem-\(header.id)",
+                messageID: header.id,
+                threadID: header.threadID,
+                accountID: sourceID.accountID,
+                mailboxID: sourceID.mailboxID,
+                folderID: sent.id,
+                dueAt: Date(timeIntervalSince1970: 9_999_999_999),
+                noReplyMetadata: NoReplyFollowUpMetadata(
+                    sourceID: sourceID,
+                    draftID: "draft-\(header.id)",
+                    expectedMessageID: header.messageID ?? "",
+                    sentAt: header.date
+                )
+            )
+        }
+        let projectedHeaders = NoReplyFollowUpWaitingProjection.headers(
+            sourceID: sourceID,
+            sentFolderIDs: [sent.id],
+            cachedHeaders: [pdfHeader, plainHeader, unremindedPDFHeader],
+            reminders: reminders
+        )
+        #expect(Set(projectedHeaders.map(\.id)) == ["waiting-pdf", "waiting-plain"])
+        let waitingItems = projectedHeaders.map {
             UnifiedInboxItem(
                 sourceID: sourceID,
                 folder: sent,
@@ -194,10 +237,11 @@ struct CachedPDFSearchTests {
         #expect(backend.recordedCachedFolders == [[sent.id]])
     }
 
-    @Test("Saved PDF search resolves folder phrases per source and returns empty when role is missing")
+    @Test("Saved PDF search resolves all matching role folders per source and returns empty when role is missing")
     func savedSearchPDFRespectsFolderPhraseAndMissingRole() async throws {
         let inbox = Folder(id: "in", name: "Inbox", role: .inbox)
-        let sent = Folder(id: "sent", name: "Sent", role: .sent)
+        let sentPrimary = Folder(id: "sent", name: "Sent", role: .sent)
+        let sentSecondary = Folder(id: "sent-items", name: "Sent Items", role: .sent)
         let sourceA = MailSourceID(accountID: "acct-a", mailboxID: "primary")
         let sourceB = MailSourceID(accountID: "acct-b", mailboxID: "primary")
         let inboxPDF = MessageHeader(
@@ -210,10 +254,10 @@ struct CachedPDFSearchTests {
             snippet: "",
             date: Date(timeIntervalSince1970: 200)
         )
-        let sentPDF = MessageHeader(
-            id: "sent-pdf",
+        let secondarySentPDF = MessageHeader(
+            id: "sent-items-pdf",
             threadID: "t2",
-            folderID: sent.id,
+            folderID: sentSecondary.id,
             from: Correspondent(email: "me@example.org"),
             to: [],
             subject: "Sent attachment",
@@ -235,9 +279,9 @@ struct CachedPDFSearchTests {
                     body: MessageBody(messageID: inboxPDF.id, attachments: [pdfAttachment])
                 ),
                 CachedAttachmentMessage(
-                    folder: sent,
-                    header: sentPDF,
-                    body: MessageBody(messageID: sentPDF.id, attachments: [pdfAttachment])
+                    folder: sentSecondary,
+                    header: secondarySentPDF,
+                    body: MessageBody(messageID: secondarySentPDF.id, attachments: [pdfAttachment])
                 )
             ],
             indexedHits: []
@@ -253,8 +297,8 @@ struct CachedPDFSearchTests {
             ),
             UnifiedInboxItem(
                 sourceID: sourceA,
-                folder: sent,
-                header: sentPDF,
+                folder: sentSecondary,
+                header: secondarySentPDF,
                 sourceTitle: "A",
                 sourceSubtitle: "a@example.org",
                 archiveFolder: nil
@@ -265,11 +309,11 @@ struct CachedPDFSearchTests {
             rowsA,
             plan: plan,
             backend: backendA,
-            folders: [inbox, sent],
+            folders: [inbox, sentPrimary, sentSecondary],
             sourceID: sourceA
         )
-        #expect(filteredA.map(\.header.id) == ["sent-pdf"])
-        #expect(backendA.recordedCachedFolders == [[sent.id]])
+        #expect(filteredA.map(\.header.id) == ["sent-items-pdf"])
+        #expect(backendA.recordedCachedFolders == [[sentPrimary.id], [sentSecondary.id]])
 
         let backendB = PrefixIndexPDFStubBackend(
             cached: [
