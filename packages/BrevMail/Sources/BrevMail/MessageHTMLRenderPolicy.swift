@@ -28,6 +28,7 @@ struct MessageRemoteContentRenderState: Equatable, Sendable {
     let allowsRemoteContent: Bool
     let isBlocked: Bool
     let senderDomain: String?
+    let trustedSenderSource: TrustedSenderSource?
     let report: MessageRemoteContentAssetReport
 }
 
@@ -35,24 +36,42 @@ enum MessageRemoteContentRenderPolicy {
     static func state(
         html: String,
         senderEmail: String,
+        useRichRenderer: Bool = true,
         allowRemoteContentDefault: Bool,
+        allowRemoteContentForTrustedSenders: Bool = false,
+        trustedSenders: TrustedSenderEvaluator = .empty,
+        senderAuthenticationFailed: Bool = false,
         loadOnce: Bool,
         policy: RemoteContentPolicy
     ) -> MessageRemoteContentRenderState {
         let report = MessageRemoteContentDetector.remoteAssetReport(html)
         let hosts = report.hosts
         let hasRemoteAssets = report.hasRemoteAssets
+        // Settings disables both automatic remote-image preferences while rich HTML
+        // rendering is off; enforce the same gate here so disabled toggles cannot
+        // auto-fetch remote assets in the native importer. Explicit per-message
+        // "Download images" (loadOnce) and sender/domain allowlists still apply.
+        let effectiveAllowRemoteDefault = useRichRenderer && allowRemoteContentDefault
+        let effectiveAllowTrustedSenders = useRichRenderer && allowRemoteContentForTrustedSenders
         let allowedByPolicy = policy.allows(senderEmail: senderEmail, resourceHost: nil)
             || (!hosts.isEmpty && hosts.allSatisfy { policy.allows(senderEmail: senderEmail, resourceHost: $0) })
+        let trustedSenderSource = effectiveAllowTrustedSenders
+            ? trustedSenders.trustSource(
+                for: senderEmail,
+                senderAuthenticationFailed: senderAuthenticationFailed
+            )
+            : nil
         let allowsRemoteContent = !hasRemoteAssets
-            || allowRemoteContentDefault
+            || effectiveAllowRemoteDefault
             || loadOnce
             || allowedByPolicy
+            || trustedSenderSource != nil
 
         return MessageRemoteContentRenderState(
             allowsRemoteContent: allowsRemoteContent,
             isBlocked: hasRemoteAssets && !allowsRemoteContent,
             senderDomain: RemoteContentPolicy.senderDomain(for: senderEmail),
+            trustedSenderSource: trustedSenderSource,
             report: report
         )
     }

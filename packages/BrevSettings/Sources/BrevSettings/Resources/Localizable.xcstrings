@@ -14084,6 +14084,50 @@
           }
         }
       }
+    },
+    "Load remote images for trusted senders": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last inn eksterne bilder for klarerte avsendere"
+          }
+        }
+      }
+    },
+    "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last automatisk inn eksterne bilder fra Kontaktene dine og personer du har sendt e-post til. Kjente sporingspiksler blokkeres fortsatt."
+          }
+        }
+      }
+    },
+    "Remote images load automatically for trusted senders; unknown senders stay blocked.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksterne bilder lastes inn automatisk for klarerte avsendere; ukjente avsendere forblir blokkert."
+          }
+        }
+      }
+    },
+    "Automatically load remote images from your Contacts and people you have emailed. Tracking-pixel removal is currently off.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last automatisk inn eksterne bilder fra Kontaktene dine og personer du har sendt e-post til. Fjerning av sporingspiksler er slått av."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

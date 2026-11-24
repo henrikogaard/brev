@@ -114,6 +114,27 @@ struct ContactsAccessPolicyTests {
         #expect(results.isEmpty)
         #expect(recorder.callCount == 0)
     }
+
+    @Test("trusted-sender contact email lookup does not prompt or open store when authorization is undecided")
+    func trustedSenderContactEmailsDoesNotPromptWhenAuthorizationIsUndecided() async {
+        let defaults = UserDefaults.standard
+        let recorder = ContactStoreFactoryRecorder()
+        let original = AvatarPermissionPolicy.allowsSystemContactsAccess
+        defer {
+            ContactsAccessPolicy.applyProcessWidePolicy(environment: [:], defaults: defaults)
+            AvatarPermissionPolicy.allowsSystemContactsAccess = original
+        }
+        AvatarPermissionPolicy.allowsSystemContactsAccess = true
+        let lookup = SystemContactsRecipientLookup(
+            storeFactory: { recorder.makeStore() },
+            authorizationStatusProvider: { .notDetermined }
+        )
+
+        let emails = await lookup.allContactEmails()
+
+        #expect(emails.isEmpty)
+        #expect(recorder.callCount == 0)
+    }
     #endif
 
     @Test("leaving the demo mailbox restores the normal launch policy")

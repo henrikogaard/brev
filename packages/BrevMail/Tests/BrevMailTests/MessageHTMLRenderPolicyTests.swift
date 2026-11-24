@@ -191,4 +191,202 @@ struct MessageHTMLRenderPolicyTests {
         #expect(MessageRemoteContentPrivacyPresentation.resolve(state).explanation ==
             "Brev blocked 4 remote assets. Loading remote content would contact a.example.com, b.example.com, c.example.com, and 1 more host, which can reveal your IP address and when you opened this message.")
     }
+
+    @Test("trusted sender loads normal remote images when enabled while tracking pixels remain stripped")
+    func trustedSenderLoadsNormalImagesWhileStrippingTrackingPixels() {
+        let html = """
+        <p>Hi</p>\
+        <img src="https://cdn.example.com/photo.jpg" width="600" height="400">\
+        <img src="https://track.example.net/open.gif" width="1" height="1">
+        """
+        let trusted = TrustedSenderEvaluator(
+            contactEmails: ["alice@example.com"],
+            repliedToEmails: ["bob@work.org"]
+        )
+
+        // Toggle OFF: trusted sender stays blocked.
+        let blockedWhenOff = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "alice@example.com",
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: false,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(!blockedWhenOff.allowsRemoteContent)
+        #expect(blockedWhenOff.isBlocked)
+        #expect(blockedWhenOff.trustedSenderSource == nil)
+
+        // Toggle ON: Contact and replied-to senders load normal remote images...
+        let allowedContact = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "ALICE@EXAMPLE.COM",
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: true,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(allowedContact.allowsRemoteContent)
+        #expect(!allowedContact.isBlocked)
+        #expect(allowedContact.trustedSenderSource == .localContacts)
+
+        let allowedRepliedTo = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "bob@work.org",
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: true,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(allowedRepliedTo.allowsRemoteContent)
+        #expect(!allowedRepliedTo.isBlocked)
+        #expect(allowedRepliedTo.trustedSenderSource == .repliedToSender)
+
+        // ...and tracking pixels are STILL stripped when stripTrackingPixels == true!
+        let webPlan = HTMLBodyLoadPlan.resolve(
+            allowRemoteContent: allowedContact.allowsRemoteContent,
+            blockerAvailable: true
+        )
+        let renderedWebHTML = webPlan.bodyHTML(originalHTML: html, stripTrackingPixels: true)
+        #expect(renderedWebHTML.contains("https://cdn.example.com/photo.jpg"))
+        #expect(!renderedWebHTML.contains("track.example.net"))
+
+        let nativeImportHTML = MessageHTMLImportPolicy.prepareForRemoteContentImport(
+            html,
+            allowRemoteContent: allowedContact.allowsRemoteContent,
+            stripTrackingPixels: true
+        )
+        #expect(nativeImportHTML.contains("https://cdn.example.com/photo.jpg"))
+        #expect(!nativeImportHTML.contains("track.example.net"))
+
+        // Toggle ON: unknown sender or domain-only match remains blocked.
+        let unknownBlocked = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "carol@example.com",
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: true,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(!unknownBlocked.allowsRemoteContent)
+        #expect(unknownBlocked.isBlocked)
+        #expect(unknownBlocked.trustedSenderSource == nil)
+    }
+
+    @Test("forged contact email with failed sender authentication never auto-loads remote images")
+    func forgedContactEmailWithFailedAuthNeverAutoLoadsRemoteImages() {
+        let html = #"<p>Hi</p><img src="https://cdn.example.com/photo.jpg" width="600" height="400">"#
+        let trusted = TrustedSenderEvaluator(
+            contactEmails: ["alice@example.com"],
+            repliedToEmails: ["bob@work.org"]
+        )
+
+        #expect(MessageHeaderAnalyzer.hasSenderAuthenticationFailure(in: "mx.example; dmarc=fail header.from=example.com"))
+        #expect(MessageHeaderAnalyzer.hasSenderAuthenticationFailure(in: "mx.example; dmarc=permerror"))
+        #expect(MessageHeaderAnalyzer.hasSenderAuthenticationFailure(in: "mx.example; spf=fail smtp.mailfrom=evil.example"))
+        #expect(MessageHeaderAnalyzer.hasSenderAuthenticationFailure(in: "mx.example; spf=softfail"))
+        #expect(MessageHeaderAnalyzer.hasSenderAuthenticationFailure(in: "mx.example; dkim=fail"))
+        // Legitimate forwarded mail with passing aligned DMARC is not treated as an auth failure.
+        #expect(!MessageHeaderAnalyzer.hasSenderAuthenticationFailure(in: "mx.example; spf=softfail dkim=pass dmarc=pass"))
+        #expect(!MessageHeaderAnalyzer.hasSenderAuthenticationFailure(in: nil))
+
+        let forgedContact = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "alice@example.com",
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: true,
+            trustedSenders: trusted,
+            senderAuthenticationFailed: MessageHeaderAnalyzer.hasSenderAuthenticationFailure(
+                in: "mx.example; dmarc=fail header.from=example.com"
+            ),
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(!forgedContact.allowsRemoteContent)
+        #expect(forgedContact.isBlocked)
+        #expect(forgedContact.trustedSenderSource == nil)
+
+        let forgedRepliedTo = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "bob@work.org",
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: true,
+            trustedSenders: trusted,
+            senderAuthenticationFailed: MessageHeaderAnalyzer.hasSenderAuthenticationFailure(
+                in: "mx.example; spf=fail dkim=fail"
+            ),
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(!forgedRepliedTo.allowsRemoteContent)
+        #expect(forgedRepliedTo.isBlocked)
+        #expect(forgedRepliedTo.trustedSenderSource == nil)
+    }
+
+    @Test("disabling rich renderer suppresses disabled automatic remote-image settings toggles")
+    func disablingRichRendererSuppressesDisabledAutomaticToggles() {
+        let html = #"<p>Hi</p><img src="https://cdn.example.com/photo.jpg" width="600" height="400">"#
+        let trusted = TrustedSenderEvaluator(contactEmails: ["alice@example.com"])
+
+        // When rich renderer is OFF, both Settings toggles are disabled and must not auto-fetch.
+        let nativeTrustedBlocked = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "alice@example.com",
+            useRichRenderer: false,
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: true,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(!nativeTrustedBlocked.allowsRemoteContent)
+        #expect(nativeTrustedBlocked.isBlocked)
+        #expect(nativeTrustedBlocked.trustedSenderSource == nil)
+
+        let nativeAlwaysBlocked = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "alice@example.com",
+            useRichRenderer: false,
+            allowRemoteContentDefault: true,
+            allowRemoteContentForTrustedSenders: false,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(!nativeAlwaysBlocked.allowsRemoteContent)
+        #expect(nativeAlwaysBlocked.isBlocked)
+
+        // Explicit per-message loadOnce and explicit sender allowlists still work in native mode.
+        let nativeLoadOnce = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "alice@example.com",
+            useRichRenderer: false,
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: false,
+            trustedSenders: trusted,
+            loadOnce: true,
+            policy: .defaults
+        )
+        #expect(nativeLoadOnce.allowsRemoteContent)
+        #expect(!nativeLoadOnce.isBlocked)
+
+        var policy = RemoteContentPolicy.defaults
+        policy.allow(senderEmail: "alice@example.com")
+        let nativeAllowlisted = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "alice@example.com",
+            useRichRenderer: false,
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: false,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: policy
+        )
+        #expect(nativeAllowlisted.allowsRemoteContent)
+        #expect(!nativeAllowlisted.isBlocked)
+    }
 }

@@ -16,6 +16,7 @@ import Foundation
 struct MailboxViewSettings: Equatable, Sendable, Codable {
     var useRichRenderer: Bool
     var allowRemoteContent: Bool
+    var allowRemoteContentForTrustedSenders: Bool
     var stripTrackingPixels: Bool
     var groupByThread: Bool
     var groupByDate: Bool
@@ -34,6 +35,7 @@ struct MailboxViewSettings: Equatable, Sendable, Codable {
     private enum CodingKeys: String, CodingKey {
         case useRichRenderer
         case allowRemoteContent
+        case allowRemoteContentForTrustedSenders
         case stripTrackingPixels
         case groupByThread
         case groupByDate
@@ -53,6 +55,7 @@ struct MailboxViewSettings: Equatable, Sendable, Codable {
     static let defaults = MailboxViewSettings(
         useRichRenderer: true,
         allowRemoteContent: false,
+        allowRemoteContentForTrustedSenders: false,
         stripTrackingPixels: true,
         groupByThread: true,
         groupByDate: true,
@@ -79,6 +82,11 @@ struct MailboxViewSettings: Equatable, Sendable, Codable {
             allowRemoteContent: bool(
                 for: MailboxViewPreferenceKey.allowRemoteContent,
                 defaultValue: Self.defaults.allowRemoteContent,
+                defaults: defaults
+            ),
+            allowRemoteContentForTrustedSenders: bool(
+                for: MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders,
+                defaultValue: Self.defaults.allowRemoteContentForTrustedSenders,
                 defaults: defaults
             ),
             stripTrackingPixels: bool(
@@ -165,6 +173,10 @@ struct MailboxViewSettings: Equatable, Sendable, Codable {
     func save(to defaults: UserDefaults = .standard) {
         defaults.set(useRichRenderer, forKey: MailboxViewPreferenceKey.useRichRenderer)
         defaults.set(allowRemoteContent, forKey: MailboxViewPreferenceKey.allowRemoteContent)
+        defaults.set(
+            allowRemoteContentForTrustedSenders,
+            forKey: MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders
+        )
         defaults.set(stripTrackingPixels, forKey: MailboxViewSettingsPreferenceKey.stripTrackingPixels)
         defaults.set(groupByThread, forKey: MailboxViewPreferenceKey.groupByThread)
         defaults.set(groupByDate, forKey: MailboxViewPreferenceKey.groupByDate)
@@ -226,6 +238,10 @@ extension MailboxViewSettings {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         useRichRenderer = try container.decode(Bool.self, forKey: .useRichRenderer)
         allowRemoteContent = try container.decode(Bool.self, forKey: .allowRemoteContent)
+        allowRemoteContentForTrustedSenders = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .allowRemoteContentForTrustedSenders
+        ) ?? Self.defaults.allowRemoteContentForTrustedSenders
         stripTrackingPixels = try container.decodeIfPresent(Bool.self, forKey: .stripTrackingPixels)
             ?? Self.defaults.stripTrackingPixels
         groupByThread = try container.decode(Bool.self, forKey: .groupByThread)

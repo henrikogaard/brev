@@ -28,6 +28,7 @@ struct ThreadMessageCard: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.trustedSenderEvaluator) private var trustedSenderEvaluator
 
     let header: MessageHeader
     let isExpanded: Bool
@@ -62,6 +63,7 @@ struct ThreadMessageCard: View {
     /// recycled cell are dropped.
     @State private var inviteDeepLinkMessageID: MessageHeader.ID?
     @State private var showRemoteContent = false
+    @State private var remoteContentPolicy = RemoteContentPolicy.load()
     @State private var htmlRenderingModeOverride: HTMLBodyRenderingMode?
     @State private var htmlRenderingModeOverrideMessageID: MessageHeader.ID?
     @State private var inlineCIDResolvedMessageID: MessageHeader.ID?
@@ -77,6 +79,8 @@ struct ThreadMessageCard: View {
 
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
+    @AppStorage(MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders)
+    private var allowRemoteContentForTrustedSenders = false
     @AppStorage(MessageTrackingPixelPreference.storageKey)
     private var stripTrackingPixels = MessageTrackingPixelPreference.enabledByDefault
     @SectionFontFamily(.reader) private var mailboxFontFamily
@@ -203,6 +207,7 @@ struct ThreadMessageCard: View {
                 htmlWebViewStore.releaseWebView()
                 return
             }
+            syncRemoteContentPolicyFromDefaults()
             guard !isLoading else { return }
             if renderedBody == nil {
                 await loadBody()
@@ -210,13 +215,27 @@ struct ThreadMessageCard: View {
                 await updateDerivedBodyState()
             }
         }
+        .onAppear {
+            syncRemoteContentPolicyFromDefaults()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: RemoteContentPolicy.didChangeNotification)
+            .receive(on: DispatchQueue.main)) { _ in
+                syncRemoteContentPolicyFromDefaults()
+        }
         .onChange(of: stripTrackingPixels) { _, _ in
-            guard !usesRichHTMLBodyRenderer, isExpanded, renderedBody != nil else { return }
-            if isLoading {
-                nativeHTMLImportRefreshPending = true
-            } else {
-                Task { await updateDerivedBodyState() }
-            }
+            refreshNativeHTMLImportIfNeeded()
+        }
+        .onChange(of: useRichRenderer) { _, _ in
+            refreshNativeHTMLImportIfNeeded()
+        }
+        .onChange(of: allowRemoteContentDefault) { _, _ in
+            refreshNativeHTMLImportIfNeeded()
+        }
+        .onChange(of: allowRemoteContentForTrustedSenders) { _, _ in
+            refreshNativeHTMLImportIfNeeded()
+        }
+        .onChange(of: trustedSenderEvaluator) { _, _ in
+            refreshNativeHTMLImportIfNeeded()
         }
         .alert(
             pendingSuspiciousLink?.confirmationTitle ?? "Open suspicious link?",
@@ -539,25 +558,28 @@ struct ThreadMessageCard: View {
                 }
             }
 
+        case .remoteBlocked(let text, let isPlainText):
+            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                remoteContentBlockedBanner
+                if isPlainText {
+                    Text(text)
+                        .font(messageBodyFont)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .textSelection(.enabled)
+                        .modifier(MessageReadingColumn(style: messageBodyStyle))
+                } else {
+                    Text(text.isEmpty ? String(localized: "(No body)", bundle: .module) : text)
+                        .font(messageBodyFont)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
         case .richHTML(let html, let allowRemoteContent, let showsRemoteContentBanner):
             VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                 if showsRemoteContentBanner {
-                    HStack(spacing: BrevSpacing.xs) {
-                        Image(systemName: "eye.slash")
-                        Text("Remote content blocked", bundle: .module)
-                            .brevFont(.caption)
-                        Spacer(minLength: BrevSpacing.sm)
-                        BrevButton(MessageRemoteContentPrivacyPresentation.downloadImagesActionTitle, style: .secondary) {
-                            showRemoteContent = true
-                        }
-                    }
-                    .foregroundStyle(theme.textSecondary.color)
-                    .padding(.horizontal, BrevSpacing.sm)
-                    .padding(.vertical, BrevSpacing.xs)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(theme.bgTertiary.color)
-                    )
+                    remoteContentBlockedBanner
                 } else if allowRemoteContent {
                     MessageTrackerNote(
                         trackerCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount,
@@ -592,6 +614,26 @@ struct ThreadMessageCard: View {
         case .waiting:
             Color.clear.frame(height: 1)
         }
+    }
+
+    private var remoteContentBlockedBanner: some View {
+        HStack(spacing: BrevSpacing.xs) {
+            Image(systemName: "eye.slash")
+            Text("Remote content blocked", bundle: .module)
+                .brevFont(.caption)
+            Spacer(minLength: BrevSpacing.sm)
+            BrevButton(MessageRemoteContentPrivacyPresentation.downloadImagesActionTitle, style: .secondary) {
+                showRemoteContent = true
+                refreshNativeHTMLImportIfNeeded()
+            }
+        }
+        .foregroundStyle(theme.textSecondary.color)
+        .padding(.horizontal, BrevSpacing.sm)
+        .padding(.vertical, BrevSpacing.xs)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(theme.bgTertiary.color)
+        )
     }
 
     @ViewBuilder
@@ -789,6 +831,26 @@ struct ThreadMessageCard: View {
         return rendered.replacingHTML(resolvedHTML)
     }
 
+    private func syncRemoteContentPolicyFromDefaults() {
+        let updated = RemoteContentPolicy.load()
+        guard updated != remoteContentPolicy else { return }
+        remoteContentPolicy = updated
+        // Clear any earlier per-card override when policy changes externally
+        // (for example, revoking an allowance in Settings) so revocation takes
+        // effect immediately on already-mounted cards.
+        showRemoteContent = false
+        refreshNativeHTMLImportIfNeeded()
+    }
+
+    private func refreshNativeHTMLImportIfNeeded() {
+        guard !usesRichHTMLBodyRenderer, isExpanded, renderedBody != nil else { return }
+        if isLoading {
+            nativeHTMLImportRefreshPending = true
+        } else {
+            Task { await updateDerivedBodyState() }
+        }
+    }
+
     private var bodyPresentationContext: ThreadMessageBodyPresentation.Context {
         ThreadMessageBodyPresentation.Context(
             isLoading: isLoading,
@@ -796,6 +858,13 @@ struct ThreadMessageCard: View {
             renderedBody: renderedBody,
             useRichRenderer: usesRichHTMLBodyRenderer,
             allowRemoteContent: allowRemoteContentDefault,
+            allowRemoteContentForTrustedSenders: allowRemoteContentForTrustedSenders,
+            senderEmail: header.from.email,
+            remoteContentPolicy: remoteContentPolicy,
+            trustedSenders: trustedSenderEvaluator,
+            senderAuthenticationFailed: MessageHeaderAnalyzer.hasSenderAuthenticationFailure(
+                in: renderedBody?.authenticationResults
+            ),
             showRemoteContent: showRemoteContent
         )
     }

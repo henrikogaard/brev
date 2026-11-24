@@ -221,6 +221,12 @@ public struct PIMContact: Sendable, Hashable, Codable, Identifiable {
     }
 }
 
+public extension Notification.Name {
+    /// Posted when cached PIM contacts change (sync commit, contact create/update/delete,
+    /// or contacts source connect/disconnect/removal) so open readers refresh local trust sets.
+    static let pimContactsCacheDidChange = Notification.Name("pim.contactsCacheDidChange")
+}
+
 public enum PIMContactStoreError: Error, Sendable {
     /// The on-disk record exists but cannot be decoded.
     case unreadableStore
@@ -273,6 +279,7 @@ public actor JSONPIMContactStore: PIMContactStore {
         let data = try JSONEncoder.pimContactStore.encode(contacts)
         try data.write(to: url, options: .atomic)
         cache[sourceID] = contacts
+        NotificationCenter.default.post(name: .pimContactsCacheDidChange, object: nil)
     }
 
     public func deleteContacts(for sourceID: PIMSource.ID) async throws {
@@ -281,6 +288,7 @@ public actor JSONPIMContactStore: PIMContactStore {
             try FileManager.default.removeItem(at: url)
         }
         cache[sourceID] = nil
+        NotificationCenter.default.post(name: .pimContactsCacheDidChange, object: nil)
     }
 
     /// The contacts file location inside the source's cache directory.

@@ -1550,7 +1550,8 @@ public struct BrevMailRootView: View {
             backend: currentOwner,
             sourceID: current?.sourceID,
             folders: currentUnfilteredFolders,
-            mailboxEmail: currentUnfilteredSection?.mailbox.email
+            mailboxEmail: currentUnfilteredSection?.mailbox.email,
+            contactActions: senderContactActions
         ))
         .onChange(of: session.currentItem?.id) { _, _ in
             session.syncReaderNavigation(triageReaderNavigation)
@@ -2232,8 +2233,11 @@ public struct BrevMailRootView: View {
             }
         }
         .modifier(SenderWarningHistoryModifier(
-            backend: selectedBackend, sourceID: navigation.selectedSourceID,
-            folders: selectedSourceSection?.folders ?? folders, mailboxEmail: selectedSourceSection?.mailbox.email
+            backend: selectedBackend,
+            sourceID: navigation.selectedSourceID,
+            folders: selectedSourceSection?.folders ?? folders,
+            mailboxEmail: selectedSourceSection?.mailbox.email,
+            contactActions: senderContactActions
         ))
         // The compact iPhone reader is a sibling of the background workspace,
         // so install the owner here as well as on the root command context.
@@ -6689,6 +6693,7 @@ public struct BrevMailRootView: View {
             sourceID: sourceID ?? navigation.selectedSourceID,
             allFolders: moveFolders(for: sourceID ?? navigation.selectedSourceID),
             canFileLocally: localBackend != nil,
+            contactActions: senderContactActions,
             theme: theme,
             onCommand: acceptDetachedMessageCommand
         )

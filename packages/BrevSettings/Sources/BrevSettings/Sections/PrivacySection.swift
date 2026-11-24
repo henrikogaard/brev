@@ -150,9 +150,30 @@ struct PrivacySection: View {
         }
     }
 
+    static let resourceBundle: Bundle = .module
+
+    static func trustedSendersSubtitle(stripTrackingPixels: Bool) -> String {
+        if stripTrackingPixels {
+            return String(
+                localized: "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked.",
+                bundle: .module
+            )
+        }
+        return String(
+            localized: "Automatically load remote images from your Contacts and people you have emailed. Tracking-pixel removal is currently off.",
+            bundle: .module
+        )
+    }
+
     private var remoteContentStatus: String {
         if mailboxSettings.useRichRenderer, mailboxSettings.allowRemoteContent {
             return String(localized: "Remote images are allowed by default for rich HTML messages.", bundle: .module)
+        }
+        if mailboxSettings.useRichRenderer, mailboxSettings.allowRemoteContentForTrustedSenders {
+            return String(
+                localized: "Remote images load automatically for trusted senders; unknown senders stay blocked.",
+                bundle: .module
+            )
         }
         return String(localized: "Remote images are not loaded by default.", bundle: .module)
     }
@@ -241,6 +262,14 @@ struct PrivacySection: View {
                     title: String(localized: "Always load remote images", bundle: .module),
                     subtitle: String(localized: "Allows remote images after rich HTML rendering is enabled.", bundle: .module),
                     isOn: mailboxBinding(for: \.allowRemoteContent),
+                    isEnabled: mailboxSettings.useRichRenderer
+                )
+
+                SettingsToggleRow(
+                    symbolName: "person.2",
+                    title: String(localized: "Load remote images for trusted senders", bundle: .module),
+                    subtitle: Self.trustedSendersSubtitle(stripTrackingPixels: mailboxSettings.stripTrackingPixels),
+                    isOn: mailboxBinding(for: \.allowRemoteContentForTrustedSenders),
                     isEnabled: mailboxSettings.useRichRenderer
                 )
 

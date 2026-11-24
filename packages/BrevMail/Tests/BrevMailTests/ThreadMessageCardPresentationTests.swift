@@ -123,7 +123,7 @@ struct ThreadMessageBodyPresentationTests {
             )
         )
 
-        #expect(presentation == .htmlFallback("Hello"))
+        #expect(presentation == .remoteBlocked(text: "Hello", isPlainText: false))
     }
 
     @Test("body load errors surface as safe error copy")
@@ -140,6 +140,198 @@ struct ThreadMessageBodyPresentationTests {
         )
 
         #expect(presentation == .error("Could not load message."))
+    }
+
+    @Test("thread card honors trusted-sender remote image toggle and allowlist")
+    func threadCardHonorsTrustedSenderRemoteImagesAndAllowlist() {
+        let html = #"<p>Hello</p><img src="https://cdn.example.com/photo.jpg" width="600" height="400">"#
+        let trusted = TrustedSenderEvaluator(
+            contactEmails: ["alice@example.com"],
+            repliedToEmails: ["bob@work.org"]
+        )
+
+        let blockedWhenOff = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: nil, attachments: []),
+                useRichRenderer: true,
+                allowRemoteContent: false,
+                allowRemoteContentForTrustedSenders: false,
+                senderEmail: "alice@example.com",
+                trustedSenders: trusted,
+                showRemoteContent: false
+            )
+        )
+        #expect(blockedWhenOff == .richHTML(
+            html: html,
+            allowRemoteContent: false,
+            showsRemoteContentBanner: true
+        ))
+
+        let allowedWhenOn = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: nil, attachments: []),
+                useRichRenderer: true,
+                allowRemoteContent: false,
+                allowRemoteContentForTrustedSenders: true,
+                senderEmail: "alice@example.com",
+                trustedSenders: trusted,
+                showRemoteContent: false
+            )
+        )
+        #expect(allowedWhenOn == .richHTML(
+            html: html,
+            allowRemoteContent: true,
+            showsRemoteContentBanner: false
+        ))
+
+        let unknownStillBlocked = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: nil, attachments: []),
+                useRichRenderer: true,
+                allowRemoteContent: false,
+                allowRemoteContentForTrustedSenders: true,
+                senderEmail: "stranger@example.com",
+                trustedSenders: trusted,
+                showRemoteContent: false
+            )
+        )
+        #expect(unknownStillBlocked == .richHTML(
+            html: html,
+            allowRemoteContent: false,
+            showsRemoteContentBanner: true
+        ))
+
+        // Sender and domain allowlists work even when trusted-sender tier is OFF.
+        var senderPolicy = RemoteContentPolicy.defaults
+        senderPolicy.allow(senderEmail: "partner@vendor.example")
+        let allowedBySenderPolicy = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: nil, attachments: []),
+                useRichRenderer: true,
+                allowRemoteContent: false,
+                allowRemoteContentForTrustedSenders: false,
+                senderEmail: "PARTNER@VENDOR.EXAMPLE",
+                remoteContentPolicy: senderPolicy,
+                trustedSenders: .empty,
+                showRemoteContent: false
+            )
+        )
+        #expect(allowedBySenderPolicy == .richHTML(
+            html: html,
+            allowRemoteContent: true,
+            showsRemoteContentBanner: false
+        ))
+
+        // Revoking the sender from RemoteContentPolicy immediately re-blocks presentation.
+        senderPolicy.revoke(senderEmail: "partner@vendor.example")
+        let blockedAfterRevocation = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: nil, attachments: []),
+                useRichRenderer: true,
+                allowRemoteContent: false,
+                allowRemoteContentForTrustedSenders: false,
+                senderEmail: "partner@vendor.example",
+                remoteContentPolicy: senderPolicy,
+                trustedSenders: .empty,
+                showRemoteContent: false
+            )
+        )
+        #expect(blockedAfterRevocation == .richHTML(
+            html: html,
+            allowRemoteContent: false,
+            showsRemoteContentBanner: true
+        ))
+
+        var domainPolicy = RemoteContentPolicy.defaults
+        domainPolicy.allow(domain: "vendor.example")
+        let allowedByDomainPolicy = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: nil, attachments: []),
+                useRichRenderer: true,
+                allowRemoteContent: false,
+                allowRemoteContentForTrustedSenders: false,
+                senderEmail: "updates@news.vendor.example",
+                remoteContentPolicy: domainPolicy,
+                trustedSenders: .empty,
+                showRemoteContent: false
+            )
+        )
+        #expect(allowedByDomainPolicy == .richHTML(
+            html: html,
+            allowRemoteContent: true,
+            showsRemoteContentBanner: false
+        ))
+
+        // Failed sender authentication blocks trusted-sender auto-load on thread cards.
+        let forgedTrustedBlocked = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(
+                    html: html,
+                    plainText: nil,
+                    attachments: [],
+                    authenticationResults: "mx.example; dmarc=fail"
+                ),
+                useRichRenderer: true,
+                allowRemoteContent: false,
+                allowRemoteContentForTrustedSenders: true,
+                senderEmail: "alice@example.com",
+                trustedSenders: trusted,
+                senderAuthenticationFailed: true,
+                showRemoteContent: false
+            )
+        )
+        #expect(forgedTrustedBlocked == .richHTML(
+            html: html,
+            allowRemoteContent: false,
+            showsRemoteContentBanner: true
+        ))
+
+        // When rich renderer is OFF, disabled trusted-sender / always-load toggles stay blocked
+        // with a manual consent banner, and tapping "Download images" (showRemoteContent: true)
+        // transitions to attributed HTML import.
+        let nativeBlocked = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: "Plain fallback", attachments: []),
+                useRichRenderer: false,
+                allowRemoteContent: true,
+                allowRemoteContentForTrustedSenders: true,
+                senderEmail: "alice@example.com",
+                trustedSenders: trusted,
+                showRemoteContent: false
+            )
+        )
+        #expect(nativeBlocked == .remoteBlocked(text: "Plain fallback", isPlainText: true))
+
+        let nativeAfterManualConsent = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: "Plain fallback", attachments: []),
+                useRichRenderer: false,
+                allowRemoteContent: true,
+                allowRemoteContentForTrustedSenders: true,
+                senderEmail: "alice@example.com",
+                trustedSenders: trusted,
+                showRemoteContent: true
+            )
+        )
+        #expect(nativeAfterManualConsent == .attributedHTML(html))
     }
 }
 

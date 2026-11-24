@@ -149,6 +149,9 @@ public actor PIMSourceCoordinator {
         }
         sources?[source.id] = source
         changeBroadcaster.emit()
+        if source.kind == .contacts {
+            NotificationCenter.default.post(name: .pimContactsCacheDidChange, object: nil)
+        }
         return source
     }
 
@@ -189,6 +192,9 @@ public actor PIMSourceCoordinator {
         try await store.save(source)
         sources?[source.id] = source
         changeBroadcaster.emit()
+        if source.kind == .contacts {
+            NotificationCenter.default.post(name: .pimContactsCacheDidChange, object: nil)
+        }
         return source
     }
 
@@ -315,6 +321,9 @@ public actor PIMSourceCoordinator {
         try await store.deleteSource(id: sourceID)
         sources?[sourceID] = nil
         changeBroadcaster.emit()
+        if source.kind == .contacts {
+            NotificationCenter.default.post(name: .pimContactsCacheDidChange, object: nil)
+        }
     }
 
     // MARK: - Internals
@@ -346,6 +355,9 @@ public actor PIMSourceCoordinator {
         try await store.save(source)
         sources?[id] = source
         changeBroadcaster.emit()
+        if source.kind == .contacts {
+            NotificationCenter.default.post(name: .pimContactsCacheDidChange, object: nil)
+        }
         return source
     }
 

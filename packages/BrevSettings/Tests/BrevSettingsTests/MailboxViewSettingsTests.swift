@@ -25,6 +25,7 @@ struct MailboxViewSettingsTests {
 
         #expect(settings.useRichRenderer == true)
         #expect(settings.allowRemoteContent == false)
+        #expect(settings.allowRemoteContentForTrustedSenders == false)
         #expect(settings.stripTrackingPixels == true)
         #expect(settings.groupByThread == true)
         #expect(settings.groupByDate == true)
@@ -47,6 +48,7 @@ struct MailboxViewSettingsTests {
         let settings = MailboxViewSettings(
             useRichRenderer: true,
             allowRemoteContent: true,
+            allowRemoteContentForTrustedSenders: true,
             stripTrackingPixels: false,
             groupByThread: false,
             groupByDate: false,
@@ -81,6 +83,96 @@ struct MailboxViewSettingsTests {
         let payload = try JSONDecoder().decode(SettingsBackupPayload.self, from: oldBackup)
 
         #expect(payload.mailboxView?.stripTrackingPixels == true)
+    }
+
+    @Test("older settings backups default trusted-sender remote images off")
+    func olderSettingsBackupsDefaultTrustedSenderRemoteImagesOff() throws {
+        let currentMailboxView = try JSONEncoder().encode(MailboxViewSettings.defaults)
+        var oldMailboxView = try #require(
+            JSONSerialization.jsonObject(with: currentMailboxView) as? [String: Any]
+        )
+        oldMailboxView.removeValue(forKey: "allowRemoteContentForTrustedSenders")
+        let oldBackup = try JSONSerialization.data(withJSONObject: ["mailboxView": oldMailboxView])
+
+        let payload = try JSONDecoder().decode(SettingsBackupPayload.self, from: oldBackup)
+
+        #expect(payload.mailboxView?.allowRemoteContentForTrustedSenders == false)
+    }
+
+    @Test("trusted-sender remote image setting round-trips through SettingsBackupCodec and stays off iCloud allowlist")
+    func trustedSenderSettingRoundTripsThroughBackupAndExcludedFromPreferenceSync() throws {
+        let sourceDefaults = try Self.makeDefaults()
+        let targetDefaults = try Self.makeDefaults()
+        let sourceStore = SettingsPersistenceStore(defaults: sourceDefaults)
+        let targetStore = SettingsPersistenceStore(defaults: targetDefaults)
+
+        var updated = sourceStore.mailboxViewSettings()
+        updated.allowRemoteContentForTrustedSenders = true
+        sourceStore.save(updated)
+
+        let payload = SettingsBackupCodec.export(from: sourceStore)
+        #expect(payload.mailboxView?.allowRemoteContentForTrustedSenders == true)
+
+        SettingsBackupCodec.apply(payload, to: targetStore, mode: .replace)
+        #expect(targetStore.mailboxViewSettings().allowRemoteContentForTrustedSenders == true)
+
+        // Network-consent flags never mirror silently through iCloud preference sync.
+        #expect(!PreferenceSyncAllowlist.keys.contains(MailboxViewPreferenceKey.allowRemoteContent))
+        #expect(!PreferenceSyncAllowlist.keys.contains(MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders))
+    }
+
+    @Test("trusted-sender privacy copy is translated to Norwegian")
+    func trustedSenderPrivacyCopyHasNorwegianTranslations() throws {
+        let strings = try Self.loadSettingsCatalogStrings()
+        for key in [
+            "Load remote images for trusted senders",
+            "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked.",
+            "Automatically load remote images from your Contacts and people you have emailed. Tracking-pixel removal is currently off.",
+            "Remote images load automatically for trusted senders; unknown senders stay blocked."
+        ] {
+            let localizations = (strings[key] as? [String: Any])?["localizations"] as? [String: Any]
+            let norwegian = localizations?["nb"] as? [String: Any]
+            let unit = norwegian?["stringUnit"] as? [String: Any]
+            #expect(unit?["state"] as? String == "translated", "missing nb for \(key)")
+            #expect((unit?["value"] as? String)?.isEmpty == false, "empty nb for \(key)")
+        }
+    }
+
+    @Test("trusted-sender subtitle reflects whether tracking-pixel removal is enabled")
+    func trustedSenderSubtitleReflectsTrackingPixelToggle() throws {
+        let onText = PrivacySection.trustedSendersSubtitle(stripTrackingPixels: true)
+        let offText = PrivacySection.trustedSendersSubtitle(stripTrackingPixels: false)
+
+        let expectedOn = String(
+            localized: "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked.",
+            bundle: PrivacySection.resourceBundle
+        )
+        let expectedOff = String(
+            localized: "Automatically load remote images from your Contacts and people you have emailed. Tracking-pixel removal is currently off.",
+            bundle: PrivacySection.resourceBundle
+        )
+
+        #expect(onText == expectedOn)
+        #expect(offText == expectedOff)
+        #expect(onText != offText)
+
+        // Verify both English source keys and Norwegian catalog values stay distinct and accurate.
+        let onKey = "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked."
+        let offKey = "Automatically load remote images from your Contacts and people you have emailed. Tracking-pixel removal is currently off."
+        let strings = try Self.loadSettingsCatalogStrings()
+        let onNB =
+            (((strings[onKey] as? [
+                String: Any
+            ])?["localizations"] as? [String: Any])?["nb"] as? [String: Any])?["stringUnit"] as? [String: Any]
+        let offNB =
+            (((strings[offKey] as? [
+                String: Any
+            ])?["localizations"] as? [String: Any])?["nb"] as? [String: Any])?["stringUnit"] as? [String: Any]
+        let onNBValue = try #require(onNB?["value"] as? String)
+        let offNBValue = try #require(offNB?["value"] as? String)
+        #expect(!onNBValue.isEmpty)
+        #expect(!offNBValue.isEmpty)
+        #expect(onNBValue != offNBValue)
     }
 
     @Test("invalid enum raw values fall back to defaults")

@@ -11,7 +11,12 @@
  */
 
 import BrevBackend
+import BrevCalendar
+import BrevDesign
 import BrevSettings
+#if canImport(Contacts)
+import Contacts
+#endif
 import SwiftUI
 
 extension RecentRecipientStore {
@@ -60,10 +65,19 @@ private struct SenderWarningHistoryKey: EnvironmentKey {
     static let defaultValue: SenderWarningHistory? = nil
 }
 
+private struct TrustedSenderEvaluatorKey: EnvironmentKey {
+    static let defaultValue: TrustedSenderEvaluator = .empty
+}
+
 extension EnvironmentValues {
     var senderWarningHistory: SenderWarningHistory? {
         get { self[SenderWarningHistoryKey.self] }
         set { self[SenderWarningHistoryKey.self] = newValue }
+    }
+
+    var trustedSenderEvaluator: TrustedSenderEvaluator {
+        get { self[TrustedSenderEvaluatorKey.self] }
+        set { self[TrustedSenderEvaluatorKey.self] = newValue }
     }
 }
 
@@ -73,14 +87,28 @@ struct SenderWarningHistoryModifier: ViewModifier {
     let sourceID: MailSourceID?
     let folders: [Folder]
     let mailboxEmail: String?
+    let contactActions: MailSenderContactActions?
+    @AppStorage(MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders)
+    private var allowRemoteContentForTrustedSenders = false
     @State private var loaded: (Request, SenderWarningHistory)?
+    @State private var systemContactEmails: Set<String> = []
+    @State private var pimContactEmails: Set<String> = []
     @State private var revision = 0
+    @State private var systemContactsRevision = 0
+    @State private var pimContactsRevision = 0
 
-    init(backend: any MailBackend, sourceID: MailSourceID?, folders: [Folder], mailboxEmail: String? = nil) {
+    init(
+        backend: any MailBackend,
+        sourceID: MailSourceID?,
+        folders: [Folder],
+        mailboxEmail: String? = nil,
+        contactActions: MailSenderContactActions? = nil
+    ) {
         self.backend = backend
         self.sourceID = sourceID
         self.folders = folders
         self.mailboxEmail = mailboxEmail
+        self.contactActions = contactActions
     }
 
     private struct Request: Equatable {
@@ -88,6 +116,17 @@ struct SenderWarningHistoryModifier: ViewModifier {
         let source: MailSourceID
         let sent: [Folder]
         let mine: Set<String>
+        let revision: Int
+    }
+
+    private struct SystemContactsRequest: Equatable {
+        let isEnabled: Bool
+        let revision: Int
+    }
+
+    private struct PIMContactsRequest: Equatable {
+        let isEnabled: Bool
+        let contactActionsID: ObjectIdentifier?
         let revision: Int
     }
 
@@ -99,11 +138,40 @@ struct SenderWarningHistoryModifier: ViewModifier {
             mine: Set([backend.account.emailAddress, mailboxEmail].compactMap { $0?.lowercased() }),
             revision: revision
         )
+        let systemContactsRequest = SystemContactsRequest(
+            isEnabled: allowRemoteContentForTrustedSenders,
+            revision: systemContactsRevision
+        )
+        let pimContactsRequest = PIMContactsRequest(
+            isEnabled: allowRemoteContentForTrustedSenders,
+            contactActionsID: contactActions.map(ObjectIdentifier.init),
+            revision: pimContactsRevision
+        )
+        let currentHistory = loaded?.0 == request ? loaded?.1 : nil
+        let evaluator = TrustedSenderEvaluator(
+            contactEmails: allowRemoteContentForTrustedSenders
+                ? systemContactEmails.union(pimContactEmails)
+                : [],
+            repliedToEmails: currentHistory?.written ?? []
+        )
         content
-            .environment(\.senderWarningHistory, loaded?.0 == request ? loaded?.1 : nil)
+            .environment(\.senderWarningHistory, currentHistory)
+            .environment(\.trustedSenderEvaluator, evaluator)
             .onReceive(NotificationCenter.default.publisher(for: RecentRecipientStore.writtenAddressesDidChange)
                 .receive(on: DispatchQueue.main)) { _ in
                     revision += 1
+            }
+        #if canImport(Contacts)
+            .onReceive(NotificationCenter.default.publisher(for: .CNContactStoreDidChange)
+                .receive(on: DispatchQueue.main)) { _ in
+                    guard allowRemoteContentForTrustedSenders else { return }
+                    systemContactsRevision += 1
+            }
+        #endif
+            .onReceive(NotificationCenter.default.publisher(for: .pimContactsCacheDidChange)
+                .receive(on: DispatchQueue.main)) { _ in
+                    guard allowRemoteContentForTrustedSenders else { return }
+                    pimContactsRevision += 1
             }
             .task(id: request) {
                 let result = await SenderWarningHistory.load(
@@ -114,6 +182,24 @@ struct SenderWarningHistoryModifier: ViewModifier {
                 )
                 guard !Task.isCancelled else { return }
                 loaded = (request, result)
+            }
+            .task(id: systemContactsRequest) {
+                guard systemContactsRequest.isEnabled else {
+                    systemContactEmails = []
+                    return
+                }
+                let emails = await SystemContactsRecipientLookup.shared.allContactEmails()
+                guard !Task.isCancelled else { return }
+                systemContactEmails = emails
+            }
+            .task(id: pimContactsRequest) {
+                guard pimContactsRequest.isEnabled, let contactActions else {
+                    pimContactEmails = []
+                    return
+                }
+                let emails = await contactActions.allCachedContactEmails()
+                guard !Task.isCancelled else { return }
+                pimContactEmails = emails
             }
     }
 }

@@ -54,6 +54,7 @@ enum DetachedMessageWindow {
         sourceID: MailSourceID?,
         allFolders: [Folder],
         canFileLocally: Bool,
+        contactActions: MailSenderContactActions? = nil,
         theme: BrevTheme,
         onCommand: @escaping (DetachedMessageCommandRequest) -> Bool
     ) {
@@ -84,9 +85,15 @@ enum DetachedMessageWindow {
             navigation: nil,
             allFolders: allFolders,
             canFileLocally: canFileLocally,
-            closeWindow: { [weak window] in window?.close() }
+            closeWindow: { [weak window] in window?.close() },
+            contactActions: contactActions
         )
-        .modifier(SenderWarningHistoryModifier(backend: backend, sourceID: sourceID, folders: allFolders))
+        .modifier(SenderWarningHistoryModifier(
+            backend: backend,
+            sourceID: sourceID,
+            folders: allFolders,
+            contactActions: contactActions
+        ))
         .readerCommandHandler { [weak window] request in
             // State changes schedule presentation for the next view update.
             // Obtain acceptance first so a busy or unavailable owner cannot

@@ -4,6 +4,7 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Trusted-sender remote image tier (#8): added opt-in **Settings → Privacy & Security → Privacy → Load remote images for trusted senders** (off by default, excluded from iCloud preference sync) to automatically load remote images from exact addresses in local Contacts or people you have previously emailed/replied to without prompting for Contacts access or making extra network calls, while continuing to strip tracking pixels before rendering in both single-message and thread readers.
 - Local MCP `create_draft` tool (#6): local MCP clients can now propose
   plain-text drafts (with optional reply threading via an in-scope
   `in_reply_to_message_id`) behind a mandatory per-call in-app approval sheet

@@ -15,6 +15,7 @@ import SwiftUI
 public enum MailboxViewPreferenceKey {
     public static let useRichRenderer = "body.useRichRenderer"
     public static let allowRemoteContent = "body.allowRemoteContent"
+    public static let allowRemoteContentForTrustedSenders = "body.allowRemoteContentForTrustedSenders"
     public static let groupByThread = "list.groupByThread"
     public static let groupByDate = "list.groupByDate"
     public static let showAbsoluteArrivalTime = "list.showAbsoluteArrivalTime"

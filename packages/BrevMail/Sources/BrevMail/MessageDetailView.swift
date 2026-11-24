@@ -49,6 +49,7 @@ public struct MessageDetailView: View {
     @Environment(\.localMessageWorkflowReaderState) private var injectedWorkflowState
     @Environment(\.readerAskAIAction) private var askAIAction
     @Environment(\.messageReaderReferenceDate) private var referenceDate
+    @Environment(\.trustedSenderEvaluator) private var trustedSenderEvaluator
     private let backend: any MailBackend
     private let sourceID: MailSourceID?
     private let header: MessageHeader?
@@ -149,6 +150,8 @@ public struct MessageDetailView: View {
 
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
+    @AppStorage(MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders)
+    private var allowRemoteContentForTrustedSenders = false
     @AppStorage(MessageTrackingPixelPreference.storageKey)
     private var stripTrackingPixels = MessageTrackingPixelPreference.enabledByDefault
     @AppStorage(MailboxViewPreferenceKey.showSenderAvatars) private var showSenderAvatars = true
@@ -224,7 +227,26 @@ public struct MessageDetailView: View {
             }
         }
         .task(id: reloadKey) { await reload() }
+        .onAppear {
+            syncRemoteContentPolicyFromDefaults()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: RemoteContentPolicy.didChangeNotification)
+            .receive(on: DispatchQueue.main)) { _ in
+                syncRemoteContentPolicyFromDefaults()
+        }
         .onChange(of: stripTrackingPixels) { _, _ in
+            refreshRenderedHTMLForCurrentTrackingPreference()
+        }
+        .onChange(of: useRichRenderer) { _, _ in
+            refreshRenderedHTMLForCurrentTrackingPreference()
+        }
+        .onChange(of: allowRemoteContentDefault) { _, _ in
+            refreshRenderedHTMLForCurrentTrackingPreference()
+        }
+        .onChange(of: allowRemoteContentForTrustedSenders) { _, _ in
+            refreshRenderedHTMLForCurrentTrackingPreference()
+        }
+        .onChange(of: trustedSenderEvaluator) { _, _ in
             refreshRenderedHTMLForCurrentTrackingPreference()
         }
         #if os(macOS)
@@ -2164,21 +2186,48 @@ public struct MessageDetailView: View {
         MessageRemoteContentRenderPolicy.state(
             html: html,
             senderEmail: header.from.email,
+            useRichRenderer: usesRichHTMLBodyRenderer,
             allowRemoteContentDefault: allowRemoteContentDefault,
+            allowRemoteContentForTrustedSenders: allowRemoteContentForTrustedSenders,
+            trustedSenders: trustedSenderEvaluator,
+            senderAuthenticationFailed: MessageHeaderAnalyzer.hasSenderAuthenticationFailure(
+                in: messageBody?.authenticationResults
+            ),
             loadOnce: showRemoteContent,
             policy: remoteContentPolicy
         )
     }
 
-    private func allowsRemoteContent(html: String?, senderEmail: String) -> Bool {
-        guard let html else { return allowRemoteContentDefault }
+    private func allowsRemoteContent(
+        html: String?,
+        senderEmail: String,
+        authenticationResults: String? = nil
+    ) -> Bool {
+        let authResults = authenticationResults ?? messageBody?.authenticationResults
+        guard let html else { return usesRichHTMLBodyRenderer && allowRemoteContentDefault }
         return MessageRemoteContentRenderPolicy.state(
             html: html,
             senderEmail: senderEmail,
+            useRichRenderer: usesRichHTMLBodyRenderer,
             allowRemoteContentDefault: allowRemoteContentDefault,
+            allowRemoteContentForTrustedSenders: allowRemoteContentForTrustedSenders,
+            trustedSenders: trustedSenderEvaluator,
+            senderAuthenticationFailed: MessageHeaderAnalyzer.hasSenderAuthenticationFailure(
+                in: authResults
+            ),
             loadOnce: showRemoteContent,
             policy: remoteContentPolicy
         ).allowsRemoteContent
+    }
+
+    private func syncRemoteContentPolicyFromDefaults() {
+        let updated = RemoteContentPolicy.load()
+        guard updated != remoteContentPolicy else { return }
+        remoteContentPolicy = updated
+        // An external policy update (such as revoking an allowance in Settings)
+        // clears any earlier per-message override so revocation takes effect immediately.
+        showRemoteContent = false
+        refreshRenderedHTMLForCurrentTrackingPreference()
     }
 
     private func handleMessageLink(_ url: URL, analysis: MessageSecurityAnalysis) {

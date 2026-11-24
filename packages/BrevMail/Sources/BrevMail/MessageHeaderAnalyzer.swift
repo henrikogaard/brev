@@ -97,4 +97,34 @@ public enum MessageHeaderAnalyzer {
             options: .regularExpression
         ) != nil
     }
+
+    /// Returns `true` when `Authentication-Results` reports a sender authentication
+    /// failure that must block automatic trusted-sender remote-image loading:
+    /// - any `dmarc=fail` or `dmarc=permerror` (always blocks), or
+    /// - `spf=fail`/`softfail`/`permerror` or `dkim=fail`/`permerror` when `dmarc=pass`
+    ///   is not present (allowing legitimately forwarded mail with passing aligned DMARC
+    ///   while blocking spoofed/unauthenticated headers).
+    static func hasSenderAuthenticationFailure(in authenticationResults: String?) -> Bool {
+        guard let value = authenticationResults else { return false }
+        let normalized = value
+            .replacingOccurrences(of: "\r\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .lowercased()
+        if normalized.range(
+            of: #"\bdmarc\s*=\s*(fail|permerror)\b"#,
+            options: .regularExpression
+        ) != nil {
+            return true
+        }
+        let hasDMARCPass = normalized.range(
+            of: #"\bdmarc\s*=\s*pass\b"#,
+            options: .regularExpression
+        ) != nil
+        guard !hasDMARCPass else { return false }
+        return normalized.range(
+            of: #"\b(spf\s*=\s*(fail|softfail|permerror)|dkim\s*=\s*(fail|permerror))\b"#,
+            options: .regularExpression
+        ) != nil
+    }
 }
