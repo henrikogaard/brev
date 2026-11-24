@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-24 — Agent — Proactive Opt-In On-Device AI (#4, PR #352 review fixes)
+
+- Goal: address all 15 distinct Codex & Devin Review findings (3 security, 8 bugs, 4 polish/perf) on PR #352 (`feature/proactive-on-device-ai`).
+- Changes:
+  - Security: added `UserDefaults.didChangeNotification` opt-out observer + live settings checks in `OnDeviceThreadTriageStore` so opt-out immediately cancels queued jobs and wipes cached insights even with no mailbox views mounted; enforced per-message Trash/Spam exclusion across entire conversations (`eligibleHeaders`); extended `ProactiveTriageRedactor` to redact opaque verification/magic-login links (query strings, fragments, and long high-entropy path tokens -> `[redacted-link]`).
+  - Bugs & performance: cancelled & reset manual thread summary state in `ThreadConversationView` on conversation switch (`ThreadAISummarySessionState`); changed `ProactiveOnDeviceTriageEngine` prompt truncation to allocate UTF-8 budget from newest messages backwards so long older messages never crowd out the newest reply; sorted headers chronologically before selecting the 4-message cached-body window; included cache-only body availability/revision hashes in `sourceFingerprint` so newly cached full bodies regenerate snippet-only summaries; added bounded LRU eviction to `OnDeviceThreadTriageStore.insightsByKey`; aligned `AIWriterSectionProviderSummary` strictly with `AIProviderResolver` routing; replaced fixed-prefix list scheduling and O(N) per-row scans with `ProactiveTriageThreadIndex` and scroll-driven `ProactiveTriageVisibleWindow` keyed by visible filtered rows and their thread fingerprints; decoupled shared in-flight inference cancellation per waiter; updated `AIBackend` doc comment for two-tier invocation policy; added mounted-view propagation and regression tests across `BrevAI`, `BrevSettings`, and `BrevMail`.
+- Verification: `swift test --package-path packages/BrevAI`, `swift test --package-path packages/BrevSettings`, `swift test --package-path packages/BrevMail`, macOS 26+ `xcodebuild -testLanguage en -testRegion en_US` for `AIOnDeviceSettingsSnapshotTests` and `ProactiveTriageSnapshotTests`, `scripts/format.sh`, `scripts/lint.sh`, and privacy-audit regex verification.
+
 ## 2026-11-24 — Agent — Proactive Opt-In On-Device AI (#4)
 
 - Goal: implement opt-in proactive on-device AI summaries and priority triage (`Urgent` / `Needs reply`) restricted strictly to zero-network on-device AI backends on branch `feature/proactive-on-device-ai`.

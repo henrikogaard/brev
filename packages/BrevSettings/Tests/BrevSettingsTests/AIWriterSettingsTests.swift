@@ -11,6 +11,7 @@
  */
 
 import BrevAI
+import BrevBackend
 @testable import BrevSettings
 import Foundation
 import Testing
@@ -87,6 +88,67 @@ struct AIWriterSettingsTests {
             let unit = nb?["stringUnit"] as? [String: Any]
             #expect((unit?["value"] as? String)?.isEmpty == false, "Missing nb translation for: \(key)")
         }
+    }
+
+    @Test("provider summary matches AIProviderResolver routing and ignores unassigned non-default on-device profiles")
+    func providerSummaryRequiresDefaultOrAssignedOnDeviceRoute() throws {
+        let account = BrevAccount(id: "acct-1", displayName: "Work", emailAddress: "work@example.org")
+        let unassignedApple = AIProviderConfiguration.appleIntelligence(
+            isEnabled: true,
+            isDefault: false,
+            assignedAccountID: nil
+        )
+        let cloudDefault = try #require(AIProviderConfiguration(
+            id: AIProviderID("openai"),
+            kind: .openAICompatible,
+            displayName: "OpenAI",
+            endpointURL: URL(string: "https://api.openai.com/v1"),
+            modelID: "gpt-4o",
+            isEnabled: true,
+            isDefault: true,
+            assignedAccountID: nil
+        ))
+
+        // Unassigned non-default Apple Intelligence alone (e.g. after deleting a cloud default) is NOT active
+        let orphanSummary = AIWriterSectionProviderSummary.evaluate(
+            configurations: [unassignedApple],
+            assignments: AIProviderAccountAssignments(),
+            accounts: [account],
+            appleIntelligenceAvailability: .available
+        )
+        #expect(orphanSummary.hasActiveOnDeviceProvider == false)
+
+        // Same check when no accounts are loaded yet
+        let emptyAccountsOrphan = AIWriterSectionProviderSummary.evaluate(
+            configurations: [unassignedApple],
+            assignments: AIProviderAccountAssignments(),
+            accounts: [],
+            appleIntelligenceAvailability: .available
+        )
+        #expect(emptyAccountsOrphan.hasActiveOnDeviceProvider == false)
+
+        // Cloud default + explicit account assignment to Apple Intelligence IS active
+        var assignedToApple = AIProviderAccountAssignments()
+        assignedToApple.assign(providerID: unassignedApple.id, toAccountID: account.id)
+        let assignedSummary = AIWriterSectionProviderSummary.evaluate(
+            configurations: [cloudDefault, unassignedApple],
+            assignments: assignedToApple,
+            accounts: [account],
+            appleIntelligenceAvailability: .available
+        )
+        #expect(assignedSummary.hasActiveOnDeviceProvider == true)
+
+        // Default Apple Intelligence overridden by cloud for every account is NOT active
+        let defaultApple = AIProviderConfiguration.appleIntelligence(isEnabled: true, isDefault: true)
+        var assignedToCloud = AIProviderAccountAssignments()
+        assignedToCloud.assign(providerID: cloudDefault.id, toAccountID: account.id)
+        let overriddenSummary = AIWriterSectionProviderSummary.evaluate(
+            configurations: [defaultApple, cloudDefault],
+            assignments: assignedToCloud,
+            accounts: [account],
+            appleIntelligenceAvailability: .available
+        )
+        #expect(overriddenSummary.hasActiveOnDeviceProvider == false)
     }
 
     private static func makeDefaults() throws -> UserDefaults {

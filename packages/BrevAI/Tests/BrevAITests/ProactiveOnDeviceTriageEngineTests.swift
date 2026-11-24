@@ -271,7 +271,137 @@ struct ProactiveOnDeviceTriageEngineTests {
         let sentText = recorded[0].map(\.content).joined(separator: "\n")
         #expect(!sentText.contains("849201"))
         #expect(!sentText.contains("secret123"))
-        #expect(sentText.contains("[Redacted"))
+        #expect(sentText.contains("[Redacted") || sentText.contains("[redacted-link]"))
+    }
+
+    @Test("opaque verification links without explicit auth keywords are redacted before prompting")
+    func redactsOpaqueVerificationLinks() async throws {
+        let engine = ProactiveOnDeviceTriageEngine()
+        let onDeviceBackend = RecordingTriageAIBackend(
+            isOnDeviceZeroNetwork: true,
+            responses: [.success(#"{"priority":"normal","summary":"Automated access email."}"#)]
+        )
+        let input = makeInput(
+            subject: "Continue to Workspace",
+            text: """
+            Click https://app.example.com/l/a8F92kLpQ7zX1vN4mB2cD6eR or \
+            https://go.example.com/click?s=eyJhbGciOiJIUzI1NiJ9 to continue. \
+            Docs at https://example.com/docs remain safe.
+            """
+        )
+
+        _ = try #require(await engine.insight(
+            for: input,
+            settings: enabledSettings,
+            backend: onDeviceBackend
+        ))
+
+        let recorded = await onDeviceBackend.recordedMessages
+        #expect(recorded.count == 1)
+        let sentText = recorded[0].map(\.content).joined(separator: "\n")
+        #expect(!sentText.contains("a8F92kLpQ7zX1vN4mB2cD6eR"))
+        #expect(!sentText.contains("eyJhbGciOiJIUzI1NiJ9"))
+        #expect(sentText.contains("[redacted-link]"))
+        #expect(sentText.contains("https://example.com/docs"))
+    }
+
+    @Test("context truncation preserves the newest reply even when an older message exceeds 4 KB")
+    func truncationPreservesNewestMessage() async throws {
+        let engine = ProactiveOnDeviceTriageEngine()
+        let onDeviceBackend = RecordingTriageAIBackend(
+            isOnDeviceZeroNetwork: true,
+            responses: [.success(#"{"priority":"urgent","summary":"Please approve the deployment before 4 PM."}"#)]
+        )
+        let hugeOlderBody = String(repeating: "Legacy thread history background details. ", count: 140)
+        let newestBody = "FINAL-REPLY-MARKER: Please approve the deployment before 4 PM today."
+        let input = ProactiveTriageThreadInput(
+            cacheKey: "acct-1|long-thread",
+            sourceFingerprint: "fp-long",
+            isExcludedFolder: false,
+            messages: [
+                ProactiveTriageMessageInput(
+                    sender: "Old <old@example.com>",
+                    subject: "Deployment",
+                    text: hugeOlderBody,
+                    date: Date(timeIntervalSince1970: 1_700_000_000),
+                    isRead: true
+                ),
+                ProactiveTriageMessageInput(
+                    sender: "New <new@example.com>",
+                    subject: "Re: Deployment",
+                    text: newestBody,
+                    date: Date(timeIntervalSince1970: 1_700_003_600),
+                    isRead: false
+                )
+            ]
+        )
+
+        _ = try #require(await engine.insight(
+            for: input,
+            settings: enabledSettings,
+            backend: onDeviceBackend
+        ))
+
+        let recorded = await onDeviceBackend.recordedMessages
+        #expect(recorded.count == 1)
+        let sentText = recorded[0].map(\.content).joined(separator: "\n")
+        #expect(sentText.contains("FINAL-REPLY-MARKER"))
+        #expect(sentText.contains("approve the deployment before 4 PM today"))
+    }
+
+    @Test("cancelling one shared waiter does not cancel in-flight inference for another waiter in either order")
+    func sharedInFlightCancellationDecoupledPerWaiter() async throws {
+        // Order A: first caller cancels while second caller remains active
+        do {
+            let engine = ProactiveOnDeviceTriageEngine()
+            let backend = RecordingTriageAIBackend(
+                isOnDeviceZeroNetwork: true,
+                responses: [.success(#"{"priority":"needs_reply","summary":"Still completes for waiter 2."}"#)]
+            )
+            await backend.setDelayNanoseconds(80_000_000)
+            let input = makeInput(cacheKey: "shared-a", fingerprint: "fp-a")
+
+            let waiter1 = Task {
+                await engine.insight(for: input, settings: enabledSettings, backend: backend)
+            }
+            let waiter2 = Task {
+                await engine.insight(for: input, settings: enabledSettings, backend: backend)
+            }
+            try await Task.sleep(nanoseconds: 15_000_000)
+            waiter1.cancel()
+
+            let result1 = await waiter1.value
+            let result2 = try #require(await waiter2.value)
+            #expect(result1 == nil)
+            #expect(result2.summary == "Still completes for waiter 2.")
+            #expect(await backend.recordedMessages.count == 1)
+        }
+
+        // Order B: second caller cancels while first caller remains active
+        do {
+            let engine = ProactiveOnDeviceTriageEngine()
+            let backend = RecordingTriageAIBackend(
+                isOnDeviceZeroNetwork: true,
+                responses: [.success(#"{"priority":"urgent","summary":"Still completes for waiter 1."}"#)]
+            )
+            await backend.setDelayNanoseconds(80_000_000)
+            let input = makeInput(cacheKey: "shared-b", fingerprint: "fp-b")
+
+            let waiter1 = Task {
+                await engine.insight(for: input, settings: enabledSettings, backend: backend)
+            }
+            let waiter2 = Task {
+                await engine.insight(for: input, settings: enabledSettings, backend: backend)
+            }
+            try await Task.sleep(nanoseconds: 15_000_000)
+            waiter2.cancel()
+
+            let result2 = await waiter2.value
+            let result1 = try #require(await waiter1.value)
+            #expect(result2 == nil)
+            #expect(result1.summary == "Still completes for waiter 1.")
+            #expect(await backend.recordedMessages.count == 1)
+        }
     }
 
     @Test("bounded LRU cache evicts oldest threads past maxEntries")

@@ -177,6 +177,51 @@ struct ThreadAISummaryTests {
             .maxTotalContextBytes)
     }
 
+    @Test("switching conversations clears manual summary state and active request")
+    func switchingConversationsResetsManualSummaryState() {
+        let source = MailSourceID(accountID: "acct-1", mailboxID: "acct-1")
+        let threadA = [header(id: "m-a", sender: "a@example.com", subject: "A", snippet: "Hi", date: Date())]
+        let threadB = [MessageHeader(
+            id: "m-b",
+            threadID: "thread-b",
+            folderID: "inbox",
+            from: Correspondent(name: "B", email: "b@example.com"),
+            subject: "B",
+            snippet: "Hello",
+            date: Date(),
+            isRead: true
+        )]
+        let idA = ThreadAISummarySessionState.conversationIdentity(
+            sourceID: source,
+            accountID: "acct-1",
+            headers: threadA
+        )
+        let idB = ThreadAISummarySessionState.conversationIdentity(
+            sourceID: source,
+            accountID: "acct-1",
+            headers: threadB
+        )
+        #expect(idA != idB)
+
+        var session = ThreadAISummarySessionState(
+            conversationIdentity: idA,
+            activeRequest: ThreadAISummaryRequest(threadID: "thread-1", messageIDs: ["m-a"]),
+            state: .success(ThreadAISummaryPresentation.make(
+                responseText: "Summary:\n- Old conversation summary.",
+                providerLabel: "On this Mac",
+                wasTruncated: false
+            ))
+        )
+
+        #expect(session.switchConversation(to: idA) == false)
+        #expect(session.state != nil)
+
+        #expect(session.switchConversation(to: idB) == true)
+        #expect(session.conversationIdentity == idB)
+        #expect(session.activeRequest == nil)
+        #expect(session.state == nil)
+    }
+
     private func header(
         id: String,
         sender: String,

@@ -231,7 +231,7 @@ struct AIWriterSection: View {
     }
 }
 
-private struct AIWriterSectionProviderSummary: Equatable {
+struct AIWriterSectionProviderSummary: Equatable {
     let configuredProvider: AIProviderConfiguration?
     let hasActiveOnDeviceProvider: Bool
     let hasNonOnDeviceAccountOverride: Bool
@@ -242,14 +242,46 @@ private struct AIWriterSectionProviderSummary: Equatable {
         appleIntelligenceAvailability: AppleIntelligenceAvailability
     ) -> AIWriterSectionProviderSummary {
         let configurations = (try? settingsStore.aiProviderConfigurations()) ?? []
-        let configuredProvider = configurations.first(where: \.isDefault) ?? configurations.first
         let assignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
+        return evaluate(
+            configurations: configurations,
+            assignments: assignments,
+            accounts: accounts,
+            appleIntelligenceAvailability: appleIntelligenceAvailability
+        )
+    }
+
+    static func evaluate(
+        configurations: [AIProviderConfiguration],
+        assignments: AIProviderAccountAssignments,
+        accounts: [BrevAccount],
+        appleIntelligenceAvailability: AppleIntelligenceAvailability
+    ) -> AIWriterSectionProviderSummary {
+        let configuredProvider = configurations.first(where: \.isDefault)
+            ?? configurations.first
         let providersByID = Dictionary(uniqueKeysWithValues: configurations.map { ($0.id, $0) })
         let legacyOverrideByAccountID: [String: AIProviderConfiguration] = configurations.reduce(into: [:]) { map, config in
             guard let accountID = config.assignedAccountID, map[accountID] == nil else { return }
             map[accountID] = config
         }
         let allAccountIDs = Set(accounts.map(\.id)).union(legacyOverrideByAccountID.keys)
+
+        func isUsableOnDevice(_ provider: AIProviderConfiguration) -> Bool {
+            guard provider.isEnabled,
+                  provider.kind.isOnDevice,
+                  provider.validationIssues.isEmpty
+            else { return false }
+            if provider.kind == .appleIntelligence {
+                return appleIntelligenceAvailability.isSelectable
+            }
+            return true
+        }
+
+        // Mirror `AIProviderResolver` routing strictly: only an explicit default provider
+        // (`isDefault == true`) or an explicit account assignment can make an account active.
+        let usableDefaultProvider = configurations.first {
+            $0.isDefault && $0.isEnabled && $0.validationIssues.isEmpty
+        }
 
         let hasNonOnDeviceAccountOverride = allAccountIDs.contains { accountID in
             if let assignedProviderID = assignments.providerID(forAccountID: accountID) {
@@ -260,34 +292,25 @@ private struct AIWriterSectionProviderSummary: Equatable {
             return legacyProvider.isEnabled && !legacyProvider.kind.isOnDevice
         }
 
-        let isDefaultOnDeviceActive: Bool = {
-            guard let configuredProvider,
-                  configuredProvider.isEnabled,
-                  configuredProvider.kind.isOnDevice,
-                  configuredProvider.validationIssues.isEmpty
-            else { return false }
-            if configuredProvider.kind == .appleIntelligence {
-                return appleIntelligenceAvailability.isSelectable
+        let hasActiveOnDeviceRoute: Bool
+        if allAccountIDs.isEmpty {
+            hasActiveOnDeviceRoute = usableDefaultProvider.map(isUsableOnDevice) ?? false
+        } else {
+            hasActiveOnDeviceRoute = allAccountIDs.contains { accountID in
+                if let assignedProviderID = assignments.providerID(forAccountID: accountID) {
+                    guard let provider = providersByID[assignedProviderID] else { return false }
+                    return isUsableOnDevice(provider)
+                }
+                if let legacyProvider = legacyOverrideByAccountID[accountID] {
+                    return isUsableOnDevice(legacyProvider)
+                }
+                return usableDefaultProvider.map(isUsableOnDevice) ?? false
             }
-            return true
-        }()
-
-        let hasOnDeviceAccountAssignment = allAccountIDs.contains { accountID in
-            guard let assignedProviderID = assignments.providerID(forAccountID: accountID),
-                  let provider = providersByID[assignedProviderID],
-                  provider.isEnabled,
-                  provider.kind.isOnDevice,
-                  provider.validationIssues.isEmpty
-            else { return false }
-            if provider.kind == .appleIntelligence {
-                return appleIntelligenceAvailability.isSelectable
-            }
-            return true
         }
 
         return AIWriterSectionProviderSummary(
             configuredProvider: configuredProvider,
-            hasActiveOnDeviceProvider: isDefaultOnDeviceActive || hasOnDeviceAccountAssignment,
+            hasActiveOnDeviceProvider: hasActiveOnDeviceRoute,
             hasNonOnDeviceAccountOverride: hasNonOnDeviceAccountOverride
         )
     }

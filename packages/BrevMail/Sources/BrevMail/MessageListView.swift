@@ -210,6 +210,10 @@ public struct MessageListView: View {
     // rebuilding on every intermediate update.
     @State private var threadCountsRebuildTask: Task<Void, Never>?
     @State private var snoozeWakeScheduleRevision = 0
+    /// Precomputed per-thread header groups & fingerprints for O(1) per-row proactive triage lookup.
+    @State private var triageThreadIndex = ProactiveTriageThreadIndex.empty
+    /// Row IDs currently visible in the scroll viewport, used to advance proactive triage on scroll.
+    @State private var visibleTriageRowIDs: Set<MessageHeader.ID> = []
 
     public init(
         navigation: MailNavigationState,
@@ -282,7 +286,11 @@ public struct MessageListView: View {
                 invalidatePendingSnoozeLookup()
                 snoozeWakeScheduleRevision += 1
             }
-            .onChange(of: folder?.id) { _, _ in invalidatePendingSnoozeLookup() }
+            .onChange(of: folder?.id) { _, _ in
+                invalidatePendingSnoozeLookup()
+                visibleTriageRowIDs.removeAll()
+                rebuildProactiveTriageThreadIndex()
+            }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 snoozeWakeScheduleRevision += 1
@@ -368,6 +376,7 @@ public struct MessageListView: View {
             }
             .onChange(of: headers) {
                 refreshPinnedMessageIDSet()
+                rebuildProactiveTriageThreadIndex()
                 scheduleDebouncedThreadCountsRebuild()
             }
             .onDisappear {
@@ -1426,15 +1435,38 @@ public struct MessageListView: View {
         )
     }
 
-    private var proactiveTriageTaskKey: String {
-        let topIDs = headers.prefix(15).map(\.id).joined(separator: ",")
-        return "\(backend.account.id)|\(folder?.id ?? "")|\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(aiBackend?.identifier ?? "")|\(topIDs)"
+    private func rebuildProactiveTriageThreadIndex() {
+        triageThreadIndex = ProactiveTriageThreadIndex.build(
+            accountID: backend.account.id,
+            headers: headers,
+            folder: folder,
+            allFolders: allFolders
+        )
     }
 
-    private func threadHeadersForTriage(for header: MessageHeader) -> [MessageHeader] {
-        guard !header.threadID.isEmpty else { return [header] }
-        let matched = headers.filter { $0.threadID == header.threadID }
-        return matched.isEmpty ? [header] : matched
+    private func visibleProactiveTriageBatch() -> [MessageHeader] {
+        let filteredVisible = renderedSelectableHeaders(in: presentationSnapshot)
+        return ProactiveTriageVisibleWindow.selectBatch(
+            from: filteredVisible,
+            visibleIDs: visibleTriageRowIDs,
+            itemID: \.id,
+            cacheKey: { OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: $0) }
+        )
+    }
+
+    private var proactiveTriageTaskKey: String {
+        let prefix = "\(backend.account.id)|\(folder?.id ?? "")|\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(aiBackend?.identifier ?? "")"
+        guard proactiveTriageSettings.isProactiveOnDeviceTriageAvailable,
+              aiBackend?.isOnDeviceZeroNetwork == true,
+              !OnDeviceThreadTriageStore.isExcludedFolder(folder)
+        else { return prefix }
+        let selected = visibleProactiveTriageBatch()
+        let entries = selected.map { header -> (cacheKey: String, headerFingerprint: String) in
+            let key = OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: header)
+            let fp = triageThreadIndex.headerFingerprint(for: key, fallback: header)
+            return (cacheKey: key, headerFingerprint: fp)
+        }
+        return ProactiveTriageVisibleWindow.taskKey(prefix: prefix, selectedKeysAndFingerprints: entries)
     }
 
     private func proactiveTriageInsight(for header: MessageHeader) -> ThreadTriageInsight? {
@@ -1444,10 +1476,9 @@ public struct MessageListView: View {
               !OnDeviceThreadTriageStore.isExcludedFolder(folder),
               let triageStore
         else { return nil }
-        let group = threadHeadersForTriage(for: header)
         let key = OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: header)
-        let fingerprint = OnDeviceThreadTriageStore.sourceFingerprint(for: group)
-        return triageStore.cachedInsight(for: key, sourceFingerprint: fingerprint)
+        let headerFP = triageThreadIndex.headerFingerprint(for: key, fallback: header)
+        return triageStore.cachedInsight(for: key, matchingHeaderFingerprint: headerFP)
     }
 
     private func scheduleProactiveOnDeviceTriageIfEligible() {
@@ -1460,18 +1491,19 @@ public struct MessageListView: View {
         guard let aiBackend, aiBackend.isOnDeviceZeroNetwork, !OnDeviceThreadTriageStore.isExcludedFolder(folder) else {
             return
         }
-        var seenKeys = Set<String>()
-        var groups: [[MessageHeader]] = []
-        for header in headers {
+        if triageThreadIndex.headersByCacheKey.isEmpty, !headers.isEmpty {
+            rebuildProactiveTriageThreadIndex()
+        }
+        let selected = visibleProactiveTriageBatch()
+        let groups = selected.map { header in
             let key = OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: header)
-            guard seenKeys.insert(key).inserted else { continue }
-            groups.append(threadHeadersForTriage(for: header))
-            if groups.count >= 15 { break }
+            return triageThreadIndex.headers(for: key, fallback: header)
         }
         triageStore.scheduleVisibleThreads(
             accountID: backend.account.id,
             threadGroups: groups,
             folder: folder,
+            allFolders: allFolders,
             settings: settings,
             backend: aiBackend,
             cachedBodyProvider: backend.extensionService(CachedMessageBodyProviding.self),
@@ -1604,11 +1636,15 @@ public struct MessageListView: View {
             delay: refreshArrivalDelay(for: header.id)
         )
         .onAppear {
+            visibleTriageRowIDs.insert(header.id)
             guard shouldLoadMore(
                 afterAppearingAt: visibleIndex,
                 totalCount: visibleCount
             ) else { return }
             Task { await loadMore() }
+        }
+        .onDisappear {
+            visibleTriageRowIDs.remove(header.id)
         }
     }
 

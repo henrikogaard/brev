@@ -88,6 +88,7 @@ public struct ThreadConversationView: View {
     @State private var showAISummaryConsent = false
     @State private var activeAISummaryRequest: ThreadAISummaryRequest?
     @State private var aiSummaryState: ThreadAISummaryState?
+    @State private var manualAISummaryTask: Task<Void, Never>?
     @AppStorage(AIWriterSettings.Key.isEnabled) private var aiEnabled = false
     @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
     @AppStorage(AIWriterSettings.Key.proactiveOnDeviceTriageEnabled)
@@ -312,6 +313,13 @@ public struct ThreadConversationView: View {
                     }
                 }
                 // Re-initialise when the selected thread changes.
+                .onChange(of: conversationIdentity) { _, _ in
+                    resetManualAISummaryState()
+                }
+                .onDisappear {
+                    manualAISummaryTask?.cancel()
+                    manualAISummaryTask = nil
+                }
                 .onChange(of: threadHeaders.first?.threadID) { _, newThreadID in
                     guard newThreadID != nil else { return }
                     // Drop the previous thread's pooled renderers — their card
@@ -982,7 +990,7 @@ public struct ThreadConversationView: View {
             }
         } else if let aiBackend {
             Button {
-                Task { await summarizeThread(with: aiBackend) }
+                startManualThreadSummary(with: aiBackend)
             } label: {
                 Label(String(localized: "Summarize Thread", bundle: .module), systemImage: "wand.and.stars")
             }
@@ -1016,9 +1024,34 @@ public struct ThreadConversationView: View {
         )
     }
 
-    private var currentThreadFolder: Folder? {
-        guard let folderID = threadHeaders.last?.folderID else { return nil }
-        return allFolders.first { $0.id == folderID }
+    private var conversationIdentity: String {
+        ThreadAISummarySessionState.conversationIdentity(
+            sourceID: sourceID,
+            accountID: backend.account.id,
+            headers: threadHeaders
+        )
+    }
+
+    private func startManualThreadSummary(with aiBackend: any AIBackend) {
+        manualAISummaryTask?.cancel()
+        manualAISummaryTask = Task {
+            await summarizeThread(with: aiBackend)
+        }
+    }
+
+    private func resetManualAISummaryState() {
+        manualAISummaryTask?.cancel()
+        manualAISummaryTask = nil
+        activeAISummaryRequest = nil
+        aiSummaryState = nil
+    }
+
+    private var eligibleProactiveHeaders: [MessageHeader] {
+        OnDeviceThreadTriageStore.eligibleHeaders(
+            from: threadHeaders,
+            folder: nil,
+            allFolders: allFolders
+        )
     }
 
     private var proactiveTriageSettings: AIWriterSettings {
@@ -1030,24 +1063,25 @@ public struct ThreadConversationView: View {
     }
 
     private var proactiveThreadTriageTaskID: String {
-        let fingerprint = OnDeviceThreadTriageStore.sourceFingerprint(for: threadHeaders)
+        let fingerprint = OnDeviceThreadTriageStore.headerFingerprint(for: eligibleProactiveHeaders)
         return "\(backend.account.id)|\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(aiBackend?.identifier ?? "")|\(fingerprint)"
     }
 
     private var activeProactiveTriageInsight: ThreadTriageInsight? {
+        let eligible = eligibleProactiveHeaders
+        let ordered = OnDeviceThreadTriageStore.sortedChronologically(eligible)
         guard proactiveTriageSettings.isProactiveOnDeviceTriageAvailable,
               let aiBackend,
               aiBackend.isOnDeviceZeroNetwork,
-              !OnDeviceThreadTriageStore.isExcludedFolder(currentThreadFolder),
-              let latest = threadHeaders.last
+              let latest = ordered.last
         else { return nil }
         if let initialProactiveTriageInsight {
             return initialProactiveTriageInsight
         }
         guard let triageStore else { return nil }
         let key = OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: latest)
-        let fingerprint = OnDeviceThreadTriageStore.sourceFingerprint(for: threadHeaders)
-        return triageStore.cachedInsight(for: key, sourceFingerprint: fingerprint)
+        let headerFP = OnDeviceThreadTriageStore.headerFingerprint(forOrderedHeaders: ordered)
+        return triageStore.cachedInsight(for: key, matchingHeaderFingerprint: headerFP)
     }
 
     private func refreshProactiveThreadTriageIfEligible() async {
@@ -1062,7 +1096,8 @@ public struct ThreadConversationView: View {
         _ = await triageStore.triageIfEligible(
             accountID: backend.account.id,
             headers: threadHeaders,
-            folder: currentThreadFolder,
+            folder: nil,
+            allFolders: allFolders,
             settings: settings,
             backend: aiBackend,
             cachedBodyProvider: backend.extensionService(CachedMessageBodyProviding.self),
@@ -1079,7 +1114,7 @@ public struct ThreadConversationView: View {
               let aiBackend,
               ThreadAISummaryAvailability.disabledReason(in: aiSummaryAvailabilityState) == nil
         else { return nil }
-        return { Task { await summarizeThread(with: aiBackend) } }
+        return { startManualThreadSummary(with: aiBackend) }
     }
 
     // MARK: - Participant summary
@@ -1115,7 +1150,7 @@ public struct ThreadConversationView: View {
             if needsConsent {
                 showAISummaryConsent = true
             } else if let aiBackend {
-                Task { await summarizeThread(with: aiBackend) }
+                startManualThreadSummary(with: aiBackend)
             }
         } label: {
             Label(String(localized: "Summarize", bundle: .module), systemImage: "wand.and.stars")

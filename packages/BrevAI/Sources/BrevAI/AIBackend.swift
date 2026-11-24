@@ -12,12 +12,17 @@
 
 import Foundation
 
-/// Protocol for AI writing assistance backends. v1 ships with
-/// `ProviderHostedAIBackend` only; v2 adds `BYOKBackend` for user-provided
-/// API keys. See ADR-0008.
+/// Protocol for AI writing assistance and local triage backends.
+/// See `docs/design/ai-and-agents.md`.
 ///
-/// Every invocation is user-initiated — AI never acts on content
-/// without explicit action (invariant 6, ADR-0028).
+/// Two-tier invocation policy:
+/// - Cloud, BYOK, provider-hosted, and localhost HTTP backends
+///   (`isOnDeviceZeroNetwork == false`) are always explicit user-invoked
+///   (button click or prompt send) and never run automatically in the background.
+/// - Zero-network on-device backends (`isOnDeviceZeroNetwork == true`, such as
+///   Apple Intelligence via `FoundationModels`) may also run opted-in proactive
+///   summaries and priority triage when `AIWriterSettings.proactiveOnDeviceTriageEnabled`
+///   is enabled, because no mail leaves the device.
 public protocol AIBackend: Sendable {
     /// Machine identifier for persistence.
     var identifier: String { get }

@@ -175,6 +175,10 @@ struct UnifiedInboxListView: View {
     /// Memoizes search-chip detection per (text, mode, execution) triple.
     @State private var searchChipsCache = UnifiedInboxSearchChipsCache()
     @State private var snoozeWakeScheduleRevision = 0
+    /// Precomputed per-thread header groups & fingerprints for O(1) per-row proactive triage lookup.
+    @State private var unifiedTriageThreadIndex = ProactiveTriageThreadIndex.empty
+    /// Item IDs currently visible in the scroll viewport, used to advance proactive triage on scroll.
+    @State private var visibleTriageItemIDs: Set<UnifiedInboxItem.ID> = []
 
     init(
         navigation: MailNavigationState,
@@ -274,21 +278,54 @@ struct UnifiedInboxListView: View {
         )
     }
 
+    private func excludedFolderIDsByAccountID() -> [BrevAccount.ID: Set<Folder.ID>] {
+        var result: [BrevAccount.ID: Set<Folder.ID>] = [:]
+        for section in sourceSections {
+            let excluded = OnDeviceThreadTriageStore.excludedFolderIDs(from: section.folders)
+            if !excluded.isEmpty {
+                result[section.account.id, default: []].formUnion(excluded)
+            }
+        }
+        return result
+    }
+
+    private func rebuildUnifiedProactiveTriageThreadIndex() {
+        unifiedTriageThreadIndex = ProactiveTriageThreadIndex.build(
+            items: items,
+            excludedFolderIDsByAccountID: excludedFolderIDsByAccountID()
+        )
+    }
+
+    private func visibleUnifiedProactiveTriageBatch() -> [UnifiedInboxItem] {
+        let filteredVisible = presentationSnapshot.visibleItems.filter { item in
+            guard let aiBackend = aiBackendsByAccountID[item.sourceID.accountID],
+                  aiBackend.isOnDeviceZeroNetwork,
+                  !OnDeviceThreadTriageStore.isExcludedFolder(item.folder)
+            else { return false }
+            return true
+        }
+        return ProactiveTriageVisibleWindow.selectBatch(
+            from: filteredVisible,
+            visibleIDs: visibleTriageItemIDs,
+            itemID: \.id,
+            cacheKey: { OnDeviceThreadTriageStore.cacheKey(accountID: $0.sourceID.accountID, header: $0.header) }
+        )
+    }
+
     private var unifiedProactiveTriageTaskKey: String {
-        let topIDs = items.prefix(15).map(\.id).joined(separator: ",")
         let backendIDs = aiBackendsByAccountID
             .sorted { $0.key < $1.key }
             .map { "\($0.key):\($0.value.identifier)" }
             .joined(separator: ",")
-        return "\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(backendIDs)|\(topIDs)"
-    }
-
-    private func threadHeadersForTriage(for item: UnifiedInboxItem) -> [MessageHeader] {
-        guard !item.header.threadID.isEmpty else { return [item.header] }
-        let matched = items
-            .filter { $0.sourceID.accountID == item.sourceID.accountID && $0.header.threadID == item.header.threadID }
-            .map(\.header)
-        return matched.isEmpty ? [item.header] : matched
+        let prefix = "\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(backendIDs)"
+        guard unifiedProactiveTriageSettings.isProactiveOnDeviceTriageAvailable else { return prefix }
+        let selected = visibleUnifiedProactiveTriageBatch()
+        let entries = selected.map { item -> (cacheKey: String, headerFingerprint: String) in
+            let key = OnDeviceThreadTriageStore.cacheKey(accountID: item.sourceID.accountID, header: item.header)
+            let fp = unifiedTriageThreadIndex.headerFingerprint(for: key, fallback: item.header)
+            return (cacheKey: key, headerFingerprint: fp)
+        }
+        return ProactiveTriageVisibleWindow.taskKey(prefix: prefix, selectedKeysAndFingerprints: entries)
     }
 
     private func proactiveTriageInsight(for item: UnifiedInboxItem) -> ThreadTriageInsight? {
@@ -298,10 +335,9 @@ struct UnifiedInboxListView: View {
               !OnDeviceThreadTriageStore.isExcludedFolder(item.folder),
               let triageStore
         else { return nil }
-        let group = threadHeadersForTriage(for: item)
         let key = OnDeviceThreadTriageStore.cacheKey(accountID: item.sourceID.accountID, header: item.header)
-        let fingerprint = OnDeviceThreadTriageStore.sourceFingerprint(for: group)
-        return triageStore.cachedInsight(for: key, sourceFingerprint: fingerprint)
+        let headerFP = unifiedTriageThreadIndex.headerFingerprint(for: key, fallback: item.header)
+        return triageStore.cachedInsight(for: key, matchingHeaderFingerprint: headerFP)
     }
 
     private func scheduleUnifiedProactiveTriageIfEligible() {
@@ -311,29 +347,33 @@ struct UnifiedInboxListView: View {
             triageStore.clearAll()
             return
         }
-        var seenKeys = Set<String>()
-        var scheduled = 0
-        for item in items {
-            guard scheduled < 15 else { break }
+        if unifiedTriageThreadIndex.headersByCacheKey.isEmpty, !items.isEmpty {
+            rebuildUnifiedProactiveTriageThreadIndex()
+        }
+        let foldersByAccountID = Dictionary(
+            sourceSections.map { ($0.account.id, $0.folders) },
+            uniquingKeysWith: { $0 + $1 }
+        )
+        let selected = visibleUnifiedProactiveTriageBatch()
+        for item in selected {
             guard let aiBackend = aiBackendsByAccountID[item.sourceID.accountID],
                   aiBackend.isOnDeviceZeroNetwork,
                   !OnDeviceThreadTriageStore.isExcludedFolder(item.folder)
             else { continue }
             let key = OnDeviceThreadTriageStore.cacheKey(accountID: item.sourceID.accountID, header: item.header)
-            guard seenKeys.insert(key).inserted else { continue }
-            let group = threadHeadersForTriage(for: item)
+            let group = unifiedTriageThreadIndex.headers(for: key, fallback: item.header)
             let ownerBackend = backends.first { $0.account.id == item.sourceID.accountID }
             triageStore.scheduleVisibleThreads(
                 accountID: item.sourceID.accountID,
                 threadGroups: [group],
                 folder: item.folder,
+                allFolders: foldersByAccountID[item.sourceID.accountID] ?? [],
                 settings: settings,
                 backend: aiBackend,
                 cachedBodyProvider: ownerBackend?.extensionService(CachedMessageBodyProviding.self),
                 sourceID: item.sourceID,
                 maxThreads: 1
             )
-            scheduled += 1
         }
     }
 
@@ -353,6 +393,9 @@ struct UnifiedInboxListView: View {
             }
             .onChange(of: proactiveOnDeviceTriageEnabled) { _, newValue in
                 if !newValue { triageStore?.clearAll() }
+            }
+            .onChange(of: items) { _, _ in
+                rebuildUnifiedProactiveTriageThreadIndex()
             }
             .task(id: unifiedProactiveTriageTaskKey) {
                 scheduleUnifiedProactiveTriageIfEligible()
@@ -1803,11 +1846,15 @@ struct UnifiedInboxListView: View {
             )
         }
         .onAppear {
+            visibleTriageItemIDs.insert(item.id)
             guard shouldLoadMore(
                 visibleIndex: visibleIndex,
                 visibleCount: visibleCount
             ) else { return }
             Task { await loadMore() }
+        }
+        .onDisappear {
+            visibleTriageItemIDs.remove(item.id)
         }
     }
 
