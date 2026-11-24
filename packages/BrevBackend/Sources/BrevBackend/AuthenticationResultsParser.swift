@@ -12,17 +12,29 @@
 
 import Foundation
 
-/// Trusted receiving-server `authserv-id` boundary derived from an account's
-/// configured IMAP host (#5).
+/// Trusted receiving-server `authserv-id` and internal delivery-hop boundary
+/// derived from an account's configured IMAP host (#5).
 ///
 /// Accounts whose IMAP host cannot establish a non-local receiver provenance
 /// (empty, IP literal, loopback/`localhost`, or `.local`/`.internal` host)
 /// produce `nil` so sign-in trust assessment fails closed rather than trusting
 /// arbitrary sender-supplied `Authentication-Results` headers.
+///
+/// Internal delivery hops (`Received: ... by <host>`) are modeled separately
+/// from `authserv-id` suffixes so explicitly configured or provider-known
+/// internal mailstore hops can precede the top-most `Authentication-Results`
+/// header without ever allowing an internal/private hostname to serve as a
+/// trusted `authserv-id`.
 public struct IMAPSignInReceiverProvenance: Sendable, Equatable {
-    /// Lowercased domain suffixes accepted for the receiving server's `authserv-id`
-    /// and internal receiving `Received: ... by <host>` hops.
-    public let trustedDomains: Set<String>
+    /// Lowercased public domain suffixes accepted for the receiving server's
+    /// `Authentication-Results` `authserv-id`.
+    public let trustedAuthServSuffixes: Set<String>
+    /// Lowercased exact hostnames accepted for internal `Received: ... by <host>`
+    /// delivery hops above the top-most `Authentication-Results` header.
+    public let trustedDeliveryHosts: Set<String>
+    /// Lowercased domain suffixes accepted for internal `Received: ... by <host>`
+    /// delivery hops above the top-most `Authentication-Results` header.
+    public let trustedDeliveryHostSuffixes: Set<String>
 
     /// Known provider boundaries where the IMAP hostname domain differs from the
     /// receiving MX's `Authentication-Results` `authserv-id` domain.
@@ -43,32 +55,69 @@ public struct IMAPSignInReceiverProvenance: Sendable, Equatable {
         ["one.com"]
     ]
 
+    /// Additional known provider internal delivery-hop suffixes (`Received: by`)
+    /// that do not serve as `Authentication-Results` `authserv-id` domains.
+    private static let providerInternalDeliverySuffixes: [(authServDomains: Set<String>, deliverySuffixes: Set<String>)] = [
+        (["gmail.com", "googlemail.com", "google.com"], ["1e100.net"]),
+        (
+            ["outlook.com", "office365.com", "hotmail.com", "live.com", "microsoft.com", "protection.outlook.com"],
+            ["exchangelabs.com"]
+        ),
+        (["yahoo.com", "yahoodns.net", "aol.com"], ["yahoo-inc.com"]),
+        (["gmx.net", "gmx.de", "gmx.com", "web.de", "ionos.com", "ionos.de", "1and1.com"], ["kundenserver.de"])
+    ]
+
     private static let disallowedLocalSuffixes: Set<String> = [
         "localhost", "local", "internal", "home.arpa", "lan", "localdomain"
     ]
 
     /// Derives receiver provenance from a configured IMAP hostname.
     /// Returns `nil` when the host is empty, an IP literal, loopback, or local-only.
-    public init?(incomingHost: String) {
+    /// - Parameters:
+    ///   - incomingHost: Configured IMAP server hostname.
+    ///   - trustedDeliveryHosts: Optional exact internal delivery hostnames (for example `store.internal`)
+    ///     allowed in `Received: ... by <host>` headers above `Authentication-Results`.
+    ///   - trustedDeliveryHostSuffixes: Optional domain suffixes allowed in `Received: ... by <host>`
+    ///     headers above `Authentication-Results`.
+    public init?(
+        incomingHost: String,
+        trustedDeliveryHosts: Set<String> = [],
+        trustedDeliveryHostSuffixes: Set<String> = []
+    ) {
         guard let normalized = AuthenticationResultsParser.normalizeDomain(incomingHost),
               !Self.isNonPublicHost(normalized),
               let orgDomain = AuthenticationResultsParser.organizationalDomain(of: normalized)
         else { return nil }
 
-        var domains: Set<String> = [normalized, orgDomain]
+        var authServ: Set<String> = [normalized, orgDomain]
         for group in Self.providerTrustGroups {
             if group.contains(where: { normalized == $0 || normalized.hasSuffix(".\($0)") }) {
-                domains.formUnion(group)
+                authServ.formUnion(group)
             }
         }
-        trustedDomains = domains
+        var deliverySuffixes = authServ
+        for entry in Self.providerInternalDeliverySuffixes {
+            if entry.authServDomains.contains(where: { normalized == $0 || normalized.hasSuffix(".\($0)") }) {
+                deliverySuffixes.formUnion(entry.deliverySuffixes)
+            }
+        }
+        deliverySuffixes.formUnion(Self.normalizeDeliverySuffixes(trustedDeliveryHostSuffixes))
+
+        trustedAuthServSuffixes = authServ
+        self.trustedDeliveryHosts = Self.normalizeDeliveryHosts(trustedDeliveryHosts)
+        self.trustedDeliveryHostSuffixes = deliverySuffixes
     }
 
-    /// Creates a receiver provenance from explicit normalized trust domains.
-    /// Returns `nil` when no valid non-local domains are supplied.
-    public init?(trustedDomains: Set<String>) {
+    /// Creates a receiver provenance from explicit normalized `authserv-id` suffixes
+    /// and optional internal delivery-hop hosts/suffixes.
+    /// Returns `nil` when no valid non-local `authserv-id` suffixes are supplied.
+    public init?(
+        trustedAuthServSuffixes: Set<String>,
+        trustedDeliveryHosts: Set<String> = [],
+        trustedDeliveryHostSuffixes: Set<String> = []
+    ) {
         var normalized: Set<String> = []
-        for raw in trustedDomains {
+        for raw in trustedAuthServSuffixes {
             guard let domain = AuthenticationResultsParser.normalizeDomain(raw),
                   !Self.isNonPublicHost(domain),
                   AuthenticationResultsParser.organizationalDomain(of: domain) != nil
@@ -76,27 +125,68 @@ public struct IMAPSignInReceiverProvenance: Sendable, Equatable {
             normalized.insert(domain)
         }
         guard !normalized.isEmpty else { return nil }
-        self.trustedDomains = normalized
+        self.trustedAuthServSuffixes = normalized
+        self.trustedDeliveryHosts = Self.normalizeDeliveryHosts(trustedDeliveryHosts)
+        self.trustedDeliveryHostSuffixes = normalized.union(Self.normalizeDeliverySuffixes(trustedDeliveryHostSuffixes))
     }
 
-    /// Returns `true` when `authservID` belongs to this account's trusted receiving boundary.
+    /// Returns `true` when `authservID` belongs to this account's trusted receiving `authserv-id` boundary.
     public func matches(authservID: String) -> Bool {
         guard let candidate = AuthenticationResultsParser.normalizeDomain(authservID),
               !Self.isNonPublicHost(candidate)
         else { return false }
-        return trustedDomains.contains { trusted in
+        return trustedAuthServSuffixes.contains { trusted in
             candidate == trusted || candidate.hasSuffix(".\(trusted)")
         }
     }
 
-    private static func isNonPublicHost(_ normalizedHost: String) -> Bool {
-        if normalizedHost.contains(":") { return true }
-        let labels = normalizedHost.split(separator: ".").map(String.init)
-        guard labels.count >= 2 else { return true }
-        // Reject IPv4 literals (for example 127.0.0.1 or 10.0.0.1).
-        if labels.count == 4, labels.allSatisfy({ Int($0) != nil }) {
+    /// Returns `true` when `deliveryHost` (from a `Received: ... by <host>` header above
+    /// `Authentication-Results`) matches an explicitly trusted internal delivery host or
+    /// trusted delivery host suffix. Unconfigured private/internal hosts return `false`.
+    public func matches(deliveryHost: String) -> Bool {
+        guard let candidate = AuthenticationResultsParser.normalizeHostname(deliveryHost),
+              !Self.isIPLiteral(candidate)
+        else { return false }
+        if trustedDeliveryHosts.contains(candidate) {
             return true
         }
+        return trustedDeliveryHostSuffixes.contains { suffix in
+            candidate == suffix || candidate.hasSuffix(".\(suffix)")
+        }
+    }
+
+    private static func normalizeDeliveryHosts(_ rawHosts: Set<String>) -> Set<String> {
+        var result: Set<String> = []
+        for raw in rawHosts {
+            guard let host = AuthenticationResultsParser.normalizeHostname(raw),
+                  !isIPLiteral(host)
+            else { continue }
+            result.insert(host)
+        }
+        return result
+    }
+
+    private static func normalizeDeliverySuffixes(_ rawSuffixes: Set<String>) -> Set<String> {
+        var result: Set<String> = []
+        for raw in rawSuffixes {
+            guard let suffix = AuthenticationResultsParser.normalizeDomain(raw),
+                  !isIPLiteral(suffix)
+            else { continue }
+            result.insert(suffix)
+        }
+        return result
+    }
+
+    private static func isIPLiteral(_ normalizedHost: String) -> Bool {
+        if normalizedHost.contains(":") { return true }
+        let labels = normalizedHost.split(separator: ".").map(String.init)
+        return labels.count == 4 && labels.allSatisfy { Int($0) != nil }
+    }
+
+    private static func isNonPublicHost(_ normalizedHost: String) -> Bool {
+        if isIPLiteral(normalizedHost) { return true }
+        let labels = normalizedHost.split(separator: ".").map(String.init)
+        guard labels.count >= 2 else { return true }
         for suffix in disallowedLocalSuffixes
             where normalizedHost == suffix || normalizedHost.hasSuffix(".\(suffix)") {
             return true
@@ -313,7 +403,7 @@ public enum AuthenticationResultsParser {
                 guard next < prefixTokens.endIndex,
                       let hostToken = tokenString(prefixTokens[next])
                 else { return nil }
-                return normalizeDomain(hostToken)
+                return normalizeHostname(hostToken)
             }
             index = prefixTokens.index(after: index)
         }
@@ -648,13 +738,18 @@ public enum AuthenticationResultsParser {
     }
 
     static func normalizeDomain(_ raw: String) -> String? {
-        var domain = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if domain.hasSuffix(".") {
-            domain.removeLast()
+        guard let host = normalizeHostname(raw), host.contains(".") else { return nil }
+        return host
+    }
+
+    static func normalizeHostname(_ raw: String) -> String? {
+        var host = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if host.hasSuffix(".") {
+            host.removeLast()
         }
-        guard !domain.isEmpty else { return nil }
-        let labels = domain.split(separator: ".", omittingEmptySubsequences: false)
-        guard labels.count >= 2 else { return nil }
+        guard !host.isEmpty else { return nil }
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard !labels.isEmpty else { return nil }
         for label in labels {
             guard !label.isEmpty,
                   !label.hasPrefix("-"),
@@ -667,7 +762,7 @@ public enum AuthenticationResultsParser {
                   })
             else { return nil }
         }
-        return domain
+        return host
     }
 
     static func organizationalDomain(of normalizedDomain: String) -> String? {
@@ -721,12 +816,12 @@ public enum AuthenticationResultsSignInTrustAssessor {
         }
 
         // Only trust an Authentication-Results header at the top receiving
-        // boundary: any external Received hop above it means the header was
+        // boundary: any untrusted Received hop above it means the header was
         // preserved from an earlier hop or injected before receipt.
         for preceding in headers[..<topmostIndex]
             where preceding.name.caseInsensitiveCompare("Received") == .orderedSame {
             guard let byHost = AuthenticationResultsParser.receivedByHost(from: preceding.value),
-                  receiverProvenance.matches(authservID: byHost)
+                  receiverProvenance.matches(deliveryHost: byHost)
             else {
                 return .unavailable(.noTrustedHeader)
             }

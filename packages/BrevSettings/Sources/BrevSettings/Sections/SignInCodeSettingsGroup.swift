@@ -28,7 +28,7 @@ struct SignInCodeSettingsGroup: View {
     /// Whether the account's backend advertises
     /// `.trustedSignInAssessment`.
     let isAvailable: (BrevAccount.ID) -> Bool
-    /// Whether to display inline `Authentication-Results` verification guidance
+    /// Whether to display inline sender authentication verification guidance
     /// on eligible account cards even before a toggle is enabled.
     let showsVerificationGuidance: Bool
     /// Called after a consent change so the arrival controller can cancel
@@ -105,7 +105,7 @@ struct SignInCodeSettingsGroup: View {
                     SettingsInfoCallout(
                         symbolName: "checkmark.shield",
                         message: String(
-                            localized: "Brev verifies the receiving server's Authentication-Results (DMARC plus aligned SPF or DKIM matching From) before reading the message body, and drops messages that fail or lack authentication headers.",
+                            localized: "Brev checks trusted sender authentication headers (DMARC alignment) before reading a message body and skips messages that fail or lack verification.",
                             bundle: .module
                         ),
                         tone: .info

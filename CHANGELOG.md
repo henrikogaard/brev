@@ -9,13 +9,16 @@ All notable changes to Brev are documented here.
   (`AuthenticationResultsParser`, `IMAPSignInReceiverProvenance`,
   `AuthenticationResultsSignInTrustAssessor`) in `BrevBackend` and wired
   `IMAPSMTPBackend` (`SignInTrustAssessing`, `.trustedSignInAssessment`) so
-  opted-in generic IMAP accounts with established non-local receiving-server
-  provenance verify the top-most server-prepended `Authentication-Results`
-  header (`dmarc=pass` matching a single `From` domain plus aligned `dkim=pass`
-  or `spf=pass`, with no external `Received` hop above it) via header-only
-  `BODY.PEEK[HEADER]` (never falling back to full `BODY.PEEK[]`) within the
-  10-minute server `INTERNALDATE` freshness window before reading a fresh Inbox
-  message body. Per-account opt-in remains off by default, and Settings
+  opted-in public-hostname IMAP providers (Fastmail, iCloud IMAP, Gmail IMAP,
+  Outlook/Exchange IMAP, Migadu, Mailbox.org, and custom domains) verify the
+  top-most server-prepended `Authentication-Results` header (`dmarc=pass`
+  matching a single `From` domain plus aligned `dkim=pass` or `spf=pass`, with
+  no untrusted `Received` hop above it) via header-only `BODY.PEEK[HEADER]`
+  (never falling back to full `BODY.PEEK[]`) within the 10-minute server
+  `INTERNALDATE` freshness window before reading a fresh Inbox message body.
+  Loopback and IP-literal IMAP hosts (such as default Proton Bridge on
+  `127.0.0.1`) fail closed because receiver provenance cannot be verified from
+  a loopback host. Per-account opt-in remains off by default, and Settings
   explains the verification rule in English and Norwegian.
 
 - Closed-app push options with zero Brev proxy (#11): added opt-in, device-local

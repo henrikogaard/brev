@@ -7966,13 +7966,13 @@
         }
       }
     },
-    "Brev verifies the receiving server's Authentication-Results (DMARC plus aligned SPF or DKIM matching From) before reading the message body, and drops messages that fail or lack authentication headers.": {
+    "Brev checks trusted sender authentication headers (DMARC alignment) before reading a message body and skips messages that fail or lack verification.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Brev kontrollerer mottakerserverens Authentication-Results (DMARC samt samsvarende SPF eller DKIM mot From) før meldingsteksten leses, og ignorerer meldinger som feiler eller mangler autentiseringstopptekster."
+            "value": "Brev kontrollerer pålitelige autentiseringstopptekster for avsenderen (DMARC-samsvar) før meldingsteksten leses, og hopper over meldinger som feiler eller mangler verifisering."
           }
         }
       }

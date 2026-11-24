@@ -100,6 +100,89 @@ struct AuthenticationResultsParserTests {
         )
     }
 
+    @Test("separates trusted internal delivery hops from authserv-id while failing closed on unconfigured private hops")
+    func trustedInternalDeliveryHopSeparation() throws {
+        let withExplicitStore = try #require(
+            IMAPSignInReceiverProvenance(
+                incomingHost: "imap.customdomain.org",
+                trustedDeliveryHosts: ["store.internal"]
+            )
+        )
+        let belowExplicitInternalHop = """
+        Received: from mx.customdomain.org by store.internal with LMTP id 1234; Tue, 24 Nov 2026 14:00:00 +0000\r
+        Authentication-Results: mx.customdomain.org; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r
+        From: alerts@bank.example\r
+        """
+        // Explicitly configured internal delivery hop passes.
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: belowExplicitInternalHop,
+                receiverProvenance: withExplicitStore
+            ) == .pass(fromDomain: "bank.example")
+        )
+        // Same private hop fails closed when not explicitly configured.
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: belowExplicitInternalHop,
+                receiverProvenance: Self.customProvenance
+            ) == .unavailable(.noTrustedHeader)
+        )
+        // An unrelated unconfigured private hop also fails closed even when store.internal is configured.
+        let belowOtherPrivateHop = """
+        Received: from mx.customdomain.org by unknown.internal with LMTP id 5678; Tue, 24 Nov 2026 14:00:00 +0000\r
+        Authentication-Results: mx.customdomain.org; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r
+        From: alerts@bank.example\r
+        """
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: belowOtherPrivateHop,
+                receiverProvenance: withExplicitStore
+            ) == .unavailable(.noTrustedHeader)
+        )
+        // Trusted delivery hosts can never be accepted as Authentication-Results authserv-id.
+        #expect(withExplicitStore.matches(deliveryHost: "store.internal"))
+        #expect(!withExplicitStore.matches(authservID: "store.internal"))
+        let forgedInternalAuthserv = """
+        Authentication-Results: store.internal; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r
+        From: alerts@bank.example\r
+        """
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: forgedInternalAuthserv,
+                receiverProvenance: withExplicitStore
+            ) == .unavailable(.noTrustedHeader)
+        )
+
+        // Known provider internal delivery suffixes (e.g. Outlook/Exchange prod.exchangelabs.com)
+        // pass as delivery hops without being accepted as authserv-id.
+        let outlook = try #require(IMAPSignInReceiverProvenance(incomingHost: "outlook.office365.com"))
+        #expect(outlook.matches(deliveryHost: "nam11.prod.exchangelabs.com"))
+        #expect(!outlook.matches(authservID: "nam11.prod.exchangelabs.com"))
+        let outlookInternalDelivery = """
+        Received: from nam11.protection.outlook.com by nam11.prod.exchangelabs.com with HTTPS; Tue, 24 Nov 2026 14:00:00 +0000\r
+        Authentication-Results: spf=pass (sender IP is 198.51.100.10) smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r
+        From: alerts@bank.example\r
+        """
+        // Malformed Outlook header without authserv-id fails closed, while valid authserv-id passes.
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: outlookInternalDelivery,
+                receiverProvenance: outlook
+            ) == .unavailable(.malformedHeader)
+        )
+        let outlookValid = """
+        Received: from nam11.protection.outlook.com by nam11.prod.exchangelabs.com with HTTPS; Tue, 24 Nov 2026 14:00:00 +0000\r
+        Authentication-Results: nam11.protection.outlook.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r
+        From: alerts@bank.example\r
+        """
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: outlookValid,
+                receiverProvenance: outlook
+            ) == .pass(fromDomain: "bank.example")
+        )
+    }
+
     @Test("supports RFC 8601 quoted-string authserv-id tokens while rejecting malformed or untrusted quoted hosts")
     func quotedAuthservID() {
         let quotedValid = """

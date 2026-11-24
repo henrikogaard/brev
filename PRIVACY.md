@@ -1085,9 +1085,14 @@ and iCloud preference sync. When enabled on a supported, verified account (off b
 Settings → Notifications → Sign-in codes and links), on fresh Inbox arrivals
 Brev requests only the message's raw headers from your configured IMAP server
 via `BODY.PEEK[HEADER]` (when not already cached locally) and never falls back
-to downloading the full raw source (`BODY.PEEK[]`). Brev verifies that the
+to downloading the full raw source (`BODY.PEEK[]`). Generic IMAP support
+applies to public-hostname IMAP providers (such as Fastmail, iCloud IMAP, Gmail
+IMAP, Outlook/Exchange IMAP, Migadu, Mailbox.org, and custom domains); loopback
+or IP-literal IMAP hosts (such as default Proton Bridge on `127.0.0.1`) fail
+closed because receiving-server provenance cannot be verified from a loopback
+host. Brev verifies that the
 receiving server's top-most `Authentication-Results` header matches your
-account's receiving server boundary with no external `Received` hop above it,
+account's receiving server boundary with no untrusted `Received` hop above it,
 carries `dmarc=pass` matching a single `From` domain plus an aligned
 `dkim=pass` or `spf=pass`, and arrived within the 10-minute server
 `INTERNALDATE` window. Messages that fail, lack authentication headers, or
