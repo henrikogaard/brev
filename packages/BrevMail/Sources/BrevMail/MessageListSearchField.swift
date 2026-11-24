@@ -49,7 +49,7 @@ private struct MailListSearchModifier: ViewModifier {
     private var mailboxScope: Binding<MailSearchMailboxScope> {
         Binding(
             get: { MailSearchMailboxScope(searchesAllFolders: navigation.searchAllMailboxes) },
-            set: { navigation.searchAllMailboxes = $0.searchesAllFolders }
+            set: { navigation.setSearchAllMailboxes($0.searchesAllFolders) }
         )
     }
 

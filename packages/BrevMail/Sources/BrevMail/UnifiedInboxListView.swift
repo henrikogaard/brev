@@ -73,6 +73,9 @@ struct UnifiedInboxListView: View {
     private let canFileLocally: Bool
     private let accountOwnedMailboxEmailsByAccountID: [BrevAccount.ID: Set<String>]
     private let smartView: MailboxSmartView?
+    /// When true, this view is running default cross-account search opened from
+    /// a physical folder across every folder of every visible source (#296).
+    private let isCrossAccountFolderSearch: Bool
     /// When non-nil this list is showing a persisted saved search: the unified
     /// items are additionally filtered by `savedSearchQuery` (ADR-0041).
     private let savedSearchID: String?
@@ -177,6 +180,7 @@ struct UnifiedInboxListView: View {
         canFileLocally: Bool = false,
         accountOwnedMailboxEmailsByAccountID: [BrevAccount.ID: Set<String>] = [:],
         smartView: MailboxSmartView? = nil,
+        isCrossAccountFolderSearch: Bool = false,
         savedSearchID: String? = nil,
         savedSearchTitle: String? = nil,
         paneTitle: String? = nil,
@@ -206,6 +210,7 @@ struct UnifiedInboxListView: View {
         self.canFileLocally = canFileLocally
         self.accountOwnedMailboxEmailsByAccountID = accountOwnedMailboxEmailsByAccountID
         self.smartView = smartView
+        self.isCrossAccountFolderSearch = isCrossAccountFolderSearch
         self.savedSearchID = savedSearchID
         self.savedSearchTitle = savedSearchTitle
         self.paneTitle = paneTitle
@@ -484,7 +489,7 @@ struct UnifiedInboxListView: View {
             invalidatePendingSnoozeLookup()
         }
         .task(id: loadKey) {
-            let scope = "\(reloadKey)|\(navigation.searchText)|\(navigation.searchExecution)"
+            let scope = "\(reloadKey)|\(navigation.searchText)|\(navigation.searchExecution)|\(effectiveSearchScope.rawValue)"
             if requestedScope != scope {
                 loadOwnership.invalidate()
                 requestedScope = scope
@@ -700,10 +705,14 @@ struct UnifiedInboxListView: View {
         let sourceRevision: Int?
     }
 
+    private var effectiveSearchScope: SearchScope {
+        isCrossAccountFolderSearch ? navigation.searchScope : .all
+    }
+
     private var loadKey: LoadKey {
         let isSnoozed = smartView?.workflowMode == .snoozed
         return LoadKey(
-            context: "\(reloadKey)|\(navigation.searchText)|\(navigation.searchExecution)|\(navigation.reloadRequestID)|\(isWorkBlocked)|\(isMutating)",
+            context: "\(reloadKey)|\(navigation.searchText)|\(navigation.searchExecution)|\(effectiveSearchScope.rawValue)|\(navigation.reloadRequestID)|\(isWorkBlocked)|\(isMutating)",
             savedQuery: savedSearchQuery,
             workflowSnoozes: isSnoozed ? freshWorkflowState().snoozes : [],
             sourceRevision: isSnoozed ? sourceSectionsRevisionProvider?() : nil
@@ -714,7 +723,8 @@ struct UnifiedInboxListView: View {
         let sourceKey = sourceSections
             .map { "\($0.id.accountID):\($0.id.mailboxID)" }
             .joined(separator: "|")
-        return "\(savedSearchID ?? smartView?.id ?? "unified"):\(sourceSectionsRevision):\(sourceKey)"
+        let surface = isCrossAccountFolderSearch ? "cross-account-search" : (savedSearchID ?? smartView?.id ?? "unified")
+        return "\(surface):\(sourceSectionsRevision):\(sourceKey)"
     }
 
     private var searchCapabilityKey: String {
@@ -807,7 +817,7 @@ struct UnifiedInboxListView: View {
         )
         let categorized = InboxClassificationVisibilityPolicy.items(
             workflowVisible,
-            selectedCategory: activeInboxCategory,
+            selectedCategory: showsInboxCategoryBar ? activeInboxCategory : .all,
             settings: inboxClassificationSettings,
             overrideStore: inboxCategoryOverrideStore
         )
@@ -1124,7 +1134,7 @@ struct UnifiedInboxListView: View {
     }
 
     private var showsInboxCategoryBar: Bool {
-        inboxClassificationSettings.mode == .categories && smartView == nil
+        inboxClassificationSettings.mode == .categories && smartView == nil && !isCrossAccountFolderSearch
     }
 
     private var mailboxFolderStatsDetail: MailboxFolderStatsDetail {
@@ -1207,8 +1217,12 @@ struct UnifiedInboxListView: View {
         return searchChipsCache.chips(
             text: trimmedSearchText,
             isSavedSearch: false,
-            inboxFolderID: sourceSections.first?.folders.first(where: { $0.role == .inbox })?.id,
+            searchAllFolders: isCrossAccountFolderSearch,
+            inboxFolderID: isCrossAccountFolderSearch
+                ? nil
+                : sourceSections.first?.folders.first(where: { $0.role == .inbox })?.id,
             execution: navigation.searchExecution,
+            searchScope: effectiveSearchScope,
             calendar: calendar
         )
     }
@@ -1271,11 +1285,21 @@ struct UnifiedInboxListView: View {
     }
     #endif
 
+    private var crossAccountFolderScopeSelection: Binding<Bool> {
+        Binding {
+            navigation.searchAllMailboxes
+        } set: { newValue in
+            navigation.setSearchAllMailboxes(newValue)
+        }
+    }
+
     private var unifiedSearchExecutionBar: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             MailSearchOptionsBar(
                 execution: unifiedSearchExecutionSelection,
-                availableExecutions: availableSearchExecutions
+                availableExecutions: availableSearchExecutions,
+                folderScope: isCrossAccountFolderSearch ? crossAccountFolderScopeSelection : nil,
+                fieldScope: isCrossAccountFolderSearch ? $navigation.searchFieldScope : nil
             )
             if !naturalLanguageSearchChips.isEmpty {
                 ScrollView(.horizontal) {
@@ -2135,6 +2159,9 @@ struct UnifiedInboxListView: View {
     }
 
     private func reload() async {
+        if isCrossAccountFolderSearch {
+            return
+        }
         if let savedSearchQuery {
             await reloadSavedSearch(savedSearchQuery)
             return
@@ -2823,14 +2850,16 @@ struct UnifiedInboxListView: View {
             return
         }
         guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }
-        let contentKey = "search:\(reloadKey):\(query):\(navigation.searchExecution)"
+        let contentKey = "search:\(reloadKey):\(query):\(navigation.searchExecution):\(effectiveSearchScope.rawValue)"
         if loadedContentKey != contentKey { items = [] }
         loadedContentKey = contentKey
         let sourceIDs = sourceSections.map(\.id)
         let request = UnifiedInboxSearchRequest(
             query: query,
             sourceIDs: sourceIDs,
-            execution: navigation.searchExecution
+            execution: navigation.searchExecution,
+            searchAllFolders: isCrossAccountFolderSearch,
+            searchScope: effectiveSearchScope
         )
         let loadRequest = loadOwnership.begin()
         defer { if loadOwnership.current == loadRequest { isLoading = false } }
@@ -2850,6 +2879,8 @@ struct UnifiedInboxListView: View {
             text: query,
             from: sourceSections,
             execution: navigation.searchExecution,
+            searchAllFolders: isCrossAccountFolderSearch,
+            searchScope: effectiveSearchScope,
             capabilities: { sourceID in
                 backend(for: sourceID)?.capabilities ?? []
             }

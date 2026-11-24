@@ -254,6 +254,16 @@ struct CachedPDFSearchTests {
             snippet: "",
             date: Date(timeIntervalSince1970: 200)
         )
+        let primarySentPDF = MessageHeader(
+            id: "sent-primary-pdf",
+            threadID: "t3",
+            folderID: sentPrimary.id,
+            from: Correspondent(email: "me@example.org"),
+            to: [],
+            subject: "Primary Sent attachment",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 175)
+        )
         let secondarySentPDF = MessageHeader(
             id: "sent-items-pdf",
             threadID: "t2",
@@ -279,6 +289,11 @@ struct CachedPDFSearchTests {
                     body: MessageBody(messageID: inboxPDF.id, attachments: [pdfAttachment])
                 ),
                 CachedAttachmentMessage(
+                    folder: sentPrimary,
+                    header: primarySentPDF,
+                    body: MessageBody(messageID: primarySentPDF.id, attachments: [pdfAttachment])
+                ),
+                CachedAttachmentMessage(
                     folder: sentSecondary,
                     header: secondarySentPDF,
                     body: MessageBody(messageID: secondarySentPDF.id, attachments: [pdfAttachment])
@@ -291,6 +306,14 @@ struct CachedPDFSearchTests {
                 sourceID: sourceA,
                 folder: inbox,
                 header: inboxPDF,
+                sourceTitle: "A",
+                sourceSubtitle: "a@example.org",
+                archiveFolder: nil
+            ),
+            UnifiedInboxItem(
+                sourceID: sourceA,
+                folder: sentPrimary,
+                header: primarySentPDF,
                 sourceTitle: "A",
                 sourceSubtitle: "a@example.org",
                 archiveFolder: nil
@@ -312,7 +335,7 @@ struct CachedPDFSearchTests {
             folders: [inbox, sentPrimary, sentSecondary],
             sourceID: sourceA
         )
-        #expect(filteredA.map(\.header.id) == ["sent-items-pdf"])
+        #expect(Set(filteredA.map(\.header.id)) == ["sent-primary-pdf", "sent-items-pdf"])
         #expect(backendA.recordedCachedFolders == [[sentPrimary.id], [sentSecondary.id]])
 
         let backendB = PrefixIndexPDFStubBackend(

@@ -282,7 +282,8 @@ public struct FolderSidebar: View {
             }
             .onChange(of: navigation.selectedSourceID) { _, selectedSourceID in
                 #if os(macOS)
-                guard let selectedSourceID, navigation.browsingFolderID == nil,
+                guard navigation.searchOriginSourceFolderID == nil,
+                      let selectedSourceID, navigation.browsingFolderID == nil,
                       activeDesktopFavoriteID == nil else { return }
                 expandedSourceIDs = FolderSidebarSourceExpansionPolicy.expandingSelection(
                     selectedSourceID,
@@ -1144,7 +1145,7 @@ public struct FolderSidebar: View {
     private func isFavoriteSelected(_ id: MailboxFavoriteID) -> Bool {
         switch id {
         case .allInboxes: navigation.isUnifiedInboxSelected
-        case .folder(let destination): navigation.browsingFolderID == nil && navigation.selectedSourceFolderID == destination
+        case .folder(let destination): navigation.browsingFolderID == nil && navigation.browsingSourceFolderID == destination
         }
     }
 
@@ -2117,8 +2118,11 @@ public struct FolderSidebar: View {
         #if os(macOS)
         if activeFavoriteID != nil { return false }
         #endif
-        return navigation.selectedCollectionFolderID == nil
-            && navigation.selectedFolderID == folder.id
+        guard navigation.selectedCollectionFolderID == nil else { return false }
+        if let browsing = navigation.browsingSourceFolderID {
+            return browsing.folderID == folder.id && browsing.sourceID == sourceID
+        }
+        return navigation.selectedFolderID == folder.id
             && navigation.selectedSourceID == sourceID
     }
 

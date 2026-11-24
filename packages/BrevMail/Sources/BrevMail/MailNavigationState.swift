@@ -128,11 +128,34 @@ public final class MailNavigationState {
         didSet { if oldValue != searchTokens { restoredSelectionHeader = nil } }
     }
 
-    /// The field scope an active field token applies to the typed text.
-    var searchScope: SearchScope { MailSearchTokens.searchScope(for: searchTokens) }
+    /// Field scope chosen in the search options menu (shared across folder and
+    /// cross-account search surfaces so changing mailbox scope preserves it).
+    var searchFieldScope: SearchScope = .all
 
-    /// Search every mailbox instead of the open one. Reset when the list reloads for another folder.
-    var searchAllMailboxes = false
+    /// The field scope applied to the typed text: an iOS field token wins over
+    /// the options-bar selection.
+    var searchScope: SearchScope {
+        let tokenScope = MailSearchTokens.searchScope(for: searchTokens)
+        return tokenScope == .all ? searchFieldScope : tokenScope
+    }
+
+    /// Search every mailbox across visible accounts by default (#296).
+    /// Narrowing to "This folder" / "Current mailbox" flips this to `false`;
+    /// clearing search or switching folders restores the default `true`.
+    var searchAllMailboxes = true
+
+    /// True while `BrevMailRootView` is hosting cross-account search in
+    /// `UnifiedInboxListView` rather than a single-account `MessageListView`.
+    var isCrossAccountSearchListActive = false
+
+    /// Updates the mailbox search scope, restoring the origin folder when
+    /// narrowing back from a cross-account search result (#296, ADR-0041).
+    func setSearchAllMailboxes(_ searchAll: Bool) {
+        searchAllMailboxes = searchAll
+        if !searchAll {
+            restoreSearchOriginIfNeeded()
+        }
+    }
 
     /// Turns predicates typed into the field into tokens, as iOS Mail does when you submit.
     func commitSearch(now: Date = Date(), calendar: Calendar = .current) {
@@ -147,11 +170,32 @@ public final class MailNavigationState {
         searchFreeText = extraction.remainingText
     }
 
-    /// Clears the query, its tokens and the mailbox scope.
+    /// Clears the query, its tokens, and resets the mailbox and field scopes to default.
     func clearSearch() {
         searchTokens = []
         searchFreeText = ""
-        searchAllMailboxes = false
+        searchFieldScope = .all
+        searchAllMailboxes = true
+        restoreSearchOriginIfNeeded()
+    }
+
+    /// Restores the physical folder the user was browsing before opening a
+    /// cross-account search result, clearing stale reader state only when the
+    /// open message belongs to another source or folder.
+    func restoreSearchOriginIfNeeded() {
+        guard let origin = searchOriginSourceFolderID else { return }
+        let sameOrigin = selectedSourceID == origin.sourceID && selectedFolderID == origin.folderID
+        searchOriginSourceFolderID = nil
+        selectedCollectionFolderID = nil
+        selectedSourceID = origin.sourceID
+        selectedFolderID = origin.folderID
+        if !sameOrigin {
+            selectedMessageID = nil
+            readerExpansionSelectionID = nil
+            currentFolderHeaders = []
+            restoredSelectionHeader = nil
+            endSelection()
+        }
     }
 
     // A confirmed restored message may sit outside the first refreshed page.
@@ -351,6 +395,11 @@ public final class MailNavigationState {
     /// The virtual collection being browsed while the reader targets a physical source.
     public private(set) var selectedCollectionFolderID: Folder.ID?
 
+    /// The physical folder the user was browsing before opening a cross-account
+    /// search result, kept so narrowing scope or clearing search returns there
+    /// cleanly (#296, ADR-0041).
+    public private(set) var searchOriginSourceFolderID: SourceFolderID?
+
     var browsingFolderID: Folder.ID? {
         selectedCollectionFolderID ?? (selectedSourceID == nil ? selectedFolderID : nil)
     }
@@ -358,6 +407,12 @@ public final class MailNavigationState {
     public var selectedSourceFolderID: SourceFolderID? {
         guard let selectedSourceID, let selectedFolderID else { return nil }
         return SourceFolderID(sourceID: selectedSourceID, folderID: selectedFolderID)
+    }
+
+    /// The physical folder being browsed in the sidebar — prefers the saved
+    /// cross-account search origin while viewing a result from another account.
+    var browsingSourceFolderID: SourceFolderID? {
+        searchOriginSourceFolderID ?? selectedSourceFolderID
     }
 
     public var isUnifiedInboxSelected: Bool {
@@ -429,6 +484,9 @@ public final class MailNavigationState {
 
     public func selectUnifiedInbox() {
         selectedCollectionFolderID = nil
+        searchOriginSourceFolderID = nil
+        searchFieldScope = .all
+        searchAllMailboxes = true
         selectedSourceID = nil
         selectedFolderID = Self.unifiedInboxFolderID
         selectedMessageID = nil
@@ -528,6 +586,9 @@ public final class MailNavigationState {
     // into the next list (and vice versa).
     func selectSmartView(folderID: Folder.ID) {
         selectedCollectionFolderID = nil
+        searchOriginSourceFolderID = nil
+        searchFieldScope = .all
+        searchAllMailboxes = true
         selectedSourceID = nil
         selectedFolderID = folderID
         selectedMessageID = nil
@@ -540,6 +601,9 @@ public final class MailNavigationState {
     /// Select a folder within a specific account/mailbox source.
     public func selectFolder(_ folderID: Folder.ID?, in sourceID: MailSourceID?) {
         selectedCollectionFolderID = nil
+        searchOriginSourceFolderID = nil
+        searchFieldScope = .all
+        searchAllMailboxes = true
         selectedSourceID = sourceID
         selectedFolderID = folderID
         selectedMessageID = nil
@@ -551,7 +615,14 @@ public final class MailNavigationState {
 
     /// Clears a reader whose account left the profile without leaving the virtual collection.
     public func reconcileReaderSources(_ sourceIDs: Set<MailSourceID>) {
+        if let origin = searchOriginSourceFolderID, !sourceIDs.contains(origin.sourceID) {
+            searchOriginSourceFolderID = nil
+        }
         guard let source = selectedSourceID, !sourceIDs.contains(source) else { return }
+        if let origin = searchOriginSourceFolderID, sourceIDs.contains(origin.sourceID) {
+            restoreSearchOriginIfNeeded()
+            return
+        }
         let collection = selectedCollectionFolderID
         selectedSourceID = nil
         selectedFolderID = collection
@@ -584,6 +655,13 @@ public final class MailNavigationState {
         expandsSelectedMessage: Bool = true
     ) {
         restoredSelectionHeader = nil
+        if browsingFolderID == nil,
+           searchOriginSourceFolderID == nil,
+           !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           isCrossAccountSearchListActive
+           || selectedSourceFolderID != SourceFolderID(sourceID: sourceID, folderID: header.folderID) {
+            searchOriginSourceFolderID = selectedSourceFolderID
+        }
         selectedCollectionFolderID = browsingFolderID
         selectedSourceID = sourceID
         selectedFolderID = header.folderID
@@ -774,6 +852,9 @@ public final class MailNavigationState {
     /// folder/message surface for a newly selected mailbox.
     public func resetForMailboxSwitch() {
         selectedCollectionFolderID = nil
+        searchOriginSourceFolderID = nil
+        searchFieldScope = .all
+        searchAllMailboxes = true
         selectedSourceID = nil
         selectedFolderID = nil
         selectedMessageID = nil

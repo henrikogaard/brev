@@ -21,8 +21,11 @@ struct UnifiedInboxSearchSource: Equatable, Sendable {
     let archiveFolder: Folder?
     private let foldersByID: [Folder.ID: Folder]
 
-    init?(section: MailSourceSection) {
-        guard let inbox = section.folders.first(where: { $0.role == .inbox }) else {
+    init?(section: MailSourceSection, requiresInbox: Bool = true) {
+        let fallbackFolder: Folder? = requiresInbox
+            ? section.folders.first(where: { $0.role == .inbox })
+            : (section.folders.first(where: { $0.role == .inbox }) ?? section.folders.first)
+        guard let inbox = fallbackFolder else {
             return nil
         }
         sourceID = section.id
@@ -42,19 +45,59 @@ struct UnifiedInboxSearchSource: Equatable, Sendable {
     }
 }
 
+/// Decides when typing a search query from a physical folder expands across
+/// every visible account by default (#296, ADR-0041).
+enum MailCrossAccountSearchPolicy {
+    static func isActive(
+        searchText: String,
+        searchAllMailboxes: Bool,
+        visibleSourceCount: Int,
+        isSpecialDestination: Bool
+    ) -> Bool {
+        !isSpecialDestination
+            && visibleSourceCount > 1
+            && searchAllMailboxes
+            && MessageListReloadPolicy.operation(forSearchText: searchText) != .folder
+    }
+
+    /// Compact iPhone navigation should not treat opening a cross-account result
+    /// from another folder as sidebar folder navigation back to the list.
+    static func shouldNavigateCompactOnFolderChange(
+        searchOriginSourceFolderID: SourceFolderID?
+    ) -> Bool {
+        searchOriginSourceFolderID == nil
+    }
+
+    /// Folder-visibility synchronization must not replace `selectedFolderID` or
+    /// clear `selectedMessageID` while cross-account search is presenting a
+    /// result that may live in another account's hidden folder.
+    static func shouldSyncSelectedFolder(
+        isCrossAccountSearchActive: Bool,
+        searchOriginSourceFolderID: SourceFolderID?
+    ) -> Bool {
+        !isCrossAccountSearchActive && searchOriginSourceFolderID == nil
+    }
+}
+
 struct UnifiedInboxSearchRequest: Equatable, Sendable {
     let query: String
     let sourceIDs: [MailSourceID]
     let execution: SearchExecution
+    let searchAllFolders: Bool
+    let searchScope: SearchScope
 
     init(
         query: String,
         sourceIDs: [MailSourceID],
-        execution: SearchExecution = .cacheThenServer
+        execution: SearchExecution = .cacheThenServer,
+        searchAllFolders: Bool = false,
+        searchScope: SearchScope = .all
     ) {
         self.query = query
         self.sourceIDs = sourceIDs
         self.execution = execution
+        self.searchAllFolders = searchAllFolders
+        self.searchScope = searchScope
     }
 }
 
@@ -171,6 +214,8 @@ enum UnifiedInboxSearchPolicy {
         text: String,
         from sourceSections: [MailSourceSection],
         execution: SearchExecution,
+        searchAllFolders: Bool = false,
+        searchScope: SearchScope = .all,
         capabilities: (MailSourceID) -> BackendCapabilities,
         now: Date = Date(),
         calendar: Calendar = .current
@@ -178,14 +223,20 @@ enum UnifiedInboxSearchPolicy {
         var plans: [UnifiedInboxSearchPlan] = []
         var unavailableServerCount = 0
         for section in sourceSections {
-            guard let source = UnifiedInboxSearchSource(section: section) else { continue }
+            guard let source = UnifiedInboxSearchSource(section: section, requiresInbox: !searchAllFolders) else { continue }
             let supported = capabilities(section.id)
             let sourceExecution = execution == .cacheThenServer
                 && !supported.contains(.serverSideSearch)
                 ? SearchExecution.cacheOnly
                 : execution
-            let plan = searchPlan(text: text, inboxFolderID: source.inbox.id, execution: sourceExecution,
-                                  now: now, calendar: calendar)
+            let plan = MessageListSearchQueryPolicy.plan(
+                text: text,
+                folderID: searchAllFolders ? nil : source.inbox.id,
+                execution: sourceExecution,
+                searchScope: searchScope,
+                now: now,
+                calendar: calendar
+            )
             guard let query = plan.resolvedQuery(in: section.folders) else { continue }
             if execution == .serverOnly, !supported.contains(.serverSideSearch) {
                 unavailableServerCount += 1

@@ -468,6 +468,93 @@ struct UnifiedInboxPaginationTests {
         #expect(plan.query.execution == .serverOnly)
     }
 
+    @Test("cross-account default search activates for multi-source folders and spans all folders unless narrowed")
+    func crossAccountDefaultSearchPolicyAndPlans() throws {
+        #expect(MailCrossAccountSearchPolicy.isActive(
+            searchText: "invoice",
+            searchAllMailboxes: true,
+            visibleSourceCount: 2,
+            isSpecialDestination: false
+        ))
+        #expect(!MailCrossAccountSearchPolicy.isActive(
+            searchText: "   ",
+            searchAllMailboxes: true,
+            visibleSourceCount: 2,
+            isSpecialDestination: false
+        ))
+        #expect(!MailCrossAccountSearchPolicy.isActive(
+            searchText: "invoice",
+            searchAllMailboxes: false,
+            visibleSourceCount: 2,
+            isSpecialDestination: false
+        ))
+        #expect(!MailCrossAccountSearchPolicy.isActive(
+            searchText: "invoice",
+            searchAllMailboxes: true,
+            visibleSourceCount: 1,
+            isSpecialDestination: false
+        ))
+        #expect(!MailCrossAccountSearchPolicy.isActive(
+            searchText: "invoice",
+            searchAllMailboxes: true,
+            visibleSourceCount: 2,
+            isSpecialDestination: true
+        ))
+
+        let inboxA = Folder(id: "in-a", name: "Inbox", role: .inbox)
+        let sentA = Folder(id: "sent-a", name: "Sent", role: .sent)
+        let archiveB = Folder(id: "arch-b", name: "Archive", role: .archive)
+        let sentB = Folder(id: "sent-b", name: "Sent Items", role: .sent)
+        let sectionA = Self.section(account: "a", mailbox: "1", folders: [inboxA, sentA])
+        // Source B has no Inbox folder; cross-account all-folders search still includes it.
+        let sectionB = Self.section(account: "b", mailbox: "1", folders: [archiveB, sentB])
+
+        let allPlans = UnifiedInboxSearchPolicy.searchPlans(
+            text: "invoice pdf",
+            from: [sectionA, sectionB],
+            execution: .cacheOnly,
+            searchAllFolders: true,
+            capabilities: { _ in [] }
+        ).plans
+        #expect(allPlans.map(\.source.sourceID) == [sectionA.id, sectionB.id])
+        #expect(allPlans.allSatisfy { $0.query.folderID == nil })
+        #expect(allPlans.allSatisfy { $0.query.text == "invoice" })
+        #expect(allPlans.map(\.cachedPDFFolders) == [sectionA.folders, sectionB.folders])
+
+        // Explicit folder phrases still narrow every source to its matching folder role.
+        let sentPlans = UnifiedInboxSearchPolicy.searchPlans(
+            text: "invoice in Sent",
+            from: [sectionA, sectionB],
+            execution: .cacheOnly,
+            searchAllFolders: true,
+            capabilities: { _ in [] }
+        ).plans
+        #expect(sentPlans.map(\.query.folderID) == ["sent-a", "sent-b"])
+
+        // Field scopes (e.g. From) compose cleanly with cross-account search plans.
+        let fromPlans = UnifiedInboxSearchPolicy.searchPlans(
+            text: "maya",
+            from: [sectionA, sectionB],
+            execution: .cacheOnly,
+            searchAllFolders: true,
+            searchScope: .from,
+            capabilities: { _ in [] }
+        ).plans
+        #expect(fromPlans.allSatisfy { $0.query.from == "maya" && $0.query.text.isEmpty && $0.query.folderID == nil })
+
+        // Chip cache produces natural-language chips in cross-account mode even without an inbox folder ID.
+        let chips = UnifiedInboxSearchChipsCache().chips(
+            text: "invoice from Maya pdf in Sent",
+            isSavedSearch: false,
+            searchAllFolders: true,
+            inboxFolderID: nil,
+            execution: .cacheOnly
+        )
+        #expect(chips.contains { $0.kind == .sender && $0.value == "Maya" })
+        #expect(chips.contains { $0.kind == .cachedPDF })
+        #expect(chips.contains { $0.kind == .folder && $0.value == "in Sent" })
+    }
+
     @Test("server search result items preserve source and folder identity")
     func serverSearchResultItemsPreserveSourceAndFolderIdentity() throws {
         let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)

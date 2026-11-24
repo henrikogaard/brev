@@ -118,13 +118,6 @@ public struct MessageListView: View {
     @State private var isBulkPermanentDeletePresented = false
     @State private var pendingBlockSenderHeader: MessageHeader?
     @State private var pendingSnoozeHeaders: [MessageHeader] = []
-    /// The field scope picked in the macOS search options bar. On iOS the scope comes
-    /// from a field token in the search field (see `searchScope`).
-    @State private var searchScopeSelection: SearchScope = .all
-    #if os(iOS)
-    /// The folder the mailbox scope was last reset for.
-    @State private var searchScopeFolderIdentity: String?
-    #endif
     /// Progressive disclosure for search execution / scope chips. Expands
     /// automatically when the user leaves the default search options.
     @State private var isSearchOptionsExpanded = false
@@ -317,17 +310,6 @@ public struct MessageListView: View {
                 if !navigation.bulkSelection.isEmpty {
                     navigation.endSelection()
                 }
-                searchScopeSelection = .all
-                #if os(iOS)
-                // The scope bar stays visible while searching, so a pull to refresh
-                // must not flip "All mailboxes" back; only a real folder switch does.
-                if searchScopeFolderIdentity != folderIdentityKey {
-                    searchScopeFolderIdentity = folderIdentityKey
-                    searchAllFolders = false
-                }
-                #else
-                searchAllFolders = false
-                #endif
                 isSearchOptionsExpanded = false
                 reconcileSearchExecutionWithBackendCapabilities()
                 refreshPinnedMessageIDSet()
@@ -2256,7 +2238,7 @@ public struct MessageListView: View {
 
     private var hasNonDefaultSearchOptions: Bool {
         searchScope != .all
-            || searchAllFolders
+            || !searchAllFolders
             || navigation.hasUserSelectedSearchExecution
             || !naturalLanguageSearchChips.isEmpty
     }
@@ -2285,6 +2267,14 @@ public struct MessageListView: View {
         }
     }
 
+    private var folderScopeSelection: Binding<Bool> {
+        Binding {
+            navigation.searchAllMailboxes
+        } set: { newValue in
+            navigation.setSearchAllMailboxes(newValue)
+        }
+    }
+
     private var searchScopeBar: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             MailSearchOptionsBar(
@@ -2292,8 +2282,8 @@ public struct MessageListView: View {
                 availableExecutions: MessageListSearchExecutionPolicy.availableExecutions(
                     capabilities: backend.capabilities
                 ),
-                folderScope: $navigation.searchAllMailboxes,
-                fieldScope: $searchScopeSelection
+                folderScope: folderScopeSelection,
+                fieldScope: $navigation.searchFieldScope
             )
             if !naturalLanguageSearchChips.isEmpty {
                 ScrollView(.horizontal) {
@@ -2522,7 +2512,7 @@ public struct MessageListView: View {
 
     /// The field scope applied to the typed text: a field token wins over the macOS options bar.
     private var searchScope: SearchScope {
-        navigation.searchScope == .all ? searchScopeSelection : navigation.searchScope
+        navigation.searchScope
     }
 
     /// When true, search spans every folder in the mailbox instead of just

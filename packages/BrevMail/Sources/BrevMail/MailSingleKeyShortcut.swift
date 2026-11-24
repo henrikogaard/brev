@@ -76,7 +76,10 @@ extension MailSingleKeyShortcut {
             return perform(menuAction, header)
         }
         guard let navigation else { return false }
-        if navigation.isUnifiedInboxSelected || navigation.isSmartViewSelected || navigation.selectedSavedSearchID != nil {
+        if navigation.isUnifiedInboxSelected
+            || navigation.isSmartViewSelected
+            || navigation.selectedSavedSearchID != nil
+            || navigation.isCrossAccountSearchListActive {
             navigation.unifiedReaderStep.send(self == .next)
             return true
         }
