@@ -8278,3 +8278,11 @@ buttons, and package-aware localization.
   - Added `isStandaloneAttributionText(at:in:limit:html:)` to `ComposeDraftQuoteSplitter` and wired it into `isPureQuoteChain(between:and:in:html:)` so an intervening text node immediately preceding a `<blockquote>` (through `<br>`/whitespace separators) is accepted when the entire trimmed text node matches `looksLikeStandaloneAttributionHeader`, while text nodes containing reply text before an attribution continue to fail closed.
   - Added regression coverage in `ComposeDraftBodyRestorationTests.swift` for both an intervening plain-text attributed quote (`On Tuesday, Bea wrote:<br><blockquote>Middle note</blockquote>`) and a reply-plus-attribution text node (`Thoughts?\nOn Tuesday, Bea wrote:<br><blockquote>Middle note</blockquote>`).
 - **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #350 review round 7 & rebase onto main (Issue #278)
+
+- **Goal:** Address Devin Review note (`PRRT_kwDOUHC-Ds67b_vj`) on `f34e71c6` and rebase `feature/lossless-quote-draft-reopen` cleanly onto updated `origin/main` (after PR #347 merged).
+- **Changes:**
+  - Updated `ComposeDraftQuoteSplitter.isStandaloneAttributionText` to skip `isQuoteGapNode` (including blank divider elements such as `<div><br></div>`), matching `isPureQuoteChain`, and added regression coverage in `ComposeDraftBodyRestorationTests.swift`.
+  - Rebased onto `origin/main` (`9492a7ce`), cleanly preserving both PR #347 and PR #350 entries in `CHANGELOG.md`, `WORKLOG.md`, `Localizable.xcstrings` (JSON-validated), and `IMAPSMTPConfigurationTests.swift`.
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'`, `swift test --package-path packages/BrevBackend --filter 'IMAPSMTPConfigurationTests'`, `scripts/format.sh`, `scripts/lint.sh`, `python3 -m json.tool packages/BrevMail/Sources/BrevMail/Resources/Localizable.xcstrings`, and `git diff --check origin/main`.

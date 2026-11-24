@@ -485,6 +485,20 @@ struct ComposeDraftBodyRestorationTests {
         #expect(chainRestored.preservedQuotedHTML == plainTextAttributedChainTail)
         #expect(chainRestored.quoteSeparatorHTML == "<br>")
 
+        // Blank divider elements (`<div><br></div>`) between a plain-text attribution
+        // and its blockquote are also skipped as quote gaps in the chain.
+        let dividerAttributedChainTail =
+            "<div style=\"color:gray\">On Monday, Ada wrote:</div><blockquote>First note</blockquote>"
+                + "On Tuesday, Bea wrote:<div><br></div><blockquote>Middle note</blockquote>"
+                + "<div class=\"gmail_attr\">On Sunday, Bob wrote:</div><blockquote>Older note</blockquote>"
+        let dividerAttributedChainHTML = "Reply<br>\(dividerAttributedChainTail)"
+        let dividerRestored = try await prepare(dividerAttributedChainHTML, format: .richTextHTML)
+
+        #expect(dividerRestored.attributedText.string == "Reply")
+        #expect(dividerRestored.originalHTML == dividerAttributedChainHTML)
+        #expect(dividerRestored.preservedQuotedHTML == dividerAttributedChainTail)
+        #expect(dividerRestored.quoteSeparatorHTML == "<br>")
+
         // A text node containing reply text before an attribution line is not a
         // standalone attribution and must fail closed instead of locking the reply.
         let replyBeforePlainAttributionHTML =

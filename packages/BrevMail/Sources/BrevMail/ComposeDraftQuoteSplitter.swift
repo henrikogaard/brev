@@ -274,7 +274,7 @@ enum ComposeDraftQuoteSplitter {
         let plain = ComposeQuoteTextPolicy.htmlToPlainText(String(html[range]))
         guard looksLikeStandaloneAttributionHeader(plain) else { return false }
         var nextIndex = index + 1
-        while nextIndex < limit, isInsignificantSeparator(nodes[nextIndex], in: html) {
+        while nextIndex < limit, isQuoteGapNode(nodes[nextIndex], in: html) {
             nextIndex += 1
         }
         return nextIndex < limit && isBlockquoteElement(nodes[nextIndex])
