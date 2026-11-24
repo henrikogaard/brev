@@ -13583,6 +13583,473 @@
           }
         }
       }
+    },
+    "Accounts left off are invisible to MCP clients.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontoer som er slått av, er usynlige for MCP-klienter."
+          }
+        }
+      }
+    },
+    "Add a mail account to grant per-account local agent access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legg til en e-postkonto for å gi lokal agenttilgang per konto."
+          }
+        }
+      }
+    },
+    "Agent access": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenttilgang"
+          }
+        }
+      }
+    },
+    "All events": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle hendelser"
+          }
+        }
+      }
+    },
+    "Allow local agents to access mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillat lokale agenter tilgang til e-post"
+          }
+        }
+      }
+    },
+    "Allowed": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillatt"
+          }
+        }
+      }
+    },
+    "Allowed accounts": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillatte kontoer"
+          }
+        }
+      }
+    },
+    "Approval required in Brev": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krever godkjenning i Brev"
+          }
+        }
+      }
+    },
+    "Approved": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Godkjent"
+          }
+        }
+      }
+    },
+    "Archives up to 25 messages after you click Approve in Brev.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arkiverer opptil 25 meldinger etter at du klikker Godkjenn i Brev."
+          }
+        }
+      }
+    },
+    "Audit log": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revisjonslogg"
+          }
+        }
+      }
+    },
+    "Blocked (account)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blokkert (konto)"
+          }
+        }
+      }
+    },
+    "Blocked (disabled)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blokkert (deaktivert)"
+          }
+        }
+      }
+    },
+    "Clear log": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tøm logg"
+          }
+        }
+      }
+    },
+    "Configure Claude Desktop, Claude Code, Codex, or Cursor to launch the local stdio bridge.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konfigurer Claude Desktop, Claude Code, Codex eller Cursor til å starte den lokale stdio-broen."
+          }
+        }
+      }
+    },
+    "Copied JSON snippet": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JSON-utdrag kopiert"
+          }
+        }
+      }
+    },
+    "Copy JSON snippet": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopier JSON-utdrag"
+          }
+        }
+      }
+    },
+    "Denied / Blocked": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avslått / Blokkert"
+          }
+        }
+      }
+    },
+    "Every request received by Brev is logged locally (up to 1,000 entries, never storing bodies or sign-in codes).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hver forespørsel Brev mottar logges lokalt (opptil 1 000 oppføringer, lagrer aldri meldingstekst eller innloggingskoder)."
+          }
+        }
+      }
+    },
+    "Exposed tools": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksponerte verktøy"
+          }
+        }
+      }
+    },
+    "External agents you connect (such as Claude, Codex, or Cursor) may send email text they read to whichever AI provider those agents use. Only enable accounts you are comfortable sharing with your local agents.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksterne agenter du kobler til (som Claude, Codex eller Cursor) kan sende e-posttekst de leser til AI-leverandøren de bruker. Aktiver bare kontoer du er komfortabel med å dele med lokale agenter."
+          }
+        }
+      }
+    },
+    "Filter": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter"
+          }
+        }
+      }
+    },
+    "Let local AI agents on this Mac search and read cached mail through a private local socket, with no network ports and per-call approval in Brev for any change.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La lokale AI-agenter på denne Mac-en søke i og lese bufret e-post via en privat lokal socket, uten nettverksporter og med godkjenning i Brev for hver endring."
+          }
+        }
+      }
+    },
+    "Listens only on a user-private Unix socket while Brev is running. Zero TCP or UDP ports.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lytter kun på en brukerprivat Unix-socket mens Brev kjører. Ingen TCP- eller UDP-porter."
+          }
+        }
+      }
+    },
+    "Lists folder names, roles, and unread counts from local state.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lister mappenavn, roller og uleste antall fra lokal tilstand."
+          }
+        }
+      }
+    },
+    "Lists opaque IDs and labels for accounts you enabled above.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lister opake ID-er og etiketter for kontoene du har aktivert ovenfor."
+          }
+        }
+      }
+    },
+    "Local MCP server": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lokal MCP-tjener"
+          }
+        }
+      }
+    },
+    "MCP client setup": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppsett for MCP-klient"
+          }
+        }
+      }
+    },
+    "Moves up to 25 messages to a non-Trash, non-Spam folder after you click Approve in Brev.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flytter opptil 25 meldinger til en annen mappe enn Papirkurv eller Søppelpost etter at du klikker Godkjenn i Brev."
+          }
+        }
+      }
+    },
+    "No local agent requests recorded yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen lokale agentforespørsler er registrert ennå."
+          }
+        }
+      }
+    },
+    "Off by default and stored only on this Mac. Never synced via iCloud or included in settings backups.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Av som standard og lagres bare på denne Mac-en. Synkroniseres aldri via iCloud og inkluderes ikke i sikkerhetskopier."
+          }
+        }
+      }
+    },
+    "Rate limited": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forespørselsbegrenset"
+          }
+        }
+      }
+    },
+    "Read": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les"
+          }
+        }
+      }
+    },
+    "Reads sanitized plain text, basic headers, and attachment filenames for one cached message.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leser renset ren tekst, grunnleggende meldingshoder og vedleggsnavn for én bufret melding."
+          }
+        }
+      }
+    },
+    "Searches locally cached mail only (up to 50 headers per call; never hits the network).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søker kun i lokalt bufret e-post (opptil 50 meldingshoder per kall; bruker aldri nettverket)."
+          }
+        }
+      }
+    },
+    "Send, reply, forward, delete, move to Trash, and settings changes are permanently excluded.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sending, svar, videresending, sletting, flytting til Papirkurv og innstillingsendringer er permanent utelukket."
+          }
+        }
+      }
+    },
+    "Timed out": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidsavbrutt"
+          }
+        }
+      }
+    },
+    "Claude / Cursor (JSON)": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude / Cursor (JSON)"
+          }
+        }
+      }
+    },
+    "Client format": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klientformat"
+          }
+        }
+      }
+    },
+    "Codex CLI (TOML)": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex CLI (TOML)"
+          }
+        }
+      }
+    },
+    "Copied snippet": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utdrag kopiert"
+          }
+        }
+      }
+    },
+    "Copy snippet": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopier utdrag"
+          }
+        }
+      }
+    },
+    "Show more (%lld remaining)": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis flere (%lld gjenstår)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

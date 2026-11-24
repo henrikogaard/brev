@@ -1002,6 +1002,35 @@ link), require Face ID / Touch ID / passcode for **Copy code** (written with
 real destination host in Brev before opening your browser), and are removed
 from Notification Center after use, on consent withdrawal, or after 10 minutes.
 
+## Local agent access via MCP (opt-in, macOS-only)
+
+Brev on macOS includes an optional local Model Context Protocol (MCP) server
+(`brev-mcp` + a user-private `0600` Unix domain socket, ADR-0095). It opens no
+TCP or UDP ports and makes no network requests of its own.
+
+- **Off by default:** Both the master switch and every per-account switch under
+  **Settings → Privacy & Security → Agent access** default to off, stay on this
+  Mac only, and are excluded from `.brevbackup` exports and iCloud preference
+  sync.
+- **Bounded scope:** Read tools return only already-cached mail for enabled
+  accounts (capped at 50 search results, excluding Trash and Spam, with detected
+  sign-in codes and sign-in links redacted). `archive_messages` and
+  `label_messages` require explicit per-call confirmation in Brev (at most 25
+  messages per request, with a 60-second automatic deny timeout and no
+  session-wide auto-approve). Sending mail, deleting or trashing mail, and
+  changing credentials or settings are not exposed.
+- **External client boundary:** When you enable Agent access and connect a local
+  tool such as Claude Code or Codex CLI, mail returned by Brev leaves Brev to
+  that local tool and may then be sent to that tool's configured model provider
+  under its privacy policy.
+- **Local audit log:** Every request (allowed, approved, denied, or blocked) is
+  recorded in a local, backup-excluded 1,000-entry log you can review or clear
+  at any time in **Settings → Privacy & Security → Agent access**.
+
+**How to disable:** Settings → Privacy & Security → Agent access → turn off
+**Allow local agents to access Brev** (or turn off individual accounts).
+Defaults to off.
+
 ## Children
 
 Brev does not target users under 16. Brev has no sign-up of its own;

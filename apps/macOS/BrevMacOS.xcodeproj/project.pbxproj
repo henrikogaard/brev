@@ -29,6 +29,7 @@
 		C1365DAA95CF04013130BBC0 /* BrevGmail in Frameworks */ = {isa = PBXBuildFile; productRef = 7D9EE985FC1B34764F6DE39D /* BrevGmail */; };
 		C187D766B582B6BE54F2B4CF /* Sparkle.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 88F5CCF3B6AF123315A0D124 /* Sparkle.xcframework */; };
 		D24E52D25AE576239CC2C9C3 /* BrevApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04559043094C5DC20D223D5 /* BrevApp.swift */; };
+		D4ED5E558940BD608BFDD172 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A250682F805F5F1BC5897EA5 /* main.swift */; };
 		D65183A5C51272DFA4651F88 /* BrevMailCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 560B23745A8AF4A38B3E9DFF /* BrevMailCommands.swift */; };
 		DD1DFA80923FE666E13AA925 /* BrevBackend in Frameworks */ = {isa = PBXBuildFile; productRef = D0DEAC0B8A9AEA36F5863F77 /* BrevBackend */; };
 		E83BC8122D5CC52046808DBF /* BrevSettings in Frameworks */ = {isa = PBXBuildFile; productRef = 134F1A1E81E465A7DF2439EC /* BrevSettings */; };
@@ -40,6 +41,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		359A0F3AD76731E8BA84AB94 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C9EA854B01782EB856613733 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D29CC5CF84F63B82E59B1F70;
+			remoteInfo = BrevMCPHelper;
+		};
 		97C4EF18202B1B31C3CC67CF /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C9EA854B01782EB856613733 /* Project object */;
@@ -57,6 +65,16 @@
 			dstSubfolderSpec = 10;
 			files = (
 				24F14ED373419E0FF50DF302 /* Sparkle.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1FE74730E5BE24F0FA1B2993 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -88,6 +106,7 @@
 		1092EC4E54A4B4D5245DC2BB /* BrevIconEnvelopeLight.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = BrevIconEnvelopeLight.icns; sourceTree = "<group>"; };
 		15CE7648E45AC7BBA088CFBC /* BrevSettings */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevSettings; path = ../../packages/BrevSettings; sourceTree = "<group>"; };
 		16FD9C8D32351B257F998344 /* BrevPlugins */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevPlugins; path = ../../packages/BrevPlugins; sourceTree = "<group>"; };
+		22EFFBC5EF10C89BC2C586DE /* brev-mcp */ = {isa = PBXFileReference; includeInIndex = 0; path = "brev-mcp"; sourceTree = BUILT_PRODUCTS_DIR; };
 		270DF896BE4F01BB8A26FF28 /* WindowFrameAutosave.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowFrameAutosave.swift; sourceTree = "<group>"; };
 		2DDED1033D03103D8010F046 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		31A6013F9115B9BD90946109 /* BrevWidgets */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevWidgets; path = ../../packages/BrevWidgets; sourceTree = "<group>"; };
@@ -102,6 +121,7 @@
 		59D7E25498D8CC3403906C19 /* BrevGmail */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevGmail; path = ../../packages/BrevGmail; sourceTree = "<group>"; };
 		59D8F2F8140B9B5EB742F9EC /* BrevDesign */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevDesign; path = ../../packages/BrevDesign; sourceTree = "<group>"; };
 		5F10040F8AF74B8133E19027 /* BrevMacWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BrevMacWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		635829213C034F3A3ECE42D2 /* BrevMCPHelper-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "BrevMCPHelper-Info.plist"; sourceTree = "<group>"; };
 		772458985CDF19647CF4CD37 /* BrevAppMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrevAppMain.swift; sourceTree = "<group>"; };
 		78A6A7876826C01FD6F25FDF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7C5F321BA57F726FFD840716 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -110,6 +130,7 @@
 		8828EDA9FD01EE6220BBDBDB /* BrevSyncEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevSyncEngine; path = ../../packages/BrevSyncEngine; sourceTree = "<group>"; };
 		88F5CCF3B6AF123315A0D124 /* Sparkle.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Sparkle.xcframework; sourceTree = "<group>"; };
 		A04559043094C5DC20D223D5 /* BrevApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrevApp.swift; sourceTree = "<group>"; };
+		A250682F805F5F1BC5897EA5 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B3784797F461CA8C6E729A41 /* TuistAssets+BrevMacOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TuistAssets+BrevMacOS.swift"; sourceTree = "<group>"; };
 		C0E3161C0A69C95AA60ADA4B /* Brev.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Brev.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C7BC6E48FA4543B47D64BFD8 /* BrevAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrevAppIntents.swift; sourceTree = "<group>"; };
@@ -144,6 +165,13 @@
 				E83BC8122D5CC52046808DBF /* BrevSettings in Frameworks */,
 				EF6F6F2342412F39DE52AAD0 /* BrevSyncEngine in Frameworks */,
 				1B227327213BA6AF141B6E18 /* BrevThemes in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C056BB7181E70467894A3F41 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -210,6 +238,7 @@
 		8EFDB789BDBCCE152989E8EC /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				22EFFBC5EF10C89BC2C586DE /* brev-mcp */,
 				C0E3161C0A69C95AA60ADA4B /* Brev.app */,
 				5F10040F8AF74B8133E19027 /* BrevMacWidgets.appex */,
 			);
@@ -264,6 +293,14 @@
 			path = .build;
 			sourceTree = "<group>";
 		};
+		C9FBFF8E366514540BDD837A /* BrevMCPHelper */ = {
+			isa = PBXGroup;
+			children = (
+				A250682F805F5F1BC5897EA5 /* main.swift */,
+			);
+			path = BrevMCPHelper;
+			sourceTree = "<group>";
+		};
 		CB8528E3E29169F17D77C7E3 /* Tuist */ = {
 			isa = PBXGroup;
 			children = (
@@ -276,6 +313,7 @@
 		CC041DD2D26911B748CCFCB8 /* Derived */ = {
 			isa = PBXGroup;
 			children = (
+				F6B2EEAA830EFB0C0FA02469 /* InfoPlists */,
 				4462BECAD898A929DF1CE641 /* Sources */,
 			);
 			path = Derived;
@@ -285,6 +323,7 @@
 			isa = PBXGroup;
 			children = (
 				F399B1A1DCAFA5A9F814E6E9 /* BrevMacWidgets */,
+				C9FBFF8E366514540BDD837A /* BrevMCPHelper */,
 				CC041DD2D26911B748CCFCB8 /* Derived */,
 				84129ED75C477D44362D4856 /* Resources */,
 				8F3CDF5821ED4B36195E998B /* Sources */,
@@ -301,6 +340,14 @@
 				7C5F321BA57F726FFD840716 /* Info.plist */,
 			);
 			path = BrevMacWidgets;
+			sourceTree = "<group>";
+		};
+		F6B2EEAA830EFB0C0FA02469 /* InfoPlists */ = {
+			isa = PBXGroup;
+			children = (
+				635829213C034F3A3ECE42D2 /* BrevMCPHelper-Info.plist */,
+			);
+			path = InfoPlists;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -336,10 +383,12 @@
 				8F96FE9707AAC9CF617F1582 /* Embed Foundation Extensions */,
 				9F7F308D7041A59C9C2D7654 /* Frameworks */,
 				14EFFDDB9E5B7EB21C7A89FA /* Embed Frameworks */,
+				80C298AEED27919CD01D16B3 /* Embed brev-mcp helper */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B6E3F75160EF90761E06DF83 /* PBXTargetDependency */,
 				866500E1D1693BD5FC0DAA95 /* PBXTargetDependency */,
 			);
 			name = BrevMacOS;
@@ -358,6 +407,26 @@
 			productName = Brev;
 			productReference = C0E3161C0A69C95AA60ADA4B /* Brev.app */;
 			productType = "com.apple.product-type.application";
+		};
+		D29CC5CF84F63B82E59B1F70 /* BrevMCPHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 846AE64BC64C2B26C137818B /* Build configuration list for PBXNativeTarget "BrevMCPHelper" */;
+			buildPhases = (
+				4F4258BE58ECA34B4A5E3D8A /* Sources */,
+				CF8BE7901149533ED2B8B982 /* Resources */,
+				C056BB7181E70467894A3F41 /* Frameworks */,
+				1FE74730E5BE24F0FA1B2993 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BrevMCPHelper;
+			packageProductDependencies = (
+			);
+			productName = "brev-mcp";
+			productReference = 22EFFBC5EF10C89BC2C586DE /* brev-mcp */;
+			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
 
@@ -397,6 +466,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				D29CC5CF84F63B82E59B1F70 /* BrevMCPHelper */,
 				8AD226FBE5683CD167B0D31B /* BrevMacOS */,
 				2A4B38E7244CD99CD3B8CE51 /* BrevMacWidgets */,
 			);
@@ -424,7 +494,37 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CF8BE7901149533ED2B8B982 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		80C298AEED27919CD01D16B3 /* Embed brev-mcp helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/brev-mcp",
+			);
+			name = "Embed brev-mcp helper";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/brev-mcp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "mkdir -p \"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\ncp -f \"${BUILT_PRODUCTS_DIR}/brev-mcp\" \"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers/brev-mcp\"";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		1A4DF8E6562146702FD8966C /* Sources */ = {
@@ -432,6 +532,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				A9B5225F27410DBC80BF62FA /* BrevMacWidgetsBundle.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4F4258BE58ECA34B4A5E3D8A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D4ED5E558940BD608BFDD172 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -459,6 +567,12 @@
 			name = BrevMacWidgets;
 			target = 2A4B38E7244CD99CD3B8CE51 /* BrevMacWidgets */;
 			targetProxy = 97C4EF18202B1B31C3CC67CF /* PBXContainerItemProxy */;
+		};
+		B6E3F75160EF90761E06DF83 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = BrevMCPHelper;
+			target = D29CC5CF84F63B82E59B1F70 /* BrevMCPHelper */;
+			targetProxy = 359A0F3AD76731E8BA84AB94 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -536,6 +650,26 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		84ADD149CA8F5B797DF10F5E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BREV_APP_BUNDLE_ID = eu.brevmail.brev;
+				CODE_SIGN_IDENTITY = "-";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = "Derived/InfoPlists/BrevMCPHelper-Info.plist";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BREV_APP_BUNDLE_ID).mcp-helper";
+				PRODUCT_NAME = "brev-mcp";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+					"$(inherited)",
+					DEBUG,
+				);
+				SWIFT_COMPILATION_MODE = singlefile;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
 		};
@@ -729,6 +863,24 @@
 			};
 			name = Release;
 		};
+		D1EC529AA3BE896654F63CE6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BREV_APP_BUNDLE_ID = eu.brevmail.brev;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = 45AD7E7G5G;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = "Derived/InfoPlists/BrevMCPHelper-Info.plist";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BREV_APP_BUNDLE_ID).mcp-helper";
+				PRODUCT_NAME = "brev-mcp";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -737,6 +889,15 @@
 			buildConfigurations = (
 				A5D7300AD4CC6B8A567C59A6 /* Debug */,
 				CFC1220E7DEB71E8868E0D6F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		846AE64BC64C2B26C137818B /* Build configuration list for PBXNativeTarget "BrevMCPHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				84ADD149CA8F5B797DF10F5E /* Debug */,
+				D1EC529AA3BE896654F63CE6 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

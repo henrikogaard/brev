@@ -351,3 +351,31 @@ and foreground host-confirming `Open link` actions and automatic Notification
 Center cleanup. No production mail provider advertises
 `.trustedSignInAssessment` until live provider trust evidence (E1–E5) is
 recorded.
+
+### 2026-11-23 opt-in local MCP server for macOS agent access (ADR-0095)
+
+ADR-0095 adds an optional macOS-only local Model Context Protocol (MCP) surface
+for external AI tools running on the same Mac. It adds zero listening TCP or UDP
+network ports and zero new external network endpoints:
+
+- **Transport & access control:** A thin stdio helper (`brev-mcp`, embedded at
+  `Contents/Helpers/brev-mcp`) talks to the running Brev app strictly over a
+  user-private Unix domain socket (`0600`) in the shared App Group container
+  (`group.eu.brevmail.brev/mcp.sock`) with `getpeereid` same-UID peer verification.
+- **Consent:** `Settings → Privacy & Security → Agent access` (`AgentAccessSettings`)
+  is off by default (both master and per-account switches), device-local only,
+  and excluded from `.brevbackup` exports and iCloud preference sync.
+- **Data boundary:** Read tools (`list_accounts`, `list_folders`,
+  `search_messages`, `read_message`) read only already-cached mail for enabled
+  accounts (zero server fetches, Trash/Spam excluded, sign-in codes and links
+  redacted via ADR-0088 `SignInCodeDetector`). Write tools (`archive_messages`,
+  `label_messages`) require explicit per-call in-app confirmation (max 25
+  messages per call, 60-second fail-closed timeout, no session-wide auto-approve).
+  Sending mail, deleting/trashing mail, and credential/settings mutations are
+  permanently excluded.
+- **Audit log:** Every allowed, approved, denied, or blocked call is appended to
+  a local, backup-excluded 1,000-entry ring buffer (`agent-access-audit.json`)
+  viewable and clearable in Settings. Once the user explicitly enables Agent
+  access, any local client connected via `brev-mcp` may transmit returned
+  message content to its own configured model provider under that client's
+  privacy policy.

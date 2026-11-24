@@ -17073,6 +17073,94 @@
           }
         }
       }
+    },
+    "%@ wants to archive %d message(s) in %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ønsker å arkivere %d melding(er) i %@."
+          }
+        }
+      }
+    },
+    "%@ wants to move %d message(s) in %@ to %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ønsker å flytte %d melding(er) i %@ til %@."
+          }
+        }
+      }
+    },
+    "Approve": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Godkjenn"
+          }
+        }
+      }
+    },
+    "Approve agent archive request?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Godkjenn arkiveringsforespørsel fra agent?"
+          }
+        }
+      }
+    },
+    "Approve agent folder move?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Godkjenn mappeflytting fra agent?"
+          }
+        }
+      }
+    },
+    "Deny": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avslå"
+          }
+        }
+      }
+    },
+    "Every change requires your explicit approval. Brev never exposes send or delete tools to external agents.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hver endring krever din uttrykkelige godkjenning. Brev eksponerer aldri sende- eller sletteverktøy for eksterne agenter."
+          }
+        }
+      }
+    },
+    "and %d more messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "og %d flere meldinger"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

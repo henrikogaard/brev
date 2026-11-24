@@ -59,7 +59,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .writing: [.compose, .signature, .templates, .aiWriter]
         case .notifications: [.notifications]
         case .rulesOrganization: [.rules, .vipAndReminders, .autoReply]
-        case .privacySecurity: [.privacy, .security]
+        case .privacySecurity: [.privacy, .security, .agentAccess]
         case .syncStorage: [.folderSync, .mailStorage, .preferenceSync, .importExport]
         case .aboutUpdates: [.about, .updates]
         case .developer: [.developer]
@@ -77,7 +77,7 @@ extension SettingsSection {
         case .compose, .signature, .templates, .aiWriter: .writing
         case .notifications: .notifications
         case .rules, .vipAndReminders, .autoReply: .rulesOrganization
-        case .privacy, .security: .privacySecurity
+        case .privacy, .security, .agentAccess: .privacySecurity
         case .folderSync, .mailStorage, .preferenceSync, .importExport: .syncStorage
         case .about, .updates: .aboutUpdates
         case .developer: .developer

@@ -42,6 +42,20 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D29CC5CF84F63B82E59B1F70"
+               BuildableName = "brev-mcp"
+               BlueprintName = "BrevMCPHelper"
+               ReferencedContainer = "container:apps/macOS/BrevMacOS.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "8AD226FBE5683CD167B0D31B"
                BuildableName = "Brev.app"
                BlueprintName = "BrevMacOS"

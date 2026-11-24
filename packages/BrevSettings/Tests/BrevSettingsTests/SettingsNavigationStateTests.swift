@@ -351,10 +351,10 @@ struct SettingsNavigationStateTests {
         #expect(syncSections == [.folderSync, .mailStorage, .importExport, .preferenceSync])
     }
 
-    @Test("Privacy & Security group contains privacy and security")
+    @Test("Privacy & Security group contains privacy, security, and agentAccess")
     func privacySecurityGroupOrder() {
         let privacySections = SettingsSection.allCases.filter { $0.group == .privacySecurity }
-        #expect(privacySections == [.privacy, .security])
+        #expect(privacySections == [.privacy, .security, .agentAccess])
     }
 
     @Test("App group contains Accounts and Appearance")

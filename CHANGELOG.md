@@ -4,6 +4,16 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Local MCP agent access on macOS (#305, ADR-0095): added opt-in **Settings →
+  Agent access** (off by default, per-account toggles, device-local only,
+  excluded from backups and iCloud sync), an in-process local MCP broker over a
+  `0600` user-private Unix domain socket with peer-UID verification and zero
+  listening network ports, the `brev-mcp` stdio helper bridge, cache-only read
+  tools (`list_accounts`, `list_folders`, `search_messages`, `read_message`)
+  with ADR-0088 sign-in code redaction, per-call in-app approval sheets for
+  `archive_messages` and `label_messages` (max 25 messages, 60s fail-closed
+  timeout, single active prompt, no send/delete/Trash/Spam tools), and a
+  bounded 1,000-entry local audit log with filtering and one-click clear.
 - On-device AI with Apple Intelligence (#304, ADR-0094 Slice 1): added
   `AppleIntelligenceAIBackend` backed by Apple's `FoundationModels` framework on
   macOS 26+ and iOS 26+ with zero network calls, zero API keys, conservative
