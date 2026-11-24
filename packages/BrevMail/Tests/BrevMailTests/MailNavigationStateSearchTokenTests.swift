@@ -10,7 +10,9 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 @testable import BrevMail
+import Foundation
 import Testing
 
 @Suite("MailNavigationState search tokens")
@@ -41,15 +43,80 @@ struct MailNavigationStateSearchTokenTests {
         #expect(state.searchText.isEmpty)
     }
 
-    @Test("clearSearch drops text, tokens and the mailbox scope")
+    @Test("clearSearch drops text and tokens and restores default cross-account scope")
     func clearSearch() {
         let state = MailNavigationState(searchText: "x")
+        #expect(state.searchAllMailboxes)
         state.searchTokens = [.unread]
-        state.searchAllMailboxes = true
+        state.setSearchAllMailboxes(false)
+        #expect(!state.searchAllMailboxes)
         state.clearSearch()
         #expect(state.searchText.isEmpty)
         #expect(state.searchTokens.isEmpty)
+        #expect(state.searchAllMailboxes)
+    }
+
+    @Test("cross-account search routes reader per source and restores origin folder on narrow or clear")
+    func crossAccountSearchOriginRoutingAndRestoration() {
+        let sourceA = MailSourceID(accountID: "acct-a", mailboxID: "primary")
+        let sourceB = MailSourceID(accountID: "acct-b", mailboxID: "primary")
+        let state = MailNavigationState()
+        state.selectFolder("work", in: sourceA)
+        state.searchText = "invoice"
+
+        let headerB = MessageHeader(
+            id: "msg-b",
+            threadID: "t-b",
+            folderID: "archive",
+            from: Correspondent(email: "maya@example.org"),
+            to: [],
+            subject: "Invoice B",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 200)
+        )
+        state.selectMessage(headerB, in: sourceB, headers: [headerB])
+        #expect(state.selectedSourceID == sourceB)
+        #expect(state.selectedFolderID == "archive")
+        #expect(state.selectedMessageID == "msg-b")
+        #expect(state.searchOriginSourceFolderID == SourceFolderID(sourceID: sourceA, folderID: "work"))
+        #expect(state.browsingSourceFolderID == SourceFolderID(sourceID: sourceA, folderID: "work"))
+
+        // Narrowing to "This folder" restores the origin source/folder and drops the cross-account reader item.
+        state.setSearchAllMailboxes(false)
         #expect(!state.searchAllMailboxes)
+        #expect(state.selectedSourceID == sourceA)
+        #expect(state.selectedFolderID == "work")
+        #expect(state.searchOriginSourceFolderID == nil)
+        #expect(state.selectedMessageID == nil)
+
+        // Clearing search after selecting a result from the same origin folder preserves that open message.
+        state.setSearchAllMailboxes(true)
+        let headerA = MessageHeader(
+            id: "msg-a",
+            threadID: "t-a",
+            folderID: "work",
+            from: Correspondent(email: "maya@example.org"),
+            to: [],
+            subject: "Invoice A",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 300)
+        )
+        state.selectMessage(headerA, in: sourceA, headers: [headerA])
+        state.clearSearch()
+        #expect(state.selectedSourceID == sourceA)
+        #expect(state.selectedFolderID == "work")
+        #expect(state.selectedMessageID == "msg-a")
+        #expect(state.searchOriginSourceFolderID == nil)
+        #expect(state.searchAllMailboxes)
+
+        // Removing the result's source during cross-account search falls back cleanly to the surviving origin.
+        state.searchText = "invoice"
+        state.selectMessage(headerB, in: sourceB, headers: [headerB])
+        state.reconcileReaderSources([sourceA])
+        #expect(state.selectedSourceID == sourceA)
+        #expect(state.selectedFolderID == "work")
+        #expect(state.selectedMessageID == nil)
+        #expect(state.searchOriginSourceFolderID == nil)
     }
 
     @Test("a field token drives the list's search scope")

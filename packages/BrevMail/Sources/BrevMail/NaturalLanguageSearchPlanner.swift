@@ -347,8 +347,10 @@ final class UnifiedInboxSearchChipsCache {
     private struct Input: Equatable {
         let text: String
         let isSavedSearch: Bool
+        let searchAllFolders: Bool
         let inboxFolderID: Folder.ID?
         let execution: SearchExecution
+        let searchScope: SearchScope
         let dayStart: Date
     }
 
@@ -358,16 +360,20 @@ final class UnifiedInboxSearchChipsCache {
     func chips(
         text: String,
         isSavedSearch: Bool,
+        searchAllFolders: Bool = false,
         inboxFolderID: Folder.ID?,
         execution: SearchExecution,
+        searchScope: SearchScope = .all,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> [NaturalLanguageSearchChip] {
         let input = Input(
             text: text,
             isSavedSearch: isSavedSearch,
+            searchAllFolders: searchAllFolders,
             inboxFolderID: inboxFolderID,
             execution: execution,
+            searchScope: searchScope,
             dayStart: calendar.startOfDay(for: now)
         )
         if input != lastInput {
@@ -376,6 +382,15 @@ final class UnifiedInboxSearchChipsCache {
                 lastChips = NaturalLanguageSearchPlanner.plan(
                     for: text,
                     execution: .cacheOnly,
+                    now: now,
+                    calendar: calendar
+                ).chips
+            } else if searchAllFolders {
+                lastChips = MessageListSearchQueryPolicy.plan(
+                    text: text,
+                    folderID: nil,
+                    execution: execution,
+                    searchScope: searchScope,
                     now: now,
                     calendar: calendar
                 ).chips

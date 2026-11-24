@@ -970,6 +970,12 @@ public struct BrevMailRootView: View {
                 onSettingsMailboxContextChange?(settingsMailboxContext)
                 Task { await refreshOutboxCount() }
             }
+            .onChange(of: navigation.searchText) { _, newValue in
+                if MessageListReloadPolicy.operation(forSearchText: newValue) == .folder {
+                    navigation.restoreSearchOriginIfNeeded()
+                    navigation.searchAllMailboxes = true
+                }
+            }
             .onChange(of: activeMailboxID) {
                 Task { await refreshOutboxCount() }
             }
@@ -2719,6 +2725,19 @@ public struct BrevMailRootView: View {
         )
     }
 
+    private var isCrossAccountFolderSearchActive: Bool {
+        MailCrossAccountSearchPolicy.isActive(
+            searchText: navigation.searchText,
+            searchAllMailboxes: navigation.searchAllMailboxes,
+            visibleSourceCount: visibleSourceSections.count,
+            isSpecialDestination: navigation.isUnifiedInboxSelected
+                || navigation.isSmartViewSelected
+                || selectedSavedSearch != nil
+                || navigation.isSubscriptionsSelected
+                || navigation.isAllAttachmentsSelected
+        )
+    }
+
     @ViewBuilder
     private var messageListPane: some View {
         Group {
@@ -2738,7 +2757,7 @@ public struct BrevMailRootView: View {
                 )
             } else if let savedSearch = selectedSavedSearch {
                 savedSearchPane(savedSearch)
-            } else if navigation.isUnifiedInboxSelected || navigation.isSmartViewSelected {
+            } else if navigation.isUnifiedInboxSelected || navigation.isSmartViewSelected || isCrossAccountFolderSearchActive {
                 UnifiedInboxListView(
                     navigation: navigation,
                     backends: backends,
@@ -2749,7 +2768,8 @@ public struct BrevMailRootView: View {
                     currentSourceSectionsRevisionProvider: { sourceSectionsRevision },
                     canFileLocally: localBackend != nil,
                     accountOwnedMailboxEmailsByAccountID: accountOwnedMailboxEmailsByAccountID,
-                    smartView: selectedSmartView,
+                    smartView: isCrossAccountFolderSearchActive ? nil : selectedSmartView,
+                    isCrossAccountFolderSearch: isCrossAccountFolderSearchActive,
                     paneTitle: selectedMessageDestinationTitle,
                     localMessageWorkflowState: localMessageWorkflowStateBinding,
                     currentWorkflowStateProvider: { currentLocalMessageWorkflowState() },
@@ -2981,6 +3001,16 @@ public struct BrevMailRootView: View {
         if let selectedSavedSearch {
             return selectedSavedSearch.name
         }
+        if let origin = navigation.searchOriginSourceFolderID,
+           let section = sourceSections.first(where: { $0.id == origin.sourceID }),
+           let folder = section.folders.first(where: { $0.id == origin.folderID }) {
+            return MailRootMessageListTitlePolicy.folderTitle(
+                folder: folder,
+                sourceID: origin.sourceID,
+                aliasPreferences: folderAliasPreferences,
+                capabilities: backend(for: origin.sourceID).capabilities
+            )
+        }
         if let folder = selectedFolder {
             return MailRootMessageListTitlePolicy.folderTitle(
                 folder: folder,
@@ -3171,6 +3201,17 @@ public struct BrevMailRootView: View {
             return MailListSearchConfiguration(
                 showsMailboxScope: false,
                 offersFieldTokens: false,
+                offersSuggestions: true,
+                availableExecutions: UnifiedInboxSearchPolicy.availableExecutions(from: visibleSourceSections) {
+                    backendsByAccountID[$0.accountID]?.capabilities ?? []
+                }
+            )
+        }
+        if isCrossAccountFolderSearchActive {
+            let backendsByAccountID = Dictionary(backends.map { ($0.account.id, $0) }) { _, latest in latest }
+            return MailListSearchConfiguration(
+                showsMailboxScope: true,
+                offersFieldTokens: true,
                 offersSuggestions: true,
                 availableExecutions: UnifiedInboxSearchPolicy.availableExecutions(from: visibleSourceSections) {
                     backendsByAccountID[$0.accountID]?.capabilities ?? []
