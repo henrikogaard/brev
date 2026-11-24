@@ -534,4 +534,48 @@ struct MIMEMessageBuilderTests {
         ) ?? ""
         #expect(draftMIME.contains("Bcc: Audit <audit@example.com>\r\n"))
     }
+
+    @Test("long Bcc recipient lists fold between mailboxes under the RFC 5322 998-byte line limit")
+    func longBccHeaderFoldsUnderRFC5322Limit() throws {
+        // 25 addresses of ~40 bytes each (~1,050 bytes total if unfolded on one line).
+        let bccAddresses = (1 ... 25).map { index in
+            let suffix = String(format: "%02d", index)
+            return "recipient-\(suffix)-longmailbox@northwind.example"
+        }
+        #expect(bccAddresses.allSatisfy { $0.utf8.count >= 40 })
+        let draft = Draft(
+            id: "bcc-fold-25",
+            to: [Correspondent(email: "bob@example.com")],
+            bcc: bccAddresses.map { Correspondent(email: $0) },
+            subject: "Many Bcc recipients",
+            htmlBody: "<p>Hello</p>"
+        )
+        let from = Correspondent(email: "alice@example.com")
+        let message = String(
+            data: MIMEMessageBuilder(draft: draft, from: from, includeBccHeader: true).build(),
+            encoding: .utf8
+        ) ?? ""
+
+        let headerSection = try #require(message.components(separatedBy: "\r\n\r\n").first)
+        let physicalLines = headerSection.components(separatedBy: "\r\n")
+        for line in physicalLines {
+            #expect(line.utf8.count <= 998)
+        }
+
+        // Unfold the Bcc header (CRLF + single leading space -> space) and verify all 25 recipients survive.
+        let bccStartIndex = try #require(physicalLines.firstIndex { $0.hasPrefix("Bcc: ") })
+        var unfoldedBcc = String(physicalLines[bccStartIndex].dropFirst("Bcc: ".count))
+        var continuationLines = 0
+        var next = bccStartIndex + 1
+        while next < physicalLines.count, physicalLines[next].hasPrefix(" ") {
+            unfoldedBcc += physicalLines[next]
+            continuationLines += 1
+            next += 1
+        }
+        #expect(continuationLines >= 1)
+        let parsedAddresses = unfoldedBcc
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        #expect(parsedAddresses == bccAddresses)
+    }
 }

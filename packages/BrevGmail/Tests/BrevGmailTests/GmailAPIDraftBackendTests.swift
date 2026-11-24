@@ -865,10 +865,15 @@ struct GmailLocalDraftLookupTests {
 
         var updated = saved
         updated.bcc.append(Correspondent(email: "archive@example.org"))
-        _ = try await backend.save(draft: updated)
+        let updatedSaved = try await backend.save(draft: updated)
         let updatedMIME = try #require(await transport.createdRawMIME())
         #expect(updatedMIME.contains("Bcc: audit@example.org, archive@example.org\r\n"))
         #expect(await transport.updatedDraftID() == saved.remoteID)
+
+        let sendResult = try await backend.send(draft: updatedSaved)
+        #expect(sendResult.sentMessageID == "sent-message-1")
+        #expect(await transport.sentDraftID() == updatedSaved.remoteID)
+        #expect(await transport.rawSendCount() == 0)
         await backend.disconnect()
     }
 }
