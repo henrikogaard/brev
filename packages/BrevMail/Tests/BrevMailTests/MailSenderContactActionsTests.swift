@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevCalendar
 @testable import BrevMail
 import Foundation
@@ -27,10 +28,16 @@ struct MailSenderContactActionsTests {
         func allSources() async throws -> [PIMSource] { records }
 
         func save(_ source: PIMSource) async throws {
-            records.append(source)
+            if let index = records.firstIndex(where: { $0.id == source.id }) {
+                records[index] = source
+            } else {
+                records.append(source)
+            }
         }
 
-        func deleteSource(id: PIMSource.ID) async throws {}
+        func deleteSource(id: PIMSource.ID) async throws {
+            records.removeAll { $0.id == id }
+        }
     }
 
     private actor CredentialStore: CalDAVCredentialStore {
@@ -361,5 +368,88 @@ struct MailSenderContactActionsTests {
         #expect(
             await empty.lookup(email: "ada@example.org") == .unavailable
         )
+    }
+
+    // MARK: - Trusted-sender PIM contact invalidation (#8)
+
+    @Test("deleted contacts and disconnected or removed PIM sources immediately lose trusted-sender status")
+    func deletedContactsAndRemovedSourcesLoseTrustedSenderStatus() async throws {
+        let sourceStore = SourceStore()
+        try await sourceStore.save(source(id: "g1"))
+        try await sourceStore.save(source(id: "g2"))
+        let coordinator = PIMSourceCoordinator(
+            store: sourceStore,
+            credentials: CredentialStore(),
+            localData: LocalDataStore(),
+            now: { Self.fixedNow }
+        )
+        let contactStore = ContactStore()
+        try await contactStore.saveContacts(
+            [
+                contact(sourceID: "g1", key: "people/c1", name: "Ada Lovelace", emails: ["Ada@Example.ORG"]),
+                contact(sourceID: "g1", key: "people/c2", name: "Grace Hopper", emails: ["grace@example.org"])
+            ],
+            for: "g1"
+        )
+        try await contactStore.saveContacts(
+            [
+                contact(sourceID: "g2", key: "people/c3", name: "Alan Turing", emails: ["alan@example.org"])
+            ],
+            for: "g2"
+        )
+        let syncService = PIMContactSyncService(
+            coordinator: coordinator,
+            collectionStore: CollectionStore(),
+            contactStore: contactStore,
+            cursorStore: CursorStore(),
+            credentials: CredentialStore(),
+            now: { Self.fixedNow }
+        )
+        let actions = MailSenderContactActions(
+            coordinator: coordinator,
+            contactSyncService: syncService
+        )
+
+        var notificationsCount = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .pimContactsCacheDidChange,
+            object: nil,
+            queue: nil
+        ) { _ in
+            notificationsCount += 1
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        // Initial cache trusts all three normalized addresses.
+        let initialEmails = await actions.allCachedContactEmails()
+        let initialEvaluator = TrustedSenderEvaluator(contactEmails: initialEmails)
+        #expect(initialEvaluator.isTrusted(senderEmail: "ada@example.org"))
+        #expect(initialEvaluator.isTrusted(senderEmail: "grace@example.org"))
+        #expect(initialEvaluator.isTrusted(senderEmail: "alan@example.org"))
+
+        // Deleting a contact from cache drops its trust immediately.
+        try await contactStore.saveContacts(
+            [contact(sourceID: "g1", key: "people/c2", name: "Grace Hopper", emails: ["grace@example.org"])],
+            for: "g1"
+        )
+        let afterDeleteEvaluator = await TrustedSenderEvaluator(contactEmails: actions.allCachedContactEmails())
+        #expect(!afterDeleteEvaluator.isTrusted(senderEmail: "ada@example.org"))
+        #expect(afterDeleteEvaluator.isTrusted(senderEmail: "grace@example.org"))
+        #expect(afterDeleteEvaluator.isTrusted(senderEmail: "alan@example.org"))
+
+        // Disconnecting a source posts cache-change notification and clears its contacts from trust.
+        _ = try await coordinator.disconnect(sourceID: "g2")
+        let afterDisconnectEvaluator = await TrustedSenderEvaluator(contactEmails: actions.allCachedContactEmails())
+        #expect(!afterDisconnectEvaluator.isTrusted(senderEmail: "alan@example.org"))
+        #expect(afterDisconnectEvaluator.isTrusted(senderEmail: "grace@example.org"))
+        #expect(notificationsCount >= 1)
+
+        // Removing the remaining source (even with deleteCachedContent: false) clears all trust.
+        let countBeforeRemove = notificationsCount
+        try await coordinator.removeSource(id: "g1", deleteCachedContent: false)
+        let afterRemoveEvaluator = await TrustedSenderEvaluator(contactEmails: actions.allCachedContactEmails())
+        #expect(!afterRemoveEvaluator.isTrusted(senderEmail: "grace@example.org"))
+        #expect(afterRemoveEvaluator.contactEmails.isEmpty)
+        #expect(notificationsCount > countBeforeRemove)
     }
 }

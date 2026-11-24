@@ -172,6 +172,46 @@ struct RemoteContentPolicyTests {
         ))
     }
 
+    @Test("failed sender authentication blocks trusted-sender trust even for matching contacts and replied-to senders")
+    func failedSenderAuthenticationBlocksTrustedSenderTrust() {
+        let evaluator = TrustedSenderEvaluator(
+            contactEmails: ["alice@example.com"],
+            repliedToEmails: ["bob@work.org"]
+        )
+
+        #expect(evaluator.trustSource(for: "alice@example.com", senderAuthenticationFailed: true) == nil)
+        #expect(!evaluator.isTrusted(senderEmail: "alice@example.com", senderAuthenticationFailed: true))
+        #expect(evaluator.trustSource(for: "bob@work.org", senderAuthenticationFailed: true) == nil)
+        #expect(!evaluator.isTrusted(senderEmail: "bob@work.org", senderAuthenticationFailed: true))
+        #expect(!RemoteContentPolicy.defaults.allows(
+            senderEmail: "alice@example.com",
+            resourceHost: "cdn.example.net",
+            allowTrustedSenders: true,
+            trustedSenders: evaluator,
+            senderAuthenticationFailed: true
+        ))
+    }
+
+    @Test("saving a remote content policy posts didChangeNotification for open readers")
+    func savingPolicyPostsChangeNotification() throws {
+        let defaults = try Self.makeDefaults()
+        var receivedDefaults: UserDefaults?
+        let token = NotificationCenter.default.addObserver(
+            forName: RemoteContentPolicy.didChangeNotification,
+            object: defaults,
+            queue: nil
+        ) { notification in
+            receivedDefaults = notification.object as? UserDefaults
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        var policy = RemoteContentPolicy.defaults
+        policy.allow(senderEmail: "alice@example.com")
+        policy.save(to: defaults)
+
+        #expect(receivedDefaults === defaults)
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "RemoteContentPolicyTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

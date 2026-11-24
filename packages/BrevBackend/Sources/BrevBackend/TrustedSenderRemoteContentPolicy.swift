@@ -47,10 +47,16 @@ public struct TrustedSenderEvaluator: Equatable, Sendable {
         self.repliedToEmails = Set(repliedToEmails.compactMap(Self.normalizedEmail))
     }
 
-    /// Returns the trust source for `senderEmail`, or `nil` when the address is
-    /// malformed or not present in either local trust set.
-    /// - Parameter senderEmail: The message sender's email address.
-    public func trustSource(for senderEmail: String) -> TrustedSenderSource? {
+    /// Returns the trust source for `senderEmail`, or `nil` when sender authentication
+    /// failed, the address is malformed, or it is not present in either local trust set.
+    /// - Parameters:
+    ///   - senderEmail: The message sender's email address.
+    ///   - senderAuthenticationFailed: `true` when SPF/DKIM/DMARC authentication failed for the message.
+    public func trustSource(
+        for senderEmail: String,
+        senderAuthenticationFailed: Bool = false
+    ) -> TrustedSenderSource? {
+        guard !senderAuthenticationFailed else { return nil }
         guard let normalized = Self.normalizedEmail(senderEmail) else { return nil }
         if contactEmails.contains(normalized) {
             return .localContacts
@@ -62,10 +68,15 @@ public struct TrustedSenderEvaluator: Equatable, Sendable {
     }
 
     /// Returns `true` when `senderEmail` matches a normalized local Contact or
-    /// previously emailed recipient.
-    /// - Parameter senderEmail: The message sender's email address.
-    public func isTrusted(senderEmail: String) -> Bool {
-        trustSource(for: senderEmail) != nil
+    /// previously emailed recipient and sender authentication has not failed.
+    /// - Parameters:
+    ///   - senderEmail: The message sender's email address.
+    ///   - senderAuthenticationFailed: `true` when SPF/DKIM/DMARC authentication failed for the message.
+    public func isTrusted(
+        senderEmail: String,
+        senderAuthenticationFailed: Bool = false
+    ) -> Bool {
+        trustSource(for: senderEmail, senderAuthenticationFailed: senderAuthenticationFailed) != nil
     }
 
     /// Normalizes and validates an email address for exact trusted-sender matching.
@@ -104,16 +115,21 @@ public extension RemoteContentPolicy {
     ///   - resourceHost: Optional remote asset host to check against domain allowlists.
     ///   - allowTrustedSenders: Whether the opt-in trusted-sender tier is enabled.
     ///   - trustedSenders: Local Contacts and replied-to evaluator.
+    ///   - senderAuthenticationFailed: `true` when SPF/DKIM/DMARC authentication failed for the message.
     func allows(
         senderEmail: String,
         resourceHost: String?,
         allowTrustedSenders: Bool,
-        trustedSenders: TrustedSenderEvaluator
+        trustedSenders: TrustedSenderEvaluator,
+        senderAuthenticationFailed: Bool = false
     ) -> Bool {
         if allows(senderEmail: senderEmail, resourceHost: resourceHost) {
             return true
         }
         guard allowTrustedSenders else { return false }
-        return trustedSenders.isTrusted(senderEmail: senderEmail)
+        return trustedSenders.isTrusted(
+            senderEmail: senderEmail,
+            senderAuthenticationFailed: senderAuthenticationFailed
+        )
     }
 }

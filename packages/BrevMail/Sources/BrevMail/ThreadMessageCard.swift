@@ -207,6 +207,7 @@ struct ThreadMessageCard: View {
                 htmlWebViewStore.releaseWebView()
                 return
             }
+            syncRemoteContentPolicyFromDefaults()
             guard !isLoading else { return }
             if renderedBody == nil {
                 await loadBody()
@@ -215,9 +216,19 @@ struct ThreadMessageCard: View {
             }
         }
         .onAppear {
-            remoteContentPolicy = RemoteContentPolicy.load()
+            syncRemoteContentPolicyFromDefaults()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: RemoteContentPolicy.didChangeNotification)
+            .receive(on: DispatchQueue.main)) { _ in
+                syncRemoteContentPolicyFromDefaults()
         }
         .onChange(of: stripTrackingPixels) { _, _ in
+            refreshNativeHTMLImportIfNeeded()
+        }
+        .onChange(of: useRichRenderer) { _, _ in
+            refreshNativeHTMLImportIfNeeded()
+        }
+        .onChange(of: allowRemoteContentDefault) { _, _ in
             refreshNativeHTMLImportIfNeeded()
         }
         .onChange(of: allowRemoteContentForTrustedSenders) { _, _ in
@@ -797,6 +808,17 @@ struct ThreadMessageCard: View {
         return rendered.replacingHTML(resolvedHTML)
     }
 
+    private func syncRemoteContentPolicyFromDefaults() {
+        let updated = RemoteContentPolicy.load()
+        guard updated != remoteContentPolicy else { return }
+        remoteContentPolicy = updated
+        // Clear any earlier per-card override when policy changes externally
+        // (for example, revoking an allowance in Settings) so revocation takes
+        // effect immediately on already-mounted cards.
+        showRemoteContent = false
+        refreshNativeHTMLImportIfNeeded()
+    }
+
     private func refreshNativeHTMLImportIfNeeded() {
         guard !usesRichHTMLBodyRenderer, isExpanded, renderedBody != nil else { return }
         if isLoading {
@@ -817,6 +839,9 @@ struct ThreadMessageCard: View {
             senderEmail: header.from.email,
             remoteContentPolicy: remoteContentPolicy,
             trustedSenders: trustedSenderEvaluator,
+            senderAuthenticationFailed: MessageHeaderAnalyzer.hasSenderAuthenticationFailure(
+                in: renderedBody?.authenticationResults
+            ),
             showRemoteContent: showRemoteContent
         )
     }

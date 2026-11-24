@@ -464,8 +464,19 @@ struct BrevApp: App {
         WindowGroup(for: DetachedReaderWindowPayload.self) { $payload in
             if let payload {
                 DetachedReaderWindowView(
-                    payload: payload, backends: session.visibleBackends,
-                    canFileLocally: session.localBackend != nil
+                    payload: payload,
+                    backends: session.visibleBackends,
+                    canFileLocally: session.localBackend != nil,
+                    contactActions: MailSenderContactActions(
+                        coordinator: session.pimSourceCoordinator,
+                        contactSyncService: session.pimContactSyncService,
+                        collectionService: session.pimCollectionService,
+                        editing: ContactsEditingModel(
+                            writeService: session.pimContactWriteService,
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService
+                        )
+                    )
                 )
                 .environment(\.openURL, browserOpenURLAction)
                 // A detached scene is its own root, so it resolves the persisted

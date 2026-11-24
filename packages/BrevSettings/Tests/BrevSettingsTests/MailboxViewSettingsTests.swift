@@ -127,6 +127,7 @@ struct MailboxViewSettingsTests {
         for key in [
             "Load remote images for trusted senders",
             "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked.",
+            "Automatically load remote images from your Contacts and people you have emailed. Tracking-pixel removal is currently off.",
             "Remote images load automatically for trusted senders; unknown senders stay blocked."
         ] {
             let localizations = (strings[key] as? [String: Any])?["localizations"] as? [String: Any]
@@ -135,6 +136,16 @@ struct MailboxViewSettingsTests {
             #expect(unit?["state"] as? String == "translated", "missing nb for \(key)")
             #expect((unit?["value"] as? String)?.isEmpty == false, "empty nb for \(key)")
         }
+    }
+
+    @Test("trusted-sender subtitle reflects whether tracking-pixel removal is enabled")
+    func trustedSenderSubtitleReflectsTrackingPixelToggle() {
+        let whenStrippingOn = PrivacySection.trustedSendersSubtitle(stripTrackingPixels: true)
+        let whenStrippingOff = PrivacySection.trustedSendersSubtitle(stripTrackingPixels: false)
+
+        #expect(whenStrippingOn.contains("Known tracking pixels remain blocked"))
+        #expect(!whenStrippingOff.contains("Known tracking pixels remain blocked"))
+        #expect(whenStrippingOff.contains("Tracking-pixel removal is currently off"))
     }
 
     @Test("invalid enum raw values fall back to defaults")

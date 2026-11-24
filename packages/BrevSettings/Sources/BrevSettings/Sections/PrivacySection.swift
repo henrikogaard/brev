@@ -150,6 +150,19 @@ struct PrivacySection: View {
         }
     }
 
+    static func trustedSendersSubtitle(stripTrackingPixels: Bool) -> String {
+        if stripTrackingPixels {
+            return String(
+                localized: "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked.",
+                bundle: .module
+            )
+        }
+        return String(
+            localized: "Automatically load remote images from your Contacts and people you have emailed. Tracking-pixel removal is currently off.",
+            bundle: .module
+        )
+    }
+
     private var remoteContentStatus: String {
         if mailboxSettings.useRichRenderer, mailboxSettings.allowRemoteContent {
             return String(localized: "Remote images are allowed by default for rich HTML messages.", bundle: .module)
@@ -253,10 +266,7 @@ struct PrivacySection: View {
                 SettingsToggleRow(
                     symbolName: "person.2",
                     title: String(localized: "Load remote images for trusted senders", bundle: .module),
-                    subtitle: String(
-                        localized: "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked.",
-                        bundle: .module
-                    ),
+                    subtitle: Self.trustedSendersSubtitle(stripTrackingPixels: mailboxSettings.stripTrackingPixels),
                     isOn: mailboxBinding(for: \.allowRemoteContentForTrustedSenders),
                     isEnabled: mailboxSettings.useRichRenderer
                 )

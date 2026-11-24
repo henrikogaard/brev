@@ -14117,6 +14117,17 @@
           }
         }
       }
+    },
+    "Automatically load remote images from your Contacts and people you have emailed. Tracking-pixel removal is currently off.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last automatisk inn eksterne bilder fra Kontaktene dine og personer du har sendt e-post til. Fjerning av sporingspiksler er slått av."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

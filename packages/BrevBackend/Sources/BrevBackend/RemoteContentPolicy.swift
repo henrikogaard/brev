@@ -14,6 +14,9 @@ import Foundation
 
 public struct RemoteContentPolicy: Codable, Equatable, Sendable {
     public static let storageKey = "privacy.remoteContentPolicy"
+    /// Posted after `save(to:)` persists an updated allowlist so open readers
+    /// and mounted conversation cards react immediately to additions and revocations.
+    public static let didChangeNotification = Notification.Name("privacy.remoteContentPolicyDidChange")
 
     private var allowedSenders: Set<String>
     private var allowedDomains: Set<String>
@@ -46,6 +49,7 @@ public struct RemoteContentPolicy: Codable, Equatable, Sendable {
     public func save(to defaults: UserDefaults = .standard) {
         guard let data = try? JSONEncoder().encode(self) else { return }
         defaults.set(data, forKey: Self.storageKey)
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: defaults)
     }
 
     public mutating func allow(senderEmail: String) {

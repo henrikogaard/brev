@@ -32,6 +32,7 @@ public struct DetachedReaderWindowView: View {
     // because detached reader windows are short-lived.
     private let backends: [any MailBackend]
     private let canFileLocally: Bool
+    private let contactActions: MailSenderContactActions?
 
     @State private var resolvedHeader: MessageHeader?
     @State private var resolvedBackend: (any MailBackend)?
@@ -43,10 +44,18 @@ public struct DetachedReaderWindowView: View {
     ///   - payload: Restorable source, message and originating-folder identity.
     ///   - backends: Available accounts captured when the scene is opened.
     ///   - canFileLocally: Whether the owning workspace has a local-filing backend.
-    public init(payload: DetachedReaderWindowPayload, backends: [any MailBackend], canFileLocally: Bool = false) {
+    ///   - contactActions: Optional session-owned cache-only contacts lookup for participant cards and trusted-sender remote
+    /// images.
+    public init(
+        payload: DetachedReaderWindowPayload,
+        backends: [any MailBackend],
+        canFileLocally: Bool = false,
+        contactActions: MailSenderContactActions? = nil
+    ) {
         self.payload = payload
         self.backends = backends
         self.canFileLocally = canFileLocally
+        self.contactActions = contactActions
     }
 
     public var body: some View {
@@ -69,12 +78,14 @@ public struct DetachedReaderWindowView: View {
                         navigation: nil,
                         allFolders: resolvedFolders,
                         canFileLocally: canFileLocally,
-                        closeWindow: { dismissWindow(value: payload) }
+                        closeWindow: { dismissWindow(value: payload) },
+                        contactActions: contactActions
                     )
                     .modifier(SenderWarningHistoryModifier(
                         backend: backend,
                         sourceID: payload.sourceID,
-                        folders: resolvedFolders
+                        folders: resolvedFolders,
+                        contactActions: contactActions
                     ))
                     .readerCommandHandler { request in
                         let source = request.sourceID ?? MailSourceID(

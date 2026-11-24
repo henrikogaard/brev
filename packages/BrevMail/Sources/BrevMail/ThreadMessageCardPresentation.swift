@@ -37,6 +37,7 @@ enum ThreadMessageBodyPresentation: Equatable {
         let senderEmail: String
         let remoteContentPolicy: RemoteContentPolicy
         let trustedSenders: TrustedSenderEvaluator
+        let senderAuthenticationFailed: Bool
         let showRemoteContent: Bool
 
         init(
@@ -49,6 +50,7 @@ enum ThreadMessageBodyPresentation: Equatable {
             senderEmail: String = "",
             remoteContentPolicy: RemoteContentPolicy = .defaults,
             trustedSenders: TrustedSenderEvaluator = .empty,
+            senderAuthenticationFailed: Bool = false,
             showRemoteContent: Bool
         ) {
             self.isLoading = isLoading
@@ -60,6 +62,7 @@ enum ThreadMessageBodyPresentation: Equatable {
             self.senderEmail = senderEmail
             self.remoteContentPolicy = remoteContentPolicy
             self.trustedSenders = trustedSenders
+            self.senderAuthenticationFailed = senderAuthenticationFailed
             self.showRemoteContent = showRemoteContent
         }
     }
@@ -73,9 +76,11 @@ enum ThreadMessageBodyPresentation: Equatable {
             let remoteState = MessageRemoteContentRenderPolicy.state(
                 html: html,
                 senderEmail: context.senderEmail,
+                useRichRenderer: context.useRichRenderer,
                 allowRemoteContentDefault: context.allowRemoteContent,
                 allowRemoteContentForTrustedSenders: context.allowRemoteContentForTrustedSenders,
                 trustedSenders: context.trustedSenders,
+                senderAuthenticationFailed: context.senderAuthenticationFailed,
                 loadOnce: context.showRemoteContent,
                 policy: context.remoteContentPolicy
             )
@@ -93,9 +98,11 @@ enum ThreadMessageBodyPresentation: Equatable {
             let remoteState = MessageRemoteContentRenderPolicy.state(
                 html: html,
                 senderEmail: context.senderEmail,
+                useRichRenderer: context.useRichRenderer,
                 allowRemoteContentDefault: context.allowRemoteContent,
                 allowRemoteContentForTrustedSenders: context.allowRemoteContentForTrustedSenders,
                 trustedSenders: context.trustedSenders,
+                senderAuthenticationFailed: context.senderAuthenticationFailed,
                 loadOnce: context.showRemoteContent,
                 policy: context.remoteContentPolicy
             )

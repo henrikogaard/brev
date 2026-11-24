@@ -452,6 +452,7 @@ public actor PIMContactSyncService {
             outOfScope + mergedInScope,
             for: source.id
         )
+        NotificationCenter.default.post(name: .pimContactsCacheDidChange, object: nil)
         try await cursorStore.saveCursor(
             PIMContactSyncCursor(
                 scope: scope,

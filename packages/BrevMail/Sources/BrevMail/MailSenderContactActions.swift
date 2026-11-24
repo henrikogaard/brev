@@ -136,13 +136,13 @@ public final class MailSenderContactActions {
         }
     }
 
-    /// Returns all cached contact email addresses across connected contacts sources.
-    /// Strictly cache-only — never contacts a provider.
+    /// Returns all cached contact email addresses across active (non-disconnected)
+    /// connected contacts sources. Strictly cache-only — never contacts a provider.
     public func allCachedContactEmails() async -> Set<String> {
         guard let coordinator, let contactSyncService else { return [] }
         do {
             let sources = try await coordinator.allSources()
-                .filter { $0.kind == .contacts }
+                .filter { $0.kind == .contacts && $0.status != .disconnected }
             var emails = Set<String>()
             for source in sources {
                 let contacts = try await contactSyncService.contacts(for: source.id)
@@ -157,6 +157,15 @@ public final class MailSenderContactActions {
             return emails
         } catch {
             return []
+        }
+    }
+
+    /// Observes PIM source lifecycle mutations (connect, disconnect, removal)
+    /// so open readers can refresh or clear trusted PIM contact emails.
+    public func observeSourceChanges(onChange: @escaping @MainActor () -> Void) async {
+        guard let coordinator else { return }
+        for await _ in coordinator.changes() {
+            onChange()
         }
     }
 

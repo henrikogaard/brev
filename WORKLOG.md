@@ -18,6 +18,14 @@
   - `scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`, and Python verification of all `scripts/privacy-audit.sh` regexes passed.
 - Skipped: native `scripts/privacy-audit.sh` shell invocation skipped locally only because `rg` is not installed in this environment (all 28 regex checks verified directly via Python; full script runs in CI).
 - Next handoff: open PR targeting `main` and await CI + review.
+- Review fixes (PR #346):
+  - Added `Notification.Name.pimContactsCacheDidChange` posted on PIM contact sync/write/delete/source transitions, excluded `.disconnected` sources from `MailSenderContactActions.allCachedContactEmails()`, and observed both `.pimContactsCacheDidChange` and `coordinator.changes()` in `SenderWarningHistoryModifier` so deleted contacts and disconnected/removed sources immediately lose trust.
+  - Wired `contactActions` into both `DetachedMessageWindow` (macOS) and `DetachedReaderWindowView` (`apps/iOS/Sources/BrevApp.swift`).
+  - Gated `allowRemoteContentDefault` and `allowRemoteContentForTrustedSenders` on `useRichRenderer` inside `MessageRemoteContentRenderPolicy.state(...)` so disabled Settings toggles never auto-fetch in native HTML mode while explicit `loadOnce` and allowlists still work.
+  - Updated `PrivacySection.trustedSendersSubtitle(stripTrackingPixels:)` (+ `nb` catalog entry) so copy accurately reflects when tracking-pixel removal is off.
+  - Added `MessageHeaderAnalyzer.hasSenderAuthenticationFailure(in:)` and `senderAuthenticationFailed` parameter to `TrustedSenderEvaluator`, `RemoteContentPolicy.allows`, `MessageRemoteContentRenderPolicy`, `MessageDetailView`, and `ThreadMessageCard` so spoofed/auth-failed messages never qualify for trusted-sender auto-load.
+  - Posted `RemoteContentPolicy.didChangeNotification` from `RemoteContentPolicy.save(to:)` and subscribed in `MessageDetailView` and `ThreadMessageCard` (clearing per-view overrides on external revocation) so revocations take immediate effect on mounted cards/readers.
+  - Expanded unit test coverage across `BrevBackendTests`, `BrevSettingsTests`, and `BrevMailTests` (including populated sender/domain allowlists, revocation, auth failure, native-mode gating, and PIM contact deletion/source removal).
 
 ## 2026-11-24 — Agent — Issue #6 (Safe MCP `create_draft` tool & PR #347 review)
 

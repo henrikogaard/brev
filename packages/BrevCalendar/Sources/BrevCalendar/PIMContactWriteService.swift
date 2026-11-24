@@ -407,6 +407,7 @@ public actor PIMContactWriteService {
         let removedIDs = [contact.id, stored?.id].compactMap { $0 }
         remaining.removeAll { removedIDs.contains($0.id) }
         try await contactStore.saveContacts(remaining, for: source.id)
+        NotificationCenter.default.post(name: .pimContactsCacheDidChange, object: nil)
     }
 
     // MARK: - Cache
@@ -437,6 +438,7 @@ public actor PIMContactWriteService {
             contacts,
             for: contact.sourceID
         )
+        NotificationCenter.default.post(name: .pimContactsCacheDidChange, object: nil)
     }
 
     /// The freshest cached record for the item a caller wants to

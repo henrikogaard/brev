@@ -11,6 +11,7 @@
  */
 
 import BrevBackend
+import BrevCalendar
 import BrevDesign
 import BrevSettings
 #if canImport(Contacts)
@@ -154,6 +155,17 @@ struct SenderWarningHistoryModifier: ViewModifier {
                     contactsRevision += 1
             }
         #endif
+            .onReceive(NotificationCenter.default.publisher(for: .pimContactsCacheDidChange)
+                .receive(on: DispatchQueue.main)) { _ in
+                    guard allowRemoteContentForTrustedSenders else { return }
+                    contactsRevision += 1
+            }
+            .task(id: contactActions.map(ObjectIdentifier.init)) {
+                await contactActions?.observeSourceChanges {
+                    guard allowRemoteContentForTrustedSenders else { return }
+                    contactsRevision += 1
+                }
+            }
             .task(id: request) {
                 let result = await SenderWarningHistory.load(
                     backend: backend,
