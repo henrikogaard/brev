@@ -17574,6 +17574,108 @@
           }
         }
       }
+    },
+    "Ignored malformed push wake payload.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignored malformed push wake payload."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignorerte ugyldig push-vekkesignal."
+          }
+        }
+      }
+    },
+    "Ignored push wake because closed-app push is disabled.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignored push wake because closed-app push is disabled."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignorerte push-vekking fordi push når appen er lukket er deaktivert."
+          }
+        }
+      }
+    },
+    "Ignored push wake because the account is not connected.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignored push wake because the account is not connected."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignorerte push-vekking fordi kontoen ikke er tilkoblet."
+          }
+        }
+      }
+    },
+    "Ignored push wake because the account is not opted in.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignored push wake because the account is not opted in."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignorerte push-vekking fordi kontoen ikke er valgt."
+          }
+        }
+      }
+    },
+    "Push wake sync failed: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push wake sync failed: %@"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synkronisering etter push-vekking mislyktes: %@"
+          }
+        }
+      }
+    },
+    "Synced account after closed-app push wake.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synced account after closed-app push wake."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synkroniserte konto etter push-vekking."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -1474,6 +1474,210 @@
           }
         }
       }
+    },
+    "Enter an HTTPS push relay URL.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter an HTTPS push relay URL."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn en HTTPS-adresse for push-reléet."
+          }
+        }
+      }
+    },
+    "The push relay URL is not a valid URL.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The push relay URL is not a valid URL."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adressen til push-reléet er ikke en gyldig URL."
+          }
+        }
+      }
+    },
+    "Push relay URLs must use https://.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push relay URLs must use https://."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresser til push-relé må bruke https://."
+          }
+        }
+      }
+    },
+    "Do not embed credentials in the push relay URL. Use the Bearer token field instead.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Do not embed credentials in the push relay URL. Use the Bearer token field instead."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke legg inn påloggingsinformasjon i push-reléadressen. Bruk Bearer-token-feltet i stedet."
+          }
+        }
+      }
+    },
+    "The push relay URL must include a host name.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The push relay URL must include a host name."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push-reléadressen må inneholde et vertsnavn."
+          }
+        }
+      }
+    },
+    "Closed-app push is turned off.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closed-app push is turned off."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push når appen er lukket er slått av."
+          }
+        }
+      }
+    },
+    "Choose at least one account before registering with your push relay.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose at least one account before registering with your push relay."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg minst én konto før du registrerer hos push-reléet."
+          }
+        }
+      }
+    },
+    "No device push token is available for registration.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No device push token is available for registration."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen enhets-push-token er tilgjengelig for registrering."
+          }
+        }
+      }
+    },
+    "Device client identifier is missing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device client identifier is missing."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enhetens klient-ID mangler."
+          }
+        }
+      }
+    },
+    "Push relay returned HTTP status %lld.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push relay returned HTTP status %lld."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push-reléet returnerte HTTP-status %lld."
+          }
+        }
+      }
+    },
+    "Push relay returned an invalid response.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push relay returned an invalid response."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push-reléet returnerte et ugyldig svar."
+          }
+        }
+      }
+    },
+    "Push relay request failed: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push relay request failed: %@"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forespørselen til push-reléet mislyktes: %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

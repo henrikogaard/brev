@@ -89,6 +89,9 @@ public final class AppSession {
     private var backgroundIndexingPowerObserver: NSObjectProtocol?
     private var backgroundIndexingSyncObserver: NSObjectProtocol?
     private var backgroundIndexingInvalidationObserver: NSObjectProtocol?
+    /// Handles opaque incoming wakes from an opted-in self-hosted push relay
+    /// or JMAP WebPush subscription (#11). Ignores wakes when disabled.
+    public let pushWakeCoordinator: PushWakeCoordinator
     /// Session-owned executor for Mark-as-read and Archive notification
     /// actions (#307, ADR-0075). Works even when no mail window is open.
     public let notificationActionExecutor: NotificationActionExecutor
@@ -449,6 +452,7 @@ public final class AppSession {
         self.localBackend = localBackend
         backgroundMail = BackgroundMailCoordinator()
         backgroundIndexing = BackgroundRecentIndexingCoordinator()
+        pushWakeCoordinator = PushWakeCoordinator()
         notificationActionExecutor = NotificationActionExecutor()
         let panelController = SignInCodePanelController()
         let notificationPresenter = SignInCodeNotificationPresenter()
@@ -510,6 +514,10 @@ public final class AppSession {
                 guard let self, let accountID else { return }
                 backgroundIndexing.invalidateAttachmentProgress(accountID: accountID)
             }
+        }
+        pushWakeCoordinator.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
+        pushWakeCoordinator.ensureAccountsRestored = { [weak self] in
+            await self?.ensureAccountsRestored()
         }
         notificationActionExecutor.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         notificationActionExecutor.prepareBackends = { [weak self] in

@@ -146,6 +146,14 @@ public struct SettingsPersistenceStore: Equatable {
         settings.save(to: defaults)
     }
 
+    public func pushRelaySettings() -> PushRelaySettings {
+        PushRelaySettings.load(from: defaults)
+    }
+
+    public func save(_ settings: PushRelaySettings) {
+        settings.save(to: defaults)
+    }
+
     public func updateSettings() -> UpdateSettings {
         UpdateSettings.load(from: defaults)
     }
@@ -332,5 +340,6 @@ public struct SettingsPersistenceStore: Equatable {
             NotificationCenter.default.post(name: .brevFollowUpDidChange, object: nil)
         }
         AgentAccessSettings.removeAccount(accountID, from: defaults)
+        PushRelaySettings.removeAccount(accountID, from: defaults)
     }
 }

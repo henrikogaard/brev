@@ -291,6 +291,10 @@ extension SettingsSection {
                 String(localized: "Enable quiet hours", bundle: .module),
                 String(localized: "Starts at", bundle: .module),
                 String(localized: "Ends at", bundle: .module),
+                String(localized: "Closed-App Push (Self-Hosted)", bundle: .module),
+                String(localized: "Enable self-hosted closed-app push", bundle: .module),
+                String(localized: "Push relay URL", bundle: .module),
+                String(localized: "JMAP WebPush", bundle: .module),
             ]
         case .updates: return [
                 String(localized: "Updates", bundle: .module),

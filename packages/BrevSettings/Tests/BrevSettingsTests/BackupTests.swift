@@ -465,7 +465,8 @@ struct BackupTests {
             "aiWriterSettings": "may reference AI provider API keys",
             "aiProviderConfigurations": "contains provider API keys",
             "aiProviderAssignments": "references provider API keys",
-            "securityKeyMaterialSettings": "key material never leaves the device"
+            "securityKeyMaterialSettings": "key material never leaves the device",
+            "pushRelaySettings": "device-local push relay config and device client ID never leave the device"
         ]
         // The static accessor inventory of SettingsPersistenceStore.
         let allAccessors: Set<String> = included.union(excluded.keys)
@@ -476,8 +477,8 @@ struct BackupTests {
             .subtracting(["relatedMailAutoLoadAccountIDs"])
         #expect(payloadFields.count == 26)
         #expect(included.count == 26)
-        #expect(allAccessors.count == 31)
-        #expect(excluded.count == 5)
+        #expect(allAccessors.count == 32)
+        #expect(excluded.count == 6)
     }
 
     @Test("Related-mail consent exports only enabled accounts")

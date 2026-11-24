@@ -27,7 +27,7 @@ Brev enforces architectural and privacy invariants mechanically in CI and local 
 ## Background Mail & Notifications (Relaxed from Former ADR-0037)
 
 - **macOS background presence:** Opt-in menu-bar/background mode with launch-at-login (`SMAppService`) keeps IMAP IDLE / Gmail sync, scheduled sends, actionable notifications (Archive / Mark as read / Reply), and the opt-in drop-down new-mail panel working when all windows are closed, with clean shutdown and no orphaned processes.
-- **Closed-app notifications (iOS & generic IMAP):** Brev will **never** operate a cloud mail-proxy server that holds user credentials. For real-time closed-app delivery without a Brev proxy, Brev supports macOS background IDLE, iOS background fetch (`BGAppRefreshTask`), **future JMAP WebPush (`providers.md`)**, and optionally a user-hosted push relay for power users.
+- **Closed-app notifications (iOS & generic IMAP):** Brev will **never** operate a cloud mail-proxy server that holds user credentials. For real-time closed-app delivery without a Brev proxy, Brev supports macOS background IDLE, iOS background fetch (`BGAppRefreshTask`), and an opt-in, device-local **Closed-App Push (Self-Hosted)** seam (`PushRelayClient`, `JMAPWebPushSubscriptionSpec` for RFC 8620 §7.2 + RFC 8291 P-256 keys, `PushRelaySettings`, `PushRelayKeychainSecretStore`, and `PushWakeCoordinator`). Off by default, excluded from backups and iCloud sync, strictly `https://` with no embedded credentials, Keychain-only bearer/private-key storage, and opaque wake-only payloads that trigger Brev's normal local sync for opted-in accounts.
 
 ## iCloud Key-Value Preference Sync
 

@@ -15093,6 +15093,516 @@
           }
         }
       }
+    },
+    "Accounts eligible for push wakes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accounts eligible for push wakes"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontoer som kan vekkes av push"
+          }
+        }
+      }
+    },
+    "Bearer token (optional)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bearer token (optional)"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bearer-token (valgfritt)"
+          }
+        }
+      }
+    },
+    "Brev never runs a mail proxy or holds your credentials. Connect your own HTTPS push relay or JMAP WebPush server to wake Brev when the app is closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev never runs a mail proxy or holds your credentials. Connect your own HTTPS push relay or JMAP WebPush server to wake Brev when the app is closed."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev driver aldri en e-postproxy og lagrer aldri påloggingsinformasjonen din. Koble til ditt eget HTTPS-push-relé eller en JMAP WebPush-server for å vekke Brev når appen er lukket."
+          }
+        }
+      }
+    },
+    "Clear token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear token"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern token"
+          }
+        }
+      }
+    },
+    "Closed-App Push (Self-Hosted)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closed-App Push (Self-Hosted)"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push når appen er lukket (egenhostet)"
+          }
+        }
+      }
+    },
+    "Closed-app push wakes are off.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closed-app push wakes are off."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push-vekking når appen er lukket er av."
+          }
+        }
+      }
+    },
+    "Connect an account to choose which mailboxes can wake Brev.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect an account to choose which mailboxes can wake Brev."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til en konto for å velge hvilke postkasser som kan vekke Brev."
+          }
+        }
+      }
+    },
+    "Couldn't access the push relay secret in Keychain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't access the push relay secret in Keychain."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke få tilgang til hemmeligheten for push-reléet i Nøkkelring."
+          }
+        }
+      }
+    },
+    "Couldn't encode the push relay secret.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't encode the push relay secret."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke kode hemmeligheten for push-reléet."
+          }
+        }
+      }
+    },
+    "Enable self-hosted closed-app push": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable self-hosted closed-app push"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktiver egenhostet push når appen er lukket"
+          }
+        }
+      }
+    },
+    "HTTPS endpoint owned by you (credentials in URLs and plain HTTP are rejected).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPS endpoint owned by you (credentials in URLs and plain HTTP are rejected)."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPS-endepunkt du selv kontrollerer (påloggingsinformasjon i URL og ukryptert HTTP avvises)."
+          }
+        }
+      }
+    },
+    "JMAP WebPush": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP WebPush"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP WebPush"
+          }
+        }
+      }
+    },
+    "JMAP WebPush (RFC 8620)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP WebPush (RFC 8620)"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP WebPush (RFC 8620)"
+          }
+        }
+      }
+    },
+    "Not registered with a relay yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not registered with a relay yet."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke registrert hos et relé ennå."
+          }
+        }
+      }
+    },
+    "Off by default and stored only on this device. Wakes carry only an opaque account hint, never mail bodies or passwords.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off by default and stored only on this device. Wakes carry only an opaque account hint, never mail bodies or passwords."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Av som standard og lagres kun på denne enheten. Vekkesignaler inneholder bare en anonym kontoreferanse, aldri e-postinnhold eller passord."
+          }
+        }
+      }
+    },
+    "Only opaque account identifiers for checked accounts are registered; disabled accounts ignore wakes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only opaque account identifiers for checked accounts are registered; disabled accounts ignore wakes."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kun anonyme konto-ID-er for valgte kontoer registreres; deaktiverte kontoer ignorerer vekkesignaler."
+          }
+        }
+      }
+    },
+    "Optional bearer token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional bearer token"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valgfritt Bearer-token"
+          }
+        }
+      }
+    },
+    "Push relay URL": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push relay URL"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL for push-relé"
+          }
+        }
+      }
+    },
+    "Push transport": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push transport"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push-transport"
+          }
+        }
+      }
+    },
+    "Push wakes carry only an opaque account hint—never message bodies, subjects, or mail passwords. Relay secrets stay in this device's Keychain and never sync.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push wakes carry only an opaque account hint—never message bodies, subjects, or mail passwords. Relay secrets stay in this device's Keychain and never sync."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push-vekkesignaler inneholder bare en anonym kontoreferanse – aldri meldingsinnhold, emner eller e-postpassord. Reléhemmeligheter forblir i Nøkkelring på denne enheten og synkroniseres aldri."
+          }
+        }
+      }
+    },
+    "Register an RFC 8620 PushSubscription with RFC 8291 P-256 encryption keys on your JMAP server.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Register an RFC 8620 PushSubscription with RFC 8291 P-256 encryption keys on your JMAP server."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrer en RFC 8620 PushSubscription med RFC 8291 P-256-krypteringsnøkler på JMAP-serveren din."
+          }
+        }
+      }
+    },
+    "Register this device with your own HTTPS push relay to receive opaque wake signals.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Register this device with your own HTTPS push relay to receive opaque wake signals."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrer denne enheten hos ditt eget HTTPS-push-relé for å motta anonyme vekkesignaler."
+          }
+        }
+      }
+    },
+    "Registered with relay • %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registered with relay • %@"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrert hos relé • %@"
+          }
+        }
+      }
+    },
+    "Saved in Keychain (enter new value to replace)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved in Keychain (enter new value to replace)"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagret i Nøkkelring (skriv inn ny verdi for å erstatte)"
+          }
+        }
+      }
+    },
+    "Stored only in this device's Keychain and sent as an Authorization header to your relay.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored only in this device's Keychain and sent as an Authorization header to your relay."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagres kun i Nøkkelring på denne enheten og sendes som Authorization-topptekst til reléet ditt."
+          }
+        }
+      }
+    },
+    "Test & Register": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test & Register"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test og registrer"
+          }
+        }
+      }
+    },
+    "Unregister": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unregister"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avregistrer"
+          }
+        }
+      }
+    },
+    "User-hosted HTTPS relay": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "User-hosted HTTPS relay"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Egenhostet HTTPS-relé"
+          }
+        }
+      }
+    },
+    "Working…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Working…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arbeider…"
+          }
+        }
+      }
+    },
+    "https://push.example.com/register": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https://push.example.com/register"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https://push.example.com/register"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

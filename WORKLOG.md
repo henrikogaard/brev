@@ -1,5 +1,17 @@
 # Worklog
 
+## 2026-11-24 — Agent — #11 Closed-App Push Relay (Zero Brev Proxy)
+
+- Goal: implement opt-in, standards-first closed-app push options (user-hosted HTTPS relay + JMAP RFC 8620 §7.2 / RFC 8291 WebPush hooks) with zero Brev-operated proxy server.
+- Changes:
+  - `BrevBackend`: added `PushRelayModels.swift` (`PushRelayMode`, strict HTTPS `PushRelayEndpointValidator`, RFC 8291 P-256 `PushRelayEncryptionKeyMaterial` / `PushRelayPublicKeys`, `PushRelayRegistrationRequest` / `PushRelayRegistrationResponse` / `PushRelayUnregistrationRequest`, `JMAPWebPushSubscriptionSpec`, and opaque `PushWakePayload`) and `PushRelayClient.swift` (actor with injectable `PushRelayHTTPTransport` supporting user-hosted HTTPS relay register/refresh/unregister and JMAP `PushSubscription/set` create/destroy).
+  - `BrevSettings`: added device-local `PushRelaySettings` (off by default, excluded from `SettingsBackupCodec` and `PreferenceSyncAllowlist`, cleaned up on account removal), `PushRelaySecretStore` / `PushRelayKeychainSecretStore` (`ThisDeviceOnly` Keychain for optional bearer token and RFC 8291 private key), `PushRelaySettingsGroup` embedded at the bottom of `NotificationSection` (compact/collapsed when disabled), and search indexing in `SettingsSearch.swift`.
+  - `BrevMail` & `apps/iOS`: added `PushWakeCoordinator` wired onto `AppSession` and `BrevIOSAppDelegate.application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` to validate opt-in and trigger bounded local sync strictly for opted-in accounts.
+  - Localization & docs: added `en` + `nb` entries to `BrevBackend`, `BrevSettings`, and `BrevMail` `Localizable.xcstrings`; updated `PRIVACY.md`, `docs/design/privacy-and-security.md`, `docs/design/platform-release-and-qa.md`, `CHANGELOG.md`, and `.github/workflows/build.yml`.
+  - Tests: added `PushRelayTests`, `PushRelaySettingsTests`, `PushWakeCoordinatorTests`, and macOS 26+ `PushRelaySettingsSnapshotTests`.
+- Verification: `swift test` on `BrevBackend`, `BrevSettings`, and `BrevMail`; `xcodebuild` macOS 26+ `PushRelaySettingsSnapshotTests` (recorded & visually verified light + dark PNGs); `scripts/format.sh`; `scripts/lint.sh`; Python audit of all `scripts/privacy-audit.sh` checks.
+- Skipped: live APNs / live self-hosted relay end-to-end delivery requires external push infrastructure and physical device QA.
+
 ## 2026-11-24 — Agent — iOS outbound S/MIME signing & encryption
 
 - Goal: bring outbound S/MIME signing & encryption parity to iOS (`docs/design/privacy-and-security.md`) using a standards-compliant RFC 8551 / RFC 5652 pure-Swift CMS DER encoder built solely on Apple's `Security`, `CryptoKit`, and `CommonCrypto` frameworks, with zero new dependencies or network calls.

@@ -81,6 +81,10 @@ struct NotificationSection: View {
                     isAvailable: signInAssessmentAvailable,
                     onChange: onSignInCodeConsentChanged
                 )
+                PushRelaySettingsGroup(
+                    settingsStore: settingsStore,
+                    accounts: accounts
+                )
             }
         }
         .task { await refreshAuthorizationStatus() }
