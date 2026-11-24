@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #353 CI flake fix (Issue #7)
+
+- Goal: fix the `BackgroundRecentIndexingCoordinatorTests` CI race (`multiBatchBacklogAndForegroundArrivalWake` failing with `.running(completed: 0, total: 1)` under parallel CI load) and commit locally without pushing.
+- Changes:
+  - `BackgroundRecentIndexingCoordinatorTests.swift`: added a 10-second `waitUntil` helper and updated `multiBatchBacklogAndForegroundArrivalWake` to wait for BOTH `spy.bodyFetchIDs.contains("m0-fresh")` and `coordinator.state == .completed` (previously it exited as soon as the spy recorded `m0-fresh` before the coordinator resumed on `@MainActor` to transition to `.completed`); also raised `pausesOnMeteredOrLowPowerAndResumes` from a 400ms poll to the same 10-second `waitUntil`.
+  - `BackgroundRecentIndexingCoordinator.swift`: honored `needsFollowUpSweep` in the `.moreRemaining(canContinue: false)` exit path so a wake arriving while a sweep finishes with deferred items is never dropped.
+- Verification: 3× `swift test --package-path packages/BrevMail --filter BackgroundRecentIndexingCoordinatorTests`, `swift test --package-path packages/BrevMail --skip SnapshotTests`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
 ## 2026-11-24 — Agent — PR #353 round-7 review fix (Issue #7)
 
 - Goal: address round-7 Devin Review item (`PRRT_kwDOUHC-Ds67d4bA`) on PR #353 (`feature/background-recent-indexing`).

@@ -440,9 +440,9 @@ struct BackgroundRecentIndexingCoordinatorTests {
             isLowPowerModeEnabled: false
         )
         coordinator.handleEnvironmentChanged()
-        // Wait briefly for the resumed task to complete.
-        for _ in 0 ..< 40 where coordinator.state != BackgroundIndexingState.completed {
-            try await Task.sleep(for: .milliseconds(10))
+        // Wait for the resumed background task to fetch m1 and settle to `.completed`.
+        try await waitUntil {
+            coordinator.state == BackgroundIndexingState.completed && spy.bodyFetchIDs == ["m1"]
         }
         #expect(coordinator.state == BackgroundIndexingState.completed)
         #expect(spy.bodyFetchIDs == ["m1"])
@@ -662,8 +662,8 @@ struct BackgroundRecentIndexingCoordinatorTests {
         let freshHeader = header(id: "m0-fresh", daysAgo: 0.1)
         spy.addMessage(freshHeader, body: body(id: "m0-fresh"), toFolder: "INBOX")
         coordinator.notifyNewHeadersAvailable()
-        for _ in 0 ..< 50 where !spy.bodyFetchIDs.contains("m0-fresh") {
-            try await Task.sleep(for: .milliseconds(10))
+        try await waitUntil {
+            spy.bodyFetchIDs.contains("m0-fresh") && coordinator.state == BackgroundIndexingState.completed
         }
         #expect(spy.bodyFetchIDs.contains("m0-fresh"))
         #expect(coordinator.state == BackgroundIndexingState.completed)
@@ -1072,6 +1072,17 @@ struct BackgroundRecentIndexingCoordinatorTests {
 
         // Stale cancelled generation must NOT restore old progress after resetIndexState().
         #expect(store.load(accountID: spy.account.id) == .empty)
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(10),
+        pollInterval: Duration = .milliseconds(10),
+        condition: @MainActor () -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while !condition(), ContinuousClock.now < deadline {
+            try await Task.sleep(for: pollInterval)
+        }
     }
 }
 

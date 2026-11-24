@@ -402,6 +402,9 @@ public final class BackgroundRecentIndexingCoordinator {
                 return
             case .moreRemaining(let canContinue):
                 guard canContinue, isStillEligible(generation: generation) else {
+                    if needsFollowUpSweep, isStillEligible(generation: generation) {
+                        continue
+                    }
                     if isStillEligible(generation: generation) {
                         state = .completed
                         publishStatus()
