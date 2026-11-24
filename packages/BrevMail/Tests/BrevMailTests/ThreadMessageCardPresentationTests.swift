@@ -141,6 +141,72 @@ struct ThreadMessageBodyPresentationTests {
 
         #expect(presentation == .error("Could not load message."))
     }
+
+    @Test("thread card honors trusted-sender remote image toggle and allowlist")
+    func threadCardHonorsTrustedSenderRemoteImagesAndAllowlist() {
+        let html = #"<p>Hello</p><img src="https://cdn.example.com/photo.jpg" width="600" height="400">"#
+        let trusted = TrustedSenderEvaluator(
+            contactEmails: ["alice@example.com"],
+            repliedToEmails: ["bob@work.org"]
+        )
+
+        let blockedWhenOff = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: nil, attachments: []),
+                useRichRenderer: true,
+                allowRemoteContent: false,
+                allowRemoteContentForTrustedSenders: false,
+                senderEmail: "alice@example.com",
+                trustedSenders: trusted,
+                showRemoteContent: false
+            )
+        )
+        #expect(blockedWhenOff == .richHTML(
+            html: html,
+            allowRemoteContent: false,
+            showsRemoteContentBanner: true
+        ))
+
+        let allowedWhenOn = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: nil, attachments: []),
+                useRichRenderer: true,
+                allowRemoteContent: false,
+                allowRemoteContentForTrustedSenders: true,
+                senderEmail: "alice@example.com",
+                trustedSenders: trusted,
+                showRemoteContent: false
+            )
+        )
+        #expect(allowedWhenOn == .richHTML(
+            html: html,
+            allowRemoteContent: true,
+            showsRemoteContentBanner: false
+        ))
+
+        let unknownStillBlocked = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: nil, attachments: []),
+                useRichRenderer: true,
+                allowRemoteContent: false,
+                allowRemoteContentForTrustedSenders: true,
+                senderEmail: "stranger@example.com",
+                trustedSenders: trusted,
+                showRemoteContent: false
+            )
+        )
+        #expect(unknownStillBlocked == .richHTML(
+            html: html,
+            allowRemoteContent: false,
+            showsRemoteContentBanner: true
+        ))
+    }
 }
 
 @Suite("ThreadCalendarInvitePresentation")

@@ -28,6 +28,7 @@ struct ThreadMessageCard: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.trustedSenderEvaluator) private var trustedSenderEvaluator
 
     let header: MessageHeader
     let isExpanded: Bool
@@ -62,6 +63,7 @@ struct ThreadMessageCard: View {
     /// recycled cell are dropped.
     @State private var inviteDeepLinkMessageID: MessageHeader.ID?
     @State private var showRemoteContent = false
+    @State private var remoteContentPolicy = RemoteContentPolicy.load()
     @State private var htmlRenderingModeOverride: HTMLBodyRenderingMode?
     @State private var htmlRenderingModeOverrideMessageID: MessageHeader.ID?
     @State private var inlineCIDResolvedMessageID: MessageHeader.ID?
@@ -77,6 +79,8 @@ struct ThreadMessageCard: View {
 
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
+    @AppStorage(MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders)
+    private var allowRemoteContentForTrustedSenders = false
     @AppStorage(MessageTrackingPixelPreference.storageKey)
     private var stripTrackingPixels = MessageTrackingPixelPreference.enabledByDefault
     @SectionFontFamily(.reader) private var mailboxFontFamily
@@ -210,13 +214,17 @@ struct ThreadMessageCard: View {
                 await updateDerivedBodyState()
             }
         }
+        .onAppear {
+            remoteContentPolicy = RemoteContentPolicy.load()
+        }
         .onChange(of: stripTrackingPixels) { _, _ in
-            guard !usesRichHTMLBodyRenderer, isExpanded, renderedBody != nil else { return }
-            if isLoading {
-                nativeHTMLImportRefreshPending = true
-            } else {
-                Task { await updateDerivedBodyState() }
-            }
+            refreshNativeHTMLImportIfNeeded()
+        }
+        .onChange(of: allowRemoteContentForTrustedSenders) { _, _ in
+            refreshNativeHTMLImportIfNeeded()
+        }
+        .onChange(of: trustedSenderEvaluator) { _, _ in
+            refreshNativeHTMLImportIfNeeded()
         }
         .alert(
             pendingSuspiciousLink?.confirmationTitle ?? "Open suspicious link?",
@@ -789,6 +797,15 @@ struct ThreadMessageCard: View {
         return rendered.replacingHTML(resolvedHTML)
     }
 
+    private func refreshNativeHTMLImportIfNeeded() {
+        guard !usesRichHTMLBodyRenderer, isExpanded, renderedBody != nil else { return }
+        if isLoading {
+            nativeHTMLImportRefreshPending = true
+        } else {
+            Task { await updateDerivedBodyState() }
+        }
+    }
+
     private var bodyPresentationContext: ThreadMessageBodyPresentation.Context {
         ThreadMessageBodyPresentation.Context(
             isLoading: isLoading,
@@ -796,6 +813,10 @@ struct ThreadMessageCard: View {
             renderedBody: renderedBody,
             useRichRenderer: usesRichHTMLBodyRenderer,
             allowRemoteContent: allowRemoteContentDefault,
+            allowRemoteContentForTrustedSenders: allowRemoteContentForTrustedSenders,
+            senderEmail: header.from.email,
+            remoteContentPolicy: remoteContentPolicy,
+            trustedSenders: trustedSenderEvaluator,
             showRemoteContent: showRemoteContent
         )
     }

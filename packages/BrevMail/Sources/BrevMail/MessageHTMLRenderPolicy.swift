@@ -28,6 +28,7 @@ struct MessageRemoteContentRenderState: Equatable, Sendable {
     let allowsRemoteContent: Bool
     let isBlocked: Bool
     let senderDomain: String?
+    let trustedSenderSource: TrustedSenderSource?
     let report: MessageRemoteContentAssetReport
 }
 
@@ -36,6 +37,8 @@ enum MessageRemoteContentRenderPolicy {
         html: String,
         senderEmail: String,
         allowRemoteContentDefault: Bool,
+        allowRemoteContentForTrustedSenders: Bool = false,
+        trustedSenders: TrustedSenderEvaluator = .empty,
         loadOnce: Bool,
         policy: RemoteContentPolicy
     ) -> MessageRemoteContentRenderState {
@@ -44,15 +47,20 @@ enum MessageRemoteContentRenderPolicy {
         let hasRemoteAssets = report.hasRemoteAssets
         let allowedByPolicy = policy.allows(senderEmail: senderEmail, resourceHost: nil)
             || (!hosts.isEmpty && hosts.allSatisfy { policy.allows(senderEmail: senderEmail, resourceHost: $0) })
+        let trustedSenderSource = allowRemoteContentForTrustedSenders
+            ? trustedSenders.trustSource(for: senderEmail)
+            : nil
         let allowsRemoteContent = !hasRemoteAssets
             || allowRemoteContentDefault
             || loadOnce
             || allowedByPolicy
+            || trustedSenderSource != nil
 
         return MessageRemoteContentRenderState(
             allowsRemoteContent: allowsRemoteContent,
             isBlocked: hasRemoteAssets && !allowsRemoteContent,
             senderDomain: RemoteContentPolicy.senderDomain(for: senderEmail),
+            trustedSenderSource: trustedSenderSource,
             report: report
         )
     }

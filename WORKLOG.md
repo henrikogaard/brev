@@ -1,5 +1,24 @@
 # Worklog
 
+## 2026-11-24 — Agent — Issue #8 (Trusted-sender remote image tier)
+
+- Goal: implement opt-in **Load remote images for trusted senders** (#8) so users can automatically load remote images from exact normalized email addresses in local Contacts or previously emailed/replied-to recipients without prompting for Contacts permission or making extra network calls, while keeping remote content blocked by default and continuing to strip tracking pixels.
+- Changes:
+  - Added `MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders` (`body.allowRemoteContentForTrustedSenders`) in `BrevDesign`.
+  - Added `TrustedSenderSource`, `TrustedSenderEvaluator` (case-insensitive trimmed exact email normalization, rejecting empty/malformed addresses and domain-only matches), and `RemoteContentPolicy.allows(senderEmail:resourceHost:allowTrustedSenders:trustedSenders:)` in `BrevBackend`.
+  - Added `allowRemoteContentForTrustedSenders: Bool` (default `false`, backward-compatible backup decoding, excluded from `PreferenceSyncAllowlist`) to `MailboxViewSettings`, added the toggle + status copy to `PrivacySection.swift` and `SettingsSearch.swift`, and added `en`/`nb` strings to `BrevSettings`'s `Localizable.xcstrings`.
+  - Added non-prompting local `SystemContactsRecipientLookup.allContactEmails()` and cache-only `MailSenderContactActions.allCachedContactEmails()`, wired `@Environment(\.trustedSenderEvaluator)` in `SenderWarningHistoryModifier` (loading local Contacts only when opted in and refreshing on `CNContactStoreDidChange` / `RecentRecipientStore.writtenAddressesDidChange`) and `BrevMailRootView`.
+  - Wired `allowRemoteContentForTrustedSenders` and `trustedSenderEvaluator` into `MessageRemoteContentRenderPolicy`, `MessageDetailView`, `ThreadMessageCardPresentation`, and `ThreadMessageCard` (preserving `stripTrackingPixels` on every path).
+  - Updated `PRIVACY.md`, `docs/design/privacy-and-security.md`, `CHANGELOG.md`, and refreshed `PrivacyTrackingPixelSnapshotTests` light/dark baselines.
+- Verification:
+  - `swift test --package-path packages/BrevBackend` (passed, including new `RemoteContentPolicyTests` trusted-sender cases).
+  - `swift test --package-path packages/BrevSettings` (474 tests in 73 suites passed, including `MailboxViewSettingsTests` defaults, backup codec, iCloud sync exclusion, and `nb` catalog checks).
+  - `swift test --package-path packages/BrevMail` (2,641 tests in 365 suites passed + 7/7 isolated `ContactsAccessPolicyTests` passed).
+  - `xcodebuild -scheme BrevSettings -destination 'platform=macOS,arch=arm64' -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevSettingsTests/PrivacyTrackingPixelSnapshotTests test` (2/2 light/dark passed; visually verified both PNGs).
+  - `scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`, and Python verification of all `scripts/privacy-audit.sh` regexes passed.
+- Skipped: native `scripts/privacy-audit.sh` shell invocation skipped locally only because `rg` is not installed in this environment (all 28 regex checks verified directly via Python; full script runs in CI).
+- Next handoff: open PR targeting `main` and await CI + review.
+
 ## 2026-11-24 — Agent — Issue #6 (Safe MCP `create_draft` tool & PR #347 review)
 
 - Goal: implement the approval-gated local MCP `create_draft` tool on `feature/mcp-create-draft` so local MCP clients can propose plain-text drafts for manual review without ever exposing send, delete, or trash tools, and address all 9 Devin review findings on PR #347.

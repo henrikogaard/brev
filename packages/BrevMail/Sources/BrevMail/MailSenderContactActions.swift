@@ -136,6 +136,30 @@ public final class MailSenderContactActions {
         }
     }
 
+    /// Returns all cached contact email addresses across connected contacts sources.
+    /// Strictly cache-only — never contacts a provider.
+    public func allCachedContactEmails() async -> Set<String> {
+        guard let coordinator, let contactSyncService else { return [] }
+        do {
+            let sources = try await coordinator.allSources()
+                .filter { $0.kind == .contacts }
+            var emails = Set<String>()
+            for source in sources {
+                let contacts = try await contactSyncService.contacts(for: source.id)
+                for contact in contacts {
+                    for field in contact.emails {
+                        if let normalized = TrustedSenderEvaluator.normalizedEmail(field.value) {
+                            emails.insert(normalized)
+                        }
+                    }
+                }
+            }
+            return emails
+        } catch {
+            return []
+        }
+    }
+
     /// The source record for a resolved contact, for the detail view's
     /// provenance row.
     public func source(for contact: PIMContact) async -> PIMSource? {

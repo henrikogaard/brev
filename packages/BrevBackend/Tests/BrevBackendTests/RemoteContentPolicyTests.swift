@@ -79,6 +79,99 @@ struct RemoteContentPolicyTests {
         #expect(policy == .defaults)
     }
 
+    @Test("trusted-sender evaluator matches normalized local contacts and replied-to addresses")
+    func trustedSenderEvaluatorMatchesNormalizedContactsAndRepliedTo() {
+        let evaluator = TrustedSenderEvaluator(
+            contactEmails: ["  Alice@Example.COM ", "not-an-email", ""],
+            repliedToEmails: ["Bob@Work.Org\n", "@bad.example", "bad@"]
+        )
+
+        #expect(evaluator.trustSource(for: "alice@example.com") == .localContacts)
+        #expect(evaluator.trustSource(for: "  ALICE@example.com  ") == .localContacts)
+        #expect(evaluator.isTrusted(senderEmail: "alice@example.com"))
+
+        #expect(evaluator.trustSource(for: "bob@work.org") == .repliedToSender)
+        #expect(evaluator.trustSource(for: "BOB@WORK.ORG") == .repliedToSender)
+        #expect(evaluator.isTrusted(senderEmail: "bob@work.org"))
+    }
+
+    @Test("trusted-sender evaluator rejects unknown senders, domain-only matches, and malformed addresses")
+    func trustedSenderEvaluatorRejectsUnknownDomainOnlyAndMalformed() {
+        let evaluator = TrustedSenderEvaluator(
+            contactEmails: ["alice@example.com"],
+            repliedToEmails: ["bob@work.org"]
+        )
+
+        #expect(!evaluator.isTrusted(senderEmail: "stranger@other.net"))
+        // Domain-only match must NOT qualify as trusted unless domain-allowlisted.
+        #expect(!evaluator.isTrusted(senderEmail: "carol@example.com"))
+        #expect(!evaluator.isTrusted(senderEmail: "dave@work.org"))
+
+        // Empty and malformed addresses must never match.
+        for malformed in [
+            "",
+            "   ",
+            "not-an-email",
+            "@example.com",
+            "alice@",
+            "a@b@example.com",
+            "alice @example.com",
+            "alice@.example.com",
+            "alice@example.",
+            "alice@localhost"
+        ] {
+            #expect(!evaluator.isTrusted(senderEmail: malformed), "unexpected match for \(malformed)")
+            #expect(TrustedSenderEvaluator.normalizedEmail(malformed) == nil)
+        }
+    }
+
+    @Test("remote content policy honors trusted-sender opt-in and domain allowlist independently")
+    func remoteContentPolicyHonorsTrustedSenderOptInAndDomainAllowlist() {
+        let evaluator = TrustedSenderEvaluator(
+            contactEmails: ["alice@example.com"],
+            repliedToEmails: ["bob@work.org"]
+        )
+        let defaultPolicy = RemoteContentPolicy.defaults
+
+        // Toggle OFF: trusted sender stays blocked.
+        #expect(!defaultPolicy.allows(
+            senderEmail: "alice@example.com",
+            resourceHost: "cdn.example.net",
+            allowTrustedSenders: false,
+            trustedSenders: evaluator
+        ))
+        // Toggle ON: exact trusted contact or replied-to sender is allowed.
+        #expect(defaultPolicy.allows(
+            senderEmail: "ALICE@EXAMPLE.COM",
+            resourceHost: "cdn.example.net",
+            allowTrustedSenders: true,
+            trustedSenders: evaluator
+        ))
+        #expect(defaultPolicy.allows(
+            senderEmail: "bob@work.org",
+            resourceHost: "cdn.example.net",
+            allowTrustedSenders: true,
+            trustedSenders: evaluator
+        ))
+        // Toggle ON: same domain but different address is still blocked without a domain allowlist.
+        #expect(!defaultPolicy.allows(
+            senderEmail: "carol@example.com",
+            resourceHost: "cdn.example.net",
+            allowTrustedSenders: true,
+            trustedSenders: evaluator
+        ))
+
+        // Domain allowlist still permits other addresses on that domain even when trusted-sender tier is off.
+        var domainPolicy = RemoteContentPolicy.defaults
+        domainPolicy.allow(domain: "example.com")
+        #expect(domainPolicy.allows(
+            senderEmail: "carol@example.com",
+            resourceHost: "cdn.example.net",
+            allowTrustedSenders: false,
+            trustedSenders: evaluator
+        ))
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "RemoteContentPolicyTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

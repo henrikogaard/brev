@@ -11,7 +11,11 @@
  */
 
 import BrevBackend
+import BrevDesign
 import BrevSettings
+#if canImport(Contacts)
+import Contacts
+#endif
 import SwiftUI
 
 extension RecentRecipientStore {
@@ -60,10 +64,19 @@ private struct SenderWarningHistoryKey: EnvironmentKey {
     static let defaultValue: SenderWarningHistory? = nil
 }
 
+private struct TrustedSenderEvaluatorKey: EnvironmentKey {
+    static let defaultValue: TrustedSenderEvaluator = .empty
+}
+
 extension EnvironmentValues {
     var senderWarningHistory: SenderWarningHistory? {
         get { self[SenderWarningHistoryKey.self] }
         set { self[SenderWarningHistoryKey.self] = newValue }
+    }
+
+    var trustedSenderEvaluator: TrustedSenderEvaluator {
+        get { self[TrustedSenderEvaluatorKey.self] }
+        set { self[TrustedSenderEvaluatorKey.self] = newValue }
     }
 }
 
@@ -73,14 +86,26 @@ struct SenderWarningHistoryModifier: ViewModifier {
     let sourceID: MailSourceID?
     let folders: [Folder]
     let mailboxEmail: String?
+    let contactActions: MailSenderContactActions?
+    @AppStorage(MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders)
+    private var allowRemoteContentForTrustedSenders = false
     @State private var loaded: (Request, SenderWarningHistory)?
+    @State private var contactEmails: Set<String> = []
     @State private var revision = 0
+    @State private var contactsRevision = 0
 
-    init(backend: any MailBackend, sourceID: MailSourceID?, folders: [Folder], mailboxEmail: String? = nil) {
+    init(
+        backend: any MailBackend,
+        sourceID: MailSourceID?,
+        folders: [Folder],
+        mailboxEmail: String? = nil,
+        contactActions: MailSenderContactActions? = nil
+    ) {
         self.backend = backend
         self.sourceID = sourceID
         self.folders = folders
         self.mailboxEmail = mailboxEmail
+        self.contactActions = contactActions
     }
 
     private struct Request: Equatable {
@@ -88,6 +113,12 @@ struct SenderWarningHistoryModifier: ViewModifier {
         let source: MailSourceID
         let sent: [Folder]
         let mine: Set<String>
+        let revision: Int
+    }
+
+    private struct ContactsRequest: Equatable {
+        let isEnabled: Bool
+        let contactActionsID: ObjectIdentifier?
         let revision: Int
     }
 
@@ -99,12 +130,30 @@ struct SenderWarningHistoryModifier: ViewModifier {
             mine: Set([backend.account.emailAddress, mailboxEmail].compactMap { $0?.lowercased() }),
             revision: revision
         )
+        let contactsRequest = ContactsRequest(
+            isEnabled: allowRemoteContentForTrustedSenders,
+            contactActionsID: contactActions.map(ObjectIdentifier.init),
+            revision: contactsRevision
+        )
+        let currentHistory = loaded?.0 == request ? loaded?.1 : nil
+        let evaluator = TrustedSenderEvaluator(
+            contactEmails: allowRemoteContentForTrustedSenders ? contactEmails : [],
+            repliedToEmails: currentHistory?.written ?? []
+        )
         content
-            .environment(\.senderWarningHistory, loaded?.0 == request ? loaded?.1 : nil)
+            .environment(\.senderWarningHistory, currentHistory)
+            .environment(\.trustedSenderEvaluator, evaluator)
             .onReceive(NotificationCenter.default.publisher(for: RecentRecipientStore.writtenAddressesDidChange)
                 .receive(on: DispatchQueue.main)) { _ in
                     revision += 1
             }
+        #if canImport(Contacts)
+            .onReceive(NotificationCenter.default.publisher(for: .CNContactStoreDidChange)
+                .receive(on: DispatchQueue.main)) { _ in
+                    guard allowRemoteContentForTrustedSenders else { return }
+                    contactsRevision += 1
+            }
+        #endif
             .task(id: request) {
                 let result = await SenderWarningHistory.load(
                     backend: backend,
@@ -114,6 +163,18 @@ struct SenderWarningHistoryModifier: ViewModifier {
                 )
                 guard !Task.isCancelled else { return }
                 loaded = (request, result)
+            }
+            .task(id: contactsRequest) {
+                guard contactsRequest.isEnabled else {
+                    contactEmails = []
+                    return
+                }
+                var emails = await SystemContactsRecipientLookup.shared.allContactEmails()
+                if let contactActions {
+                    await emails.formUnion(contactActions.allCachedContactEmails())
+                }
+                guard !Task.isCancelled else { return }
+                contactEmails = emails
             }
     }
 }

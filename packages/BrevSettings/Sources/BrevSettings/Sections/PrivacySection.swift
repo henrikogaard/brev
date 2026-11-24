@@ -154,6 +154,12 @@ struct PrivacySection: View {
         if mailboxSettings.useRichRenderer, mailboxSettings.allowRemoteContent {
             return String(localized: "Remote images are allowed by default for rich HTML messages.", bundle: .module)
         }
+        if mailboxSettings.useRichRenderer, mailboxSettings.allowRemoteContentForTrustedSenders {
+            return String(
+                localized: "Remote images load automatically for trusted senders; unknown senders stay blocked.",
+                bundle: .module
+            )
+        }
         return String(localized: "Remote images are not loaded by default.", bundle: .module)
     }
 
@@ -241,6 +247,17 @@ struct PrivacySection: View {
                     title: String(localized: "Always load remote images", bundle: .module),
                     subtitle: String(localized: "Allows remote images after rich HTML rendering is enabled.", bundle: .module),
                     isOn: mailboxBinding(for: \.allowRemoteContent),
+                    isEnabled: mailboxSettings.useRichRenderer
+                )
+
+                SettingsToggleRow(
+                    symbolName: "person.2",
+                    title: String(localized: "Load remote images for trusted senders", bundle: .module),
+                    subtitle: String(
+                        localized: "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked.",
+                        bundle: .module
+                    ),
+                    isOn: mailboxBinding(for: \.allowRemoteContentForTrustedSenders),
                     isEnabled: mailboxSettings.useRichRenderer
                 )
 

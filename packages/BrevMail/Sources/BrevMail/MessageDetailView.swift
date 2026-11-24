@@ -49,6 +49,7 @@ public struct MessageDetailView: View {
     @Environment(\.localMessageWorkflowReaderState) private var injectedWorkflowState
     @Environment(\.readerAskAIAction) private var askAIAction
     @Environment(\.messageReaderReferenceDate) private var referenceDate
+    @Environment(\.trustedSenderEvaluator) private var trustedSenderEvaluator
     private let backend: any MailBackend
     private let sourceID: MailSourceID?
     private let header: MessageHeader?
@@ -149,6 +150,8 @@ public struct MessageDetailView: View {
 
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
+    @AppStorage(MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders)
+    private var allowRemoteContentForTrustedSenders = false
     @AppStorage(MessageTrackingPixelPreference.storageKey)
     private var stripTrackingPixels = MessageTrackingPixelPreference.enabledByDefault
     @AppStorage(MailboxViewPreferenceKey.showSenderAvatars) private var showSenderAvatars = true
@@ -225,6 +228,12 @@ public struct MessageDetailView: View {
         }
         .task(id: reloadKey) { await reload() }
         .onChange(of: stripTrackingPixels) { _, _ in
+            refreshRenderedHTMLForCurrentTrackingPreference()
+        }
+        .onChange(of: allowRemoteContentForTrustedSenders) { _, _ in
+            refreshRenderedHTMLForCurrentTrackingPreference()
+        }
+        .onChange(of: trustedSenderEvaluator) { _, _ in
             refreshRenderedHTMLForCurrentTrackingPreference()
         }
         #if os(macOS)
@@ -2165,6 +2174,8 @@ public struct MessageDetailView: View {
             html: html,
             senderEmail: header.from.email,
             allowRemoteContentDefault: allowRemoteContentDefault,
+            allowRemoteContentForTrustedSenders: allowRemoteContentForTrustedSenders,
+            trustedSenders: trustedSenderEvaluator,
             loadOnce: showRemoteContent,
             policy: remoteContentPolicy
         )
@@ -2176,6 +2187,8 @@ public struct MessageDetailView: View {
             html: html,
             senderEmail: senderEmail,
             allowRemoteContentDefault: allowRemoteContentDefault,
+            allowRemoteContentForTrustedSenders: allowRemoteContentForTrustedSenders,
+            trustedSenders: trustedSenderEvaluator,
             loadOnce: showRemoteContent,
             policy: remoteContentPolicy
         ).allowsRemoteContent

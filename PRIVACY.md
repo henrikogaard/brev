@@ -167,11 +167,15 @@ enable remote content.
 
 Brev blocks remote HTML assets by default. You can load remote content
 once for a single message, always allow a sender, always allow a
-domain, or enable "Always load remote images" in Settings.
+domain, enable "Load remote images for trusted senders" (which matches
+exact sender addresses locally against your already-authorized Contacts
+and people you have previously emailed, without prompting for Contacts
+access or making extra network calls; tracking pixels remain stripped),
+or enable "Always load remote images" in Settings.
 
-**How to disable:** Settings → Privacy & Security → Privacy → "Always load remote images",
-or remove sender/domain allowances from the remote-content policy.
-Defaults to blocked.
+**How to disable:** Settings → Privacy & Security → Privacy → "Always load remote images"
+and "Load remote images for trusted senders", or remove sender/domain allowances
+from the remote-content policy. Defaults to blocked.
 
 ### List-Unsubscribe actions and Subscriptions view
 

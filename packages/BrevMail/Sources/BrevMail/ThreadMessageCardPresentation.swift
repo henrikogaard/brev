@@ -33,7 +33,35 @@ enum ThreadMessageBodyPresentation: Equatable {
         let renderedBody: RenderedBody?
         let useRichRenderer: Bool
         let allowRemoteContent: Bool
+        let allowRemoteContentForTrustedSenders: Bool
+        let senderEmail: String
+        let remoteContentPolicy: RemoteContentPolicy
+        let trustedSenders: TrustedSenderEvaluator
         let showRemoteContent: Bool
+
+        init(
+            isLoading: Bool,
+            errorMessage: String?,
+            renderedBody: RenderedBody?,
+            useRichRenderer: Bool,
+            allowRemoteContent: Bool,
+            allowRemoteContentForTrustedSenders: Bool = false,
+            senderEmail: String = "",
+            remoteContentPolicy: RemoteContentPolicy = .defaults,
+            trustedSenders: TrustedSenderEvaluator = .empty,
+            showRemoteContent: Bool
+        ) {
+            self.isLoading = isLoading
+            self.errorMessage = errorMessage
+            self.renderedBody = renderedBody
+            self.useRichRenderer = useRichRenderer
+            self.allowRemoteContent = allowRemoteContent
+            self.allowRemoteContentForTrustedSenders = allowRemoteContentForTrustedSenders
+            self.senderEmail = senderEmail
+            self.remoteContentPolicy = remoteContentPolicy
+            self.trustedSenders = trustedSenders
+            self.showRemoteContent = showRemoteContent
+        }
     }
 
     static func resolve(_ context: Context) -> ThreadMessageBodyPresentation {
@@ -42,19 +70,39 @@ enum ThreadMessageBodyPresentation: Equatable {
         guard let renderedBody = context.renderedBody else { return .waiting }
 
         if context.useRichRenderer, let html = renderedBody.html, !html.isEmpty {
-            let remoteAllowed = context.allowRemoteContent || context.showRemoteContent
+            let remoteState = MessageRemoteContentRenderPolicy.state(
+                html: html,
+                senderEmail: context.senderEmail,
+                allowRemoteContentDefault: context.allowRemoteContent,
+                allowRemoteContentForTrustedSenders: context.allowRemoteContentForTrustedSenders,
+                trustedSenders: context.trustedSenders,
+                loadOnce: context.showRemoteContent,
+                policy: context.remoteContentPolicy
+            )
+            let remoteAllowed = context.allowRemoteContent
+                || context.showRemoteContent
+                || (remoteState.report.hasRemoteAssets && remoteState.allowsRemoteContent)
             return .richHTML(
                 html: html,
                 allowRemoteContent: remoteAllowed,
-                showsRemoteContentBanner: !remoteAllowed && MessageRemoteContentDetector.hasRemoteAssets(html)
+                showsRemoteContentBanner: remoteState.isBlocked
             )
         }
 
         if let html = renderedBody.html, !html.isEmpty {
+            let remoteState = MessageRemoteContentRenderPolicy.state(
+                html: html,
+                senderEmail: context.senderEmail,
+                allowRemoteContentDefault: context.allowRemoteContent,
+                allowRemoteContentForTrustedSenders: context.allowRemoteContentForTrustedSenders,
+                trustedSenders: context.trustedSenders,
+                loadOnce: context.showRemoteContent,
+                policy: context.remoteContentPolicy
+            )
             if MessageHTMLRenderPolicy.shouldImportAttributedHTML(
                 html,
                 useRichRenderer: context.useRichRenderer,
-                allowRemoteContent: context.allowRemoteContent || context.showRemoteContent
+                allowRemoteContent: remoteState.allowsRemoteContent
             ) {
                 return .attributedHTML(html)
             }

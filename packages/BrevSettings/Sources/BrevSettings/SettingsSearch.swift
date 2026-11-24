@@ -250,6 +250,7 @@ extension SettingsSection {
             ]
         case .privacy: return [
                 String(localized: "Always load remote images", bundle: .module),
+                String(localized: "Load remote images for trusted senders", bundle: .module),
                 String(localized: "Sender image sources", bundle: .module),
                 String(localized: "Use Contacts photos", bundle: .module),
                 String(localized: "Use Gravatar", bundle: .module),

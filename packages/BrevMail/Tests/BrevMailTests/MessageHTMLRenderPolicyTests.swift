@@ -191,4 +191,89 @@ struct MessageHTMLRenderPolicyTests {
         #expect(MessageRemoteContentPrivacyPresentation.resolve(state).explanation ==
             "Brev blocked 4 remote assets. Loading remote content would contact a.example.com, b.example.com, c.example.com, and 1 more host, which can reveal your IP address and when you opened this message.")
     }
+
+    @Test("trusted sender loads normal remote images when enabled while tracking pixels remain stripped")
+    func trustedSenderLoadsNormalImagesWhileStrippingTrackingPixels() {
+        let html = """
+        <p>Hi</p>\
+        <img src="https://cdn.example.com/photo.jpg" width="600" height="400">\
+        <img src="https://track.example.net/open.gif" width="1" height="1">
+        """
+        let trusted = TrustedSenderEvaluator(
+            contactEmails: ["alice@example.com"],
+            repliedToEmails: ["bob@work.org"]
+        )
+
+        // Toggle OFF: trusted sender stays blocked.
+        let blockedWhenOff = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "alice@example.com",
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: false,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(!blockedWhenOff.allowsRemoteContent)
+        #expect(blockedWhenOff.isBlocked)
+        #expect(blockedWhenOff.trustedSenderSource == nil)
+
+        // Toggle ON: Contact and replied-to senders load normal remote images...
+        let allowedContact = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "ALICE@EXAMPLE.COM",
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: true,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(allowedContact.allowsRemoteContent)
+        #expect(!allowedContact.isBlocked)
+        #expect(allowedContact.trustedSenderSource == .localContacts)
+
+        let allowedRepliedTo = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "bob@work.org",
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: true,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(allowedRepliedTo.allowsRemoteContent)
+        #expect(!allowedRepliedTo.isBlocked)
+        #expect(allowedRepliedTo.trustedSenderSource == .repliedToSender)
+
+        // ...and tracking pixels are STILL stripped when stripTrackingPixels == true!
+        let webPlan = HTMLBodyLoadPlan.resolve(
+            allowRemoteContent: allowedContact.allowsRemoteContent,
+            blockerAvailable: true
+        )
+        let renderedWebHTML = webPlan.bodyHTML(originalHTML: html, stripTrackingPixels: true)
+        #expect(renderedWebHTML.contains("https://cdn.example.com/photo.jpg"))
+        #expect(!renderedWebHTML.contains("track.example.net"))
+
+        let nativeImportHTML = MessageHTMLImportPolicy.prepareForRemoteContentImport(
+            html,
+            allowRemoteContent: allowedContact.allowsRemoteContent,
+            stripTrackingPixels: true
+        )
+        #expect(nativeImportHTML.contains("https://cdn.example.com/photo.jpg"))
+        #expect(!nativeImportHTML.contains("track.example.net"))
+
+        // Toggle ON: unknown sender or domain-only match remains blocked.
+        let unknownBlocked = MessageRemoteContentRenderPolicy.state(
+            html: html,
+            senderEmail: "carol@example.com",
+            allowRemoteContentDefault: false,
+            allowRemoteContentForTrustedSenders: true,
+            trustedSenders: trusted,
+            loadOnce: false,
+            policy: .defaults
+        )
+        #expect(!unknownBlocked.allowsRemoteContent)
+        #expect(unknownBlocked.isBlocked)
+        #expect(unknownBlocked.trustedSenderSource == nil)
+    }
 }

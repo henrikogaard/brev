@@ -38,33 +38,7 @@ actor SystemContactsRecipientLookup {
     }
 
     func contacts(matching query: ContactLookupQuery) async -> [ContactLookupResult] {
-        installChangeObserverIfNeeded()
-        let authorizationStatus = authorizationStatusProvider()
-        if authorizationStatus != lastAuthorizationStatus {
-            invalidateCache()
-            lastAuthorizationStatus = authorizationStatus
-        }
-        guard ContactsAccessPolicy.isEnabled() else { return [] }
-        // Permission requests belong to an explicit settings action. Asking
-        // from this path would make ordinary typing trigger a system prompt.
-        let canReadContacts: Bool
-        #if os(iOS)
-        if authorizationStatus == .authorized {
-            canReadContacts = true
-        } else if #available(iOS 18.0, *) {
-            canReadContacts = authorizationStatus == .limited
-        } else {
-            canReadContacts = false
-        }
-        #else
-        canReadContacts = authorizationStatus == .authorized
-        #endif
-        guard canReadContacts else { return [] }
-        let store = storeFactory()
-        if !didLoadContacts {
-            cachedContacts = loadContacts(store: store)
-            didLoadContacts = true
-        }
+        guard loadContactsIfAuthorized() else { return [] }
 
         let needle = query.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !needle.isEmpty else { return [] }
@@ -82,6 +56,45 @@ actor SystemContactsRecipientLookup {
                     sourceID: query.sourceID
                 )
             }
+    }
+
+    /// Returns normalized email addresses from local Apple Contacts without
+    /// prompting for permission. Returns an empty set when demo mode disables
+    /// Contacts or when Contacts access has not been granted.
+    func allContactEmails() async -> Set<String> {
+        guard loadContactsIfAuthorized() else { return [] }
+        return Set(cachedContacts.compactMap { TrustedSenderEvaluator.normalizedEmail($0.email) })
+    }
+
+    private func loadContactsIfAuthorized() -> Bool {
+        installChangeObserverIfNeeded()
+        let authorizationStatus = authorizationStatusProvider()
+        if authorizationStatus != lastAuthorizationStatus {
+            invalidateCache()
+            lastAuthorizationStatus = authorizationStatus
+        }
+        guard ContactsAccessPolicy.isEnabled() else { return false }
+        // Permission requests belong to an explicit settings action. Asking
+        // from this path would make ordinary reading or typing trigger a system prompt.
+        let canReadContacts: Bool
+        #if os(iOS)
+        if authorizationStatus == .authorized {
+            canReadContacts = true
+        } else if #available(iOS 18.0, *) {
+            canReadContacts = authorizationStatus == .limited
+        } else {
+            canReadContacts = false
+        }
+        #else
+        canReadContacts = authorizationStatus == .authorized
+        #endif
+        guard canReadContacts else { return false }
+        let store = storeFactory()
+        if !didLoadContacts {
+            cachedContacts = loadContacts(store: store)
+            didLoadContacts = true
+        }
+        return true
     }
 
     private func installChangeObserverIfNeeded() {
@@ -145,6 +158,10 @@ actor SystemContactsRecipientLookup {
     static let shared = SystemContactsRecipientLookup()
 
     func contacts(matching _: ContactLookupQuery) async -> [ContactLookupResult] {
+        []
+    }
+
+    func allContactEmails() async -> Set<String> {
         []
     }
 }
