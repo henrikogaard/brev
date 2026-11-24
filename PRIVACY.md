@@ -450,7 +450,7 @@ policy-disabled controls in Brev.
 Generic IMAP/SMTP accounts do not expose this metadata, and this #260 scope work
 does not add a new network call. Before any provider policy fetch ships, the
 provider hosts, OAuth scopes, exact data sent, cache behavior, and user controls
-must be documented here and in ADR-0006.
+must be documented here and in `docs/design/privacy-and-security.md`.
 
 **How to disable:** Do not add or enable a provider-native enterprise account
 integration. Standards-only IMAP/SMTP account setup does not fetch provider
@@ -469,7 +469,7 @@ This #261 scope work adds the local capability matrix and cleanup behavior; it
 does not add provider workflow network calls. Before any provider-backed
 workflow state sync ships, the concrete provider hosts, OAuth scopes, exact data
 read/written, conflict behavior, and local cache behavior must be documented
-here and in ADR-0006.
+here and in `docs/design/privacy-and-security.md`.
 
 **How to disable:** Use a standards-only IMAP/SMTP account or keep the workflow
 surface in local-only mode where Brev offers a choice.

@@ -87,8 +87,8 @@ check_no_matches \
 check_no_matches \
   "No stale BrevTesting no-network enforcement claim" \
   'A test in `BrevTesting` package runs' \
-  ADRs/0005-enforcement.md \
-  ADRs/0006-telemetry-and-privacy.md
+  docs/design/platform-release-and-qa.md \
+  docs/design/privacy-and-security.md
 
 echo "==> No inherited app markers in shipped code"
 if scripts/test-public-source-markers.sh >/dev/null; then
@@ -162,24 +162,24 @@ check_has_match \
   PRIVACY.md
 
 check_has_match \
-  "ADR-0006 lists Gravatar as off by default" \
+  "Privacy design doc lists Gravatar as off by default" \
   'Gravatar avatar lookup .* Background sync, if enabled .* \*\*Off\*\*' \
-  ADRs/0006-telemetry-and-privacy.md
+  docs/design/privacy-and-security.md
 
 check_has_match \
-  "ADR-0006 lists AI Writer as off by default" \
+  "Privacy design doc lists AI Writer as off by default" \
   'AI Writer via selected provider .* On AI Writer use, after consent .* \*\*Off\*\*' \
-  ADRs/0006-telemetry-and-privacy.md
+  docs/design/privacy-and-security.md
 
 check_has_match \
-  "ADR-0006 lists BYOK/local AI as off by default" \
+  "Privacy design doc lists BYOK/local AI as off by default" \
   'BYOK/local AI endpoint \(v2\) .* On AI Writer use, once configured .* \*\*Off\*\*' \
-  ADRs/0006-telemetry-and-privacy.md
+  docs/design/privacy-and-security.md
 
 check_has_match \
-  "ADR-0006 lists remote HTML assets as off by default" \
+  "Privacy design doc lists remote HTML assets as off by default" \
   'Remote HTML assets in messages .* \| \*\*Off\*\*' \
-  ADRs/0006-telemetry-and-privacy.md
+  docs/design/privacy-and-security.md
 
 check_has_match \
   "Desktop smoke covers local AI without network probing" \

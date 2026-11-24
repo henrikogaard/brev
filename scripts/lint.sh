@@ -4,11 +4,9 @@
 # Runs:
 #   1. swiftformat --lint  (fails if any file would be reformatted)
 #   2. swiftlint --strict  (treats warnings as errors)
-#   3. scripts/check-adr-required.sh — gates protected-path changes on a
-#      matching ADR update; only runs in a staged-files context (pre-commit
-#      or CI). Skip with BREV_SKIP_ADR_CHECK=1.
+#   3. SwiftLint coverage self-test
 #
-# Per ADR-0005. Invoke via mise so the pinned versions are used.
+# Per docs/design/platform-release-and-qa.md. Invoke via mise so the pinned versions are used.
 
 set -euo pipefail
 
@@ -30,12 +28,5 @@ mise exec -- swiftlint --strict --quiet
 
 echo "==> SwiftLint coverage self-test"
 scripts/test-swiftlint-coverage.sh
-
-if [[ "${BREV_SKIP_ADR_CHECK:-0}" != "1" ]]; then
-  if [[ -x "$ROOT/scripts/check-adr-required.sh" ]]; then
-    echo "==> check-adr-required"
-    "$ROOT/scripts/check-adr-required.sh"
-  fi
-fi
 
 echo "lint.sh: OK"

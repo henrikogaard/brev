@@ -4,6 +4,13 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Replaced the 95-file `ADRs/` directory and protected-path `adr-required` CI
+  gate with 10 living subsystem design documents under `docs/design/`,
+  discarding 24 obsolete/micromanagement records and relaxing overly
+  restrictive policies around rich compose/draft reopening, on-device AI,
+  avatars, background attachment indexing, generic IMAP sign-in codes, iOS
+  outbound S/MIME, closed-app push options, and local MCP draft creation.
+
 - Local MCP agent access on macOS (#305, ADR-0095): added opt-in **Settings →
   Agent access** (off by default, per-account toggles, device-local only,
   excluded from backups and iCloud sync), an in-process local MCP broker over a

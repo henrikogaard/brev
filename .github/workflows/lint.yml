@@ -39,28 +39,3 @@ jobs:
 
       - name: Privacy audit
         run: scripts/privacy-audit.sh
-
-  adr-required:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          fetch-depth: 0
-
-      - name: Check for adr-not-required label
-        id: label
-        env:
-          LABELS: ${{ toJson(github.event.pull_request.labels) }}
-        run: |
-          if echo "$LABELS" | grep -q '"adr-not-required"'; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Enforce protected-path ADR gate
-        if: steps.label.outputs.skip != 'true'
-        run: scripts/check-adr-required.sh "origin/${{ github.event.pull_request.base.ref }}"

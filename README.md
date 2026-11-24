@@ -208,15 +208,14 @@ using the same shortcut model as iPhone with compact, keyboard-navigable rows.
 
 - Zero telemetry. Matomo, Sentry, Firebase, Mixpanel, and Amplitude are
   banned imports.
-- Zero-network-by-default invariant verified by `BrevTesting` and
-  `scripts/privacy-audit.sh`; every external lookup (Gravatar, BIMI,
-  favicon, Contacts) is opt-in and listed in `PRIVACY.md` and
-  ADR-0006.
+- Privacy invariants verified by `scripts/privacy-audit.sh`; every external
+  lookup (Gravatar, BIMI, favicon, Contacts) is documented in `PRIVACY.md` and
+  [docs/design/privacy-and-security.md](docs/design/privacy-and-security.md).
 - Optional cross-device preference sync through your own iCloud
   Key-Value Storage (snoozes, VIPs, inbox category choices, pinned
   messages, signatures, templates, and similar small preferences —
   never mail, accounts, or passwords). Off by default; Settings →
-  Privacy → "Sync preferences with iCloud" (ADR-0056).
+  Sync & Storage → Preferences.
 - HTML remote-content detection covers `src` / `srcset` / `poster`
   / `background` / stylesheet URLs (quoted and unquoted) and the
   non-rich fallback skips attributed-HTML import for remote-asset
@@ -277,8 +276,8 @@ using the same shortcut model as iPhone with compact, keyboard-navigable rows.
 ### Developer experience
 
 - Tuist + SPM project generation, `mise`-pinned toolchain,
-  custom SwiftLint rules enforcing the ADR-0028 invariants, ADR
-  required-paths CI gate.
+  custom SwiftLint rules enforcing Brev's theme and privacy invariants,
+  and automated privacy audit checks.
 - Snapshot tests for every BrevDesign primitive and BrevMail
   surface across every built-in theme; Swift Testing for behavior;
   `scripts/desktop-smoke-mock.sh` and `scripts/privacy-audit.sh`
@@ -291,18 +290,18 @@ using the same shortcut model as iPhone with compact, keyboard-navigable rows.
 
 ## Roadmap
 
-The roadmap is governed by [ADR-0028](ADRs/0028-mail-provider-architecture.md)
-(provider architecture and invariants) and
-[ADR-0029](ADRs/0029-imap-smtp-backend-foundation.md)
-(IMAP/SMTP backend foundation).
-The lists below are the user-facing shape of those decisions, not
+The roadmap is governed by Brev's living design documents in
+[docs/design/README.md](docs/design/README.md) (starting with
+[architecture.md](docs/design/architecture.md) and
+[providers.md](docs/design/providers.md)).
+The lists below are the user-facing shape of those designs, not
 commitments to dates.
 
 ### Toward v1 release
 
 v1 ships when Henrik can use Brev as a daily driver on macOS and
-iOS for 30 days each without falling back to another client
-(ADR-0028). The current focus is closing the remaining gaps:
+iOS for 30 days each without falling back to another client.
+The current focus is closing the remaining gaps:
 
 - Real-provider QA under realistic mailbox volumes, including Gmail API,
   Gmail IMAP fallback, Fastmail/profile autodiscovery, and generic IMAP/SMTP.
@@ -370,28 +369,26 @@ them. They are not committed.
 ### Calendar and Contacts status
 
 Calendar, Contacts, and Tasks browsing and authoring ship under
-[ADR-0072](ADRs/0072-provider-neutral-calendar-contact-authoring.md) (superseding
-ADR-0039's authoring boundary) for connected Google and DAV sources; availability
-still depends on the source reporting write capability, and the roadmap slices
-that remain open are listed under Future/deferred above.
+[docs/design/calendar-contacts-tasks.md](docs/design/calendar-contacts-tasks.md)
+for connected Google and DAV sources; availability still depends on the source
+reporting write capability, and the roadmap slices that remain open are listed
+under Future/deferred above.
 
 ### Permanent non-goals
 
 - Windows or Linux ports.
-- kDrive integration. Calendar/Contacts expansion is governed by the proposal
-  above, rather than an unconditional permanent exclusion.
-- Automatic AI on read or compose. AI is always user-initiated,
-  per ADR-0008 and ADR-0028 invariant 6.
+- Brev-operated cloud mail proxies or hosted AI proxies.
 - Telemetry of any kind, even "anonymous" or "crash-only".
 
 ## Architecture
 
-See `ADRs/` for the architectural decisions. Start with:
+See [docs/design/README.md](docs/design/README.md) for Brev's living design
+documents. Start with:
 
-- [ADR-0001: MailBackend domain boundary](ADRs/0001-backend-abstraction.md)
-- [ADR-0028: Mail provider architecture and invariants](ADRs/0028-mail-provider-architecture.md)
-- [ADR-0029: IMAP/SMTP backend foundation](ADRs/0029-imap-smtp-backend-foundation.md)
-- [ADR-0064: First-class Gmail API backend](ADRs/0064-first-class-gmail-api-backend.md)
+- [Architecture & Module Boundaries](docs/design/architecture.md)
+- [Privacy & Security](docs/design/privacy-and-security.md)
+- [Mail Sync, Storage & Offline Engine](docs/design/mail-sync-and-storage.md)
+- [Mail Providers & Authentication](docs/design/providers.md)
 
 ## Building
 
@@ -548,13 +545,15 @@ XcodeBuildMCP builds from a fresh checkout.
 ## Linting
 
 ```sh
-scripts/lint.sh        # CI-equivalent: swiftformat --lint + swiftlint --strict + ADR gate
+scripts/lint.sh        # CI-equivalent: swiftformat --lint + swiftlint --strict
 scripts/format.sh      # apply swiftformat fixes
 ```
 
 Custom lint rules enforce the invariants in
-[ADR-0028](ADRs/0028-mail-provider-architecture.md) — see
-[ADR-0005](ADRs/0005-enforcement.md) for the full list.
+[architecture.md](docs/design/architecture.md) and
+[privacy-and-security.md](docs/design/privacy-and-security.md) — see
+[platform-release-and-qa.md](docs/design/platform-release-and-qa.md) for the
+full list.
 
 ## Localization
 
@@ -582,8 +581,8 @@ no separate extraction step to run.
   formats (MIME, ICS, CalDAV XML) are never wrapped — only
   user-visible text is localized.
 
-See [ADR-0058](ADRs/0058-localization-via-string-catalogs.md) for the
-full rationale.
+See [design-system-and-ui.md](docs/design/design-system-and-ui.md) for the
+full localization contract.
 
 **Adding a language:** open the relevant `.xcstrings` file in Xcode
 and add the locale there — Xcode manages per-string translation state
