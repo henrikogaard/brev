@@ -63,8 +63,7 @@ Every external network call Brev makes is either core to an account the user add
 
 - `BrevCrypto` encapsulates all cryptographic operations so views and mail adapters never see low-level CMS/Security types.
 - **Inbound verification & decryption:** Supported on both macOS and iOS with clear signature/encryption badges in the reader.
-- **Outbound signing & encryption:** Supported on macOS via Apple's CMS encoder; fails closed rather than silently downgrading to plaintext when requested security cannot be satisfied.
-- **iOS outbound S/MIME (relaxed from former ADR-0036):** Rather than treating iOS outbound S/MIME as a permanent non-goal, iOS remains fail-closed *until* a standards-compliant RFC 8551 CMS encoder (e.g. SwiftCrypto / BoringSSL-backed) is integrated, at which point both platforms share full S/MIME parity.
+- **Outbound signing & encryption:** Supported on both macOS and iOS using local Keychain certificates and identities only (zero network or directory lookups). macOS uses Apple's `CMSEncoder` and iOS uses `BrevCrypto`'s pure-Swift RFC 8551 / RFC 5652 CMS DER encoder (`PureSwiftCMSEncoder`, built solely on `Security`, `CryptoKit`, and `CommonCrypto` with SHA-256 detached `SignedData` for RSA/ECDSA keys and AES-256-CBC + RSA PKCS#1 `EnvelopedData`). Both platforms fail closed via `OutboundMessageSecurityPolicy` rather than silently downgrading to plaintext when requested security cannot be satisfied.
 - OpenPGP is retired (`scripts/test-openpgp-retired.sh`).
 
 ## Sign-In Code & Link Detection

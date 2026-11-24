@@ -53,13 +53,9 @@ struct SecuritySection: View {
             )
         ) {
             SettingsGroupStack {
-                #if os(macOS)
                 defaultsGroup
                 keyCatalogGroup
                 importExportGroup
-                #else
-                unavailableOnIOSGroup
-                #endif
             }
         }
         .alert(item: $pendingConfirmation) { pending in
@@ -81,25 +77,6 @@ struct SecuritySection: View {
             expandDetails(matching: target)
         }
     }
-
-    #if os(iOS)
-    private var unavailableOnIOSGroup: some View {
-        SettingsGroup(
-            title: String(localized: "Message security", bundle: .module),
-            subtitle: String(localized: "Platform availability", bundle: .module),
-            symbolName: "lock.shield"
-        ) {
-            SettingsInfoCallout(
-                symbolName: "iphone.slash",
-                message: String(
-                    localized: "Signing and encryption are unavailable on iOS in this release. Brev blocks a secured send when no supported engine is available; it never silently sends plaintext instead.",
-                    bundle: .module
-                ),
-                tone: .info
-            )
-        }
-    }
-    #endif
 
     private var defaultsGroup: some View {
         SettingsGroup(

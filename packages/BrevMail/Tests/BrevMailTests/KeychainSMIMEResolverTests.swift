@@ -10,7 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-#if os(macOS)
+import BrevBackend
 @testable import BrevMail
 import BrevSettings
 import Foundation
@@ -117,5 +117,21 @@ struct KeychainSMIMEResolverTests {
         let certs = await resolver.encryptionCertificates(forRecipients: [smimeEmail])
         #expect(certs.isEmpty)
     }
+
+    @Test("standard outbound preparer fails closed with policy error when local material is missing")
+    func standardFactoryFailsClosedWithPolicyError() async throws {
+        let preparer = OutboundMessagePreparerFactory.makeStandard(
+            settingsProvider: { settings([]) },
+            materialStore: FakeMaterialStore([:])
+        )
+        let mime = Data("Subject: Test\r\n\r\nHello".utf8)
+        let request = OutboundMessageSecurityRequest(
+            senderEmail: smimeEmail,
+            to: ["recipient@brev.example"],
+            mode: .sign
+        )
+        await #expect(throws: OutboundMessageSecurityError.missingSigningIdentity(senderEmail: smimeEmail)) {
+            _ = try await preparer.prepare(mimeData: mime, request: request)
+        }
+    }
 }
-#endif

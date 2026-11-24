@@ -10,7 +10,6 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-#if os(macOS)
 @testable import BrevBackend
 @testable import BrevCrypto
 import Foundation
@@ -84,7 +83,10 @@ struct SMIMEOutboundMessagePreparerTests {
         let split = MIMEEntitySplit.make(from: message)
         let sigBase64 = extractBase64Part(text, afterMarker: "filename=\"smime.p7s\"")
         let signature = try #require(Data(base64Encoded: sigBase64, options: .ignoreUnknownCharacters))
+        #expect(!signature.isEmpty)
+        #if os(macOS)
         try verifyDetached(signature: signature, content: split.contentEntity)
+        #endif
     }
 
     @Test("encrypts into application/pkcs7-mime enveloped-data")
@@ -120,6 +122,7 @@ struct SMIMEOutboundMessagePreparerTests {
         return String(rest)
     }
 
+    #if os(macOS)
     private func verifyDetached(signature: Data, content: Data) throws {
         var decoderOpt: CMSDecoder?
         try #require(CMSDecoderCreate(&decoderOpt) == errSecSuccess)
@@ -133,5 +136,5 @@ struct SMIMEOutboundMessagePreparerTests {
         CMSDecoderCopySignerStatus(decoder, 0, SecPolicyCreateBasicX509(), false, &signerStatus, &trust, &certVerify)
         #expect(signerStatus == .valid)
     }
+    #endif
 }
-#endif

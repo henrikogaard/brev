@@ -1,7 +1,83 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-
+    "A recipient certificate does not support RSA S/MIME encryption, so the message was not sent." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Et mottakersertifikat støtter ikke RSA S/MIME-kryptering, så meldingen ble ikke sendt."
+          }
+        }
+      }
+    },
+    "A recipient encryption certificate is missing a usable public key, so the message was not sent." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Et mottakersertifikat for kryptering mangler en brukbar offentlig nøkkel, så meldingen ble ikke sendt."
+          }
+        }
+      }
+    },
+    "An S/MIME certificate could not be parsed, so the message was not sent." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Et S/MIME-sertifikat kunne ikke leses, så meldingen ble ikke sendt."
+          }
+        }
+      }
+    },
+    "Encrypting the message failed, so it was not sent." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kryptering av meldingen mislyktes, så den ble ikke sendt."
+          }
+        }
+      }
+    },
+    "Signing the message failed, so it was not sent." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signering av meldingen mislyktes, så den ble ikke sendt."
+          }
+        }
+      }
+    },
+    "The S/MIME signing key uses an unsupported algorithm, so the message was not sent." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "S/MIME-signeringsnøkkelen bruker en algoritme som ikke støttes, så meldingen ble ikke sendt."
+          }
+        }
+      }
+    },
+    "The selected S/MIME signing identity is incomplete, so the message was not sent." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "nb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den valgte S/MIME-signeringsidentiteten er ufullstendig, så meldingen ble ikke sendt."
+          }
+        }
+      }
+    }
   },
   "version" : "1.0"
 }

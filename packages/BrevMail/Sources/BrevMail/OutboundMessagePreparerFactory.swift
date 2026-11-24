@@ -14,42 +14,38 @@ import BrevBackend
 import BrevCrypto
 import BrevSettings
 import Foundation
-#if os(macOS)
 import Security
-#endif
 
 /// Builds the production S/MIME engine, backed by the local Keychain key store.
 /// Returns the `BrevBackend` protocol type so the app targets can inject it into
 /// `IMAPAccountConnector.standard(outboundMessagePreparer:)` without importing
 /// `BrevCrypto`.
 ///
-/// macOS uses Apple's CMS encoder. iOS has no public CMS encoder, so its empty
-/// composite fails closed if stale state ever requests message security.
+/// macOS uses Apple's `CMSEncoder` and iOS uses `BrevCrypto`'s pure-Swift RFC
+/// 8551/5652 CMS DER encoder; both platforms resolve material strictly from the
+/// local Keychain and fail closed when required certificates or identities are
+/// missing.
 public enum OutboundMessagePreparerFactory {
+    /// Creates the standard local-Keychain S/MIME outbound preparer.
     public static func makeStandard(
         settingsProvider: @escaping @Sendable () -> SecurityKeyMaterialSettings = {
             SecurityKeyMaterialSettings.load()
         },
         materialStore: any SecurityKeyMaterialStore = SecurityKeychainMaterialStore()
     ) -> any OutboundMessagePreparing {
-        #if os(macOS)
-        return SMIMEOutboundMessagePreparer(
+        SMIMEOutboundMessagePreparer(
             resolver: KeychainSMIMEResolver(
                 settingsProvider: settingsProvider,
                 materialStore: materialStore
             )
         )
-        #else
-        return CompositeOutboundMessagePreparer([])
-        #endif
     }
 }
 
-#if os(macOS)
 /// Resolves S/MIME (CMS) key material from the local Keychain key store for the
-/// outbound engine. Local-only — no directory lookups (ADR-0021 #1). Only
-/// `.trusted` `.smime` records with the required capability are eligible
-/// (fail-closed before use).
+/// outbound engine. Local-only — no directory lookups
+/// (`docs/design/privacy-and-security.md`). Only `.trusted` `.smime` records
+/// with the required capability are eligible (fail-closed before use).
 ///
 /// Signing material is a PKCS#12 blob (certificate + private key); recipient
 /// encryption material is either a DER certificate or a PKCS#12 from which the
@@ -158,4 +154,3 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
         return certOpt
     }
 }
-#endif

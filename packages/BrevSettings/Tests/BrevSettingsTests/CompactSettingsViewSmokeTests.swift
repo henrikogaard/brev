@@ -434,20 +434,25 @@ struct CompactSettingsViewSmokeTests {
         }
     }
 
-    @Test("settings search expands the import and export disclosure on macOS")
+    @Test("settings search expands the import and export disclosure")
     @MainActor
     func settingsSearchExpandsImportExportDisclosure() async throws {
-        #if os(macOS)
         let defaults = try Self.makeDefaults(named: "security-search-disclosure")
         let view = SecuritySection(settingsStore: SettingsPersistenceStore(defaults: defaults))
             .environment(\.settingsSearchTarget, "Allow private material in exports")
             .frame(width: 860, height: 760)
             .background(BrevTheme.brevPaper.bgPrimary.color)
             .brevTheme(.brevPaper)
+
+        #if os(macOS)
         let image = try await renderMacImage(view, width: 860, height: 760)
         try recordArtifactIfRequested(image, name: "security-search-import-export")
+        #elseif canImport(UIKit)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        try recordArtifactIfRequested(#require(renderer.uiImage), name: "security-search-import-export")
         #else
-        Issue.record("The import and export disclosure is a macOS-only surface.")
+        Issue.record("No supported image renderer is available on this platform.")
         #endif
     }
 
