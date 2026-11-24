@@ -1358,19 +1358,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
             let selectedRange = textView.selectedRange()
             guard allowsEdit(in: selectedRange, storage: textStorage) else { return }
 
-            // Collect all paragraph ranges that overlap the selection.
-            let nsString = textStorage.string as NSString
-            var paragraphRanges: [NSRange] = []
-            var pos = selectedRange.location
-            let end = selectedRange.upperBound == 0 ? selectedRange.location : selectedRange.upperBound
-            while pos <= end {
-                let paraRange = nsString.paragraphRange(for: NSRange(location: pos, length: 0))
-                paragraphRanges.append(paraRange)
-                let next = paraRange.upperBound
-                if next <= pos { break }
-                pos = next
-                if pos > end { break }
-            }
+            let paragraphRanges = selectedParagraphRanges(in: textStorage, selectedRange: selectedRange)
             guard !paragraphRanges.isEmpty else { return }
             let unionRange = paragraphRanges.reduce(paragraphRanges[0]) { NSUnionRange($0, $1) }
             guard allowsEdit(in: unionRange, storage: textStorage) else { return }
@@ -2609,18 +2597,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             let textStorage = textView.textStorage
             let selectedRange = textView.selectedRange
             guard allowsEdit(in: selectedRange, storage: textStorage) else { return }
-            let nsString = textStorage.string as NSString
-            var paragraphRanges: [NSRange] = []
-            var pos = selectedRange.location
-            let end = selectedRange.upperBound == 0 ? selectedRange.location : selectedRange.upperBound
-            while pos <= end {
-                let paraRange = nsString.paragraphRange(for: NSRange(location: pos, length: 0))
-                paragraphRanges.append(paraRange)
-                let next = paraRange.upperBound
-                if next <= pos { break }
-                pos = next
-                if pos > end { break }
-            }
+            let paragraphRanges = selectedParagraphRanges(in: textStorage, selectedRange: selectedRange)
             guard !paragraphRanges.isEmpty else { return }
             let unionRange = paragraphRanges.reduce(paragraphRanges[0]) { NSUnionRange($0, $1) }
             guard allowsEdit(in: unionRange, storage: textStorage) else { return }

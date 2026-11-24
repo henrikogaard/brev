@@ -60,15 +60,31 @@ final class ComposeInlineImageRegistry {
     /// Images currently staged for composition.
     private(set) var staged: [ComposeInlineImage] = []
 
+    /// Normalized Content-IDs referenced by read-only preserved quoted HTML
+    /// outside the editable text storage. Protected IDs always count toward the
+    /// aggregate inline byte cap and are never evicted as undo history.
+    private(set) var protectedContentIDs: Set<String> = []
+
+    /// Updates the set of Content-IDs protected by read-only preserved quoted HTML.
+    func setProtectedContentIDs(_ contentIDs: Set<String>) {
+        protectedContentIDs = Set(contentIDs.map(ComposeInlineImageData.normalizedContentID))
+    }
+
+    /// Clears all staged images and protected Content-IDs when ending or resetting a session.
+    func clear() {
+        staged = []
+        protectedContentIDs = []
+    }
+
     /// Total byte count across all currently staged inline images.
     var totalBytes: Int {
         staged.reduce(0) { $0 + $1.data.count }
     }
 
     /// Total byte count across staged inline images whose Content-IDs are active
-    /// in `keepingContentIDs`.
+    /// in `keepingContentIDs` or protected by preserved quoted HTML.
     func activeTotalBytes(keepingContentIDs: Set<String>) -> Int {
-        referencedImages(keepingContentIDs: keepingContentIDs)
+        referencedImages(keepingContentIDs: keepingContentIDs.union(protectedContentIDs))
             .reduce(0) { $0 + $1.data.count }
     }
 
@@ -78,8 +94,9 @@ final class ComposeInlineImageRegistry {
     ///   - mimeType: The MIME type of the image.
     ///   - activeContentIDs: Optional set of Content-IDs still referenced in the
     ///     body. When provided, aggregate byte caps are checked against active
-    ///     images only (pruning unreferenced undo-retained entries only if needed
-    ///     to stay within `maxTotalBytes`).
+    ///     images plus `protectedContentIDs` (pruning unreferenced undo-retained
+    ///     entries only if needed to stay within `maxTotalBytes`, never evicting
+    ///     `protectedContentIDs`).
     ///   - makeID: A closure that generates a Content-ID for the image.
     /// - Returns: The staged image, or nil if the MIME type is not allowed, empty, or exceeds byte caps.
     func stage(
@@ -96,12 +113,13 @@ final class ComposeInlineImageRegistry {
         guard data.count <= ComposeInlineImagePolicy.maxBytes else {
             return nil
         }
-        let currentBytes = activeContentIDs.map { activeTotalBytes(keepingContentIDs: $0) } ?? totalBytes
+        let effectiveActiveIDs = activeContentIDs.map { $0.union(protectedContentIDs) }
+        let currentBytes = effectiveActiveIDs.map { activeTotalBytes(keepingContentIDs: $0) } ?? totalBytes
         guard currentBytes + data.count <= ComposeInlineImagePolicy.maxTotalBytes else {
             return nil
         }
-        if let activeContentIDs, totalBytes + data.count > ComposeInlineImagePolicy.maxTotalBytes {
-            reconcile(keepingContentIDs: activeContentIDs)
+        if let effectiveActiveIDs, totalBytes + data.count > ComposeInlineImagePolicy.maxTotalBytes {
+            reconcile(keepingContentIDs: effectiveActiveIDs)
         }
         let contentID = makeID()
         let image = ComposeInlineImage(

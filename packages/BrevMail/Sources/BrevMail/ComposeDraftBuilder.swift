@@ -645,18 +645,20 @@ enum ComposeAutoSavePolicy {
 
     static func shouldScheduleAutoSave(
         canSave: Bool,
+        hasPersistedDraft: Bool = false,
         isBusy: Bool,
         isBlocked: Bool
     ) -> Bool {
-        canSave && !isBusy && !isBlocked
+        (canSave || hasPersistedDraft) && !isBusy && !isBlocked
     }
 
     static func shouldAutoSaveOnDismiss(
         canSave: Bool,
+        hasPersistedDraft: Bool = false,
         isBusy: Bool,
         hasCompletedExplicitOperation: Bool
     ) -> Bool {
-        canSave && !isBusy && !hasCompletedExplicitOperation
+        (canSave || hasPersistedDraft) && !isBusy && !hasCompletedExplicitOperation
     }
 }
 
