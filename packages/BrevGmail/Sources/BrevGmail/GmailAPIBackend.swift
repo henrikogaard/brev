@@ -1061,9 +1061,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     }
 
     /// Returns `true` only when free-text search terms contain plain positive keywords
-    /// or balanced quoted phrases (no negations like `-draft`, Gmail boolean/grouping
-    /// syntax like `OR`/`{}`/`()`, or inline Gmail operators like `from:`/`subject:`/`has:`/`label:`
-    /// outside double quotes, and no unbalanced quotes).
+    /// or balanced quoted phrases (no negations like `-draft`, exact-word `+budget`,
+    /// Gmail boolean/grouping syntax like `OR`/`{}`/`()`, or inline Gmail operators like
+    /// `from:`/`subject:`/`has:`/`label:` outside double quotes, and no unbalanced quotes).
     private static func isPlainPositiveSearchText(_ text: String) -> Bool {
         var inQuotes = false
         var currentUnquoted = ""
@@ -1076,7 +1076,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             }
             for rawToken in segment.split(whereSeparator: \.isWhitespace) {
                 let token = String(rawToken)
-                if token.hasPrefix("-") { return false }
+                if token.hasPrefix("-") || token.hasPrefix("+") { return false }
                 if token == "OR" || token == "AND" || token == "NOT" { return false }
                 if token.range(of: #"^[A-Za-z][A-Za-z0-9_-]*:"#, options: .regularExpression) != nil {
                     return false
@@ -1095,7 +1095,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
                     currentQuoted = ""
                     inQuotes = false
                 } else {
-                    if currentUnquoted.hasSuffix("-") || currentUnquoted.hasSuffix(":") {
+                    if currentUnquoted.hasSuffix("-") || currentUnquoted.hasSuffix("+") || currentUnquoted.hasSuffix(":") {
                         return false
                     }
                     guard isValidUnquotedSegment(currentUnquoted) else { return false }
@@ -1111,6 +1111,47 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         guard !inQuotes else { return false }
         guard isValidUnquotedSegment(currentUnquoted) else { return false }
         return hasContent
+    }
+
+    /// Returns `true` when `text` contains an unquoted Gmail Spam/Trash scope operator
+    /// (`in:anywhere`, `in:spam`, `in:trash`, `is:spam`, or `is:trash`). Operators inside
+    /// double-quoted phrases (e.g. `"memo in:anywhere examples"`) are ignored.
+    private static func containsUnquotedSpamOrTrashOperator(in text: String) -> Bool {
+        let spamTrashOperators: Set<String> = [
+            "in:anywhere",
+            "in:spam",
+            "in:trash",
+            "is:spam",
+            "is:trash"
+        ]
+        var inQuotes = false
+        var unquoted = ""
+        let delimiters = CharacterSet(charactersIn: "(){}")
+
+        func segmentMatches(_ segment: String) -> Bool {
+            for rawToken in segment.split(whereSeparator: \.isWhitespace) {
+                let trimmed = rawToken
+                    .trimmingCharacters(in: delimiters)
+                    .lowercased()
+                if spamTrashOperators.contains(trimmed) {
+                    return true
+                }
+            }
+            return false
+        }
+
+        for char in text {
+            if char == "\"" {
+                if !inQuotes {
+                    if segmentMatches(unquoted) { return true }
+                    unquoted = ""
+                }
+                inQuotes.toggle()
+            } else if !inQuotes {
+                unquoted.append(char)
+            }
+        }
+        return !inQuotes && segmentMatches(unquoted)
     }
 
     private func checkSearch(_ generation: UUID) throws {
@@ -2951,8 +2992,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             }
         }
         let joined = terms.joined(separator: " ")
-        let includeSpamTrash = joined
-            .range(of: #"(?:^|\s)in:(?:anywhere|spam|trash)(?:\s|$)"#, options: .regularExpression) != nil
+        let includeSpamTrash = Self.containsUnquotedSpamOrTrashOperator(in: joined)
         return SearchScope(labelID: labelID, query: joined, includeSpamTrash: includeSpamTrash)
     }
 

@@ -740,7 +740,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
         for (key, rows) in attachmentTexts where key.hasPrefix(prefix) {
             let messageID = String(key.dropFirst(prefix.count))
             let matched = rows.contains { row in
-                Self.haystackMatches(Self.normalizedSearchText(row.name + " " + row.text), terms: terms)
+                Self.attachmentRowMatches(name: row.name, text: row.text, terms: terms)
             }
             if matched { result.insert(messageID) }
         }
@@ -774,7 +774,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
             }
             let matchingNames = rows
                 .filter { row in
-                    Self.haystackMatches(Self.normalizedSearchText(row.name + " " + row.text), terms: terms)
+                    Self.attachmentRowMatches(name: row.name, text: row.text, terms: terms)
                 }
                 .map(\.name)
             if let name = matchingNames.min(by: {
@@ -784,6 +784,21 @@ actor InMemorySyncStore: SyncStoreProtocol {
             }
         }
         return result
+    }
+
+    /// Evaluates each search term against attachment `name` and `text` as separate
+    /// columns, matching SQLite FTS5 so quoted phrases never span across the filename
+    /// and extracted-text boundary.
+    private static func attachmentRowMatches(
+        name: String,
+        text: String,
+        terms: [SearchTerm]
+    ) -> Bool {
+        guard !terms.isEmpty else { return false }
+        let columns = [normalizedSearchText(name), normalizedSearchText(text)]
+        return terms.allSatisfy { term in
+            columns.contains { haystackMatches($0, terms: [term]) }
+        }
     }
 
     // MARK: Private

@@ -288,8 +288,8 @@ struct GmailAttachmentIndexTests {
         for (id, folder, text) in [
             ("msg-online", "INBOX", "solstice-clause-88"),
             ("msg-local-att", "INBOX", "solstice-clause-88"),
-            ("msg-trashed-att", "Label_Work", "solstice-clause-88"),
-            ("msg-quoted-adjacent", "INBOX", "Approved Q4 (final) budget"),
+            ("msg-trashed-att", "Label_Work", "solstice-clause-88 memo in:anywhere examples"),
+            ("msg-quoted-adjacent", "INBOX", "Budgeting Q4 (final) budget"),
             ("msg-quoted-split", "INBOX", "Approved Q4 report final")
         ] {
             try await index.indexAttachmentText(
@@ -332,9 +332,19 @@ struct GmailAttachmentIndexTests {
         #expect(quotedHits.map(\.id) == ["msg-online", "msg-quoted-adjacent"])
         #expect(await index.recordedQueryTexts().contains(#""Q4 (final)""#))
 
-        // Negation, inline operators, unquoted grouping, and unbalanced quotes must NOT invoke local FTS merge.
+        // Quoted `in:anywhere` is literal phrase text, NOT a Gmail Spam/Trash scope operator;
+        // it must not set `includeSpamTrash = true` or admit trashed local attachment hits.
+        await index.resetRecordedQueries()
+        let quotedAnywhereHits: [MessageHeader] = try await backend.search(
+            SearchQuery(text: #""memo in:anywhere examples""#)
+        )
+        #expect(quotedAnywhereHits.map(\.id) == ["msg-online"])
+
+        // Negation, exact-word `+word`, inline operators, unquoted grouping, and unbalanced quotes
+        // must NOT invoke local FTS merge (and `+budget "Q4 (final)"` must not match `Budgeting Q4 (final)`).
         for blockedText in [
             "solstice-clause-88 -draft",
+            #"+budget "Q4 (final)""#,
             "solstice-clause-88 from:alice@example.org",
             "(solstice-clause-88 OR other)",
             #""Q4 (final)"#
@@ -344,6 +354,15 @@ struct GmailAttachmentIndexTests {
             #expect(hits.map(\.id) == ["msg-online"])
             #expect(await index.recordedQueryTexts().isEmpty)
         }
+
+        // Cache-only search also skips local attachment FTS for `+budget "Q4 (final)"`.
+        await index.resetRecordedQueries()
+        let cachedPlusHits: [MessageHeader] = try await backend.search(SearchQuery(
+            text: #"+budget "Q4 (final)""#,
+            execution: .cacheOnly
+        ))
+        #expect(cachedPlusHits.isEmpty)
+        #expect(await index.recordedQueryTexts().isEmpty)
 
         // Metadata filter excludes local attachment hit when sender does not match.
         let aliceOnly: [MessageHeader] = try await backend.search(SearchQuery(

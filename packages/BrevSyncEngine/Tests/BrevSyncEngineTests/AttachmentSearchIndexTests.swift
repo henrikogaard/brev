@@ -461,5 +461,10 @@ struct AttachmentSearchIndexTests {
             adjacentHeader.id,
             nonAdjacentHeader.id
         ])
+
+        // A quoted phrase spanning filename + extracted text boundary must not match in either store.
+        let crossColumnPhrase = SearchQuery(text: #""pdf Approved""#)
+        #expect(sqlite.matchingAttachmentMessageIDs(crossColumnPhrase, accountID: account.id).isEmpty)
+        #expect(await inMemory.matchingAttachmentMessageIDs(crossColumnPhrase, accountID: account.id).isEmpty)
     }
 }

@@ -1,5 +1,15 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #353 round-5 review fixes (Issue #7)
+
+- Goal: address all 3 round-5 Devin Review items on PR #353 (`feature/background-recent-indexing`) in one surgical commit.
+- Changes:
+  - `GmailAPIBackend.searchScope(for:)`: added `containsUnquotedSpamOrTrashOperator(in:)` so `in:anywhere`/`in:spam`/`in:trash`/`is:spam`/`is:trash` only set `includeSpamTrash = true` outside double-quoted phrases.
+  - `GmailAPIBackend.isPlainPositiveSearchText(_:)`: rejected unquoted `+word` / `+"phrase"` exact-word Gmail operators so local FTS prefix matching cannot over-match.
+  - `InMemorySyncStore`: added `attachmentRowMatches(name:text:terms:)` matching attachment filename and extracted text as separate columns (parity with SQLite FTS5) so quoted phrases cannot span across the filename/content boundary.
+  - Added regression tests in `AttachmentSearchIndexTests` and `GmailAttachmentIndexTests`.
+- Verification: `swift test --package-path packages/BrevSyncEngine --filter AttachmentSearchIndexTests`, `swift test --package-path packages/BrevGmail`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
 ## 2026-11-24 — Agent — PR #353 round-4 review fixes (Issue #7)
 
 - Goal: address both round-4 Devin Review items on PR #353 (`feature/background-recent-indexing`) in one surgical commit.
