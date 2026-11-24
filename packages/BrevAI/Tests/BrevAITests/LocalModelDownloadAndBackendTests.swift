@@ -724,6 +724,35 @@ struct LocalModelDownloadAndBackendTests {
         #expect(!FileManager.default.fileExists(atPath: sysPath))
         #expect(!FileManager.default.fileExists(atPath: promptPath))
     }
+
+    @Test("Prompt temp directory sweep removes abandoned directories while preserving actively locked invocations")
+    func promptTempSweepRemovesAbandonedAndPreservesLocked() throws {
+        let tempRoot = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let abandonedDir = tempRoot.appendingPathComponent("abandoned-session", isDirectory: true)
+        let activeDir = tempRoot.appendingPathComponent("active-session", isDirectory: true)
+        try FileManager.default.createDirectory(at: abandonedDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: activeDir, withIntermediateDirectories: true)
+
+        try Data("leftover-mail-body".utf8).write(to: abandonedDir.appendingPathComponent("prompt.txt"))
+        try Data("active-mail-body".utf8).write(to: activeDir.appendingPathComponent("prompt.txt"))
+
+        let activeLockURL = activeDir.appendingPathComponent(LocalModelPromptTempStorage.lockFileName)
+        let fd = open(activeLockURL.path, O_RDWR | O_CREAT | O_TRUNC, 0o600)
+        #expect(fd >= 0)
+        #expect(flock(fd, LOCK_EX | LOCK_NB) == 0)
+        defer {
+            _ = flock(fd, LOCK_UN)
+            close(fd)
+        }
+
+        LocalModelPromptTempStorage.cleanupAbandonedPromptDirectories(in: tempRoot)
+
+        #expect(!FileManager.default.fileExists(atPath: abandonedDir.path))
+        #expect(FileManager.default.fileExists(atPath: activeDir.path))
+        #expect(FileManager.default.fileExists(atPath: activeDir.appendingPathComponent("prompt.txt").path))
+    }
     #endif
 
     @Test("Downloaded local model strings have Norwegian catalog translations")

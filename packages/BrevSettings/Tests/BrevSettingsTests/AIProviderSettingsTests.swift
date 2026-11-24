@@ -414,22 +414,75 @@ struct AIProviderSettingsTests {
         #expect(supportedInstalled.canDelete)
     }
 
-    @Test("External provider refresh preserves unsaved new and dirty editor drafts")
-    func externalRefreshPreservesUnsavedDrafts() throws {
-        let hosted = try #require(AIProviderConfiguration(
+    @Test("External provider refresh performs field-level three-way rebase across demoted defaults and replaced local models")
+    func externalRefreshThreeWayRebasePreservesEditsAndPullsUntouchedChanges() throws {
+        // (a) Hosted default demoted by "Use model" while its displayName is being edited.
+        let hostedBefore = try #require(AIProviderConfiguration(
             id: AIProviderID("hosted-1"),
             kind: .openAICompatible,
             displayName: "OpenAI",
             endpointURL: URL(string: "https://api.openai.com/v1"),
             modelID: "gpt-4.1-mini",
             isEnabled: true,
-            isDefault: false,
+            isDefault: true,
             assignedAccountID: nil
         ))
-        let localModel = AIProviderConfiguration.onDeviceDownloadedModel(isEnabled: true, isDefault: true)
-        let updatedList = [hosted, localModel]
+        var hostedAfter = hostedBefore
+        hostedAfter.isDefault = false
 
-        // 1. Adding a brand-new unsaved provider: keep selection nil and do not reload draft.
+        let localModel = AIProviderConfiguration.onDeviceDownloadedModel(isEnabled: true, isDefault: true)
+        let updatedList = [hostedAfter, localModel]
+
+        let hostedBaseline = AIProviderSettingsDraft(configuration: hostedBefore, hasSavedAPIKey: true)
+        var hostedEdited = hostedBaseline
+        hostedEdited.displayName = "Unsaved Work Name"
+        hostedEdited.pendingAPIKey = "sk-unsaved-key"
+
+        let demotedOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: true,
+            selectedProviderID: hostedBefore.id,
+            currentDraft: hostedEdited,
+            baselineDraft: hostedBaseline,
+            updatedConfigurations: updatedList
+        )
+        #expect(demotedOutcome.selectedProviderID == hostedBefore.id)
+        #expect(demotedOutcome.shouldReloadDraft == false)
+        #expect(demotedOutcome.shouldExitEditing == false)
+        let rebasedHosted = try #require(demotedOutcome.rebasedDraft)
+        #expect(rebasedHosted.displayName == "Unsaved Work Name")
+        #expect(rebasedHosted.pendingAPIKey == "sk-unsaved-key")
+        #expect(rebasedHosted.isDefault == false)
+        #expect(demotedOutcome.updatedBaselineDraft?.isDefault == false)
+        #expect(demotedOutcome.updatedBaselineDraft?.displayName == "OpenAI")
+
+        // (b) Installed local model replaced while its provider is open for editing.
+        let localBefore = AIProviderConfiguration.onDeviceDownloadedModel(
+            modelID: "qwen2.5-3b-instruct-q4km",
+            isEnabled: true,
+            isDefault: true
+        )
+        let localAfter = AIProviderConfiguration.onDeviceDownloadedModel(
+            modelID: "llama-3.2-3b-instruct-q4km",
+            isEnabled: true,
+            isDefault: true
+        )
+        let localBaseline = AIProviderSettingsDraft(configuration: localBefore, hasSavedAPIKey: false)
+        var localEdited = localBaseline
+        localEdited.displayName = "Offline Mac Model"
+
+        let replacedOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: true,
+            selectedProviderID: localBefore.id,
+            currentDraft: localEdited,
+            baselineDraft: localBaseline,
+            updatedConfigurations: [hostedAfter, localAfter]
+        )
+        let rebasedLocal = try #require(replacedOutcome.rebasedDraft)
+        #expect(rebasedLocal.displayName == "Offline Mac Model")
+        #expect(rebasedLocal.modelID == "llama-3.2-3b-instruct-q4km")
+        #expect(replacedOutcome.updatedBaselineDraft?.modelID == "llama-3.2-3b-instruct-q4km")
+
+        // Adding a brand-new unsaved provider: keep selection nil and do not clobber draft.
         let newDraft = AIProviderSettingsDraft.new(kind: .customOpenAICompatible)
         let addOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
             isEditingProvider: true,
@@ -438,40 +491,60 @@ struct AIProviderSettingsTests {
             baselineDraft: newDraft,
             updatedConfigurations: updatedList
         )
-        #expect(addOutcome == .init(selectedProviderID: nil, shouldReloadDraft: false, shouldExitEditing: false))
+        #expect(addOutcome == .init(
+            selectedProviderID: nil,
+            rebasedDraft: nil,
+            updatedBaselineDraft: nil,
+            shouldReloadDraft: false,
+            shouldExitEditing: false
+        ))
 
-        // 2. Editing an existing provider with unsaved changes: keep selection and do not overwrite draft.
-        let baseline = AIProviderSettingsDraft(configuration: hosted, hasSavedAPIKey: true)
-        var dirty = baseline
-        dirty.displayName = "Unsaved Work Name"
-        let dirtyOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
-            isEditingProvider: true,
-            selectedProviderID: hosted.id,
-            currentDraft: dirty,
-            baselineDraft: baseline,
-            updatedConfigurations: updatedList
-        )
-        #expect(dirtyOutcome == .init(selectedProviderID: hosted.id, shouldReloadDraft: false, shouldExitEditing: false))
-
-        // 3. Editing an unchanged provider: stay on it and reload updated metadata.
-        let cleanOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
-            isEditingProvider: true,
-            selectedProviderID: hosted.id,
-            currentDraft: baseline,
-            baselineDraft: baseline,
-            updatedConfigurations: updatedList
-        )
-        #expect(cleanOutcome == .init(selectedProviderID: hosted.id, shouldReloadDraft: true, shouldExitEditing: false))
-
-        // 4. Edited provider was deleted externally: fall back to the remaining default provider.
+        // Edited provider deleted externally: fall back cleanly to the remaining default provider.
         let deletedOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
             isEditingProvider: true,
             selectedProviderID: AIProviderID("removed-id"),
-            currentDraft: dirty,
-            baselineDraft: baseline,
+            currentDraft: hostedEdited,
+            baselineDraft: hostedBaseline,
             updatedConfigurations: [localModel]
         )
-        #expect(deletedOutcome == .init(selectedProviderID: localModel.id, shouldReloadDraft: true, shouldExitEditing: false))
+        #expect(deletedOutcome == .init(
+            selectedProviderID: localModel.id,
+            rebasedDraft: nil,
+            updatedBaselineDraft: nil,
+            shouldReloadDraft: true,
+            shouldExitEditing: false
+        ))
+    }
+
+    @Test("Completing a local model download unblocks saving an open draft without clobbering edits")
+    func downloadCompletionUnblocksOpenDraftWithoutClobberingEdits() async throws {
+        var openDraft = AIProviderSettingsDraft.new(kind: .onDeviceDownloadedModel)
+        openDraft.displayName = "My Offline Model"
+        openDraft.isEnabled = true
+
+        // Before download finishes, saving is blocked.
+        var installedIDs: Set<String> = []
+        #expect(
+            AIProviderEditorValidation.blockingReason(
+                for: openDraft,
+                appleIntelligenceAvailability: .available,
+                isLocalModelPlatformSupported: true,
+                installedLocalModelIDs: installedIDs
+            ) != nil
+        )
+
+        // Simulate installedModelsRevision refresh after download completes (draft untouched).
+        installedIDs.insert(openDraft.modelID)
+        #expect(
+            AIProviderEditorValidation.blockingReason(
+                for: openDraft,
+                appleIntelligenceAvailability: .available,
+                isLocalModelPlatformSupported: true,
+                installedLocalModelIDs: installedIDs
+            ) == nil
+        )
+        #expect(openDraft.displayName == "My Offline Model")
+        #expect(openDraft.isEnabled == true)
     }
 
     private static func makeDefaults() throws -> UserDefaults {

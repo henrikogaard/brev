@@ -32,6 +32,7 @@ struct LocalModelsSettingsGroup: View {
     private let observeLiveUpdates: Bool
     private let onSelectModel: (LocalModelDescriptor) async -> Void
     private let onModelDeleted: (LocalModelDescriptor) async -> Void
+    private let onInstalledModelsChanged: () async -> Void
 
     init(
         catalog: [LocalModelDescriptor] = LocalModelCatalog.curatedModels,
@@ -41,7 +42,8 @@ struct LocalModelsSettingsGroup: View {
         initialStates: [String: LocalModelDownloadState]? = nil,
         initialTotalInstalledBytes: Int64? = nil,
         onSelectModel: @escaping (LocalModelDescriptor) async -> Void = { _ in },
-        onModelDeleted: @escaping (LocalModelDescriptor) async -> Void = { _ in }
+        onModelDeleted: @escaping (LocalModelDescriptor) async -> Void = { _ in },
+        onInstalledModelsChanged: @escaping () async -> Void = {}
     ) {
         self.catalog = catalog
         self.downloadManager = downloadManager
@@ -50,6 +52,7 @@ struct LocalModelsSettingsGroup: View {
         observeLiveUpdates = initialStates == nil
         self.onSelectModel = onSelectModel
         self.onModelDeleted = onModelDeleted
+        self.onInstalledModelsChanged = onInstalledModelsChanged
         _modelStates = State(initialValue: initialStates ?? [:])
         if let initialTotalInstalledBytes {
             _totalInstalledBytes = State(initialValue: initialTotalInstalledBytes)
@@ -96,10 +99,16 @@ struct LocalModelsSettingsGroup: View {
             }
             .task {
                 guard observeLiveUpdates else { return }
+                var previousInstalledIDs: Set<String>?
                 let stream = await downloadManager.stateUpdates()
                 for await snapshot in stream {
                     modelStates = snapshot
                     totalInstalledBytes = await downloadManager.totalInstalledBytes()
+                    let installedIDs = Set(snapshot.compactMap { $0.value.isInstalled ? $0.key : nil })
+                    if let previousInstalledIDs, previousInstalledIDs != installedIDs {
+                        await onInstalledModelsChanged()
+                    }
+                    previousInstalledIDs = installedIDs
                 }
             }
         }
@@ -273,6 +282,7 @@ struct LocalModelsSettingsGroup: View {
             do {
                 _ = try await downloadManager.download(modelID: model.id)
                 totalInstalledBytes = await downloadManager.totalInstalledBytes()
+                await onInstalledModelsChanged()
             } catch LocalModelDownloadError.cancelled {
                 actionErrorMessage = nil
             } catch {
@@ -287,6 +297,7 @@ struct LocalModelsSettingsGroup: View {
             do {
                 try await downloadManager.deleteModel(modelID: model.id)
                 totalInstalledBytes = await downloadManager.totalInstalledBytes()
+                await onInstalledModelsChanged()
                 await onModelDeleted(model)
             } catch {
                 actionErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

@@ -111,6 +111,16 @@ public final class AppSession {
     /// actions (#307, ADR-0075). Works even when no mail window is open.
     public let notificationActionExecutor: NotificationActionExecutor
     #if os(macOS)
+    /// Sweeps unlocked/abandoned private local-AI prompt temp directories on macOS launch (#304).
+    public static func cleanupAbandonedLocalAIPromptFiles() {
+        DefaultLocalModelInferenceRuntime.cleanupAbandonedPromptDirectories()
+    }
+
+    /// Synchronously terminates active local-AI subprocesses and deletes their prompt temp files on app quit (#304).
+    public static func terminateLocalAIAndCleanupPromptFiles() {
+        DefaultLocalModelInferenceRuntime.terminateActiveAndCleanupAll()
+    }
+
     /// Session-owned presenter for the opt-in macOS new-mail drop-down panel (#307).
     public let newMailPanelController = NewMailDropDownPanelController()
     private var backgroundPanelSubscriptionTasks: [BrevAccount.ID: (identity: ObjectIdentifier, task: Task<Void, Never>)] = [:]

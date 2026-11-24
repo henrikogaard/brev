@@ -35,6 +35,7 @@ struct AIProviderSettingsPanel: View {
     private let localModelDownloadManager: LocalModelDownloadManager
     private let isLocalModelPlatformSupported: Bool
     private let refreshRevision: Int
+    private let installedModelsRevision: Int
     private let onProviderConfigurationChanged: () async -> Void
 
     init(
@@ -45,6 +46,7 @@ struct AIProviderSettingsPanel: View {
         localModelDownloadManager: LocalModelDownloadManager = .shared,
         isLocalModelPlatformSupported: Bool = DefaultLocalModelInferenceRuntime.isPlatformSupported,
         refreshRevision: Int = 0,
+        installedModelsRevision: Int = 0,
         onProviderConfigurationChanged: @escaping () async -> Void = {}
     ) {
         self.settingsStore = settingsStore
@@ -54,6 +56,7 @@ struct AIProviderSettingsPanel: View {
         self.localModelDownloadManager = localModelDownloadManager
         self.isLocalModelPlatformSupported = isLocalModelPlatformSupported
         self.refreshRevision = refreshRevision
+        self.installedModelsRevision = installedModelsRevision
         self.onProviderConfigurationChanged = onProviderConfigurationChanged
     }
 
@@ -74,6 +77,11 @@ struct AIProviderSettingsPanel: View {
             .onChange(of: refreshRevision) { _, _ in
                 Task {
                     await handleExternalRefresh()
+                }
+            }
+            .onChange(of: installedModelsRevision) { _, _ in
+                Task {
+                    await refreshInstalledLocalModels()
                 }
             }
             .onChange(of: isEditingProvider) { _, editing in
@@ -598,6 +606,9 @@ struct AIProviderSettingsPanel: View {
     private func refreshInstalledLocalModels() async {
         let installed = await localModelDownloadManager.installedModels()
         installedLocalModelIDs = Set(installed.map(\.id))
+        if editorBlockingReason == nil, statusMessage?.tone == .warning {
+            statusMessage = nil
+        }
     }
 
     @MainActor
@@ -615,6 +626,12 @@ struct AIProviderSettingsPanel: View {
         selectedProviderID = outcome.selectedProviderID
         if outcome.shouldExitEditing {
             isEditingProvider = false
+        }
+        if let rebasedDraft = outcome.rebasedDraft {
+            draft = rebasedDraft
+        }
+        if let updatedBaselineDraft = outcome.updatedBaselineDraft {
+            baselineDraft = updatedBaselineDraft
         }
         if outcome.shouldReloadDraft {
             await loadSelectedDraft()
@@ -778,6 +795,8 @@ struct AIProviderSettingsPanel: View {
 enum AIProviderEditorPresentation {
     struct RefreshOutcome: Equatable {
         let selectedProviderID: AIProviderID?
+        let rebasedDraft: AIProviderSettingsDraft?
+        let updatedBaselineDraft: AIProviderSettingsDraft?
         let shouldReloadDraft: Bool
         let shouldExitEditing: Bool
     }
@@ -790,7 +809,9 @@ enum AIProviderEditorPresentation {
     }
 
     /// Computes how an external configuration refresh (such as selecting or deleting a local model)
-    /// updates the provider panel without discarding an unsaved open editor draft.
+    /// updates the provider panel via a field-level three-way rebase:
+    /// user-edited fields stay intact, untouched fields pull the latest stored values, and
+    /// `updatedBaselineDraft` advances to the latest stored configuration.
     static func stateAfterExternalRefresh(
         isEditingProvider: Bool,
         selectedProviderID: AIProviderID?,
@@ -807,6 +828,8 @@ enum AIProviderEditorPresentation {
             }
             return RefreshOutcome(
                 selectedProviderID: preserved ?? fallbackSelection,
+                rebasedDraft: nil,
+                updatedBaselineDraft: nil,
                 shouldReloadDraft: true,
                 shouldExitEditing: false
             )
@@ -816,26 +839,65 @@ enum AIProviderEditorPresentation {
         guard let selectedProviderID else {
             return RefreshOutcome(
                 selectedProviderID: nil,
+                rebasedDraft: nil,
+                updatedBaselineDraft: nil,
                 shouldReloadDraft: false,
                 shouldExitEditing: false
             )
         }
 
         // Edited provider was removed externally: fall back cleanly.
-        guard updatedConfigurations.contains(where: { $0.id == selectedProviderID }) else {
+        guard let latestConfig = updatedConfigurations.first(where: { $0.id == selectedProviderID }) else {
             return RefreshOutcome(
                 selectedProviderID: fallbackSelection,
+                rebasedDraft: nil,
+                updatedBaselineDraft: nil,
                 shouldReloadDraft: true,
                 shouldExitEditing: updatedConfigurations.isEmpty
             )
         }
 
-        // Edited provider still exists: preserve unsaved changes, reload only if unchanged.
-        let hasUnsavedChanges = baselineDraft.map { currentDraft != $0 } ?? true
+        let latestDraft = AIProviderSettingsDraft(
+            configuration: latestConfig,
+            hasSavedAPIKey: currentDraft.hasSavedAPIKey
+        )
+        let rebased = rebaseDraft(
+            current: currentDraft,
+            baseline: baselineDraft,
+            latest: latestDraft
+        )
         return RefreshOutcome(
             selectedProviderID: selectedProviderID,
-            shouldReloadDraft: !hasUnsavedChanges,
+            rebasedDraft: rebased,
+            updatedBaselineDraft: latestDraft,
+            shouldReloadDraft: false,
             shouldExitEditing: false
+        )
+    }
+
+    /// Performs a field-level three-way merge between `current` (user edits), `baseline`
+    /// (loaded snapshot), and `latest` (updated stored configuration).
+    private static func rebaseDraft(
+        current: AIProviderSettingsDraft,
+        baseline: AIProviderSettingsDraft?,
+        latest: AIProviderSettingsDraft
+    ) -> AIProviderSettingsDraft {
+        guard let baseline else { return current }
+        return AIProviderSettingsDraft(
+            id: latest.id,
+            kind: current.kind != baseline.kind ? current.kind : latest.kind,
+            displayName: current.displayName != baseline.displayName ? current.displayName : latest.displayName,
+            endpointURLString: current.endpointURLString != baseline.endpointURLString
+                ? current.endpointURLString
+                : latest.endpointURLString,
+            modelID: current.modelID != baseline.modelID ? current.modelID : latest.modelID,
+            isEnabled: current.isEnabled != baseline.isEnabled ? current.isEnabled : latest.isEnabled,
+            isDefault: current.isDefault != baseline.isDefault ? current.isDefault : latest.isDefault,
+            assignedAccountID: current.assignedAccountID != baseline.assignedAccountID
+                ? current.assignedAccountID
+                : latest.assignedAccountID,
+            pendingAPIKey: current.pendingAPIKey,
+            hasSavedAPIKey: current.hasSavedAPIKey
         )
     }
 }

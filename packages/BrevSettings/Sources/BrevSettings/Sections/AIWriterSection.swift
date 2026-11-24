@@ -21,6 +21,7 @@ struct AIWriterSection: View {
     @State private var settings: AIWriterSettings
     @State private var providerSummary: AIWriterSectionProviderSummary
     @State private var providerRefreshRevision = 0
+    @State private var installedModelsRevision = 0
 
     private let settingsStore: SettingsPersistenceStore
     private let providerSecretStore: any AIProviderSecretStore
@@ -120,6 +121,7 @@ struct AIWriterSection: View {
                     localModelDownloadManager: localModelDownloadManager,
                     isLocalModelPlatformSupported: isLocalModelPlatformSupported,
                     refreshRevision: providerRefreshRevision,
+                    installedModelsRevision: installedModelsRevision,
                     onProviderConfigurationChanged: {
                         await refreshConfiguredProvider()
                         await onProviderConfigurationChanged()
@@ -135,6 +137,9 @@ struct AIWriterSection: View {
                     },
                     onModelDeleted: { descriptor in
                         await handleDeletedLocalModel(descriptor)
+                    },
+                    onInstalledModelsChanged: {
+                        installedModelsRevision += 1
                     }
                 )
 

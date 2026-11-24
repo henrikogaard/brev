@@ -520,10 +520,10 @@ public actor LocalModelDownloadManager {
 
             try Task.checkCancellation()
             setState(.verifying, for: modelID)
-            let result = try streamState.finish()
+            let result = try streamState.finalizeHashKeepingLock()
 
             guard result.sha256Hex == descriptor.sha256Hex.lowercased() else {
-                try? FileManager.default.removeItem(at: partURL)
+                streamState.abortAndDeletePartFile()
                 let error = LocalModelDownloadError.checksumMismatch(
                     expected: descriptor.sha256Hex.lowercased(),
                     actual: result.sha256Hex
@@ -532,10 +532,15 @@ public actor LocalModelDownloadManager {
                 throw error
             }
 
-            if FileManager.default.fileExists(atPath: finalURL.path) {
-                _ = try FileManager.default.replaceItemAt(finalURL, withItemAt: partURL)
-            } else {
-                try FileManager.default.moveItem(at: partURL, to: finalURL)
+            // Hold the advisory `.part` flock across atomic rename/replace so startup cleanup
+            // in another process cannot race between hash verification and installation.
+            do {
+                defer { streamState.releaseLockAndClose() }
+                if FileManager.default.fileExists(atPath: finalURL.path) {
+                    _ = try FileManager.default.replaceItemAt(finalURL, withItemAt: partURL)
+                } else {
+                    try FileManager.default.moveItem(at: partURL, to: finalURL)
+                }
             }
             try applyBackupExclusion(to: finalURL)
 
@@ -766,22 +771,22 @@ private final class StreamingWriteState: @unchecked Sendable {
         return ProgressSnapshot(progress: progress, bytesWritten: bytesWritten, totalBytes: denominator)
     }
 
-    func finish() throws -> FinalizedResult {
+    /// Flushes data and finalizes the SHA-256 digest while keeping the advisory `flock` held
+    /// until the caller atomically installs the `.part` file and invokes `releaseLockAndClose()`.
+    func finalizeHashKeepingLock() throws -> FinalizedResult {
         lock.lock()
         defer { lock.unlock() }
 
         if let handle = fileHandle {
             try handle.synchronize()
-            _ = flock(handle.fileDescriptor, LOCK_UN)
-            try handle.close()
-            fileHandle = nil
         }
         let digest = hasher.finalize()
         let hex = digest.map { String(format: "%02x", $0) }.joined()
         return FinalizedResult(bytesWritten: bytesWritten, sha256Hex: hex)
     }
 
-    func abortAndDeletePartFile() {
+    /// Releases the advisory `flock` and closes the descriptor after atomic installation.
+    func releaseLockAndClose() {
         lock.lock()
         defer { lock.unlock() }
 
@@ -790,6 +795,17 @@ private final class StreamingWriteState: @unchecked Sendable {
             try? handle.close()
             fileHandle = nil
         }
+    }
+
+    func abortAndDeletePartFile() {
+        lock.lock()
+        defer { lock.unlock() }
+
         try? FileManager.default.removeItem(at: fileURL)
+        if let handle = fileHandle {
+            _ = flock(handle.fileDescriptor, LOCK_UN)
+            try? handle.close()
+            fileHandle = nil
+        }
     }
 }

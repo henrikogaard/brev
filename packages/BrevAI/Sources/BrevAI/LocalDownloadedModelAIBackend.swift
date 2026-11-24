@@ -50,14 +50,32 @@ public struct DefaultLocalModelInferenceRuntime: LocalModelInferenceRuntime {
 
     private let executableSearchPaths: [String]
     private let maxResponseTokens: Int
+    private let promptTempRoot: URL
 
     /// Creates a local runtime checking `executableSearchPaths` strictly on the local filesystem.
     public init(
         executableSearchPaths: [String] = DefaultLocalModelInferenceRuntime.defaultExecutableSearchPaths(),
-        maxResponseTokens: Int = 512
+        maxResponseTokens: Int = 512,
+        promptTempRoot: URL = LocalModelPromptTempStorage.defaultRootDirectory
     ) {
         self.executableSearchPaths = executableSearchPaths
         self.maxResponseTokens = max(64, maxResponseTokens)
+        self.promptTempRoot = promptTempRoot
+        LocalModelPromptTempStorage.cleanupAbandonedPromptDirectories(in: promptTempRoot)
+    }
+
+    /// Removes abandoned unlocked local-AI prompt temp directories left behind by terminated sessions.
+    public static func cleanupAbandonedPromptDirectories(
+        in root: URL = LocalModelPromptTempStorage.defaultRootDirectory
+    ) {
+        LocalModelPromptTempStorage.cleanupAbandonedPromptDirectories(in: root)
+    }
+
+    /// Synchronously terminates any active local-AI subprocesses and removes their private prompt directories.
+    public static func terminateActiveAndCleanupAll(
+        in root: URL = LocalModelPromptTempStorage.defaultRootDirectory
+    ) {
+        LocalModelPromptTempStorage.terminateActiveAndCleanupAll(in: root)
     }
 
     /// Standard local paths inspected on macOS without making any network requests.
@@ -120,7 +138,11 @@ public struct DefaultLocalModelInferenceRuntime: LocalModelInferenceRuntime {
     ) async throws -> String {
         try Task.checkCancellation()
 
-        let promptFiles = try PrivatePromptFiles.create(instructions: instructions, prompt: prompt)
+        let promptFiles = try PrivatePromptFiles.create(
+            in: promptTempRoot,
+            instructions: instructions,
+            prompt: prompt
+        )
         defer { promptFiles.cleanup() }
 
         let cancellationBox = SubprocessCancellationBox()
@@ -152,10 +174,12 @@ public struct DefaultLocalModelInferenceRuntime: LocalModelInferenceRuntime {
                         continuation.resume(throwing: CancellationError())
                         return
                     }
+                    LocalModelPromptTempStorage.attachProcess(process, to: promptFiles.sessionID)
 
                     do {
                         try process.run()
                     } catch {
+                        LocalModelPromptTempStorage.detachProcess(for: promptFiles.sessionID)
                         cancellationBox.clearProcess()
                         continuation.resume(
                             throwing: AIBackendError.unavailable(
@@ -193,6 +217,7 @@ public struct DefaultLocalModelInferenceRuntime: LocalModelInferenceRuntime {
 
                     readGroup.wait()
                     process.waitUntilExit()
+                    LocalModelPromptTempStorage.detachProcess(for: promptFiles.sessionID)
                     cancellationBox.clearProcess()
 
                     if cancellationBox.isCancelled {
@@ -228,16 +253,173 @@ public struct DefaultLocalModelInferenceRuntime: LocalModelInferenceRuntime {
     #endif
 }
 
+/// Manages the dedicated `0700` temporary directory holding private local-AI prompt files (#304).
+///
+/// Active invocations hold an advisory `flock(LOCK_EX | LOCK_NB)` on `.lock` inside their per-call
+/// directory and register for synchronous cleanup on app termination. Startup sweeps remove any
+/// unlocked/abandoned prompt directories without touching a live invocation in another process.
+public enum LocalModelPromptTempStorage {
+    static let lockFileName = ".lock"
+
+    /// Dedicated root folder under the system temporary directory for private local-AI prompts.
+    public static var defaultRootDirectory: URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-local-ai-prompts", isDirectory: true)
+    }
+
+    /// Sweeps unlocked/abandoned per-invocation prompt directories under `root`.
+    public static func cleanupAbandonedPromptDirectories(
+        in root: URL = defaultRootDirectory
+    ) {
+        #if os(macOS)
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: []
+        ) else { return }
+
+        for entry in entries {
+            guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                continue
+            }
+            let lockURL = entry.appendingPathComponent(lockFileName, isDirectory: false)
+            let fd = open(lockURL.path, O_RDWR | O_CREAT, 0o600)
+            guard fd >= 0 else { continue }
+            if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+                try? FileManager.default.removeItem(at: entry)
+                _ = flock(fd, LOCK_UN)
+            }
+            close(fd)
+        }
+        #else
+        _ = root
+        #endif
+    }
+
+    /// Synchronously terminates any active local-AI subprocesses and removes their private prompt directories.
+    public static func terminateActiveAndCleanupAll(
+        in root: URL = defaultRootDirectory
+    ) {
+        #if os(macOS)
+        ActivePromptRegistry.shared.terminateAllAndCleanup()
+        cleanupAbandonedPromptDirectories(in: root)
+        #else
+        _ = root
+        #endif
+    }
+
+    #if os(macOS)
+    static func registerActiveSession(id: UUID, directoryURL: URL, lockFD: Int32) {
+        ActivePromptRegistry.shared.register(id: id, directoryURL: directoryURL, lockFD: lockFD)
+    }
+
+    static func attachProcess(_ process: Process, to sessionID: UUID) {
+        ActivePromptRegistry.shared.attachProcess(process, to: sessionID)
+    }
+
+    static func detachProcess(for sessionID: UUID) {
+        ActivePromptRegistry.shared.detachProcess(for: sessionID)
+    }
+
+    static func cleanupActiveSession(id: UUID) {
+        ActivePromptRegistry.shared.cleanup(id: id)
+    }
+    #endif
+}
+
 #if os(macOS)
+private final class ActivePromptRegistry: @unchecked Sendable {
+    struct Entry {
+        let directoryURL: URL
+        let lockFD: Int32
+        var process: Process?
+    }
+
+    static let shared = ActivePromptRegistry()
+
+    private let lock = NSLock()
+    private var entries: [UUID: Entry] = [:]
+
+    func register(id: UUID, directoryURL: URL, lockFD: Int32) {
+        lock.lock()
+        entries[id] = Entry(directoryURL: directoryURL, lockFD: lockFD, process: nil)
+        lock.unlock()
+    }
+
+    func attachProcess(_ process: Process, to id: UUID) {
+        lock.lock()
+        entries[id]?.process = process
+        lock.unlock()
+    }
+
+    func detachProcess(for id: UUID) {
+        lock.lock()
+        entries[id]?.process = nil
+        lock.unlock()
+    }
+
+    func cleanup(id: UUID) {
+        lock.lock()
+        let entry = entries.removeValue(forKey: id)
+        lock.unlock()
+
+        guard let entry else { return }
+        removeAndUnlock(entry)
+    }
+
+    func terminateAllAndCleanup() {
+        lock.lock()
+        let snapshot = Array(entries.values)
+        entries.removeAll()
+        lock.unlock()
+
+        for entry in snapshot {
+            if let process = entry.process, process.isRunning {
+                process.terminate()
+            }
+            removeAndUnlock(entry)
+        }
+    }
+
+    private func removeAndUnlock(_ entry: Entry) {
+        try? FileManager.default.removeItem(at: entry.directoryURL)
+        _ = flock(entry.lockFD, LOCK_UN)
+        close(entry.lockFD)
+    }
+}
+
 private struct PrivatePromptFiles: Sendable {
+    let sessionID: UUID
     let directoryURL: URL
     let instructionsURL: URL
     let promptURL: URL
 
-    static func create(instructions: String, prompt: String) throws -> PrivatePromptFiles {
-        let directoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("brev-local-ai-\(UUID().uuidString)", isDirectory: true)
+    static func create(
+        in root: URL = LocalModelPromptTempStorage.defaultRootDirectory,
+        instructions: String,
+        prompt: String
+    ) throws -> PrivatePromptFiles {
+        if mkdir(root.path, 0o700) != 0 && errno != EEXIST {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        }
+        _ = chmod(root.path, 0o700)
+
+        let sessionID = UUID()
+        let directoryURL = root.appendingPathComponent(sessionID.uuidString, isDirectory: true)
         guard mkdir(directoryURL.path, 0o700) == 0 else {
+            throw AIBackendError.unavailable(
+                String(
+                    localized: "Could not prepare private temporary prompt files for local inference.",
+                    bundle: .module
+                )
+            )
+        }
+
+        let lockURL = directoryURL.appendingPathComponent(LocalModelPromptTempStorage.lockFileName, isDirectory: false)
+        let lockFD = open(lockURL.path, O_RDWR | O_CREAT | O_EXCL, 0o600)
+        guard lockFD >= 0, flock(lockFD, LOCK_EX | LOCK_NB) == 0 else {
+            if lockFD >= 0 { close(lockFD) }
+            try? FileManager.default.removeItem(at: directoryURL)
             throw AIBackendError.unavailable(
                 String(
                     localized: "Could not prepare private temporary prompt files for local inference.",
@@ -253,10 +435,19 @@ private struct PrivatePromptFiles: Sendable {
             try writePrivateFile(prompt, to: promptURL)
         } catch {
             try? FileManager.default.removeItem(at: directoryURL)
+            _ = flock(lockFD, LOCK_UN)
+            close(lockFD)
             throw error
         }
 
+        LocalModelPromptTempStorage.registerActiveSession(
+            id: sessionID,
+            directoryURL: directoryURL,
+            lockFD: lockFD
+        )
+
         return PrivatePromptFiles(
+            sessionID: sessionID,
             directoryURL: directoryURL,
             instructionsURL: instructionsURL,
             promptURL: promptURL
@@ -264,9 +455,7 @@ private struct PrivatePromptFiles: Sendable {
     }
 
     func cleanup() {
-        try? FileManager.default.removeItem(at: instructionsURL)
-        try? FileManager.default.removeItem(at: promptURL)
-        try? FileManager.default.removeItem(at: directoryURL)
+        LocalModelPromptTempStorage.cleanupActiveSession(id: sessionID)
     }
 
     private static func writePrivateFile(_ text: String, to url: URL) throws {
