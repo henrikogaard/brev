@@ -348,6 +348,11 @@ public final class BackgroundRecentIndexingCoordinator {
         activeTask = nil
     }
 
+    private struct ScopedMessageKey: Hashable {
+        let accountID: String
+        let messageID: MessageHeader.ID
+    }
+
     private struct Candidate {
         let backend: any MailBackend
         let sourceID: MailSourceID
@@ -359,13 +364,12 @@ public final class BackgroundRecentIndexingCoordinator {
 
     private enum BatchOutcome {
         case drained
-        case moreRemaining(madeProgress: Bool)
+        case moreRemaining(canContinue: Bool)
         case stopped
     }
 
     /// Runs consecutive throttled batches of `maxBatchSize` until the backlog drains,
-    /// indexing stops/pauses, or a batch makes no forward progress (preventing tight retry loops
-    /// on persistent transient failures).
+    /// indexing stops/pauses, or no non-deferred eligible candidates can advance.
     private func executeBacklog(generation: Int) async {
         defer {
             if activeGeneration == generation {
@@ -373,15 +377,16 @@ public final class BackgroundRecentIndexingCoordinator {
             }
         }
 
-        // Track messages that already hit a transient attachment error in this sweep so
-        // follow-up batches don't immediately hammer the same failing attachment in a tight loop.
-        var deferredMessageIDs = Set<MessageHeader.ID>()
+        // Track (account, message) pairs that failed or deferred in this sweep so
+        // subsequent batches continue draining untouched candidates without retrying
+        // the same failing message in a tight loop.
+        var deferredMessages = Set<ScopedMessageKey>()
 
         while true {
             needsFollowUpSweep = false
             let outcome = await executeSingleBatch(
                 generation: generation,
-                deferredMessageIDs: &deferredMessageIDs
+                deferredMessages: &deferredMessages
             )
             switch outcome {
             case .stopped:
@@ -395,8 +400,8 @@ public final class BackgroundRecentIndexingCoordinator {
                     publishStatus()
                 }
                 return
-            case .moreRemaining(let madeProgress):
-                guard madeProgress, isStillEligible(generation: generation) else {
+            case .moreRemaining(let canContinue):
+                guard canContinue, isStillEligible(generation: generation) else {
                     if isStillEligible(generation: generation) {
                         state = .completed
                         publishStatus()
@@ -420,7 +425,7 @@ public final class BackgroundRecentIndexingCoordinator {
 
     private func executeSingleBatch(
         generation: Int,
-        deferredMessageIDs: inout Set<MessageHeader.ID>
+        deferredMessages: inout Set<ScopedMessageKey>
     ) async -> BatchOutcome {
         let initialSettings = settingsProvider()
         guard initialSettings.isEnabled, !isUserPaused, !Task.isCancelled, activeGeneration == generation else {
@@ -455,6 +460,7 @@ public final class BackgroundRecentIndexingCoordinator {
             // removing the attachment index cleanly re-enables attachment indexing.
             if let ftsIndexer = backend.extensionService(LocalAttachmentTextIndexing.self) {
                 let liveIDs = await ftsIndexer.indexedAttachmentIDs()
+                guard isStillEligible(generation: generation) else { return .stopped }
                 liveIndexedAttachmentsByAccount[accountID] = liveIDs
                 if reconcileAttachmentProgress(&progress, against: liveIDs) {
                     progressMutated = true
@@ -462,13 +468,17 @@ public final class BackgroundRecentIndexingCoordinator {
             }
 
             guard let mailbox = try? await backend.currentMailbox() else {
-                if progressMutated { progressStore.save(progress, accountID: accountID) }
+                if progressMutated {
+                    saveProgressIfActive(progress, accountID: accountID, generation: generation)
+                }
                 progressByAccount[accountID] = progress
                 continue
             }
             let sourceID = backend.sourceID(for: mailbox)
             guard let folders = try? await backend.folders(in: sourceID) else {
-                if progressMutated { progressStore.save(progress, accountID: accountID) }
+                if progressMutated {
+                    saveProgressIfActive(progress, accountID: accountID, generation: generation)
+                }
                 progressByAccount[accountID] = progress
                 continue
             }
@@ -498,7 +508,9 @@ public final class BackgroundRecentIndexingCoordinator {
                     guard !excludedMessageIDs.contains(header.id),
                           !Self.hasExcludedTrashOrSpamLabel(header)
                     else { continue }
-                    guard !deferredMessageIDs.contains(header.id) else { continue }
+                    guard !deferredMessages.contains(ScopedMessageKey(accountID: accountID, messageID: header.id)) else {
+                        continue
+                    }
                     guard seenMessageIDs.insert(header.id).inserted else { continue }
 
                     let needsBody = !progress.indexedBodyMessageIDs.contains(header.id)
@@ -539,7 +551,7 @@ public final class BackgroundRecentIndexingCoordinator {
             }
 
             if progressMutated {
-                progressStore.save(progress, accountID: accountID)
+                saveProgressIfActive(progress, accountID: accountID, generation: generation)
             }
             progressByAccount[accountID] = progress
         }
@@ -555,6 +567,7 @@ public final class BackgroundRecentIndexingCoordinator {
 
         pendingCount = candidates.count
         let batch = Array(candidates.prefix(maxBatchSize))
+        let hasRemainingCandidates = candidates.count > batch.count
         guard !batch.isEmpty else {
             if lastIndexedAt == nil {
                 lastIndexedAt = progressStore.latestIndexedAt(accountIDs: backends.map(\.account.id))
@@ -563,7 +576,7 @@ public final class BackgroundRecentIndexingCoordinator {
         }
 
         var completedInBatch = 0
-        var madeProgressInBatch = false
+        var advancedOrDeferredInBatch = false
         state = .running(completed: 0, total: batch.count)
         publishStatus()
 
@@ -571,22 +584,23 @@ public final class BackgroundRecentIndexingCoordinator {
             guard isStillEligible(generation: generation) else { return .stopped }
             let currentSettings = settingsProvider()
             let accountID = candidate.backend.account.id
+            let scopedKey = ScopedMessageKey(accountID: accountID, messageID: candidate.header.id)
             var progress = progressByAccount[accountID] ?? progressStore.load(accountID: accountID)
 
             do {
                 let resolvedBody = try await resolveBody(for: candidate)
                 guard isStillEligible(generation: generation) else { return .stopped }
 
-                if candidate.needsBody {
-                    if resolvedBody != nil {
-                        progress.indexedBodyMessageIDs.insert(candidate.header.id)
-                        indexedMessagesCount += 1
-                        madeProgressInBatch = true
-                    } else {
-                        // Structured fetch failed and raw fallback was intentionally skipped;
-                        // defer for this sweep without falsely claiming the body is indexed.
-                        deferredMessageIDs.insert(candidate.header.id)
+                if resolvedBody == nil {
+                    // Structured fetch failed and raw fallback was intentionally skipped;
+                    // defer for this sweep without falsely claiming the body is indexed.
+                    if deferredMessages.insert(scopedKey).inserted {
+                        advancedOrDeferredInBatch = true
                     }
+                } else if candidate.needsBody {
+                    progress.indexedBodyMessageIDs.insert(candidate.header.id)
+                    indexedMessagesCount += 1
+                    advancedOrDeferredInBatch = true
                 }
 
                 if let body = resolvedBody,
@@ -603,20 +617,20 @@ public final class BackgroundRecentIndexingCoordinator {
                     guard isStillEligible(generation: generation) else { return .stopped }
                     if outcome.newlyIndexedCount > 0 {
                         indexedAttachmentsCount += outcome.newlyIndexedCount
-                        madeProgressInBatch = true
+                        advancedOrDeferredInBatch = true
                     }
                     if !outcome.hadTransientFailure {
                         progress.indexedAttachmentMessageIDs.insert(candidate.header.id)
-                        madeProgressInBatch = true
-                    } else {
-                        deferredMessageIDs.insert(candidate.header.id)
+                        advancedOrDeferredInBatch = true
+                    } else if deferredMessages.insert(scopedKey).inserted {
+                        advancedOrDeferredInBatch = true
                     }
                 }
 
                 let timestamp = now()
                 progress.lastIndexedAt = timestamp
                 progressByAccount[accountID] = progress
-                progressStore.save(progress, accountID: accountID)
+                saveProgressIfActive(progress, accountID: accountID, generation: generation)
                 lastIndexedAt = timestamp
 
                 completedInBatch += 1
@@ -624,8 +638,6 @@ public final class BackgroundRecentIndexingCoordinator {
                 state = .running(completed: completedInBatch, total: batch.count)
                 publishStatus()
             } catch is CancellationError {
-                progressByAccount[accountID] = progress
-                progressStore.save(progress, accountID: accountID)
                 handleCancellationIfCurrent(generation: generation)
                 return .stopped
             } catch {
@@ -650,7 +662,16 @@ public final class BackgroundRecentIndexingCoordinator {
         }
 
         guard isStillEligible(generation: generation) else { return .stopped }
-        return pendingCount > 0 ? .moreRemaining(madeProgress: madeProgressInBatch) : .drained
+        return hasRemainingCandidates ? .moreRemaining(canContinue: advancedOrDeferredInBatch) : .drained
+    }
+
+    private func saveProgressIfActive(
+        _ progress: BackgroundIndexingAccountProgress,
+        accountID: String,
+        generation: Int
+    ) {
+        guard generation == activeGeneration, !Task.isCancelled else { return }
+        progressStore.save(progress, accountID: accountID)
     }
 
     private func resolveBody(for candidate: Candidate) async throws -> MessageBody? {
@@ -706,13 +727,11 @@ public final class BackgroundRecentIndexingCoordinator {
             else {
                 skipped.insert(attachment.id)
                 progress.skippedAttachmentIDsByMessage[messageID] = skipped
+                saveProgressIfActive(progress, accountID: accountID, generation: generation)
                 continue
             }
 
             guard isStillEligible(generation: generation) else {
-                progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
-                progress.skippedAttachmentIDsByMessage[messageID] = skipped
-                progressStore.save(progress, accountID: accountID)
                 throw CancellationError()
             }
 
@@ -720,9 +739,6 @@ public final class BackgroundRecentIndexingCoordinator {
             do {
                 data = try await candidate.backend.downloadAttachment(attachment, sourceID: candidate.sourceID)
             } catch is CancellationError {
-                progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
-                progress.skippedAttachmentIDsByMessage[messageID] = skipped
-                progressStore.save(progress, accountID: accountID)
                 throw CancellationError()
             } catch {
                 // Transient download failure: leave attachment uncompleted so a later pass retries it.
@@ -731,16 +747,13 @@ public final class BackgroundRecentIndexingCoordinator {
             }
 
             guard isStillEligible(generation: generation) else {
-                progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
-                progress.skippedAttachmentIDsByMessage[messageID] = skipped
-                progressStore.save(progress, accountID: accountID)
                 throw CancellationError()
             }
 
             guard data.count <= maxAttachmentBytes else {
                 skipped.insert(attachment.id)
                 progress.skippedAttachmentIDsByMessage[messageID] = skipped
-                progressStore.save(progress, accountID: accountID)
+                saveProgressIfActive(progress, accountID: accountID, generation: generation)
                 continue
             }
 
@@ -757,9 +770,6 @@ public final class BackgroundRecentIndexingCoordinator {
                     )
                 }.value
             } catch is CancellationError {
-                progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
-                progress.skippedAttachmentIDsByMessage[messageID] = skipped
-                progressStore.save(progress, accountID: accountID)
                 throw CancellationError()
             } catch AttachmentTextExtractionError.timedOut {
                 hadTransientFailure = true
@@ -770,9 +780,6 @@ public final class BackgroundRecentIndexingCoordinator {
             }
 
             guard isStillEligible(generation: generation) else {
-                progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
-                progress.skippedAttachmentIDsByMessage[messageID] = skipped
-                progressStore.save(progress, accountID: accountID)
                 throw CancellationError()
             }
 
@@ -780,7 +787,7 @@ public final class BackgroundRecentIndexingCoordinator {
                 // Encrypted/malformed/no-text document: deterministically skip on future passes.
                 skipped.insert(attachment.id)
                 progress.skippedAttachmentIDsByMessage[messageID] = skipped
-                progressStore.save(progress, accountID: accountID)
+                saveProgressIfActive(progress, accountID: accountID, generation: generation)
                 continue
             }
 
@@ -794,9 +801,6 @@ public final class BackgroundRecentIndexingCoordinator {
                         text: extracted
                     )
                 } catch is CancellationError {
-                    progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
-                    progress.skippedAttachmentIDsByMessage[messageID] = skipped
-                    progressStore.save(progress, accountID: accountID)
                     throw CancellationError()
                 } catch {
                     // Transient FTS write failure: leave uncompleted for retry.
@@ -805,10 +809,14 @@ public final class BackgroundRecentIndexingCoordinator {
                 }
             }
 
+            guard isStillEligible(generation: generation) else {
+                throw CancellationError()
+            }
+
             ftsCompleted.insert(attachment.id)
             progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
             progress.skippedAttachmentIDsByMessage[messageID] = skipped
-            progressStore.save(progress, accountID: accountID)
+            saveProgressIfActive(progress, accountID: accountID, generation: generation)
             newlyIndexedCount += 1
         }
 

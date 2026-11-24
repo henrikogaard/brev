@@ -1,5 +1,22 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #353 round-2 review fixes (Issue #7)
+
+- Goal: address all 4 round-2 Devin Review edge cases on PR #353 (`feature/background-recent-indexing`) in one commit.
+- Changes:
+  - Raw-MIME preservation & structured body FTS parity: guarded `SQLiteSyncStore.indexBodyText` and `InMemorySyncStore.indexBodyText` so structured background writes never overwrite an existing raw-MIME-derived search row; updated `IMAPSMTPBackend.indexSearchableBodyTextIfAvailable` to index plain text + stripped HTML alternative + attachment filenames (matching `searchableBodyText`).
+  - Continuous backlog draining across fully-deferred batches: scoped sweep deferrals by `(accountID, messageID)` (`ScopedMessageKey`), deferred any `resolvedBody == nil` candidate cleanly, and continued `executeBacklog` while non-deferred eligible candidates remain and at least one candidate advanced or deferred.
+  - Cancelled-generation write guard after `resetIndexState`: added `saveProgressIfActive(_:accountID:generation:)` checking `generation == activeGeneration && !Task.isCancelled` on every `progressStore.save`, removed unconditional saves from `CancellationError` / `!isStillEligible` unwind paths, and persisted deterministic skips incrementally while active.
+  - Gmail online search attachment FTS merge: updated `GmailAPIBackend.performSearch` to merge deduplicated local attachment FTS hits (respecting `query.execution != .serverOnly`, folder/label scope, `scope.includeSpamTrash`, and `query.matchesMetadata(header)`) alongside online Gmail server results.
+- Verification:
+  - `swift test --package-path packages/BrevBackend --filter 'AttachmentTextExtractorTests|IMAPBackgroundIndexingTests'`
+  - `swift test --package-path packages/BrevSyncEngine --filter AttachmentSearchIndexTests`
+  - `swift test --package-path packages/BrevGmail --filter GmailAttachmentIndexTests`
+  - `swift test --package-path packages/BrevSettings --filter 'BackgroundIndexingSettingsTests|BackupTests|MailStorageSectionTests|SettingsSearchPlatformTests'`
+  - `swift test --package-path packages/BrevMail --filter 'BackgroundRecentIndexingCoordinatorTests|BackgroundMailCoordinatorTests|AppSessionTests'`
+  - `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+- Skipped: macOS snapshots unchanged (no UI layout edits); iOS Simulator build/test left for GitHub Actions CI.
+
 ## 2026-11-24 — Agent — PR #353 review fixes (Issue #7)
 
 - Goal: address all 10 Codex and Devin review findings on PR #353 (`feature/background-recent-indexing`) in a single batched commit.

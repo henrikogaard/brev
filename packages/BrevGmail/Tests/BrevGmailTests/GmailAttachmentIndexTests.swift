@@ -181,6 +181,182 @@ struct GmailAttachmentIndexTests {
         let dualLabeled = try #require(workHeaders.first { $0.id == "msg-trash-work" })
         #expect(dualLabeled.labels.contains { $0.caseInsensitiveCompare("\\Trash") == .orderedSame })
     }
+
+    @Test("online search merges deduplicated local attachment FTS hits while respecting folder and metadata filters")
+    func onlineSearchMergesLocalAttachmentHits() async throws {
+        let store = InMemoryGmailAccountStore()
+        let index = StubLocalSearchIndex()
+        let labels = [
+            GmailLabel(id: "INBOX", name: "INBOX", type: "system"),
+            GmailLabel(id: "TRASH", name: "TRASH", type: "system"),
+            GmailLabel(id: "Label_Work", name: "Work", type: "user")
+        ]
+
+        let onlineMessage = GmailMessage(
+            id: "msg-online",
+            threadID: "t-online",
+            labelIDs: ["INBOX"],
+            snippet: "Server hit for solstice-clause-88",
+            internalDate: "1750000003000",
+            payload: GmailMessagePart(
+                partID: "",
+                mimeType: "text/plain",
+                headers: [
+                    GmailMessageHeader(name: "From", value: "Alice <alice@example.org>"),
+                    GmailMessageHeader(name: "Subject", value: "Online match")
+                ]
+            )
+        )
+        let localOnlyAttachmentMessage = GmailMessage(
+            id: "msg-local-att",
+            threadID: "t-local",
+            labelIDs: ["INBOX", "Label_Work"],
+            snippet: "See attached",
+            internalDate: "1750000002000",
+            payload: GmailMessagePart(
+                partID: "",
+                mimeType: "text/plain",
+                headers: [
+                    GmailMessageHeader(name: "From", value: "Bob <bob@example.org>"),
+                    GmailMessageHeader(name: "Subject", value: "Scanned contract")
+                ]
+            )
+        )
+        let trashedAttachmentMessage = GmailMessage(
+            id: "msg-trashed-att",
+            threadID: "t-trash",
+            labelIDs: ["Label_Work", "TRASH"],
+            snippet: "Deleted",
+            internalDate: "1750000001000",
+            payload: GmailMessagePart(
+                partID: "",
+                mimeType: "text/plain",
+                headers: [
+                    GmailMessageHeader(name: "From", value: "Bob <bob@example.org>"),
+                    GmailMessageHeader(name: "Subject", value: "Old scanned contract")
+                ]
+            )
+        )
+
+        try await store.replaceSnapshot(GmailAccountSnapshot(
+            accountID: Self.account.id,
+            state: GmailAccountState(
+                accountID: Self.account.id,
+                emailAddress: Self.account.emailAddress,
+                historyID: "1"
+            ),
+            labels: labels,
+            messages: [onlineMessage, localOnlyAttachmentMessage, trashedAttachmentMessage]
+        ))
+
+        for (id, folder) in [
+            ("msg-online", "INBOX"),
+            ("msg-local-att", "INBOX"),
+            ("msg-trashed-att", "Label_Work")
+        ] {
+            try await index.indexAttachmentText(
+                accountID: Self.account.id,
+                messageID: id,
+                folderID: folder,
+                attachmentID: "att-\(id)",
+                name: "contract.pdf",
+                text: "solstice-clause-88"
+            )
+        }
+
+        let transport = OnlineSearchTransport(
+            labels: labels,
+            messagesByID: ["msg-online": onlineMessage]
+        )
+        let backend = GmailAPIBackend(
+            account: Self.account,
+            transport: transport,
+            store: store,
+            localSearchIndex: index
+        )
+        try await backend.connect()
+
+        // Online search returns msg-online from server + deduplicated msg-local-att from FTS,
+        // while excluding msg-trashed-att (TRASH excluded by default online searchScope).
+        let merged: [MessageHeader] = try await backend.search(SearchQuery(text: "solstice-clause-88"))
+        #expect(merged.map(\.id) == ["msg-online", "msg-local-att"])
+
+        // Metadata filter excludes local attachment hit when sender does not match.
+        let aliceOnly: [MessageHeader] = try await backend.search(SearchQuery(
+            text: "solstice-clause-88",
+            from: "alice@example.org"
+        ))
+        #expect(aliceOnly.map(\.id) == ["msg-online"])
+
+        // Server-only execution does not merge local FTS hits.
+        let serverOnly: [MessageHeader] = try await backend.search(SearchQuery(
+            text: "solstice-clause-88",
+            execution: .serverOnly
+        ))
+        #expect(serverOnly.map(\.id) == ["msg-online"])
+    }
+}
+
+/// Transport returning a fixed online search page so `GmailAPIBackend.performSearch`
+/// can be verified when merging local attachment FTS hits alongside server results.
+private actor OnlineSearchTransport: GmailAPITransporting {
+    private let labels: [GmailLabel]
+    private let messagesByID: [String: GmailMessage]
+
+    init(labels: [GmailLabel], messagesByID: [String: GmailMessage]) {
+        self.labels = labels
+        self.messagesByID = messagesByID
+    }
+
+    func profile() async throws -> GmailProfile {
+        GmailProfile(
+            emailAddress: "person@example.org",
+            messagesTotal: messagesByID.count,
+            threadsTotal: messagesByID.count,
+            historyID: "1"
+        )
+    }
+
+    func listLabels() async throws -> [GmailLabel] { labels }
+
+    func listMessages(
+        labelID _: String?,
+        query _: String?,
+        pageToken _: String?,
+        maxResults _: Int
+    ) async throws -> GmailMessagePage {
+        let refs = messagesByID.keys.sorted().map { GmailMessageReference(id: $0, threadID: messagesByID[$0]?.threadID) }
+        return GmailMessagePage(messages: refs, nextPageToken: nil, resultSizeEstimate: refs.count)
+    }
+
+    func getMessage(messageID: String, format _: GmailMessageFormat) async throws -> GmailMessage {
+        guard let message = messagesByID[messageID] else { throw GmailAPIError.invalidRequest }
+        return message
+    }
+
+    func getThread(threadID _: String, metadataHeaders _: [String]) async throws -> GmailThread {
+        throw GmailAPIError.invalidRequest
+    }
+
+    func getAttachment(messageID _: String, attachmentID _: String) async throws -> GmailAttachment {
+        throw GmailAPIError.invalidRequest
+    }
+
+    func createDraft(rawMIME _: String, threadID _: String?) async throws -> GmailDraft {
+        throw GmailAPIError.invalidRequest
+    }
+
+    func updateDraft(id _: String, rawMIME _: String, threadID _: String?) async throws -> GmailDraft {
+        throw GmailAPIError.invalidRequest
+    }
+
+    func deleteDraft(id _: String) async throws { throw GmailAPIError.invalidRequest }
+    func sendDraft(id _: String) async throws -> GmailMessage { throw GmailAPIError.invalidRequest }
+    func sendMessage(rawMIME _: String, threadID _: String?) async throws -> GmailMessage {
+        throw GmailAPIError.invalidRequest
+    }
+
+    func listSendAs() async throws -> [GmailSendAs] { [] }
 }
 
 /// Transport that allows `connect()` (profile/labels) and fails `listMessages` with an

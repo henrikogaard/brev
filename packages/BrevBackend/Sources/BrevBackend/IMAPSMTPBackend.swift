@@ -6257,8 +6257,12 @@ extension IMAPSMTPBackend: BackgroundBodyIndexing {
            let stripped = try? HTMLTextStripper.visibleText(from: Data(html.utf8))
            .trimmingCharacters(in: .whitespacesAndNewlines),
            !stripped.isEmpty {
-            if segments.isEmpty {
-                segments.append(stripped)
+            segments.append(stripped)
+        }
+        for attachment in body.attachments {
+            let name = attachment.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty {
+                segments.append(name)
             }
         }
         guard !segments.isEmpty else { return }

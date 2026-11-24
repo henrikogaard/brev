@@ -997,10 +997,67 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             throw Self.providerNeutralError(error)
         }
         try checkSearch(generation)
+        if query.execution != .serverOnly {
+            let localAttachmentHits = try await localAttachmentSearchMatches(
+                for: query,
+                scope: scope,
+                labels: labels,
+                excluding: seen,
+                generation: generation
+            )
+            if !localAttachmentHits.isEmpty {
+                result.append(contentsOf: localAttachmentHits)
+                await onUpdate?(MailSearchUpdate(headers: localAttachmentHits, coverage: .server))
+            }
+        }
+        try checkSearch(generation)
         await onUpdate?(MailSearchUpdate(headers: [], coverage: .server, isComplete: true))
         try Task.checkCancellation()
         try requireConnectionGeneration(generation)
         return result
+    }
+
+    private func localAttachmentSearchMatches(
+        for query: SearchQuery,
+        scope: SearchScope,
+        labels: [GmailLabel],
+        excluding seen: Set<MessageHeader.ID>,
+        generation: UUID
+    ) async throws -> [MessageHeader] {
+        let trimmedText = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty, let localSearchIndex else { return [] }
+        let attachmentHitIDs = await localSearchIndex.matchingAttachmentMessageIDs(
+            for: query,
+            account: account
+        )
+        try checkSearch(generation)
+        let candidateIDs = attachmentHitIDs.subtracting(seen)
+        guard !candidateIDs.isEmpty else { return [] }
+
+        var matches: [MessageHeader] = []
+        for messageID in candidateIDs {
+            try checkSearch(generation)
+            guard let message = try? await store.message(accountID: account.id, messageID: messageID) else {
+                continue
+            }
+            if let folderID = query.folderID, !folderID.isEmpty {
+                if folderID == "ALL_MAIL" {
+                    guard !message.labelIDs.contains("SPAM"), !message.labelIDs.contains("TRASH") else { continue }
+                } else if !message.labelIDs.contains(folderID) {
+                    continue
+                }
+            } else if !scope.includeSpamTrash {
+                guard !message.labelIDs.contains("SPAM"), !message.labelIDs.contains("TRASH") else { continue }
+            }
+            let header = Self.header(
+                from: message,
+                folderID: query.folderID ?? Self.primaryFolderID(for: message, labels: labels),
+                labels: labels
+            )
+            guard query.matchesMetadata(header) else { continue }
+            matches.append(header)
+        }
+        return matches.sorted { $0.date == $1.date ? $0.id > $1.id : $0.date > $1.date }
     }
 
     private func checkSearch(_ generation: UUID) throws {

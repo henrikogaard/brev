@@ -712,7 +712,9 @@ actor InMemorySyncStore: SyncStoreProtocol {
     }
 
     func indexBodyText(_ bodyText: String, accountID: String, messageID: MessageHeader.ID) throws {
-        indexedBodyTexts["\(accountID)|\(messageID)"] = bodyText
+        let key = "\(accountID)|\(messageID)"
+        guard bodies[key] == nil else { return }
+        indexedBodyTexts[key] = bodyText
     }
 
     func indexedAttachmentIDs(accountID: String) -> [MessageHeader.ID: Set<String>] {

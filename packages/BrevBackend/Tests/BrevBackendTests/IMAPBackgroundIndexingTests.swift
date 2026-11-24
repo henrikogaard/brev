@@ -159,9 +159,16 @@ struct IMAPBackgroundIndexingTests {
                 structuredCalls.increment()
                 return MessageBody(
                     messageID: "INBOX:101",
-                    html: nil,
+                    html: "<p>HTML alternative token: <strong>albatross-deck-42</strong></p>",
                     plainText: "Hidden body-only keyword: zeppelin-horizon-99.",
-                    attachments: []
+                    attachments: [
+                        Attachment(
+                            id: "att-floorplan",
+                            name: "floorplan.png",
+                            mimeType: "image/png",
+                            sizeBytes: 2048
+                        )
+                    ]
                 )
             },
             localSearchIndex: index
@@ -186,9 +193,13 @@ struct IMAPBackgroundIndexingTests {
         #expect(structuredCalls.count == 1)
         #expect(rawSourceCalls.count == 0)
 
-        // Offline local search through the backend now returns the message by its body-only keyword.
-        let offlineResults: [MessageHeader] = try await backend.search(SearchQuery(text: "zeppelin-horizon-99"))
-        #expect(offlineResults.map(\.id) == ["INBOX:101"])
+        // Offline local search now matches plain text, stripped HTML alternative, and attachment filename.
+        let plainResults: [MessageHeader] = try await backend.search(SearchQuery(text: "zeppelin-horizon-99"))
+        #expect(plainResults.map(\.id) == ["INBOX:101"])
+        let htmlResults: [MessageHeader] = try await backend.search(SearchQuery(text: "albatross-deck-42"))
+        #expect(htmlResults.map(\.id) == ["INBOX:101"])
+        let filenameResults: [MessageHeader] = try await backend.search(SearchQuery(text: "floorplan.png"))
+        #expect(filenameResults.map(\.id) == ["INBOX:101"])
     }
 
     @Test("structured fetch failure in background indexing skips unbounded full-source fallback")

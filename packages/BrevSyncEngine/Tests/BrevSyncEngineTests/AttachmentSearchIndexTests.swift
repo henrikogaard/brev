@@ -287,6 +287,47 @@ struct AttachmentSearchIndexTests {
         #expect(store.body(accountID: account.id, messageID: header.id) == nil)
     }
 
+    @Test("indexBodyText preserves raw-MIME search rows including attachment filenames")
+    func indexBodyTextPreservesRawMIMESearchRow() throws {
+        let url = Self.databaseURL()
+        defer { Self.removeDatabase(at: url) }
+        let account = Self.account()
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let header = Self.header("INBOX:43", folder: "INBOX", subject: "Office layout")
+        try store.ensureAccount(id: account.id)
+        try store.upsertHeaders([header], accountID: account.id)
+
+        let rawMIME = Data("""
+        From: sender@example.org\r
+        Subject: Office layout\r
+        MIME-Version: 1.0\r
+        Content-Type: multipart/mixed; boundary="mix-bound"\r
+        \r
+        --mix-bound\r
+        Content-Type: text/plain; charset="utf-8"\r
+        \r
+        See the attached drawing.\r
+        --mix-bound\r
+        Content-Type: image/png; name="floorplan.png"\r
+        Content-Disposition: attachment; filename="floorplan.png"\r
+        Content-Transfer-Encoding: base64\r
+        \r
+        iVBORw0KGgo=\r
+        --mix-bound--\r
+        """.utf8)
+        try store.storeBody(rawMIME, accountID: account.id, messageID: header.id)
+
+        // Filename-only search succeeds before background indexing.
+        let before = store.searchHeaders(SearchQuery(text: "floorplan.png"), accountID: account.id, limit: 20)
+        #expect(before.map(\.id) == [header.id])
+
+        // Background structured-body write must not overwrite the richer raw-MIME search row.
+        try store.indexBodyText("See the attached drawing.", accountID: account.id, messageID: header.id)
+
+        let after = store.searchHeaders(SearchQuery(text: "floorplan.png"), accountID: account.id, limit: 20)
+        #expect(after.map(\.id) == [header.id])
+    }
+
     @Test("indexedAttachmentIDs tracks per-attachment IDs and matchingAttachmentMessageIDs works without message_headers")
     func perAttachmentIDsAndAttachmentOnlyMatching() throws {
         let url = Self.databaseURL()

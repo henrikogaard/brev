@@ -961,4 +961,131 @@ struct BackgroundRecentIndexingCoordinatorTests {
         #expect(saved.indexedBodyMessageIDs == ["m-ok"])
         #expect(!saved.indexedBodyMessageIDs.contains("m-skip"))
     }
+
+    @Test("continues executeBacklog across subsequent batches even when an entire earlier batch defers")
+    func continuesBacklogWhenEntireBatchDefers() async throws {
+        let (store, defaults, suite) = try makeStore("deferred-batch")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let headers = (1 ... 4).map { header(id: "m\($0)", daysAgo: Double($0)) }
+        let spy = IndexingSpyBackend(
+            folders: [inbox],
+            headersByFolder: ["INBOX": headers],
+            bodiesByID: [:],
+            supportsBackgroundBodyIndexing: true
+        )
+        // Batch 1 (newest 2: m1, m2) both fail/defer; batch 2 (m3, m4) succeed.
+        spy.onBackgroundBodyIndex = { messageID, _ in
+            if messageID == "m1" || messageID == "m2" {
+                return nil
+            }
+            return MessageBody(messageID: messageID, html: nil, plainText: "indexed \(messageID)", attachments: [])
+        }
+
+        let settings = BackgroundIndexingSettings(
+            isEnabled: true,
+            windowDays: .days90,
+            indexAttachments: false,
+            requireUnmeteredNetworkAndPower: true
+        )
+        let coordinator = BackgroundRecentIndexingCoordinator(
+            backendsProvider: { [spy] },
+            settingsProvider: { settings },
+            environmentProvider: { BackgroundIndexingEnvironmentSnapshot() },
+            progressStore: store,
+            now: { fixedNow },
+            maxBatchSize: 2,
+            pacingDelay: .zero,
+            batchInterval: .zero
+        )
+
+        await coordinator.runPassNow()
+
+        #expect(spy.backgroundBodyFetchIDs == ["m1", "m2", "m3", "m4"])
+        let saved = store.load(accountID: spy.account.id)
+        #expect(saved.indexedBodyMessageIDs == ["m3", "m4"])
+        #expect(coordinator.state == BackgroundIndexingState.completed)
+    }
+
+    @Test("resetIndexState prevents a cancelled in-flight attachment download from writing stale progress back")
+    func resetIndexStateBlocksStaleCancelledGenerationWrites() async throws {
+        let (store, defaults, suite) = try makeStore("reset-in-flight")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let msg = header(id: "m1", daysAgo: 1, hasAttachments: true)
+        let att1 = BrevBackend.Attachment(id: "att-1", name: "first.txt", mimeType: "text/plain", sizeBytes: 64)
+        let att2 = BrevBackend.Attachment(id: "att-2", name: "second.txt", mimeType: "text/plain", sizeBytes: 64)
+
+        let spy = IndexingSpyBackend(
+            folders: [inbox],
+            headersByFolder: ["INBOX": [msg]],
+            bodiesByID: ["m1": body(id: "m1", attachments: [att1, att2])],
+            cacheBodyAfterFetch: true,
+            attachmentPayloads: [
+                "att-1": Data("first attachment".utf8),
+                "att-2": Data("second attachment".utf8)
+            ]
+        )
+
+        var settings = BackgroundIndexingSettings(
+            isEnabled: true,
+            windowDays: .days90,
+            indexAttachments: true,
+            requireUnmeteredNetworkAndPower: true
+        )
+
+        var enteredAtt2Continuation: CheckedContinuation<Void, Never>?
+        var releaseAtt2Continuation: CheckedContinuation<Void, Never>?
+
+        spy.onDownloadAttachment = { attachmentID in
+            guard attachmentID == "att-2" else { return }
+            await MainActor.run {
+                enteredAtt2Continuation?.resume()
+                enteredAtt2Continuation = nil
+            }
+            await withCheckedContinuation { continuation in
+                Task { @MainActor in
+                    releaseAtt2Continuation = continuation
+                }
+            }
+            throw CancellationError()
+        }
+
+        let coordinator = BackgroundRecentIndexingCoordinator(
+            backendsProvider: { [spy] },
+            settingsProvider: { settings },
+            environmentProvider: { BackgroundIndexingEnvironmentSnapshot() },
+            progressStore: store,
+            now: { fixedNow },
+            pacingDelay: .zero,
+            batchInterval: .zero
+        )
+
+        let enteredAtt2 = Task<Void, Never> { @MainActor in
+            await withCheckedContinuation { continuation in
+                enteredAtt2Continuation = continuation
+            }
+        }
+        let passTask = Task<Void, Never> { @MainActor in
+            await coordinator.runPassNow()
+        }
+
+        await enteredAtt2.value
+        // Attachment 1 was saved incrementally while the generation was still active.
+        #expect(store.load(accountID: spy.account.id).ftsIndexedAttachmentIDsByMessage["m1"] == ["att-1"])
+
+        // Disable & reset while att-2 is suspended, then release att-2 so the old task unwinds.
+        settings.isEnabled = false
+        await coordinator.resetIndexState()
+        #expect(store.load(accountID: spy.account.id) == .empty)
+
+        releaseAtt2Continuation?.resume()
+        releaseAtt2Continuation = nil
+        await passTask.value
+
+        // Stale cancelled generation must NOT restore old progress after resetIndexState().
+        #expect(store.load(accountID: spy.account.id) == .empty)
+    }
 }

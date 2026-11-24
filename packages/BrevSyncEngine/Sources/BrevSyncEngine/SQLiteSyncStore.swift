@@ -1158,6 +1158,9 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     func indexBodyText(_ bodyText: String, accountID: String, messageID: MessageHeader.ID) throws {
         try lock.withLock {
             guard let header = header(accountID: accountID, messageID: messageID) else { return }
+            // Preserve search rows derived from stored raw MIME source so structured
+            // background passes never downgrade a full raw-source index row.
+            if hasStoredBody(accountID: accountID, messageID: messageID) { return }
             try inTransaction {
                 try upsertSearchRow(
                     header,
@@ -1166,6 +1169,20 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 )
             }
         }
+    }
+
+    private func hasStoredBody(accountID: String, messageID: MessageHeader.ID) -> Bool {
+        var stmt: OpaquePointer?
+        let sql = """
+            SELECT 1 FROM message_bodies
+            WHERE account_id = ? AND message_id = ?
+            LIMIT 1;
+        """
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+        sqlite3_bind_text(stmt, 2, messageID, -1, Self.transient)
+        return sqlite3_step(stmt) == SQLITE_ROW
     }
 
     private func storeBody(
