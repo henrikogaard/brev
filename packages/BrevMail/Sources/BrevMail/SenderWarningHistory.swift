@@ -91,9 +91,11 @@ struct SenderWarningHistoryModifier: ViewModifier {
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders)
     private var allowRemoteContentForTrustedSenders = false
     @State private var loaded: (Request, SenderWarningHistory)?
-    @State private var contactEmails: Set<String> = []
+    @State private var systemContactEmails: Set<String> = []
+    @State private var pimContactEmails: Set<String> = []
     @State private var revision = 0
-    @State private var contactsRevision = 0
+    @State private var systemContactsRevision = 0
+    @State private var pimContactsRevision = 0
 
     init(
         backend: any MailBackend,
@@ -117,7 +119,12 @@ struct SenderWarningHistoryModifier: ViewModifier {
         let revision: Int
     }
 
-    private struct ContactsRequest: Equatable {
+    private struct SystemContactsRequest: Equatable {
+        let isEnabled: Bool
+        let revision: Int
+    }
+
+    private struct PIMContactsRequest: Equatable {
         let isEnabled: Bool
         let contactActionsID: ObjectIdentifier?
         let revision: Int
@@ -131,14 +138,20 @@ struct SenderWarningHistoryModifier: ViewModifier {
             mine: Set([backend.account.emailAddress, mailboxEmail].compactMap { $0?.lowercased() }),
             revision: revision
         )
-        let contactsRequest = ContactsRequest(
+        let systemContactsRequest = SystemContactsRequest(
+            isEnabled: allowRemoteContentForTrustedSenders,
+            revision: systemContactsRevision
+        )
+        let pimContactsRequest = PIMContactsRequest(
             isEnabled: allowRemoteContentForTrustedSenders,
             contactActionsID: contactActions.map(ObjectIdentifier.init),
-            revision: contactsRevision
+            revision: pimContactsRevision
         )
         let currentHistory = loaded?.0 == request ? loaded?.1 : nil
         let evaluator = TrustedSenderEvaluator(
-            contactEmails: allowRemoteContentForTrustedSenders ? contactEmails : [],
+            contactEmails: allowRemoteContentForTrustedSenders
+                ? systemContactEmails.union(pimContactEmails)
+                : [],
             repliedToEmails: currentHistory?.written ?? []
         )
         content
@@ -152,19 +165,13 @@ struct SenderWarningHistoryModifier: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .CNContactStoreDidChange)
                 .receive(on: DispatchQueue.main)) { _ in
                     guard allowRemoteContentForTrustedSenders else { return }
-                    contactsRevision += 1
+                    systemContactsRevision += 1
             }
         #endif
             .onReceive(NotificationCenter.default.publisher(for: .pimContactsCacheDidChange)
                 .receive(on: DispatchQueue.main)) { _ in
                     guard allowRemoteContentForTrustedSenders else { return }
-                    contactsRevision += 1
-            }
-            .task(id: contactActions.map(ObjectIdentifier.init)) {
-                await contactActions?.observeSourceChanges {
-                    guard allowRemoteContentForTrustedSenders else { return }
-                    contactsRevision += 1
-                }
+                    pimContactsRevision += 1
             }
             .task(id: request) {
                 let result = await SenderWarningHistory.load(
@@ -176,17 +183,23 @@ struct SenderWarningHistoryModifier: ViewModifier {
                 guard !Task.isCancelled else { return }
                 loaded = (request, result)
             }
-            .task(id: contactsRequest) {
-                guard contactsRequest.isEnabled else {
-                    contactEmails = []
+            .task(id: systemContactsRequest) {
+                guard systemContactsRequest.isEnabled else {
+                    systemContactEmails = []
                     return
                 }
-                var emails = await SystemContactsRecipientLookup.shared.allContactEmails()
-                if let contactActions {
-                    await emails.formUnion(contactActions.allCachedContactEmails())
-                }
+                let emails = await SystemContactsRecipientLookup.shared.allContactEmails()
                 guard !Task.isCancelled else { return }
-                contactEmails = emails
+                systemContactEmails = emails
+            }
+            .task(id: pimContactsRequest) {
+                guard pimContactsRequest.isEnabled, let contactActions else {
+                    pimContactEmails = []
+                    return
+                }
+                let emails = await contactActions.allCachedContactEmails()
+                guard !Task.isCancelled else { return }
+                pimContactEmails = emails
             }
     }
 }

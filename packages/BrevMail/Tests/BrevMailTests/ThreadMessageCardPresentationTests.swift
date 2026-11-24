@@ -123,7 +123,7 @@ struct ThreadMessageBodyPresentationTests {
             )
         )
 
-        #expect(presentation == .htmlFallback("Hello"))
+        #expect(presentation == .remoteBlocked(text: "Hello", isPlainText: false))
     }
 
     @Test("body load errors surface as safe error copy")
@@ -300,12 +300,14 @@ struct ThreadMessageBodyPresentationTests {
             showsRemoteContentBanner: true
         ))
 
-        // When rich renderer is OFF, disabled trusted-sender / always-load toggles stay blocked.
+        // When rich renderer is OFF, disabled trusted-sender / always-load toggles stay blocked
+        // with a manual consent banner, and tapping "Download images" (showRemoteContent: true)
+        // transitions to attributed HTML import.
         let nativeBlocked = ThreadMessageBodyPresentation.resolve(
             ThreadMessageBodyPresentation.Context(
                 isLoading: false,
                 errorMessage: nil,
-                renderedBody: RenderedBody(html: html, plainText: nil, attachments: []),
+                renderedBody: RenderedBody(html: html, plainText: "Plain fallback", attachments: []),
                 useRichRenderer: false,
                 allowRemoteContent: true,
                 allowRemoteContentForTrustedSenders: true,
@@ -314,7 +316,22 @@ struct ThreadMessageBodyPresentationTests {
                 showRemoteContent: false
             )
         )
-        #expect(nativeBlocked == .htmlFallback("Hello"))
+        #expect(nativeBlocked == .remoteBlocked(text: "Plain fallback", isPlainText: true))
+
+        let nativeAfterManualConsent = ThreadMessageBodyPresentation.resolve(
+            ThreadMessageBodyPresentation.Context(
+                isLoading: false,
+                errorMessage: nil,
+                renderedBody: RenderedBody(html: html, plainText: "Plain fallback", attachments: []),
+                useRichRenderer: false,
+                allowRemoteContent: true,
+                allowRemoteContentForTrustedSenders: true,
+                senderEmail: "alice@example.com",
+                trustedSenders: trusted,
+                showRemoteContent: true
+            )
+        )
+        #expect(nativeAfterManualConsent == .attributedHTML(html))
     }
 }
 

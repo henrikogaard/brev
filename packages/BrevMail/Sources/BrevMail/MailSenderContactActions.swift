@@ -160,15 +160,6 @@ public final class MailSenderContactActions {
         }
     }
 
-    /// Observes PIM source lifecycle mutations (connect, disconnect, removal)
-    /// so open readers can refresh or clear trusted PIM contact emails.
-    public func observeSourceChanges(onChange: @escaping @MainActor () -> Void) async {
-        guard let coordinator else { return }
-        for await _ in coordinator.changes() {
-            onChange()
-        }
-    }
-
     /// The source record for a resolved contact, for the detail view's
     /// provenance row.
     public func source(for contact: PIMContact) async -> PIMSource? {

@@ -19,6 +19,7 @@ enum ThreadMessageBodyPresentation: Equatable {
     case error(String)
     case plainText(String)
     case attributedHTML(String)
+    case remoteBlocked(text: String, isPlainText: Bool)
     case richHTML(
         html: String,
         allowRemoteContent: Bool,
@@ -112,6 +113,12 @@ enum ThreadMessageBodyPresentation: Equatable {
                 allowRemoteContent: remoteState.allowsRemoteContent
             ) {
                 return .attributedHTML(html)
+            }
+            if remoteState.isBlocked {
+                if let text = renderedBody.plainText, !text.isEmpty {
+                    return .remoteBlocked(text: text, isPlainText: true)
+                }
+                return .remoteBlocked(text: htmlFallback(html), isPlainText: false)
             }
             if let text = renderedBody.plainText, !text.isEmpty {
                 return .plainText(text)

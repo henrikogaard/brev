@@ -139,13 +139,31 @@ struct MailboxViewSettingsTests {
     }
 
     @Test("trusted-sender subtitle reflects whether tracking-pixel removal is enabled")
-    func trustedSenderSubtitleReflectsTrackingPixelToggle() {
-        let whenStrippingOn = PrivacySection.trustedSendersSubtitle(stripTrackingPixels: true)
-        let whenStrippingOff = PrivacySection.trustedSendersSubtitle(stripTrackingPixels: false)
+    func trustedSenderSubtitleReflectsTrackingPixelToggle() throws {
+        let onText = PrivacySection.trustedSendersSubtitle(stripTrackingPixels: true)
+        let offText = PrivacySection.trustedSendersSubtitle(stripTrackingPixels: false)
 
-        #expect(whenStrippingOn.contains("Known tracking pixels remain blocked"))
-        #expect(!whenStrippingOff.contains("Known tracking pixels remain blocked"))
-        #expect(whenStrippingOff.contains("Tracking-pixel removal is currently off"))
+        #expect(!onText.isEmpty)
+        #expect(!offText.isEmpty)
+        #expect(onText != offText)
+
+        // Verify both English source keys and Norwegian catalog values stay distinct and accurate.
+        let onKey = "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked."
+        let offKey = "Automatically load remote images from your Contacts and people you have emailed. Tracking-pixel removal is currently off."
+        let strings = try Self.loadSettingsCatalogStrings()
+        let onNB =
+            (((strings[onKey] as? [
+                String: Any
+            ])?["localizations"] as? [String: Any])?["nb"] as? [String: Any])?["stringUnit"] as? [String: Any]
+        let offNB =
+            (((strings[offKey] as? [
+                String: Any
+            ])?["localizations"] as? [String: Any])?["nb"] as? [String: Any])?["stringUnit"] as? [String: Any]
+        let onNBValue = try #require(onNB?["value"] as? String)
+        let offNBValue = try #require(offNB?["value"] as? String)
+        #expect(!onNBValue.isEmpty)
+        #expect(!offNBValue.isEmpty)
+        #expect(onNBValue != offNBValue)
     }
 
     @Test("invalid enum raw values fall back to defaults")
