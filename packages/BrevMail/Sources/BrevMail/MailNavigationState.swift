@@ -144,6 +144,10 @@ public final class MailNavigationState {
     /// clearing search or switching folders restores the default `true`.
     var searchAllMailboxes = true
 
+    /// True while `BrevMailRootView` is hosting cross-account search in
+    /// `UnifiedInboxListView` rather than a single-account `MessageListView`.
+    var isCrossAccountSearchListActive = false
+
     /// Updates the mailbox search scope, restoring the origin folder when
     /// narrowing back from a cross-account search result (#296, ADR-0041).
     func setSearchAllMailboxes(_ searchAll: Bool) {
@@ -651,9 +655,9 @@ public final class MailNavigationState {
         expandsSelectedMessage: Bool = true
     ) {
         restoredSelectionHeader = nil
-        if browsingFolderID == nil,
-           searchOriginSourceFolderID == nil,
-           !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if isCrossAccountSearchListActive,
+           browsingFolderID == nil,
+           searchOriginSourceFolderID == nil {
             searchOriginSourceFolderID = selectedSourceFolderID
         }
         selectedCollectionFolderID = browsingFolderID

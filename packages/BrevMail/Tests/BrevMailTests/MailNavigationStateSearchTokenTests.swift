@@ -64,6 +64,7 @@ struct MailNavigationStateSearchTokenTests {
         let state = MailNavigationState()
         state.selectFolder("work", in: sourceA)
         state.searchText = "invoice"
+        state.isCrossAccountSearchListActive = true
 
         let headerB = MessageHeader(
             id: "msg-b",
@@ -83,6 +84,7 @@ struct MailNavigationStateSearchTokenTests {
         #expect(state.browsingSourceFolderID == SourceFolderID(sourceID: sourceA, folderID: "work"))
 
         // Narrowing to "This folder" restores the origin source/folder and drops the cross-account reader item.
+        state.isCrossAccountSearchListActive = false
         state.setSearchAllMailboxes(false)
         #expect(!state.searchAllMailboxes)
         #expect(state.selectedSourceID == sourceA)
@@ -92,6 +94,7 @@ struct MailNavigationStateSearchTokenTests {
 
         // Clearing search after selecting a result from the same origin folder preserves that open message.
         state.setSearchAllMailboxes(true)
+        state.isCrossAccountSearchListActive = true
         let headerA = MessageHeader(
             id: "msg-a",
             threadID: "t-a",
@@ -103,6 +106,7 @@ struct MailNavigationStateSearchTokenTests {
             date: Date(timeIntervalSince1970: 300)
         )
         state.selectMessage(headerA, in: sourceA, headers: [headerA])
+        state.isCrossAccountSearchListActive = false
         state.clearSearch()
         #expect(state.selectedSourceID == sourceA)
         #expect(state.selectedFolderID == "work")
@@ -112,6 +116,7 @@ struct MailNavigationStateSearchTokenTests {
 
         // Removing the result's source during cross-account search falls back cleanly to the surviving origin.
         state.searchText = "invoice"
+        state.isCrossAccountSearchListActive = true
         state.selectMessage(headerB, in: sourceB, headers: [headerB])
         #expect(!MailCrossAccountSearchPolicy.shouldNavigateCompactOnFolderChange(
             searchOriginSourceFolderID: state.searchOriginSourceFolderID
@@ -121,6 +126,7 @@ struct MailNavigationStateSearchTokenTests {
             searchOriginSourceFolderID: state.searchOriginSourceFolderID
         ))
         state.reconcileReaderSources([sourceA])
+        state.isCrossAccountSearchListActive = false
         #expect(state.selectedSourceID == sourceA)
         #expect(state.selectedFolderID == "work")
         #expect(state.selectedMessageID == nil)
@@ -132,6 +138,9 @@ struct MailNavigationStateSearchTokenTests {
             isCrossAccountSearchActive: false,
             searchOriginSourceFolderID: state.searchOriginSourceFolderID
         ))
+        // After leaving cross-account search, visible-folder sync falls back if the origin folder was hidden/deleted.
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        #expect(FolderSelectionPolicy.selectedFolderID(afterLoading: [inbox], currentID: state.selectedFolderID) == "inbox")
     }
 
     @Test("field scope persists across mailbox scope switches and resets on clear or folder change")
@@ -161,13 +170,14 @@ struct MailNavigationStateSearchTokenTests {
     }
 
     #if os(macOS)
-    @Test("reader J/K shortcuts step through unified results during cross-account search")
+    @Test("reader J/K shortcuts step by active surface for cross-account and narrowed folder search")
     func readerShortcutsStepAcrossAccountsDuringCrossAccountSearch() {
         let sourceA = MailSourceID(accountID: "acct-a", mailboxID: "primary")
         let sourceB = MailSourceID(accountID: "acct-b", mailboxID: "primary")
         let state = MailNavigationState()
         state.selectFolder("work", in: sourceA)
         state.searchText = "invoice"
+        state.isCrossAccountSearchListActive = true
         let headerB = MessageHeader(
             id: "msg-b",
             threadID: "t-b",
@@ -196,6 +206,41 @@ struct MailNavigationStateSearchTokenTests {
             sourceID: sourceB,
             perform: { _, _ in false }
         ))
+        #expect(steps == [true, false])
+
+        // In a narrowed "This folder" search, restoring a moved message via undo keeps
+        // single-mailbox J/K stepping instead of publishing to unifiedReaderStep.
+        state.isCrossAccountSearchListActive = false
+        state.setSearchAllMailboxes(false)
+        let first = MessageHeader(
+            id: "msg-1",
+            threadID: "t-1",
+            folderID: "work",
+            from: Correspondent(email: "maya@example.org"),
+            to: [],
+            subject: "Invoice 1",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 300)
+        )
+        let second = MessageHeader(
+            id: "msg-2",
+            threadID: "t-2",
+            folderID: "work",
+            from: Correspondent(email: "maya@example.org"),
+            to: [],
+            subject: "Invoice 2",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 250)
+        )
+        state.restoreMovedSelection(first, in: sourceA, headers: [first, second])
+        #expect(state.searchOriginSourceFolderID == nil)
+        #expect(MailSingleKeyShortcut.next.performInReader(
+            navigation: state,
+            header: first,
+            sourceID: sourceA,
+            perform: { _, _ in false }
+        ))
+        #expect(state.selectedMessageID == "msg-2")
         #expect(steps == [true, false])
     }
     #endif

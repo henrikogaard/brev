@@ -79,7 +79,7 @@ extension MailSingleKeyShortcut {
         if navigation.isUnifiedInboxSelected
             || navigation.isSmartViewSelected
             || navigation.selectedSavedSearchID != nil
-            || navigation.searchOriginSourceFolderID != nil {
+            || navigation.isCrossAccountSearchListActive {
             navigation.unifiedReaderStep.send(self == .next)
             return true
         }

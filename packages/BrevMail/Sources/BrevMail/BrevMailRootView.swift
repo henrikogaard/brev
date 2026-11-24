@@ -975,6 +975,14 @@ public struct BrevMailRootView: View {
                     navigation.restoreSearchOriginIfNeeded()
                     navigation.searchFieldScope = .all
                     navigation.searchAllMailboxes = true
+                    navigation.isCrossAccountSearchListActive = false
+                    syncSelectedFolderForCurrentSource()
+                }
+            }
+            .onChange(of: isCrossAccountFolderSearchActive, initial: true) { wasActive, isActive in
+                navigation.isCrossAccountSearchListActive = isActive
+                if wasActive, !isActive {
+                    syncSelectedFolderForCurrentSource()
                 }
             }
             .onChange(of: activeMailboxID) {
