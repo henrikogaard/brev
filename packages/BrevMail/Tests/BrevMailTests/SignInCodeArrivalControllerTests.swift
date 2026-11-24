@@ -300,6 +300,7 @@ struct SignInCodeArrivalControllerTests {
         let session = AppSession(
             accountStore: InMemoryAccountStore(),
             tokenStore: StubTokenStore(),
+            notificationCenter: NotificationCenter(),
             loginCoordinator: {
                 AppSession.LoginResult(backend: backend, account: backend.account)
             }

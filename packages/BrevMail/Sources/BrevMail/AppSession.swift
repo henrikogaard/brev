@@ -114,6 +114,7 @@ public final class AppSession {
     public let signInCodeNotificationPresenter: SignInCodeNotificationPresenter
     /// Session-owned arrival controller for opted-in, trust-assessed accounts (#239, ADR-0088).
     public let signInCodeArrivalController: SignInCodeArrivalController
+    private let notificationCenter: NotificationCenter
     #if os(macOS)
     private var signInCodeSubscriptionTasks: [BrevAccount.ID: (identity: ObjectIdentifier, task: Task<Void, Never>)] = [:]
     private var signInCodeSettingsObserver: NSObjectProtocol?
@@ -358,6 +359,7 @@ public final class AppSession {
         accountStore: any AccountStore,
         tokenStore: any TokenStore,
         themeDefaults: UserDefaults = .standard,
+        notificationCenter: NotificationCenter = .default,
         loginCoordinator: LoginCoordinator? = nil,
         imapAccountSetupCoordinator: IMAPAccountSetupCoordinator? = nil,
         imapAccountValidationCoordinator: IMAPAccountValidationCoordinator? = nil,
@@ -405,6 +407,7 @@ public final class AppSession {
         self.googleDriveFeature = googleDriveFeature
         self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
         self.themeDefaults = themeDefaults
+        self.notificationCenter = notificationCenter
         self.theme = theme ?? ThemePreferences.load(defaults: themeDefaults)
         signInError = initialSignInError
         self.backend = backend
@@ -597,7 +600,7 @@ public final class AppSession {
     /// immediately when either preference is off.
     public func syncBackgroundPanelSubscriptions() {
         if panelSettingsObserver == nil {
-            panelSettingsObserver = NotificationCenter.default.addObserver(
+            panelSettingsObserver = notificationCenter.addObserver(
                 forName: .brevNotificationSettingsDidChange,
                 object: nil,
                 queue: .main
@@ -1330,7 +1333,7 @@ public final class AppSession {
         signInCodeSettings: SignInCodeSettings
     ) {
         if signInCodeSettingsObserver == nil {
-            signInCodeSettingsObserver = NotificationCenter.default.addObserver(
+            signInCodeSettingsObserver = notificationCenter.addObserver(
                 forName: .brevNotificationSettingsDidChange,
                 object: nil,
                 queue: .main
