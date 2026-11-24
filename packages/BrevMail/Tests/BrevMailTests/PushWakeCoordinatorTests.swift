@@ -350,6 +350,7 @@ struct PushWakeCoordinatorTests {
 
         let backend = MockBackend(
             account: Self.workAccount,
+            extendedCapabilities: [.cachedMessageHeaders],
             folders: [inbox, staging],
             messagesByFolder: [
                 inbox.id: [oldUnread],
@@ -402,6 +403,301 @@ struct PushWakeCoordinatorTests {
         shouldDeliverNewMailOnRefresh = false
         #expect(await coordinator.handleWake(wakePayload) == .synced(accountID: Self.workAccount.id))
         #expect(deliveredMessages.map(\.messageID) == [arrivingUnread.id])
+    }
+
+    @Test("pre-refresh baseline reads local cache only so already-delivered remote mail triggers alert")
+    func preRefreshBaselineUsesLocalCacheNotLiveServer() async {
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 2, totalCount: 2)
+        let cachedOldUnread = MessageHeader(
+            id: "msg-cached-old",
+            threadID: "thread-cached-old",
+            folderID: inbox.id,
+            from: Correspondent(name: "Alice", email: "alice@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Already cached before wake",
+            snippet: "Previously synced",
+            date: Date(timeIntervalSince1970: 1_750_000_000),
+            isRead: false
+        )
+        let remoteNewUnread = MessageHeader(
+            id: "msg-remote-already-delivered",
+            threadID: "thread-remote-new",
+            folderID: inbox.id,
+            from: Correspondent(name: "Dana", email: "dana@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Already on remote server when wake starts",
+            snippet: "Not in local cache yet",
+            date: Date(timeIntervalSince1970: 1_750_000_500),
+            isRead: false
+        )
+
+        // Remote server (enumerateMessages) ALREADY holds `remoteNewUnread` when handleWake starts,
+        // while the local header cache (`cachedMessageHeaders`) only holds `cachedOldUnread`.
+        let backend = MockBackend(
+            account: Self.workAccount,
+            extendedCapabilities: [.cachedMessageHeaders],
+            folders: [inbox],
+            messagesByFolder: [inbox.id: [remoteNewUnread, cachedOldUnread]]
+        )
+        let cacheBox = CachedHeaderBox(headers: [cachedOldUnread])
+        backend.cachedMessageHeadersHandler = { _, _ in
+            await cacheBox.currentHeaders()
+        }
+
+        var deliveredMessages: [PushWakeArrivedMessage] = []
+        var enabledNotifications = NotificationSettings.defaults
+        enabledNotifications.notificationsEnabled = true
+        let notificationSnapshot = enabledNotifications
+
+        let coordinator = PushWakeCoordinator(
+            settingsProvider: {
+                PushRelaySettings(
+                    isEnabled: true,
+                    mode: .userHostedRelay,
+                    endpointURLString: "https://relay.example.com/push",
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
+                )
+            },
+            notificationSettingsProvider: { notificationSnapshot },
+            backendsProvider: { [backend] },
+            refreshBackends: { _ in
+                // Refresh pulls `remoteNewUnread` into the local cache.
+                await cacheBox.setHeaders([remoteNewUnread, cachedOldUnread])
+                return nil
+            },
+            deliverNotification: { arrived in
+                deliveredMessages.append(arrived)
+            }
+        )
+
+        let wakePayload = PushWakePayload(accountID: Self.workOpaqueToken, stateToken: "s2", eventKind: .newMail)
+
+        // Wake 1 MUST fire the alert for `remoteNewUnread` even though the live server already had it at wake start.
+        #expect(await coordinator.handleWake(wakePayload) == .synced(accountID: Self.workAccount.id))
+        #expect(deliveredMessages.map(\.messageID) == [remoteNewUnread.id])
+
+        // Wake 2 sees `remoteNewUnread` in the local cache and MUST NOT re-notify it.
+        #expect(await coordinator.handleWake(wakePayload) == .synced(accountID: Self.workAccount.id))
+        #expect(deliveredMessages.map(\.messageID) == [remoteNewUnread.id])
+    }
+
+    @Test("multi-account wake continues refreshing and alerting remaining accounts when an earlier account fails")
+    func multiAccountWakeContinuesPastFirstAccountFailure() async {
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 1, totalCount: 1)
+        let personalNewUnread = MessageHeader(
+            id: "msg-personal-new",
+            threadID: "thread-personal-new",
+            folderID: inbox.id,
+            from: Correspondent(name: "Eva", email: "eva@example.org"),
+            to: [Correspondent(email: "personal@example.org")],
+            subject: "Personal arrival",
+            snippet: "Arrived while work account timed out",
+            date: Date(timeIntervalSince1970: 1_750_000_900),
+            isRead: false
+        )
+
+        let workBackend = MockBackend(
+            account: Self.workAccount,
+            extendedCapabilities: [.cachedMessageHeaders],
+            folders: [inbox],
+            messagesByFolder: [inbox.id: []]
+        )
+        let personalBackend = MockBackend(
+            account: Self.personalAccount,
+            extendedCapabilities: [.cachedMessageHeaders],
+            folders: [inbox],
+            messagesByFolder: [inbox.id: [personalNewUnread]]
+        )
+        let personalCache = CachedHeaderBox(headers: [])
+        personalBackend.cachedMessageHeadersHandler = { _, _ in
+            await personalCache.currentHeaders()
+        }
+
+        let recorder = SyncedAccountRecorder()
+        var deliveredMessages: [PushWakeArrivedMessage] = []
+        var enabledNotifications = NotificationSettings.defaults
+        enabledNotifications.notificationsEnabled = true
+        let notificationSnapshot = enabledNotifications
+
+        // Use opaque tokens ordered so the failing account runs first ("acct-aaa-failing" < "acct-zzz-healthy").
+        let failingAccountID = Self.workAccount.id
+        let failingToken = "acct-aaa-failing"
+        let healthyToken = "acct-zzz-healthy"
+        let orderedCoordinator = PushWakeCoordinator(
+            settingsProvider: {
+                PushRelaySettings(
+                    isEnabled: true,
+                    mode: .jmapWebPush,
+                    endpointURLString: "https://jmap.example.com/api/",
+                    webPushDeliveryURLString: "https://webpush.example.com/push/dev1",
+                    enabledAccountIDs: [Self.workAccount.id, Self.personalAccount.id],
+                    opaqueAccountTokens: [
+                        Self.workAccount.id: failingToken,
+                        Self.personalAccount.id: healthyToken
+                    ]
+                )
+            },
+            notificationSettingsProvider: { notificationSnapshot },
+            backendsProvider: { [workBackend, personalBackend] },
+            refreshBackends: { backends in
+                let ids = backends.map(\.account.id)
+                await recorder.record(ids)
+                if ids.contains(failingAccountID) {
+                    return "Work account timed out"
+                }
+                await personalCache.setHeaders([personalNewUnread])
+                return nil
+            },
+            deliverNotification: { arrived in
+                deliveredMessages.append(arrived)
+            }
+        )
+
+        let stateChangeJSON = Data("""
+        {
+          "@type": "StateChange",
+          "changed": {
+            "\(failingToken)": { "Email": "e-1" },
+            "\(healthyToken)": { "Email": "e-2" }
+          }
+        }
+        """.utf8)
+        let result = await orderedCoordinator.handleWakeData(stateChangeJSON)
+
+        // First account failed, yet second account STILL refreshed and posted its arrival alert.
+        #expect(result == .failed(accountID: Self.workAccount.id, message: "Work account timed out"))
+        #expect(await recorder.syncedAccountIDs() == [[Self.workAccount.id], [Self.personalAccount.id]])
+        #expect(deliveredMessages.map(\.messageID) == [personalNewUnread.id])
+        #expect(deliveredMessages.map(\.accountID) == [Self.personalAccount.id])
+    }
+
+    @Test("AppSession JMAP PushVerification callback verifies matching pending subscription and ignores mismatched IDs")
+    func appSessionHandlesJMAPVerificationChallenge() async throws {
+        let suite = "AppSessionJMAPVerify-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let secretStore = InMemoryPushRelaySecretStore()
+        try secretStore.saveBearerToken("jmap-origin-token", forOrigin: "https://jmap.example.com")
+
+        let pendingSettings = PushRelaySettings(
+            isEnabled: true,
+            mode: .jmapWebPush,
+            endpointURLString: "https://jmap.example.com/api/",
+            webPushDeliveryURLString: "https://webpush.example.com/push/dev1",
+            enabledAccountIDs: [Self.workAccount.id],
+            opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken],
+            deviceClientID: "brev-dev-1",
+            activeRegistration: ActivePushRelayRegistration(
+                mode: .jmapWebPush,
+                endpointURLString: "https://jmap.example.com/api/",
+                webPushDeliveryURLString: "https://webpush.example.com/push/dev1",
+                subscriptionID: "jmap-sub-pending",
+                state: .pendingVerification
+            )
+        )
+        store.save(pendingSettings)
+
+        let verifyOK = Data("""
+        {"methodResponses":[["PushSubscription/set",{"updated":{"jmap-sub-pending":null}},"c0"]]}
+        """.utf8)
+        let transport = SingleResponsePushTransport(response: (verifyOK, 200))
+        let client = PushRelayClient(transport: transport)
+        let session = AppSession(accountStore: InMemoryAccountStore(), tokenStore: StubPushTestTokenStore())
+        #expect(session.pushWakeCoordinator.onJMAPVerificationChallenge != nil)
+        let verifiedAt = Date(timeIntervalSince1970: 1_800_123_456)
+
+        // Mismatched subscription ID is ignored with zero network requests.
+        await session.handleJMAPVerificationChallenge(
+            subscriptionID: "other-sub-id",
+            verificationCode: "wrong-code",
+            settingsStore: store,
+            secretStore: secretStore,
+            client: client,
+            now: { verifiedAt }
+        )
+        #expect(await transport.recordedRequests().isEmpty)
+        #expect(store.pushRelaySettings().activeRegistration?.state == .pendingVerification)
+
+        // Matching subscription ID submits RFC 8620 §7.2.2 update and transitions persisted state to `.active`.
+        await session.handleJMAPVerificationChallenge(
+            subscriptionID: "jmap-sub-pending",
+            verificationCode: "challenge-42",
+            settingsStore: store,
+            secretStore: secretStore,
+            client: client,
+            now: { verifiedAt }
+        )
+        let requests = await transport.recordedRequests()
+        #expect(requests.count == 1)
+        #expect(requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer jmap-origin-token")
+        let body = try String(decoding: #require(requests[0].httpBody), as: UTF8.self)
+        #expect(body.contains("\"verificationCode\":\"challenge-42\""))
+        #expect(body.contains("jmap-sub-pending"))
+
+        let updated = store.pushRelaySettings()
+        #expect(updated.activeRegistration?.state == .active)
+        #expect(updated.activeRegistration?.registeredAt == verifiedAt)
+        #expect(updated.lastRegistrationError == nil)
+    }
+}
+
+private actor CachedHeaderBox {
+    private var headers: [MessageHeader]
+
+    init(headers: [MessageHeader]) {
+        self.headers = headers
+    }
+
+    func currentHeaders() -> [MessageHeader] {
+        headers
+    }
+
+    func setHeaders(_ updated: [MessageHeader]) {
+        headers = updated
+    }
+}
+
+private actor SingleResponsePushTransport: PushRelayHTTPTransport {
+    private let response: (Data, Int)
+    private var requests: [URLRequest] = []
+
+    init(response: (Data, Int)) {
+        self.response = response
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requests.append(request)
+        let url = request.url ?? URL(string: "https://jmap.example.com/api/")!
+        let http = HTTPURLResponse(
+            url: url,
+            statusCode: response.1,
+            httpVersion: "HTTP/1.1",
+            headerFields: nil
+        )!
+        return (response.0, http)
+    }
+
+    func recordedRequests() -> [URLRequest] {
+        requests
+    }
+}
+
+private actor StubPushTestTokenStore: TokenStore {
+    private var tokens: [String: Token] = [:]
+
+    func token(for accountID: String) -> Token? {
+        tokens[accountID]
+    }
+
+    func setToken(_ token: Token, for accountID: String) {
+        tokens[accountID] = token
+    }
+
+    func clearToken(for accountID: String) {
+        tokens[accountID] = nil
     }
 }
 

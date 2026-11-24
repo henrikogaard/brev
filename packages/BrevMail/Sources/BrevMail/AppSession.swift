@@ -519,6 +519,12 @@ public final class AppSession {
         pushWakeCoordinator.ensureAccountsRestored = { [weak self] in
             await self?.ensureAccountsRestored()
         }
+        pushWakeCoordinator.onJMAPVerificationChallenge = { [weak self] subscriptionID, verificationCode in
+            await self?.handleJMAPVerificationChallenge(
+                subscriptionID: subscriptionID,
+                verificationCode: verificationCode
+            )
+        }
         notificationActionExecutor.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         notificationActionExecutor.prepareBackends = { [weak self] in
             await self?.ensureAccountsRestored()
@@ -666,6 +672,58 @@ public final class AppSession {
         let connected = visibleBackends
         for backend in connected {
             await backend.replayOfflineMutations()
+        }
+    }
+
+    /// Completes an incoming RFC 8620 §7.2.2 JMAP `PushVerification` challenge when it
+    /// matches this device's active `.pendingVerification` JMAP subscription (#11).
+    func handleJMAPVerificationChallenge(
+        subscriptionID: String,
+        verificationCode: String,
+        settingsStore: SettingsPersistenceStore = .standard,
+        secretStore: any PushRelaySecretStore = PushRelayKeychainSecretStore(),
+        client: PushRelayClient = PushRelayClient(),
+        now: @escaping () -> Date = { Date() }
+    ) async {
+        let settings = settingsStore.pushRelaySettings()
+        guard settings.isEnabled,
+              let active = settings.activeRegistration,
+              active.mode == .jmapWebPush,
+              active.state == .pendingVerification,
+              active.subscriptionID == subscriptionID
+        else {
+            return
+        }
+        do {
+            let bearerToken = try active.endpointOrigin.flatMap {
+                try secretStore.bearerToken(forOrigin: $0)
+            }
+            let verified = try await client.verifyJMAPSubscription(
+                endpointURLString: active.endpointURLString,
+                subscriptionID: active.subscriptionID,
+                verificationCode: verificationCode,
+                bearerToken: bearerToken
+            )
+            // Re-read persisted settings after awaiting network so a concurrent
+            // disable or target switch is never overwritten.
+            var latest = settingsStore.pushRelaySettings()
+            guard latest.isEnabled,
+                  var latestActive = latest.activeRegistration,
+                  latestActive.mode == .jmapWebPush,
+                  latestActive.subscriptionID == subscriptionID
+            else {
+                return
+            }
+            latestActive.state = verified.state
+            latestActive.registeredAt = now()
+            latest.activeRegistration = latestActive
+            latest.lastRegistrationError = nil
+            settingsStore.save(latest)
+        } catch {
+            var latest = settingsStore.pushRelaySettings()
+            guard latest.activeRegistration?.subscriptionID == subscriptionID else { return }
+            latest.lastRegistrationError = error.localizedDescription
+            settingsStore.save(latest)
         }
     }
 

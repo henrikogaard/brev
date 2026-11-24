@@ -472,6 +472,7 @@ public struct JMAPWebPushSubscriptionSpec: Equatable, Sendable {
         if let expires {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime]
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
             patch["expires"] = formatter.string(from: expires)
         }
         let payload: [String: Any] = [

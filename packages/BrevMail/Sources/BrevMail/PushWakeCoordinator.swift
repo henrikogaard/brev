@@ -221,17 +221,22 @@ public final class PushWakeCoordinator {
             return .ignoredAccountNotConnected(accountID: resolvedAccountIDs[0])
         }
 
+        var syncedAccountIDs: [String] = []
+        var failures: [(accountID: String, message: String)] = []
+
         for targetBackend in matchedBackends {
             let knownInboxIDs: Set<String>? = if customNotifyArrivedMail == nil, payload.eventKind == .newMail {
-                await Self.snapshotInboxMessageIDs(for: targetBackend)
+                await Self.snapshotCachedInboxMessageIDs(for: targetBackend)
             } else {
                 nil
             }
 
             if let failure = await refreshBackends([targetBackend]) {
-                return .failed(accountID: targetBackend.account.id, message: failure)
+                failures.append((accountID: targetBackend.account.id, message: failure))
+                continue
             }
 
+            syncedAccountIDs.append(targetBackend.account.id)
             if let customNotifyArrivedMail {
                 await customNotifyArrivedMail(targetBackend, payload)
             } else {
@@ -243,7 +248,14 @@ public final class PushWakeCoordinator {
             }
         }
 
-        return .synced(accountID: matchedBackends[0].account.id)
+        if let firstFailure = failures.first {
+            let summary = failures.count == 1
+                ? firstFailure.message
+                : failures.map(\.message).joined(separator: "; ")
+            return .failed(accountID: firstFailure.accountID, message: summary)
+        }
+
+        return .synced(accountID: syncedAccountIDs[0])
     }
 
     /// Decodes an APNs/remote-notification `userInfo` dictionary and handles the wake.
@@ -266,14 +278,26 @@ public final class PushWakeCoordinator {
         return await handleWake(payload)
     }
 
-    private static func snapshotInboxMessageIDs(for backend: any MailBackend) async -> Set<String>? {
+    /// Reads the pre-refresh Inbox message ID baseline strictly from the backend's
+    /// local header cache (`cachedMessageHeaders`) without hitting the live server.
+    ///
+    /// Reading from the live server before refresh would already include the newly
+    /// delivered message that triggered the push wake and suppress the arrival diff.
+    private static func snapshotCachedInboxMessageIDs(for backend: any MailBackend) async -> Set<String>? {
+        guard backend.extendedCapabilities.contains(.cachedMessageHeaders) else {
+            return nil
+        }
         guard let folders = try? await backend.folders(),
-              let inbox = folders.first(where: { $0.role == .inbox }),
-              let page = try? await backend.enumerateMessages(in: inbox, pageToken: nil)
+              let inbox = folders.first(where: { $0.role == .inbox })
         else {
             return nil
         }
-        return Set(page.headers.map(\.id))
+        let mailboxID = await (try? backend.currentMailbox().id) ?? backend.account.id
+        let sourceID = MailSourceID(accountID: backend.account.id, mailboxID: mailboxID)
+        guard let cachedHeaders = try? await backend.cachedMessageHeaders(in: inbox, sourceID: sourceID) else {
+            return nil
+        }
+        return Set(cachedHeaders.map(\.id))
     }
 
     /// Evaluates `NewMailNotificationPolicy` and posts local notifications ONLY for

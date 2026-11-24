@@ -509,19 +509,21 @@ struct PushRelayTests {
         #expect(destroyBody.contains("jmap-sub-99"))
     }
 
-    @Test("JMAP refresh updates existing subscription preserving active state and falls back to create on notFound")
+    @Test(
+        "JMAP refresh sends future UTC expires, accepts null updated record, preserves active state, and falls back to create on notFound"
+    )
     func jmapRefreshPreservesVerifiedStateAndFallsBackOnNotFound() async throws {
         let keys = try PushRelayEncryptionKeyMaterial.generate().publicKeys()
-        let updateOK = """
+        let fixedNow = Date(timeIntervalSince1970: 1_800_000_000) // 2027-01-15T08:00:00Z
+        let expectedRequestedExpiry = fixedNow.addingTimeInterval(30 * 24 * 60 * 60) // 2027-02-14T08:00:00Z
+        let updateNullRecordOK = """
         {
           "methodResponses": [
             [
               "PushSubscription/set",
               {
                 "updated": {
-                  "jmap-sub-1": {
-                    "expires": "2027-02-01T00:00:00Z"
-                  }
+                  "jmap-sub-1": null
                 }
               },
               "c0"
@@ -564,11 +566,11 @@ struct PushRelayTests {
         }
         """
         let transport = RecordingPushRelayTransport(responses: [
-            (Data(updateOK.utf8), 200),
+            (Data(updateNullRecordOK.utf8), 200),
             (Data(updateNotFound.utf8), 200),
             (Data(recreateResponse.utf8), 200)
         ])
-        let client = PushRelayClient(transport: transport)
+        let client = PushRelayClient(transport: transport, now: { fixedNow })
         let req = PushRelayRegistrationRequest(
             mode: .jmapWebPush,
             deviceClientID: "brev-device-42",
@@ -577,7 +579,8 @@ struct PushRelayTests {
             keys: keys
         )
 
-        // 1. Refresh on an already-verified subscription sends `update` and preserves `.active`.
+        // 1. Refresh on an already-verified subscription sends `update` with future UTC `expires`,
+        // accepts RFC 8620 `updated[id]: null` as success, and preserves `.active`.
         let refreshed = try await client.refresh(
             endpointURLString: "https://jmap.example.com/api/",
             subscriptionID: "jmap-sub-1",
@@ -587,6 +590,7 @@ struct PushRelayTests {
         )
         #expect(refreshed.subscriptionID == "jmap-sub-1")
         #expect(refreshed.state == .active)
+        #expect(refreshed.expiresAt == expectedRequestedExpiry)
 
         // 2. If server returns `notFound` for the existing ID, refresh falls back to `create` (.pendingVerification).
         let recreated = try await client.refresh(
@@ -604,6 +608,7 @@ struct PushRelayTests {
         let firstBody = try String(decoding: #require(recorded[0].httpBody), as: UTF8.self)
         #expect(firstBody.contains("\"update\""))
         #expect(firstBody.contains("jmap-sub-1"))
+        #expect(firstBody.contains("\"expires\":\"2027-02-14T08:00:00Z\""))
         #expect(!firstBody.contains("\"create\""))
 
         let secondBody = try String(decoding: #require(recorded[1].httpBody), as: UTF8.self)

@@ -140,12 +140,20 @@ public enum PushRelayClientError: Error, LocalizedError, Equatable, Sendable {
 public actor PushRelayClient {
     private static let subscriptionIDHeader = "X-Brev-Subscription-ID"
     private static let jmapClientCreationID = "brev-push-sub"
+    /// Requested lease extension (30 days) on JMAP `PushSubscription/set` refresh updates.
+    /// Per RFC 8620 §7.2, servers clamp `expires` to their own maximum supported lifetime.
+    private static let jmapRefreshExpiryInterval: TimeInterval = 30 * 24 * 60 * 60
 
     private let transport: any PushRelayHTTPTransport
+    private let now: @Sendable () -> Date
 
-    /// Creates a push relay client with the supplied HTTP transport.
-    public init(transport: any PushRelayHTTPTransport = URLSessionPushRelayTransport.shared) {
+    /// Creates a push relay client with the supplied HTTP transport and clock.
+    public init(
+        transport: any PushRelayHTTPTransport = URLSessionPushRelayTransport.shared,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.transport = transport
+        self.now = now
     }
 
     /// Registers a device push subscription with the user-configured HTTPS endpoint.
@@ -236,13 +244,15 @@ public actor PushRelayClient {
                 throw PushRelayClientError.webPushDeliveryURLMatchesAPIEndpoint
             }
 
+            let requestedExpiry = now().addingTimeInterval(Self.jmapRefreshExpiryInterval)
             var updateRequest = URLRequest(url: endpointURL)
             updateRequest.httpMethod = "POST"
             updateRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
             updateRequest.setValue("application/json", forHTTPHeaderField: "Accept")
             applyBearerHeader(bearerToken, to: &updateRequest)
             updateRequest.httpBody = try JMAPWebPushSubscriptionSpec.encodedSetUpdateRequestData(
-                subscriptionID: trimmedSubID
+                subscriptionID: trimmedSubID,
+                expires: requestedExpiry
             )
             let (data, response) = try await perform(updateRequest)
             try ensureNonRedirectSuccess(response)
@@ -251,7 +261,7 @@ public actor PushRelayClient {
             case .updated(let expiresAt):
                 return PushRelayRegistrationResponse(
                     subscriptionID: trimmedSubID,
-                    expiresAt: expiresAt,
+                    expiresAt: expiresAt ?? requestedExpiry,
                     verificationCode: nil,
                     state: currentState
                 )
