@@ -666,8 +666,9 @@ public struct ComposeView: View {
                 isReplyOrForward: replyingTo != nil || forwardingFrom != nil
             )
         )
-        _signMessage = State(initialValue: composeSecurityDefaults.shouldSignByDefault)
-        _encryptMessage = State(initialValue: composeSecurityDefaults.shouldEncryptByDefault)
+        let initialSecurityDefaults = composeSecurityDefaults.gated(by: backend.extendedCapabilities)
+        _signMessage = State(initialValue: initialSecurityDefaults.shouldSignByDefault)
+        _encryptMessage = State(initialValue: initialSecurityDefaults.shouldEncryptByDefault)
         _draftRecoveryNotice = State(initialValue: nil)
         _isRecoverySession = State(initialValue: recoveredDraft != nil)
         _currentSignatureContext = State(initialValue: signatureContext)
@@ -1553,7 +1554,8 @@ public struct ComposeView: View {
 
             noReplyFollowUpToggle
 
-            if composeSecurityDefaults.isFeatureEnabled {
+            if composeSecurityDefaults.isFeatureEnabled,
+               selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME) {
                 Menu(ComposeToolbarAction.security.accessibilityLabel) {
                     securityMenuContent
                 }
@@ -1686,7 +1688,8 @@ public struct ComposeView: View {
                 }
             }
 
-            if composeSecurityDefaults.isFeatureEnabled {
+            if composeSecurityDefaults.isFeatureEnabled,
+               selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME) {
                 Menu(ComposeToolbarAction.security.accessibilityLabel) {
                     securityMenuContent
                 }
@@ -4846,6 +4849,10 @@ public struct ComposeView: View {
         guard option.id != selectedSenderID else { return }
         selectedSenderID = option.id
         selectedAliasID = nil
+        if !selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME) {
+            signMessage = false
+            encryptMessage = false
+        }
         recipientSuggestions = [:]
         currentSignatureContext = nil
         applySignatureSelection(nil)

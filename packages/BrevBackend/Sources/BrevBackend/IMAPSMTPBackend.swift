@@ -411,6 +411,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             // the consent gate is enforced per unit of work by the indexer.
             advertisedExtendedCapabilities.insert(.localAttachmentIndex)
         }
+        if outboundMessagePreparer != nil {
+            advertisedExtendedCapabilities.insert(.outboundSMIME)
+        }
         extendedCapabilities = advertisedExtendedCapabilities
 
         // Constructed last: its closures capture `self`, so every stored
@@ -2320,48 +2323,60 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             from: from,
             attachments: attachments
         ).build()
-        // Apply outbound signing/encryption once (ADR-0021). The prepared bytes
-        // are reused for both the SMTP DATA and the Sent-copy APPEND below, so
-        // the delivered message and the saved copy can never disagree
-        // (decision #7). Fails closed when no engine is wired (decision #4).
-        let outgoingData = try await preparedOutboundData(
+        // Apply outbound signing/encryption before transmitting anything
+        // (`docs/design/privacy-and-security.md`). Encrypted drafts with Bcc
+        // recipients generate an isolated envelope for To/Cc plus one per-Bcc
+        // envelope so To/Cc (and other Bcc recipients) never receive a hidden
+        // recipient's `KeyTransRecipientInfo` certificate metadata. All
+        // envelopes are prepared up front so any missing certificate fails
+        // closed before a single SMTP submission runs.
+        let submissions = try await preparedOutboundSubmissions(
             messageData,
             draft: draft,
             recipientEmails: recipientEmails
         )
-        let submission = SMTPMessageSubmission(
-            messageData: outgoingData,
-            senderEmail: configuration.emailAddress,
-            recipientEmails: recipientEmails
-        )
-        let result: SendResult
+        let sentCopyData = submissions[0].messageData
         if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) {
             throw ScheduledSendEditingError.sessionChanged
         }
-        do {
-            result = try await sendMessageOperation(configuration, credential, submission)
-        } catch {
-            guard credential.authentication == .xoauth2,
-                  Self.isAuthenticationFailure(error),
-                  let refreshOAuthCredentialOperation
-            else {
-                throw error
+        var lastResult = SendResult(sentMessageID: nil, scheduledFor: nil)
+        var accumulatedWarnings: [SendResultWarning] = []
+        var activeCredential = credential
+        for submission in submissions {
+            let submissionResult: SendResult
+            do {
+                submissionResult = try await sendMessageOperation(configuration, activeCredential, submission)
+            } catch {
+                guard activeCredential.authentication == .xoauth2,
+                      Self.isAuthenticationFailure(error),
+                      let refreshOAuthCredentialOperation
+                else {
+                    throw error
+                }
+                let refreshedCredential = try await refreshOAuthCredentialOperation(
+                    account.id,
+                    configuration,
+                    activeCredential
+                )
+                if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) {
+                    throw ScheduledSendEditingError.sessionChanged
+                }
+                replaceCredentialForReconnect(refreshedCredential)
+                activeCredential = refreshedCredential
+                submissionResult = try await sendMessageOperation(
+                    configuration,
+                    refreshedCredential,
+                    submission
+                )
             }
-            let refreshedCredential = try await refreshOAuthCredentialOperation(
-                account.id,
-                configuration,
-                credential
-            )
-            if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) {
-                throw ScheduledSendEditingError.sessionChanged
-            }
-            replaceCredentialForReconnect(refreshedCredential)
-            result = try await sendMessageOperation(
-                configuration,
-                refreshedCredential,
-                submission
-            )
+            lastResult = submissionResult
+            accumulatedWarnings.append(contentsOf: submissionResult.warnings)
         }
+        let result = SendResult(
+            sentMessageID: lastResult.sentMessageID,
+            scheduledFor: lastResult.scheduledFor,
+            warnings: accumulatedWarnings
+        )
         // The server accepted the message; record it so a later replay of the
         // same draft (e.g. the entry wasn't cleared before a crash) is skipped.
         if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) { return result }
@@ -2374,7 +2389,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         } else {
             sentMessageLedger?.record(draftID: draft.id, accountID: account.id)
         }
-        let (sentCopyUID, sentCopyWarning) = await appendSentCopyIfPossible(outgoingData)
+        let (sentCopyUID, sentCopyWarning) = await appendSentCopyIfPossible(sentCopyData)
         if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) { return result }
         let draftCleanupWarning = await deleteRemoteDraftIfPossible(draft.remoteID)
         await finishSentDraftCleanup(draft, scheduledGeneration: scheduledGeneration)
@@ -2400,27 +2415,109 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
     }
 
-    /// Returns the MIME bytes to submit: the plaintext `messageData` unchanged
-    /// for `.none`, or the signed/encrypted form from the injected preparer.
-    /// Throws `OutboundCryptoEngineUnavailableError` if security is requested
-    /// but no engine is wired — never a silent plaintext fallback (ADR-0021 #4).
-    private func preparedOutboundData(
+    /// Builds the SMTP submission(s) for `draft`.
+    ///
+    /// For encrypted sends with Bcc recipients, produces one envelope for visible
+    /// recipients (`To` + `Cc`) and a separate envelope per `Bcc` recipient so no
+    /// recipient's `EnvelopedData` leaks Bcc `IssuerAndSerialNumber` metadata.
+    private func preparedOutboundSubmissions(
         _ messageData: Data,
         draft: Draft,
         recipientEmails: [String]
-    ) async throws -> Data {
-        guard draft.securityMode != .none else { return messageData }
+    ) async throws -> [SMTPMessageSubmission] {
+        guard draft.securityMode != .none else {
+            return [
+                SMTPMessageSubmission(
+                    messageData: messageData,
+                    senderEmail: configuration.emailAddress,
+                    recipientEmails: recipientEmails
+                )
+            ]
+        }
         guard let outboundMessagePreparer else {
             throw OutboundCryptoEngineUnavailableError(mode: draft.securityMode)
         }
-        let request = OutboundMessageSecurityRequest(
-            senderEmail: configuration.emailAddress,
-            to: draft.to.map(\.email),
-            cc: draft.cc.map(\.email),
-            bcc: draft.bcc.map(\.email),
-            mode: draft.securityMode
-        )
-        return try await outboundMessagePreparer.prepare(mimeData: messageData, request: request)
+
+        let visibleTo = draft.to.map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let visibleCc = draft.cc.map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let visibleEmails = Self.deduplicatedRecipientEmails(visibleTo + visibleCc)
+        let visibleNormalized = Set(visibleEmails.map { $0.lowercased() })
+        let isolatedBccEmails = Self.deduplicatedRecipientEmails(
+            draft.bcc.map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        ).filter { !visibleNormalized.contains($0.lowercased()) }
+
+        guard draft.securityMode.requiresEncryption, !isolatedBccEmails.isEmpty else {
+            let request = OutboundMessageSecurityRequest(
+                senderEmail: configuration.emailAddress,
+                to: visibleTo,
+                cc: visibleCc,
+                bcc: draft.bcc.map(\.email),
+                mode: draft.securityMode
+            )
+            let prepared = try await outboundMessagePreparer.prepare(mimeData: messageData, request: request)
+            return [
+                SMTPMessageSubmission(
+                    messageData: prepared,
+                    senderEmail: configuration.emailAddress,
+                    recipientEmails: recipientEmails
+                )
+            ]
+        }
+
+        var submissions: [SMTPMessageSubmission] = []
+        if !visibleEmails.isEmpty {
+            let visibleRequest = OutboundMessageSecurityRequest(
+                senderEmail: configuration.emailAddress,
+                to: visibleTo,
+                cc: visibleCc,
+                bcc: [],
+                mode: draft.securityMode
+            )
+            let visiblePrepared = try await outboundMessagePreparer.prepare(
+                mimeData: messageData,
+                request: visibleRequest
+            )
+            submissions.append(
+                SMTPMessageSubmission(
+                    messageData: visiblePrepared,
+                    senderEmail: configuration.emailAddress,
+                    recipientEmails: visibleEmails
+                )
+            )
+        }
+        for bccEmail in isolatedBccEmails {
+            let bccRequest = OutboundMessageSecurityRequest(
+                senderEmail: configuration.emailAddress,
+                to: [],
+                cc: [],
+                bcc: [bccEmail],
+                mode: draft.securityMode
+            )
+            let bccPrepared = try await outboundMessagePreparer.prepare(
+                mimeData: messageData,
+                request: bccRequest
+            )
+            submissions.append(
+                SMTPMessageSubmission(
+                    messageData: bccPrepared,
+                    senderEmail: configuration.emailAddress,
+                    recipientEmails: [bccEmail]
+                )
+            )
+        }
+        return submissions
+    }
+
+    private static func deduplicatedRecipientEmails(_ emails: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for email in emails {
+            let key = email.lowercased()
+            if seen.insert(key).inserted {
+                result.append(email)
+            }
+        }
+        return result
     }
 
     private func scheduleSend(draft: Draft) async throws -> SendResult {

@@ -451,7 +451,27 @@ struct PureSwiftCMSEncoderTests {
         #expect(decryptedText.contains("multipart/signed"))
         #expect(decryptedText.contains("Sign then encrypt from pure Swift."))
 
-        // Verify the inner detached smime.p7s signature against the original contentEntity.
+        // Extract BOTH the delivered signed first MIME part AND the detached smime.p7s
+        // from the decrypted multipart/signed payload, and verify against the delivered part.
+        let boundaryPrefix = "boundary=\""
+        let boundaryStart = try #require(decryptedText.range(of: boundaryPrefix))
+        let boundaryEnd = try #require(
+            decryptedText.range(of: "\"", range: boundaryStart.upperBound ..< decryptedText.endIndex)
+        )
+        let boundary = String(decryptedText[boundaryStart.upperBound ..< boundaryEnd.lowerBound])
+        let firstPartMarker = Data("--\(boundary)\r\n".utf8)
+        let nextPartDelimiter = Data("\r\n--\(boundary)\r\n".utf8)
+        let firstMarkerRange = try #require(decryptedSignedMIME.range(of: firstPartMarker))
+        let nextPartRange = try #require(
+            decryptedSignedMIME.range(
+                of: nextPartDelimiter,
+                in: firstMarkerRange.upperBound ..< decryptedSignedMIME.endIndex
+            )
+        )
+        let deliveredFirstPart = Data(decryptedSignedMIME[firstMarkerRange.upperBound ..< nextPartRange.lowerBound])
+        let originalSplit = MIMEEntitySplit.make(from: rawMessage)
+        #expect(deliveredFirstPart == originalSplit.contentEntity)
+
         let markerRange = try #require(decryptedText.range(of: "filename=\"smime.p7s\""))
         let blankRange = try #require(
             decryptedText.range(of: "\r\n\r\n", range: markerRange.upperBound ..< decryptedText.endIndex)
@@ -461,9 +481,156 @@ struct PureSwiftCMSEncoderTests {
         let p7sDER = try #require(
             Data(base64Encoded: String(rest[..<sigEnd.lowerBound]), options: .ignoreUnknownCharacters)
         )
-        let originalSplit = MIMEEntitySplit.make(from: rawMessage)
-        let status = try verifyWithCMSDecoder(signature: p7sDER, content: originalSplit.contentEntity)
+        let status = try verifyWithCMSDecoder(signature: p7sDER, content: deliveredFirstPart)
         #expect(status == .valid)
+    }
+
+    @Test("detached SignedData embeds intermediate CA certificates so OpenSSL verifies against Root CA alone")
+    func detachedSignatureEmbedsIntermediateCertificates() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-cms-chain-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let rootKey = dir.appendingPathComponent("root.key")
+        let rootCert = dir.appendingPathComponent("root.pem")
+        let rootExt = dir.appendingPathComponent("root.ext")
+        try "basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n"
+            .write(to: rootExt, atomically: true, encoding: .utf8)
+
+        try runOpenSSL([
+            "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", rootKey.path,
+            "-out", rootCert.path,
+            "-days", "7",
+            "-subj", "/CN=Brev Test Root CA",
+            "-extensions", "v3_ca",
+            "-config", "/System/Library/OpenSSL/openssl.cnf"
+        ])
+
+        let interKey = dir.appendingPathComponent("inter.key")
+        let interCSR = dir.appendingPathComponent("inter.csr")
+        let interCert = dir.appendingPathComponent("inter.pem")
+        let interExt = dir.appendingPathComponent("inter.ext")
+        try "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\n"
+            .write(to: interExt, atomically: true, encoding: .utf8)
+
+        try runOpenSSL([
+            "req", "-new", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", interKey.path,
+            "-out", interCSR.path,
+            "-subj", "/CN=Brev Test Intermediate CA"
+        ])
+        try runOpenSSL([
+            "x509", "-req", "-in", interCSR.path,
+            "-CA", rootCert.path, "-CAkey", rootKey.path, "-CAcreateserial",
+            "-out", interCert.path, "-days", "7",
+            "-extfile", interExt.path
+        ])
+
+        let leafKey = dir.appendingPathComponent("leaf.key")
+        let leafCSR = dir.appendingPathComponent("leaf.csr")
+        let leafCert = dir.appendingPathComponent("leaf.pem")
+        let leafExt = dir.appendingPathComponent("leaf.ext")
+        try "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=emailProtection\n"
+            .write(to: leafExt, atomically: true, encoding: .utf8)
+
+        try runOpenSSL([
+            "req", "-new", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", leafKey.path,
+            "-out", leafCSR.path,
+            "-subj", "/CN=Leaf Signer/emailAddress=leaf@brev.example"
+        ])
+        try runOpenSSL([
+            "x509", "-req", "-in", leafCSR.path,
+            "-CA", interCert.path, "-CAkey", interKey.path, "-CAcreateserial",
+            "-out", leafCert.path, "-days", "7",
+            "-extfile", leafExt.path
+        ])
+
+        let p12URL = dir.appendingPathComponent("leaf-chain.p12")
+        try runOpenSSL([
+            "pkcs12", "-export",
+            "-inkey", leafKey.path,
+            "-in", leafCert.path,
+            "-certfile", interCert.path,
+            "-out", p12URL.path,
+            "-passout", "pass:brevtest"
+        ])
+
+        let p12Data = try Data(contentsOf: p12URL)
+        var itemsOpt: CFArray?
+        try #require(
+            SecPKCS12Import(
+                p12Data as CFData,
+                [kSecImportExportPassphrase as String: "brevtest"] as CFDictionary,
+                &itemsOpt
+            ) == errSecSuccess
+        )
+        let first = try #require((itemsOpt as? [[String: Any]])?.first)
+        let identity = try #require(first[kSecImportItemIdentity as String] as! SecIdentity?)
+        var leafSecCertOpt: SecCertificate?
+        try #require(SecIdentityCopyCertificate(identity, &leafSecCertOpt) == errSecSuccess)
+        let leafDER = try SecCertificateCopyData(#require(leafSecCertOpt)) as Data
+        let chain = (first[kSecImportItemCertChain as String] as? [SecCertificate]) ?? []
+        let intermediates = chain.filter { (SecCertificateCopyData($0) as Data) != leafDER }
+        #expect(!intermediates.isEmpty)
+
+        let content = Data("Content-Type: text/plain; charset=utf-8\r\n\r\nVerified via Root CA only.\r\n".utf8)
+        let signatureDER = try PureSwiftCMSEncoder.detachedSignature(
+            of: content,
+            identity: identity,
+            intermediateCertificates: intermediates
+        )
+
+        let contentFile = dir.appendingPathComponent("content.bin")
+        try content.write(to: contentFile)
+        // Verify with ONLY root.pem as trust anchor — proving the intermediate was embedded in SignedData.certificates.
+        _ = try runOpenSSL(
+            [
+                "cms", "-verify", "-inform", "DER",
+                "-content", contentFile.path,
+                "-CAfile", rootCert.path,
+                "-purpose", "any",
+                "-out", "/dev/null"
+            ],
+            stdin: signatureDER
+        )
+    }
+
+    @Test("separate To/Cc and Bcc encrypted envelopes prevent leaking Bcc certificate metadata")
+    func separateBccEnvelopePreventsMetadataLeak() throws {
+        let alice = try generateIdentity(email: "alice@brev.example", kind: .rsa)
+        let bob = try generateIdentity(email: "bob@brev.example", kind: .rsa)
+        let hidden = try generateIdentity(email: "hidden@brev.example", kind: .rsa)
+        defer {
+            alice.cleanup()
+            bob.cleanup()
+            hidden.cleanup()
+        }
+
+        let hiddenIssuerSerial = try X509CertificateParser.extractIssuerAndSerialNumber(
+            from: SecCertificateCopyData(hidden.certificate) as Data
+        )
+        let plaintext = Data("Content-Type: text/plain; charset=utf-8\r\n\r\nPrivate Bcc test.\r\n".utf8)
+
+        let visibleEnvelope = try PureSwiftCMSEncoder.envelopedData(
+            of: plaintext,
+            certificates: [alice.certificate, bob.certificate]
+        )
+        let bccEnvelope = try PureSwiftCMSEncoder.envelopedData(
+            of: plaintext,
+            certificates: [alice.certificate, hidden.certificate]
+        )
+
+        // Visible envelope decrypts for Alice & Bob, and does NOT contain Hidden's certificate serial.
+        #expect(try decryptWithOpenSSL(envelopedDER: visibleEnvelope, recipient: alice) == plaintext)
+        #expect(try decryptWithOpenSSL(envelopedDER: visibleEnvelope, recipient: bob) == plaintext)
+        #expect(visibleEnvelope.range(of: hiddenIssuerSerial.serialNumberDER) == nil)
+
+        // Separate Bcc envelope decrypts for Alice & Hidden.
+        #expect(try decryptWithOpenSSL(envelopedDER: bccEnvelope, recipient: alice) == plaintext)
+        #expect(try decryptWithOpenSSL(envelopedDER: bccEnvelope, recipient: hidden) == plaintext)
     }
 
     @Test("SMIMEOutboundMessagePreparer pureSwift fails closed on missing identity or recipient certificate")

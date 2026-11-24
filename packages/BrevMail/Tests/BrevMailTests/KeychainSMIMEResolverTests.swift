@@ -21,10 +21,22 @@ import Testing
 /// PKCS#12 import path can be exercised without touching the system Keychain.
 private actor FakeMaterialStore: SecurityKeyMaterialStore {
     private var storage: [String: Data]
-    init(_ storage: [String: Data]) { self.storage = storage }
+    private var passphrases: [String: String]
+    init(_ storage: [String: Data], passphrases: [String: String] = [:]) {
+        self.storage = storage
+        self.passphrases = passphrases
+    }
+
     func material(for recordID: String) async throws -> Data? { storage[recordID] }
     func setMaterial(_ data: Data, for recordID: String) async throws { storage[recordID] = data }
-    func deleteMaterial(for recordID: String) async throws { storage[recordID] = nil }
+    func deleteMaterial(for recordID: String) async throws {
+        storage[recordID] = nil
+        passphrases[recordID] = nil
+    }
+
+    func passphrase(for recordID: String) async throws -> String? { passphrases[recordID] }
+    func setPassphrase(_ passphrase: String, for recordID: String) async throws { passphrases[recordID] = passphrase }
+    func deletePassphrase(for recordID: String) async throws { passphrases[recordID] = nil }
 }
 
 private let smimeEmail = "smime-test@brev.example"
@@ -133,5 +145,36 @@ struct KeychainSMIMEResolverTests {
         await #expect(throws: OutboundMessageSecurityError.missingSigningIdentity(senderEmail: smimeEmail)) {
             _ = try await preparer.prepare(mimeData: mime, request: request)
         }
+    }
+
+    @Test("standard outbound preparer unlocks password-protected PKCS#12 via Keychain store passphrase")
+    func standardFactorySignsWithKeychainStoredPassphrase() async throws {
+        let store = SecurityKeychainMaterialStore(
+            service: "KeychainSMIMEResolverTests-\(UUID().uuidString)"
+        )
+        let record = signingRecord(id: "keychain-p12-1")
+        let p12Data = try #require(Data(base64Encoded: p12Base64))
+        try await store.setMaterial(p12Data, for: record.id)
+        try await store.setPassphrase(smimePassphrase, for: record.id)
+        defer {
+            Task { try? await store.deleteMaterial(for: record.id) }
+        }
+
+        let preparer = OutboundMessagePreparerFactory.makeStandard(
+            settingsProvider: { settings([record]) },
+            materialStore: store
+        )
+        let mime = Data("From: Test <\(smimeEmail)>\r\nTo: Peer <peer@brev.example>\r\nSubject: Keychain P12\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nSigned via Keychain passphrase.\r\n"
+            .utf8)
+        let request = OutboundMessageSecurityRequest(
+            senderEmail: smimeEmail,
+            to: ["peer@brev.example"],
+            mode: .sign
+        )
+        let prepared = try await preparer.prepare(mimeData: mime, request: request)
+        let text = String(decoding: prepared, as: UTF8.self)
+        #expect(text.contains("multipart/signed"))
+        #expect(text.contains("application/pkcs7-signature"))
+        #expect(text.contains("smime.p7s"))
     }
 }

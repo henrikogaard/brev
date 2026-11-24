@@ -23,20 +23,33 @@ private final class CapturingPreparer: OutboundMessagePreparing, @unchecked Send
     private let lock = NSLock()
     private(set) var requests: [OutboundMessageSecurityRequest] = []
     private(set) var receivedPlaintext: [Data] = []
+    private let handler: (@Sendable (Data, OutboundMessageSecurityRequest) throws -> Data)?
+
+    init(handler: (@Sendable (Data, OutboundMessageSecurityRequest) throws -> Data)? = nil) {
+        self.handler = handler
+    }
 
     func prepare(mimeData: Data, request: OutboundMessageSecurityRequest) async throws -> Data {
         lock.withLock {
             requests.append(request)
             receivedPlaintext.append(mimeData)
         }
+        if let handler {
+            return try handler(mimeData, request)
+        }
         return Self.preparedMarker
     }
 }
 
 private actor DataCapture {
+    private(set) var submissions: [SMTPMessageSubmission] = []
     private(set) var submissionData: [Data] = []
     private(set) var appendData: [Data] = []
-    func recordSubmission(_ data: Data) { submissionData.append(data) }
+    func recordSubmission(_ submission: SMTPMessageSubmission) {
+        submissions.append(submission)
+        submissionData.append(submission.messageData)
+    }
+
     func recordAppend(_ data: Data) { appendData.append(data) }
 }
 
@@ -81,7 +94,7 @@ private enum Fixtures {
                 IMAPFolderListing(path: "Sent", displayName: "Sent", delimiter: "/", flags: ["sent"], role: .sent),
             ] },
             sendMessage: { _, _, submission in
-                await capture.recordSubmission(submission.messageData)
+                await capture.recordSubmission(submission)
                 return SendResult(sentMessageID: "smtp-accepted")
             },
             appendSentMessage: { _, _, _, messageData, _ in
@@ -218,5 +231,81 @@ struct OutboundPreparationSendTests {
         #expect(String(decoding: submitted, as: UTF8.self).contains("Secure subject"))
         // SMTP and Sent-copy still agree on the same bytes.
         #expect(await capture.submissionData == capture.appendData)
+    }
+
+    @Test("IMAPSMTPBackend advertises outboundSMIME only when a preparer is wired")
+    func advertisesOutboundSMIMECapabilityOnlyWhenPreparerIsWired() {
+        let capture = DataCapture()
+        let withPreparer = Fixtures.makeBackend(capture: capture, preparer: CapturingPreparer())
+        let withoutPreparer = Fixtures.makeBackend(capture: capture, preparer: nil)
+
+        #expect(withPreparer.extendedCapabilities.contains(.outboundSMIME))
+        #expect(!withoutPreparer.extendedCapabilities.contains(.outboundSMIME))
+    }
+
+    @Test("encrypted send isolates Bcc recipients into separate envelopes without leaking Bcc metadata to To/Cc")
+    func encryptedSendIsolatesBccRecipientsIntoSeparateEnvelopes() async throws {
+        let capture = DataCapture()
+        let preparer = CapturingPreparer { _, request in
+            let tag = "ENV:to=\(request.to.joined(separator: ","));cc=\(request.cc.joined(separator: ","));bcc=\(request.bcc.joined(separator: ","))"
+            return Data(tag.utf8)
+        }
+        let backend = Fixtures.makeBackend(capture: capture, preparer: preparer)
+        try await backend.connect()
+
+        let bccDraft = Draft(
+            id: "draft-bcc-enc",
+            to: [Correspondent(email: "bob@example.org")],
+            cc: [Correspondent(email: "carol@example.org")],
+            bcc: [
+                Correspondent(email: "secret1@example.org"),
+                Correspondent(email: "secret2@example.org")
+            ],
+            subject: "Confidential",
+            htmlBody: "<p>Top secret</p>",
+            securityMode: .signAndEncrypt
+        )
+
+        _ = try await backend.send(draft: bccDraft)
+
+        let submissions = await capture.submissions
+        #expect(submissions.count == 3)
+        #expect(submissions[0].recipientEmails == ["bob@example.org", "carol@example.org"])
+        #expect(String(decoding: submissions[0].messageData, as: UTF8.self) == "ENV:to=bob@example.org;cc=carol@example.org;bcc=")
+        #expect(submissions[1].recipientEmails == ["secret1@example.org"])
+        #expect(String(decoding: submissions[1].messageData, as: UTF8.self) == "ENV:to=;cc=;bcc=secret1@example.org")
+        #expect(submissions[2].recipientEmails == ["secret2@example.org"])
+        #expect(String(decoding: submissions[2].messageData, as: UTF8.self) == "ENV:to=;cc=;bcc=secret2@example.org")
+        // Sent copy stores the visible encrypted envelope (never a Bcc-leaking envelope).
+        #expect(await capture.appendData == [submissions[0].messageData])
+    }
+
+    @Test("encrypted send with Bcc fails closed before any SMTP send if a Bcc certificate is missing")
+    func encryptedBccSendFailsClosedBeforeAnySubmission() async throws {
+        let capture = DataCapture()
+        let preparer = CapturingPreparer { _, request in
+            if request.bcc.contains("missing@example.org") {
+                throw OutboundMessageSecurityError.missingEncryptionRecipients(["missing@example.org"])
+            }
+            return Data("OK".utf8)
+        }
+        let backend = Fixtures.makeBackend(capture: capture, preparer: preparer)
+        try await backend.connect()
+
+        let bccDraft = Draft(
+            id: "draft-bcc-missing",
+            to: [Correspondent(email: "bob@example.org")],
+            bcc: [Correspondent(email: "missing@example.org")],
+            subject: "Confidential",
+            htmlBody: "<p>Top secret</p>",
+            securityMode: .encrypt
+        )
+
+        await #expect(throws: OutboundMessageSecurityError.missingEncryptionRecipients(["missing@example.org"])) {
+            _ = try await backend.send(draft: bccDraft)
+        }
+        // Must not have transmitted the To envelope before failing on the Bcc recipient!
+        #expect(await capture.submissions.isEmpty)
+        #expect(await capture.appendData.isEmpty)
     }
 }

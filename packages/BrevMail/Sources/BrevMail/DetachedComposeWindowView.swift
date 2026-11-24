@@ -148,7 +148,8 @@ public struct DetachedComposeWindowView: View {
             recoveredDraft: recoveredDraft,
             aiBackend: aiBackend(for: account),
             signatureContext: signatureContextProvider?(account),
-            composeSecurityDefaults: composeSecurityDefaultsProvider?(account) ?? .disabled,
+            composeSecurityDefaults: (composeSecurityDefaultsProvider?(account) ?? .disabled)
+                .gated(by: backend.extendedCapabilities),
             hasTrustedSigningIdentity: (trustedSigningIdentityCountProvider?(account) ?? 0) > 0,
             hasTrustedEncryptionIdentity: (trustedEncryptionIdentityCountProvider?(account) ?? 0) > 0,
             onClose: onClose,

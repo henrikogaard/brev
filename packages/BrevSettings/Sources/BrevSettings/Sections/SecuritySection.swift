@@ -22,6 +22,7 @@ struct SecuritySection: View {
     @State private var keyMaterialSettings: SecurityKeyMaterialSettings
     @State private var draftRecord = DraftRecord.defaults
     @State private var draftMaterialPayload = ""
+    @State private var draftPKCS12Passphrase = ""
     @State private var pendingConfirmation: PendingConfirmation?
     @State private var typedConfirmationInput = ""
     @State private var materialOperationMessage: String?
@@ -58,17 +59,34 @@ struct SecuritySection: View {
                 importExportGroup
             }
         }
-        .alert(item: $pendingConfirmation) { pending in
-            Alert(
-                title: Text(pending.confirmation.title),
-                message: Text(confirmationMessage(for: pending.confirmation)),
-                primaryButton: .destructive(Text(pending.confirmation.confirmButtonTitle)) {
-                    applyConfirmationIfSatisfied(pending)
-                },
-                secondaryButton: .cancel {
-                    typedConfirmationInput = ""
+        .alert(
+            pendingConfirmation?.confirmation.title ?? "",
+            isPresented: Binding(
+                get: { pendingConfirmation != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pendingConfirmation = nil
+                        typedConfirmationInput = ""
+                    }
                 }
-            )
+            ),
+            presenting: pendingConfirmation
+        ) { pending in
+            if pending.confirmation.requiresTypedConfirmation {
+                TextField(
+                    SecurityKeyMaterialConfirmationPolicy.bulkDeletePhrase,
+                    text: $typedConfirmationInput
+                )
+            }
+            Button(pending.confirmation.confirmButtonTitle, role: .destructive) {
+                applyConfirmationIfSatisfied(pending)
+            }
+            .disabled(!pending.confirmation.isSatisfied(by: typedConfirmationInput))
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                typedConfirmationInput = ""
+            }
+        } message: { pending in
+            Text(confirmationMessage(for: pending.confirmation))
         }
         .sheet(item: $exportPreview) { preview in
             exportPreviewSheet(preview)
@@ -295,6 +313,13 @@ struct SecuritySection: View {
                     .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
             }
 
+            if draftRecord.hasPrivateMaterial {
+                SecureField(
+                    String(localized: "PKCS#12 passphrase (optional)", bundle: .module),
+                    text: $draftPKCS12Passphrase
+                )
+            }
+
             SettingsButton(String(localized: "Add Record", bundle: .module), style: .secondary) {
                 addDraftRecord()
             }
@@ -431,20 +456,46 @@ struct SecuritySection: View {
     private func addDraftRecord() {
         guard draftRecord.isValid else { return }
         let record = draftRecord.asRecord()
-        keyMaterialSettings.upsert(record)
-        settingsStore.save(keyMaterialSettings)
-        draftRecord = .defaults
         let payload = draftMaterialPayload.trimmingCharacters(in: .whitespacesAndNewlines)
-        draftMaterialPayload = ""
-        materialOperationMessage = nil
-        guard !payload.isEmpty else { return }
-        Task {
+        let passphrase = draftPKCS12Passphrase
+
+        let decodedMaterial: Data?
+        if payload.isEmpty {
+            decodedMaterial = nil
+        } else {
             do {
                 let materialData = try SecurityKeyMaterialPayloadDecoder.materialData(
                     from: payload,
                     family: record.family
                 )
-                try await materialStore.setMaterial(materialData, for: record.id)
+                if record.hasPrivateMaterial {
+                    try SecurityKeyMaterialPayloadDecoder.validatePKCS12SigningIdentity(
+                        materialData,
+                        passphrase: passphrase
+                    )
+                }
+                decodedMaterial = materialData
+            } catch {
+                materialOperationMessage = error.localizedDescription
+                return
+            }
+        }
+
+        keyMaterialSettings.upsert(record)
+        settingsStore.save(keyMaterialSettings)
+        draftRecord = .defaults
+        draftMaterialPayload = ""
+        draftPKCS12Passphrase = ""
+        materialOperationMessage = nil
+        guard let decodedMaterial else { return }
+        Task {
+            do {
+                try await materialStore.setMaterial(decodedMaterial, for: record.id)
+                if !passphrase.isEmpty {
+                    try await materialStore.setPassphrase(passphrase, for: record.id)
+                } else {
+                    try? await materialStore.deletePassphrase(for: record.id)
+                }
                 await MainActor.run {
                     materialOperationMessage = String(
                         localized: "Stored local key material in Keychain for \(record.label).",
@@ -486,39 +537,25 @@ struct SecuritySection: View {
     }
 
     private func applyConfirmationIfSatisfied(_ pending: PendingConfirmation) {
-        let confirmationInput = typedConfirmationInput.isEmpty
-            ? pending.confirmation.typedPhrase
-            : typedConfirmationInput
-        guard pending.confirmation.isSatisfied(by: confirmationInput) else { return }
+        let entered = typedConfirmationInput
+        typedConfirmationInput = ""
+        guard let removedIDs = SecurityKeyMaterialConfirmationPolicy.apply(
+            action: pending.action,
+            recordID: pending.recordID,
+            confirmationInput: entered,
+            to: &keyMaterialSettings
+        ) else {
+            return
+        }
 
-        switch pending.action {
-        case .removeSelectedItem:
-            if let recordID = pending.recordID {
-                _ = keyMaterialSettings.removeRecord(id: recordID)
-                Task { try? await materialStore.deleteMaterial(for: recordID) }
-            }
-        case .removeAllSMIME:
-            let ids = keyMaterialSettings.records
-                .filter { $0.family == .smime }
-                .map(\.id)
-            _ = keyMaterialSettings.removeAllRecords(in: .smime)
-            Task {
-                for id in ids {
-                    try? await materialStore.deleteMaterial(for: id)
-                }
-            }
-        case .removeAllMaterial:
-            let ids = keyMaterialSettings.records.map(\.id)
-            _ = keyMaterialSettings.removeAllRecords()
-            Task {
-                for id in ids {
-                    try? await materialStore.deleteMaterial(for: id)
-                }
+        Task {
+            for id in removedIDs {
+                try? await materialStore.deleteMaterial(for: id)
+                try? await materialStore.deletePassphrase(for: id)
             }
         }
 
         settingsStore.save(keyMaterialSettings)
-        typedConfirmationInput = ""
     }
 
     private func confirmationMessage(for confirmation: SecurityKeyMaterialConfirmation) -> String {
@@ -526,6 +563,7 @@ struct SecuritySection: View {
     }
 
     private func exportMaterial(record: SecurityKeyMaterialSettings.Record) {
+        let exportPreferences = keyMaterialSettings.importExport
         Task {
             do {
                 guard let data = try await materialStore.material(for: record.id) else {
@@ -537,20 +575,20 @@ struct SecuritySection: View {
                     }
                     return
                 }
-                guard let payload = String(data: data, encoding: .utf8) else {
-                    await MainActor.run {
-                        materialOperationMessage = String(
-                            localized: "Stored payload for \(record.label) is not UTF-8 text.",
-                            bundle: .module
-                        )
-                    }
-                    return
-                }
+                let payload = try SecurityKeyMaterialPayloadDecoder.formattedExportPayload(
+                    from: data,
+                    record: record,
+                    preferences: exportPreferences
+                )
                 await MainActor.run {
                     exportPreview = ExportPreview(
                         title: record.label,
                         payload: payload
                     )
+                }
+            } catch let exportError as SecurityKeyMaterialExportError {
+                await MainActor.run {
+                    materialOperationMessage = exportError.localizedDescription
                 }
             } catch {
                 await MainActor.run {

@@ -5284,7 +5284,8 @@ public struct BrevMailRootView: View {
             existingDraftIsServerSourced: existingDraftIsServerSourced,
             aiBackend: aiBackend(for: composeBackend.account),
             signatureContext: signatureContextProvider?(composeBackend.account),
-            composeSecurityDefaults: composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled,
+            composeSecurityDefaults: (composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled)
+                .gated(by: composeBackend.extendedCapabilities),
             hasTrustedSigningIdentity: (trustedSigningIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
             hasTrustedEncryptionIdentity: (trustedEncryptionIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
             isWorkBlocked: isComposeWorkBlocked,
@@ -7427,7 +7428,8 @@ public struct BrevMailRootView: View {
             return (false, false)
         }
 
-        let securityDefaults = composeSecurityDefaultsProvider?(replyBackend.account) ?? .disabled
+        let securityDefaults = (composeSecurityDefaultsProvider?(replyBackend.account) ?? .disabled)
+            .gated(by: replyBackend.extendedCapabilities)
         let securityMode = OutboundMessageSecurityMode(
             signing: securityDefaults.shouldSignByDefault,
             encrypting: securityDefaults.shouldEncryptByDefault
@@ -7516,7 +7518,8 @@ public struct BrevMailRootView: View {
                 messageID: route.messageID,
                 folderID: route.folderID
             )
-        let securityDefaults = composeSecurityDefaultsProvider?(routeBackend.account) ?? .disabled
+        let securityDefaults = (composeSecurityDefaultsProvider?(routeBackend.account) ?? .disabled)
+            .gated(by: routeBackend.extendedCapabilities)
         let securityMode = OutboundMessageSecurityMode(
             signing: securityDefaults.shouldSignByDefault,
             encrypting: securityDefaults.shouldEncryptByDefault

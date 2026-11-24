@@ -7647,6 +7647,39 @@
         }
       }
     },
+    "PKCS#12 passphrase (optional)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PKCS#12-passordfrase (valgfritt)"
+          }
+        }
+      }
+    },
+    "Couldn't unlock the PKCS#12 signing identity. Check the certificate data and passphrase.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke låse opp PKCS#12-signeringsidentiteten. Kontroller sertifikatdataene og passordfrasen."
+          }
+        }
+      }
+    },
+    "Private material export is disabled. Enable “Allow private material in exports” to export this item.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksport av privat nøkkelmateriale er slått av. Slå på «Tillat privat materiale ved eksport» for å eksportere dette elementet."
+          }
+        }
+      }
+    },
     "Pane": {
       "extractionState": "manual",
       "localizations": {

@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 @testable import BrevMail
 import BrevSettings
 import Testing
@@ -63,5 +64,48 @@ struct ComposeSecurityDefaultsTests {
         #expect(state.isFeatureEnabled)
         #expect(state.shouldSignByDefault == false)
         #expect(state.shouldEncryptByDefault == false)
+    }
+
+    @Test(
+        "backends without outboundSMIME capability (such as native Gmail) start with .none even when global S/MIME defaults are enabled"
+    )
+    func unsupportedBackendDisablesDefaultsAndStartsWithNoneMode() {
+        let settings = EncryptionSettings(
+            smimeEnabled: true,
+            preferSign: true,
+            preferEncrypt: true
+        )
+        let enabledDefaults = ComposeSecurityDefaults.resolve(
+            encryptionSettings: settings,
+            trustedSigningIdentityCount: 2,
+            trustedEncryptionIdentityCount: 2
+        )
+        #expect(enabledDefaults.shouldSignByDefault)
+        #expect(enabledDefaults.shouldEncryptByDefault)
+
+        // Native Gmail backend omits `.outboundSMIME` from extendedCapabilities.
+        let gmailCapabilities: BackendExtendedCapabilities = [.rawMessageSource, .cachedMessageHeaders]
+        let gatedForGmail = enabledDefaults.gated(by: gmailCapabilities)
+        #expect(gatedForGmail == .disabled)
+        #expect(
+            OutboundMessageSecurityMode(
+                signing: gatedForGmail.shouldSignByDefault,
+                encrypting: gatedForGmail.shouldEncryptByDefault
+            ) == .none
+        )
+
+        // IMAP/SMTP with an outbound preparer advertises `.outboundSMIME`.
+        let imapCapabilities: BackendExtendedCapabilities = [.outboundSMIME]
+        let gatedForIMAP = enabledDefaults.gated(by: imapCapabilities)
+        #expect(gatedForIMAP == enabledDefaults)
+
+        // Resolving with supportsOutboundSMIME: false directly also yields .disabled.
+        let directUnsupported = ComposeSecurityDefaults.resolve(
+            encryptionSettings: settings,
+            trustedSigningIdentityCount: 2,
+            trustedEncryptionIdentityCount: 2,
+            supportsOutboundSMIME: false
+        )
+        #expect(directUnsupported == .disabled)
     }
 }

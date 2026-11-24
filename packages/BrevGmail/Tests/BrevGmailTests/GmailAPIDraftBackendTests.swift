@@ -159,6 +159,7 @@ struct GmailAPIDraftBackendTests {
             store: SQLiteGmailAccountStore(databaseURL: url)
         )
         try await backend.connect()
+        #expect(!backend.extendedCapabilities.contains(.outboundSMIME))
         let draft = Draft(id: "protected", to: [.init(email: "to@example.org")], subject: "Protected",
                           scheduledFor: Date().addingTimeInterval(3600), securityMode: mode)
         await #expect(throws: OutboundCryptoEngineUnavailableError.self) { _ = try await backend.send(draft: draft) }

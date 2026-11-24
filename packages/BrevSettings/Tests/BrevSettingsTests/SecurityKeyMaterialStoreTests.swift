@@ -32,4 +32,20 @@ struct SecurityKeyMaterialStoreTests {
         let deleted = try await store.material(for: recordID)
         #expect(deleted == nil)
     }
+
+    @Test("keychain store round-trips PKCS#12 passphrases and deletes them with the record")
+    func keychainStoreRoundTripsAndDeletesPassphrases() async throws {
+        let store = SecurityKeychainMaterialStore(
+            service: "SecurityKeyMaterialStoreTests-\(UUID().uuidString)"
+        )
+        let recordID = "p12-record-1"
+        try await store.setMaterial(Data([0x30, 0x82, 0x01, 0x00]), for: recordID)
+        try await store.setPassphrase("brevtest", for: recordID)
+
+        #expect(try await store.passphrase(for: recordID) == "brevtest")
+
+        try await store.deleteMaterial(for: recordID)
+        #expect(try await store.material(for: recordID) == nil)
+        #expect(try await store.passphrase(for: recordID) == nil)
+    }
 }

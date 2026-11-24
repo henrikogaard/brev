@@ -93,15 +93,18 @@ public enum PureSwiftCMSEncoder: Sendable {
     private static let aesBlockSize = kCCBlockSizeAES128 // 16 bytes
 
     /// Produces a DER-encoded CMS `ContentInfo(id-signedData, SignedData)`
-    /// containing a detached SHA-256 signature and the signer's certificate.
+    /// containing a detached SHA-256 signature, the signer's certificate, and
+    /// any supporting intermediate CA certificates.
     ///
     /// - Parameters:
     ///   - content: Canonical MIME entity bytes to sign (detached; not embedded in `encapContentInfo`).
     ///   - identity: Local Keychain `SecIdentity` providing the signer's certificate and private key.
+    ///   - intermediateCertificates: Optional intermediate CA certificates from the signer's chain.
     ///   - signingTime: UTC timestamp recorded in the `signingTime` signed attribute.
     public static func detachedSignature(
         of content: Data,
         identity: SecIdentity,
+        intermediateCertificates: [SecCertificate] = [],
         signingTime: Date = Date()
     ) throws -> Data {
         var certOpt: SecCertificate?
@@ -154,10 +157,8 @@ public enum PureSwiftCMSEncoder: Sendable {
         }
         let signatureBytes = signatureCF as Data
 
-        let sha256AlgID = ASN1DER.algorithmIdentifier(
-            oid: CMSObjectIdentifier.sha256,
-            parameters: ASN1DER.null()
-        )
+        // RFC 5754 §2: SHA-256 AlgorithmIdentifier parameters SHOULD be omitted.
+        let sha256AlgID = ASN1DER.algorithmIdentifier(oid: CMSObjectIdentifier.sha256)
         let signedAttrsImplicit = ASN1DER.contextSpecific(
             tagNumber: 0,
             constructed: true,
@@ -176,10 +177,21 @@ public enum PureSwiftCMSEncoder: Sendable {
         let encapContentInfo = ASN1DER.sequence([
             ASN1DER.objectIdentifier(CMSObjectIdentifier.data)
         ])
+        // Deduplicate leaf + intermediate CA certificates and DER-sort the
+        // [0] IMPLICIT CertificateSet per RFC 5652 §5.1.
+        var seenCertificates: Set<Data> = [certDER]
+        var certificateSetDERs: [Data] = [certDER]
+        for supportingCert in intermediateCertificates {
+            let supportingDER = SecCertificateCopyData(supportingCert) as Data
+            if seenCertificates.insert(supportingDER).inserted {
+                certificateSetDERs.append(supportingDER)
+            }
+        }
+        let sortedCertificatesBody = ASN1DER.concat(ASN1DER.sortedSetElements(certificateSetDERs))
         let certificatesImplicit = ASN1DER.contextSpecific(
             tagNumber: 0,
             constructed: true,
-            content: certDER
+            content: sortedCertificatesBody
         )
         let signedData = ASN1DER.sequence([
             ASN1DER.integer(1),

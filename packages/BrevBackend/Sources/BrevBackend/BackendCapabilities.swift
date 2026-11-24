@@ -211,6 +211,12 @@ public struct BackendExtendedCapabilities: OptionSet, Sendable, Hashable {
     /// delivery (ADR-0088, `SignInTrustAssessing`). This stays off until the
     /// ADR-0088 E1-E5 evidence is recorded — no backend advertises it yet.
     public static let trustedSignInAssessment = BackendExtendedCapabilities(rawValue: 1 << 17)
+
+    /// The backend can sign and/or encrypt outbound drafts via an injected
+    /// `OutboundMessagePreparing` engine (`docs/design/privacy-and-security.md`).
+    /// Backends that reject protected sends (such as `GmailAPIBackend`) omit
+    /// this capability so compose defaults never preselect unsupported security.
+    public static let outboundSMIME = BackendExtendedCapabilities(rawValue: 1 << 18)
 }
 
 /// Admin policy restrictions discovered for an account or tenant.

@@ -69,6 +69,10 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
     }
 
     func signingIdentity(forSenderEmail email: String) async -> SecIdentity? {
+        await signingMaterial(forSenderEmail: email)?.identity
+    }
+
+    func signingMaterial(forSenderEmail email: String) async -> SMIMESigningMaterial? {
         let target = normalize(email)
         let record = settingsProvider().records.first { record in
             isEligible(record, capability: .signing, target: target)
@@ -76,7 +80,8 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
         guard let record, let material = try? await materialStore.material(for: record.id) else {
             return nil
         }
-        return Self.identity(fromPKCS12: material, passphrase: pkcs12Passphrase())
+        let passphrase = await resolvedPassphrase(for: record.id)
+        return Self.signingMaterial(fromPKCS12: material, passphrase: passphrase)
     }
 
     func encryptionCertificates(forRecipients emails: [String]) async -> [String: SecCertificate] {
@@ -90,11 +95,19 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
             guard let record, let material = try? await materialStore.material(for: record.id) else {
                 continue
             }
-            if let cert = Self.certificate(fromMaterial: material, passphrase: pkcs12Passphrase()) {
+            let passphrase = await resolvedPassphrase(for: record.id)
+            if let cert = Self.certificate(fromMaterial: material, passphrase: passphrase) {
                 result[target] = cert
             }
         }
         return result
+    }
+
+    private func resolvedPassphrase(for recordID: String) async -> String {
+        if let stored = try? await materialStore.passphrase(for: recordID), !stored.isEmpty {
+            return stored
+        }
+        return pkcs12Passphrase()
     }
 
     private enum Capability { case signing, encryption }
@@ -127,17 +140,37 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
         return address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    /// Imports a PKCS#12 blob and returns its first identity, or nil if the blob
-    /// can't be decoded (e.g. wrong passphrase) — never throwing, so the caller
-    /// fails closed rather than crashing.
-    private static func identity(fromPKCS12 data: Data, passphrase: String) -> SecIdentity? {
+    /// Imports a PKCS#12 blob and returns its first identity alongside any
+    /// intermediate CA certificates from `kSecImportItemCertChain`, or nil if
+    /// the blob can't be decoded (e.g. wrong passphrase) — never throwing, so
+    /// the caller fails closed rather than crashing.
+    private static func signingMaterial(
+        fromPKCS12 data: Data,
+        passphrase: String
+    ) -> SMIMESigningMaterial? {
         let options = [kSecImportExportPassphrase as String: passphrase] as CFDictionary
         var itemsOpt: CFArray?
         let status = SecPKCS12Import(data as CFData, options, &itemsOpt)
         guard status == errSecSuccess, let items = itemsOpt as? [[String: Any]] else { return nil }
         for item in items {
             guard let value = item[kSecImportItemIdentity as String] else { continue }
-            return (value as! SecIdentity) // key presence guarantees the type
+            let identity = (value as! SecIdentity) // key presence guarantees the type
+            var leafCertOpt: SecCertificate?
+            let leafDER: Data? = if SecIdentityCopyCertificate(identity, &leafCertOpt) == errSecSuccess,
+                                    let leafCert = leafCertOpt {
+                SecCertificateCopyData(leafCert) as Data
+            } else {
+                nil
+            }
+            let rawChain = (item[kSecImportItemCertChain as String] as? [SecCertificate]) ?? []
+            let intermediates = rawChain.filter { cert in
+                guard let leafDER else { return true }
+                return (SecCertificateCopyData(cert) as Data) != leafDER
+            }
+            return SMIMESigningMaterial(
+                identity: identity,
+                intermediateCertificates: intermediates
+            )
         }
         return nil
     }
@@ -148,9 +181,9 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
         if let cert = SecCertificateCreateWithData(nil, data as CFData) {
             return cert
         }
-        guard let identity = identity(fromPKCS12: data, passphrase: passphrase) else { return nil }
+        guard let material = signingMaterial(fromPKCS12: data, passphrase: passphrase) else { return nil }
         var certOpt: SecCertificate?
-        guard SecIdentityCopyCertificate(identity, &certOpt) == errSecSuccess else { return nil }
+        guard SecIdentityCopyCertificate(material.identity, &certOpt) == errSecSuccess else { return nil }
         return certOpt
     }
 }
