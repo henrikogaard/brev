@@ -437,6 +437,27 @@ struct ComposeDraftBodyRestorationTests {
         #expect(edited == "<div dir=\"auto\">Thanks updated<br>\(quoteTail)</div>")
     }
 
+    @Test("attribution matching enforces word boundary and ranks provider-marked preludes ahead of inferred attributions")
+    func attributionWordBoundaryAndProviderPreludePrecedence() async throws {
+        let providerQuoteTail = "<div class=\"gmail_attr\">On Monday, Ada wrote:</div><blockquote>Original note</blockquote>"
+        let html = "<div>I rewrote:</div><blockquote>Proposal A</blockquote><div>Does that work?</div>\(providerQuoteTail)"
+        let restored = try await prepare(html, format: .richTextHTML)
+
+        #expect(restored.attributedText.string.contains("I rewrote:"))
+        #expect(restored.attributedText.string.contains("> Proposal A"))
+        #expect(restored.attributedText.string.contains("Does that work?"))
+        #expect(restored.preservedQuotedHTML == providerQuoteTail)
+        #expect(restored.originalHTML == html)
+
+        // Even when an earlier flat quote is preceded by an inferred attribution,
+        // a later provider-marked prelude still wins as the preserved boundary.
+        let inferredBeforeProviderHTML = "<div>On Sunday, Bob wrote:</div><blockquote>Inline excerpt</blockquote><div>Thoughts?</div>\(providerQuoteTail)"
+        let ranked = try await prepare(inferredBeforeProviderHTML, format: .richTextHTML)
+
+        #expect(ranked.attributedText.string.contains("Thoughts?"))
+        #expect(ranked.preservedQuotedHTML == providerQuoteTail)
+    }
+
     private func prepare(
         _ html: String,
         format: ComposeBodyFormat

@@ -8242,3 +8242,12 @@ buttons, and package-aware localization.
   - Updated `ComposeHTMLPreviewSource.sanitizedQuotePreviewHTML`, `ComposePreservedQuoteSection`, and `ComposeView` to resolve `dir="auto"` via HTML5's first-strong-directional-character rule over the editable reply + quote text for quote-only previews while keeping `dir="auto"` verbatim in saved HTML.
   - Added unit tests for all 3 cases in `ComposeDraftBodyRestorationTests.swift`.
 - **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (477 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check`.
+
+## 2026-11-24 — Agent — PR #350 review round 3 (Issue #278)
+
+- **Goal:** Address the final Devin Review findings on `e503d71a`: attribution word-boundary matching, provider-marked prelude precedence, and final-source macOS snapshot verification.
+- **Changes:**
+  - Added word-boundary checking (`hasWordBoundedSuffix`) in `ComposeDraftQuoteSplitter.matchesAttributionLine` so words like `"rewrote:"` never falsely match `"wrote:"`.
+  - Updated `ComposeDraftQuoteSplitter.fallbackAttributedBlockquoteIndex` to rank explicit provider-marked preludes (`.gmail_attr`, `.moz-cite-prefix`, `#appendonsend`, etc.) strictly ahead of inferred plain-text attributions.
+  - Added `attributionWordBoundaryAndProviderPreludePrecedence` regression test in `ComposeDraftBodyRestorationTests.swift`.
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `xcodebuild -scheme BrevMail -destination 'platform=macOS,arch=arm64' -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevMailTests/ComposeViewMacOSSnapshotTests test` (4 tests / 8 cases passed on final source), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check`.

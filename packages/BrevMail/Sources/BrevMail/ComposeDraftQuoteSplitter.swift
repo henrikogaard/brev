@@ -664,11 +664,13 @@ enum ComposeDraftQuoteSplitter {
     /// Fallback boundary for a canonical plain `<blockquote>...</blockquote>` that
     /// is immediately preceded by an explicit quote prelude or standalone attribution
     /// element (for example, a styled `<div style="...">On Mon, Ada wrote:</div>`
-    /// that prevented flat import).
+    /// that prevented flat import). Explicit provider-marked preludes rank ahead of
+    /// inferred plain-text attributions.
     private static func fallbackAttributedBlockquoteIndex(
         in nodes: [TopLevelNode],
         html: String
     ) -> Int? {
+        var firstInferredAttributionIndex: Int?
         for index in nodes.indices {
             guard isBlockquoteElement(nodes[index]) else { continue }
             var scan = index - 1
@@ -677,12 +679,15 @@ enum ComposeDraftQuoteSplitter {
             }
             guard scan >= 0 else { continue }
             let preceding = nodes[scan]
-            if isExplicitQuotePrelude(preceding, isOutlookBoundary: false)
-                || isStandaloneAttributionElement(preceding, in: html) {
+            if isExplicitQuotePrelude(preceding, isOutlookBoundary: false) {
                 return index
             }
+            if firstInferredAttributionIndex == nil,
+               isStandaloneAttributionElement(preceding, in: html) {
+                firstInferredAttributionIndex = index
+            }
         }
-        return nil
+        return firstInferredAttributionIndex
     }
 
     /// Matches the exact flat `<blockquote>...</blockquote>` form that
@@ -804,7 +809,7 @@ enum ComposeDraftQuoteSplitter {
             "begin forwarded message:",
             "videresendt melding:"
         ]
-        if suffixes.contains(where: { normalized.hasSuffix($0) }) {
+        if suffixes.contains(where: { hasWordBoundedSuffix(normalized, suffix: $0) }) {
             return true
         }
         let markers = [
@@ -818,6 +823,14 @@ enum ComposeDraftQuoteSplitter {
             return true
         }
         return false
+    }
+
+    private static func hasWordBoundedSuffix(_ text: String, suffix: String) -> Bool {
+        guard text.hasSuffix(suffix) else { return false }
+        let prefixEnd = text.index(text.endIndex, offsetBy: -suffix.count)
+        guard prefixEnd > text.startIndex else { return true }
+        let charBefore = text[text.index(before: prefixEnd)]
+        return !charBefore.isLetter && !charBefore.isNumber
     }
 
     private static func isInsignificantSeparator(_ node: TopLevelNode, in html: String) -> Bool {
