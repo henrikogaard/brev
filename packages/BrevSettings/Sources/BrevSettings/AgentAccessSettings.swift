@@ -374,12 +374,18 @@ public enum AgentAccessSocketConfiguration {
     /// User-private Unix domain socket path reachable by both sandboxed Brev builds and
     /// the unsandboxed `brev-mcp` stdio helper without exceeding the 104-byte `sun_path` limit.
     public static func defaultSocketURL() -> URL {
-        let groupContainer = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
-            ?? FileManager.default.homeDirectoryForCurrentUser
+        #if os(macOS)
+        let fallbackBase = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library", isDirectory: true)
             .appendingPathComponent("Group Containers", isDirectory: true)
             .appendingPathComponent(appGroupIdentifier, isDirectory: true)
+        #else
+        let fallbackBase = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        #endif
+        let groupContainer = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+            ?? fallbackBase
         let candidate = groupContainer.appendingPathComponent("mcp.sock", isDirectory: false)
         if candidate.path.utf8.count <= maxSocketPathUTF8Bytes {
             return candidate
