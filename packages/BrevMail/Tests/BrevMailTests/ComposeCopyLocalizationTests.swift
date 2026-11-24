@@ -27,7 +27,21 @@ struct ComposeCopyLocalizationTests {
         "Quoted message preserved",
         "Kept intact when saving or sending",
         "Show quoted message",
-        "Hide quoted message"
+        "Hide quoted message",
+        "Strikethrough",
+        "Heading",
+        "Heading 1",
+        "Heading 2",
+        "Heading 3",
+        "Inline Code",
+        "Code Block",
+        "Insert Table",
+        "Header 1",
+        "Header 2",
+        "Cell 1",
+        "Cell 2",
+        "Only PNG, JPEG, GIF, and WebP images can be inserted inline.",
+        "That image exceeds the inline image size limit."
     ]
 
     @Test("compose copy has a Norwegian translation", arguments: keys)

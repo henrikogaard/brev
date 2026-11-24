@@ -463,6 +463,12 @@ struct ComposeDraftBuilderTests {
             isBusy: false,
             isBlocked: false
         ))
+        #expect(ComposeAutoSavePolicy.shouldScheduleAutoSave(
+            canSave: false,
+            hasPersistedDraft: true,
+            isBusy: false,
+            isBlocked: false
+        ))
     }
 
     @Test("dismiss autosave skips after explicit save or send")
@@ -484,6 +490,12 @@ struct ComposeDraftBuilderTests {
         ))
         #expect(ComposeAutoSavePolicy.shouldAutoSaveOnDismiss(
             canSave: true,
+            isBusy: false,
+            hasCompletedExplicitOperation: false
+        ))
+        #expect(ComposeAutoSavePolicy.shouldAutoSaveOnDismiss(
+            canSave: false,
+            hasPersistedDraft: true,
             isBusy: false,
             hasCompletedExplicitOperation: false
         ))

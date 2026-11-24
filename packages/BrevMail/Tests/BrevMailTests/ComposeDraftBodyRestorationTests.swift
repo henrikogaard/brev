@@ -196,7 +196,7 @@ struct ComposeDraftBodyRestorationTests {
         "<div class=\"gmail_quote\">unclosed",
         "<div id=\"divRplyFwdMsg\">unclosed",
         "<blockquote type=\"cite\"><div>mismatched</blockquote>",
-        "<table><tr><td>Editable table</td></tr></table><blockquote type=\"cite\">Quoted</blockquote>",
+        "<table style=\"color:red\"><tr><td colspan=\"2\">Styled table</td></tr></table><blockquote type=\"cite\">Quoted</blockquote>",
         "<script>alert(1)</script>Top<blockquote type=\"cite\">Quoted</blockquote>",
         "<img src=\"https://example.invalid/pixel.png\">Top<blockquote type=\"cite\">Quoted</blockquote>",
         "<div style=\"color:red\">Styled top<blockquote type=\"cite\">Quoted</blockquote></div>",

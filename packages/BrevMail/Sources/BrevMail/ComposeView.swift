@@ -36,6 +36,7 @@ private struct ComposeAutoSaveFingerprint: Equatable {
     let bodyText: String
     let bodyHTML: String?
     let attachmentIDs: [UUID]
+    let inlineImageCIDs: [String]
     let requestReadReceipt: Bool
     let remindIfNoReply: Bool
 }
@@ -50,6 +51,13 @@ enum ComposeRichTextCommand: CaseIterable {
     case bold
     case italic
     case underline
+    case strikethrough
+    case heading1
+    case heading2
+    case heading3
+    case inlineCode
+    case codeBlock
+    case insertTable
     case insertLink
     case bulletedList
     case numberedList
@@ -63,7 +71,12 @@ enum ComposeRichTextCommand: CaseIterable {
     /// target — see `insertSelectedInlineImage`). Undo/redo come from the text
     /// view's own affordances.
     static var iosEssentials: [ComposeRichTextCommand] {
-        [.bold, .italic, .underline, .bulletedList, .numberedList, .insertLink, .clearFormatting, .insertImage]
+        [
+            .bold, .italic, .underline, .strikethrough,
+            .heading1, .heading2, .heading3,
+            .inlineCode, .codeBlock, .insertTable,
+            .bulletedList, .numberedList, .insertLink, .clearFormatting, .insertImage
+        ]
     }
 
     var label: String {
@@ -71,6 +84,13 @@ enum ComposeRichTextCommand: CaseIterable {
         case .bold: return String(localized: "Bold", bundle: .module)
         case .italic: return String(localized: "Italic", bundle: .module)
         case .underline: return String(localized: "Underline", bundle: .module)
+        case .strikethrough: return String(localized: "Strikethrough", bundle: .module)
+        case .heading1: return String(localized: "Heading 1", bundle: .module)
+        case .heading2: return String(localized: "Heading 2", bundle: .module)
+        case .heading3: return String(localized: "Heading 3", bundle: .module)
+        case .inlineCode: return String(localized: "Inline Code", bundle: .module)
+        case .codeBlock: return String(localized: "Code Block", bundle: .module)
+        case .insertTable: return String(localized: "Insert Table", bundle: .module)
         case .insertLink: return String(localized: "Insert Link", bundle: .module)
         case .bulletedList: return String(localized: "Bulleted List", bundle: .module)
         case .numberedList: return String(localized: "Numbered List", bundle: .module)
@@ -86,6 +106,13 @@ enum ComposeRichTextCommand: CaseIterable {
         case .bold: return "bold"
         case .italic: return "italic"
         case .underline: return "underline"
+        case .strikethrough: return "strikethrough"
+        case .heading1: return "textformat.size.larger"
+        case .heading2: return "textformat.size"
+        case .heading3: return "textformat.size.smaller"
+        case .inlineCode: return "chevron.left.forwardslash.chevron.right"
+        case .codeBlock: return "curlybraces"
+        case .insertTable: return "tablecells"
         case .insertLink: return "link"
         case .bulletedList: return "list.bullet"
         case .numberedList: return "list.number"
@@ -104,6 +131,13 @@ enum ComposeRichTextCommand: CaseIterable {
         case .bold: #selector(ComposeBodyEditorRichActions.brevToggleBold(_:))
         case .italic: #selector(ComposeBodyEditorRichActions.brevToggleItalic(_:))
         case .underline: #selector(NSTextView.underline(_:))
+        case .strikethrough: #selector(ComposeBodyEditorRichActions.brevToggleStrikethrough(_:))
+        case .heading1: #selector(ComposeBodyEditorRichActions.brevToggleHeading1(_:))
+        case .heading2: #selector(ComposeBodyEditorRichActions.brevToggleHeading2(_:))
+        case .heading3: #selector(ComposeBodyEditorRichActions.brevToggleHeading3(_:))
+        case .inlineCode: #selector(ComposeBodyEditorRichActions.brevToggleInlineCode(_:))
+        case .codeBlock: #selector(ComposeBodyEditorRichActions.brevToggleCodeBlock(_:))
+        case .insertTable: #selector(ComposeBodyEditorRichActions.brevInsertTable(_:))
         // Handled by the Coordinator in ComposeBodyEditor via ComposeBodyEditorRichActions.
         case .insertLink: #selector(ComposeBodyEditorRichActions.brevInsertLink(_:))
         case .bulletedList: #selector(ComposeBodyEditorRichActions.brevToggleBulletedList(_:))
@@ -128,6 +162,20 @@ enum ComposeRichTextCommand: CaseIterable {
             iosTarget?.toggleItalic()
         case .underline:
             iosTarget?.toggleUnderline()
+        case .strikethrough:
+            iosTarget?.toggleStrikethrough()
+        case .heading1:
+            iosTarget?.toggleHeading(1)
+        case .heading2:
+            iosTarget?.toggleHeading(2)
+        case .heading3:
+            iosTarget?.toggleHeading(3)
+        case .inlineCode:
+            iosTarget?.toggleInlineCode()
+        case .codeBlock:
+            iosTarget?.toggleCodeBlock()
+        case .insertTable:
+            iosTarget?.insertTable()
         case .bulletedList:
             iosTarget?.toggleBulletedList()
         case .numberedList:
@@ -300,10 +348,32 @@ public struct ComposeView: View {
     @State private var pendingUndoSendStartedAt: TimeInterval?
     @State private var pendingUndoSendDuration: TimeInterval = 0
 
+    /// Reference-backed inline-attachment and autosave session state so `close()`
+    /// dismissal saves can serialize behind an in-flight autosave, reuse its
+    /// remote draft ID, and read staged inline IDs even after SwiftUI detaches
+    /// `@State` in `.onDisappear`.
+    private final class InlineAttachmentSessionState {
+        var isDismissalSaveInFlight = false
+        var staged: [String: ComposeStagedInlineAttachment] = [:]
+        var activeAutoSaveTask: Task<Void, Never>?
+        var latestSavedRemoteID: String?
+    }
+
+    /// Synchronously captured editor/draft state at `close()` time so a dismissal
+    /// save that waits for an in-flight autosave still persists the final edits
+    /// even after SwiftUI tears down the mounted editor.
+    private struct DismissalSaveSnapshot {
+        let draft: Draft
+        let cidSourceHTML: String
+        let activeCIDs: Set<String>
+    }
+
     // #251 Rich-compose: inline images + link sheet
     /// Owned here so the same registry lives for the whole compose session.
     /// Passed down into `ComposeBodyEditor` so the Coordinator can stage images.
     @State private var inlineImageRegistry = ComposeInlineImageRegistry()
+    @State private var inlineAttachmentSession = InlineAttachmentSessionState()
+    @State private var hasSavedDraftInSession = false
     /// Bridges the mounted platform editor so save/send can publish the latest
     /// coalesced HTML snapshot before building a draft.
     @State private var htmlPublicationFlushBox = ComposeHTMLPublicationFlushBox()
@@ -318,10 +388,6 @@ public struct ComposeView: View {
     #if os(macOS)
     @State private var showsHTMLPreview = false
     #endif
-    /// Maps each staged inline-image Content-ID to its source-scoped backend attachment.
-    /// Populated lazily in `draftForSend` so we don't touch the backend on
-    /// every autosave. Re-used across retry attempts so staging is idempotent.
-    @State private var stagedInlineAttachments: [String: ComposeStagedInlineAttachment] = [:]
 
     @AppStorage(ComposeBodyAppearance.storageKey) private var bodyAppearanceRaw = ComposeBodyAppearance.system.rawValue
     @AppStorage("compose.messageFormat") private var composeMessageFormatRaw = "automatic"
@@ -719,10 +785,15 @@ public struct ComposeView: View {
             .task { await applyInitialFocusIfNeeded() }
             .onDisappear {
                 // Closing the window without Close also ends crash recovery.
-                forgetNewMessageRecovery(draftID: draftID, remoteID: savedDraftRemoteID)
+                // If `close()` started a dismissal save, keep inline-image state
+                // and operation validity intact until that task finishes.
+                if !inlineAttachmentSession.isDismissalSaveInFlight {
+                    forgetNewMessageRecovery(draftID: draftID, remoteID: savedDraftRemoteID)
+                    invalidateComposeOperation()
+                    cleanupInlineImageSession()
+                }
                 cancelDraftRestoration()
                 cancelAutoSaveDraftTask()
-                invalidateComposeOperation()
                 pendingUndoSendTask?.cancel()
                 recipientLookupTask?.cancel()
             }
@@ -2535,6 +2606,7 @@ public struct ComposeView: View {
                 preservedQuotedHTML: preservedQuotedHTML,
                 inheritedDirection: restoredBody.inheritedDirection,
                 leadingContextText: bodyText,
+                inlineImages: inlineImageRegistry.staged,
                 stripTrackingPixels: stripTrackingPixels,
                 fontFamily: composeFontFamily,
                 textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium,
@@ -2573,6 +2645,9 @@ public struct ComposeView: View {
             fontFamily: composeFontFamily,
             textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium,
             inlineImageRegistry: inlineImageRegistry,
+            onInlineImageRejected: { message in
+                errorMessage = message
+            },
             onRequestLinkSheet: { input in
                 linkSheetInput = input
             },
@@ -2607,7 +2682,8 @@ public struct ComposeView: View {
             preservedQuotedHTML: restoredBody?.preservedQuotedHTML,
             quoteSeparatorHTML: restoredBody?.quoteSeparatorHTML ?? "",
             outerWrapperOpenHTML: restoredBody?.outerWrapperOpenHTML ?? "",
-            outerWrapperCloseHTML: restoredBody?.outerWrapperCloseHTML ?? ""
+            outerWrapperCloseHTML: restoredBody?.outerWrapperCloseHTML ?? "",
+            inlineImages: inlineImageRegistry.staged
         )
         return ScrollView {
             HTMLBodyWebView(
@@ -2833,18 +2909,25 @@ public struct ComposeView: View {
     @ViewBuilder
     private var richTextFormattingMenuContent: some View {
         if composeBodyFormat == .richTextHTML {
-            formatMenuSection([.bold, .italic, .underline])
+            formatMenuSection([.bold, .italic, .underline, .strikethrough, .inlineCode])
+            Divider()
+            Menu {
+                formatMenuSection([.heading1, .heading2, .heading3])
+            } label: {
+                Label(String(localized: "Heading", bundle: .module), systemImage: "textformat.size")
+            }
+            .disabled(isInteractionBlocked)
             Divider()
             #if os(macOS)
-            formatMenuSection([.insertLink, .bulletedList, .numberedList, .insertImage])
+            formatMenuSection([
+                .insertLink, .bulletedList, .numberedList, .codeBlock, .insertTable, .insertImage
+            ])
             Divider()
             formatMenuSection([.clearFormatting])
             Divider()
             formatMenuSection([.undo, .redo])
             #else
-            // Inline images stay macOS-only (cid: staging pipeline follow-up,
-            // ADR-0038); undo/redo come from the text view's own affordances.
-            formatMenuSection([.insertLink, .bulletedList, .numberedList])
+            formatMenuSection([.insertLink, .bulletedList, .numberedList, .codeBlock, .insertTable])
             Divider()
             formatMenuSection([.clearFormatting])
             #endif
@@ -3604,6 +3687,35 @@ public struct ComposeView: View {
         )
     }
 
+    private var fullInlineCIDSourceHTML: String {
+        let editableHTML = composeBodyFormat == .richTextHTML ? (bodyHTML ?? bodyText) : bodyText
+        if let preservedQuote = restoredBody?.preservedQuotedHTML {
+            return editableHTML + preservedQuote
+        }
+        return editableHTML
+    }
+
+    private var activeInlineContentIDs: Set<String> {
+        ComposeInlineImageRegistry.contentIDs(inHTML: fullInlineCIDSourceHTML)
+    }
+
+    private var activeInlineImages: [ComposeInlineImage] {
+        inlineImageRegistry.referencedImages(keepingContentIDs: activeInlineContentIDs)
+    }
+
+    private var hasPersistedDraft: Bool {
+        hasSavedDraftInSession
+            || savedDraftRemoteID != nil
+            || inlineAttachmentSession.latestSavedRemoteID != nil
+            || inlineAttachmentSession.activeAutoSaveTask != nil
+            || restoredDraft != nil
+    }
+
+    private func cleanupInlineImageSession() {
+        inlineImageRegistry.clear()
+        inlineAttachmentSession.staged = [:]
+    }
+
     private var canSave: Bool {
         ComposeDraftBuilder.canSave(
             to: resolvedToRecipients,
@@ -3612,7 +3724,8 @@ public struct ComposeView: View {
             subject: subject,
             bodyText: bodyTextExcludingManagedSignature,
             hasAttachments: !pendingAttachments.isEmpty,
-            hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil
+            hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil,
+            hasInlineImages: !activeInlineImages.isEmpty
         ) && !ComposeQuotedBodyUpgradePolicy.blocksSending(
             isUpgradePending: isQuotedBodyUpgradePending
         )
@@ -3758,6 +3871,8 @@ public struct ComposeView: View {
         }
         ComposeDraftRecoveryStore.clear(matching: draft, accountID: backend.account.id, sourceID: sourceID)
         savedDraftRemoteID = nil
+        inlineAttachmentSession.latestSavedRemoteID = nil
+        hasSavedDraftInSession = false
         hasCompletedExplicitOperation = true
         close()
     }
@@ -3805,7 +3920,11 @@ public struct ComposeView: View {
                 } else {
                     return
                 }
-                let body = try await ComposeDraftBodyRestoration.prepare(draft: resolved.draft, format: composeBodyFormat)
+                let body = try await ComposeDraftBodyRestoration.prepare(
+                    draft: resolved.draft,
+                    attachments: resolved.attachments,
+                    format: composeBodyFormat
+                )
                 try Task.checkCancellation()
                 guard !isDraftRestorationCancelled else { return }
                 guard currentComposeOperationSnapshot() == snapshot, selectedComposeSourceID == source else {
@@ -3816,6 +3935,7 @@ public struct ComposeView: View {
                 remindIfNoReply = draft.followUpRequest != nil
                 draftID = draft.id
                 savedDraftRemoteID = draft.remoteID
+                inlineAttachmentSession.latestSavedRemoteID = draft.remoteID
                 to = draft.to.map(\.email)
                 cc = draft.cc.map(\.email)
                 bcc = draft.bcc.map(\.email)
@@ -3826,12 +3946,34 @@ public struct ComposeView: View {
                 encryptMessage = draft.securityMode.requiresEncryption
                 requestReadReceipt = draft.readReceiptRequest != nil
                 pendingAttachments = ComposeDraftRestoration.pendingAttachments(from: resolved.attachments)
+                let restoredInline = ComposeDraftRestoration.inlineAttachments(from: resolved.attachments)
+                let restoredComposeImages = restoredInline.compactMap { attachment -> ComposeInlineImage? in
+                    guard let contentID = attachment.contentID else { return nil }
+                    return ComposeInlineImage(
+                        contentID: contentID,
+                        filename: attachment.filename,
+                        mimeType: attachment.mimeType,
+                        data: attachment.data
+                    )
+                }
+                inlineImageRegistry.restore(restoredComposeImages)
+                var seededInline: [String: ComposeStagedInlineAttachment] = [:]
+                for attachment in restoredInline {
+                    guard let contentID = attachment.contentID else { continue }
+                    seededInline[contentID] = ComposeStagedInlineAttachment(
+                        attachmentID: attachment.id,
+                        sourceID: activeComposeSourceID
+                    )
+                }
+                inlineAttachmentSession.staged = seededInline
                 quoteProtection = body.preservedQuotedHTML == nil
                     ? draft.quoteBoundary.map(ComposeQuoteProtection.init(boundary:))
                     : nil
                 bodyText = body.attributedText.string
                 bodyHTML = body.initialEditorHTML
                 restoredBody = body
+                let preservedQuoteCIDs = body.preservedQuotedHTML.map(ComposeInlineImageRegistry.contentIDs(inHTML:)) ?? []
+                inlineImageRegistry.setProtectedContentIDs(preservedQuoteCIDs)
                 dismissalBaseline = currentDismissalContent
                 draftRecoveryNotice = recoveredDraft != nil ? .recovered : nil
                 isDraftRestorationPending = false
@@ -3885,11 +4027,14 @@ public struct ComposeView: View {
         isRecoverySession = false
         draftID = UUID().uuidString
         savedDraftRemoteID = nil
+        inlineAttachmentSession.latestSavedRemoteID = nil
+        hasSavedDraftInSession = false
         to = []
         cc = []
         bcc = []
         subject = ""
         pendingAttachments = []
+        cleanupInlineImageSession()
         quoteProtection = nil
         restoredBody = nil
         bodyHTML = nil
@@ -3911,16 +4056,35 @@ public struct ComposeView: View {
     func close() {
         cancelDraftRestoration()
         cancelAutoSaveDraftTask()
+        // Flush any debounced rich HTML edits synchronously while the editor is
+        // still mounted so dismissal saves see the latest body and CID tags.
+        htmlPublicationFlushBox.performFlush()
         // A normal close ends this Draft's crash recovery (ADR-0093). A dismissal
         // save records it again, so forget it only after that save completes.
         let closingDraftID = draftID
         if ComposeAutoSavePolicy.shouldAutoSaveOnDismiss(
             canSave: canSave,
+            hasPersistedDraft: hasPersistedDraft,
             isBusy: isBusy,
             hasCompletedExplicitOperation: hasCompletedExplicitOperation
         ) {
-            Task {
-                await autoSaveDraftOnDismiss()
+            let dismissalSnapshot = DismissalSaveSnapshot(
+                draft: currentDraft(),
+                cidSourceHTML: fullInlineCIDSourceHTML,
+                activeCIDs: activeInlineContentIDs
+            )
+            let inFlightAutoSave = inlineAttachmentSession.activeAutoSaveTask
+            inlineAttachmentSession.isDismissalSaveInFlight = true
+            Task { @MainActor in
+                defer {
+                    inlineAttachmentSession.isDismissalSaveInFlight = false
+                    invalidateComposeOperation()
+                    cleanupInlineImageSession()
+                }
+                if let inFlightAutoSave {
+                    await inFlightAutoSave.value
+                }
+                await autoSaveDraftOnDismiss(snapshot: dismissalSnapshot)
                 forgetNewMessageRecovery(draftID: closingDraftID, remoteID: nil)
             }
         } else {
@@ -3934,38 +4098,64 @@ public struct ComposeView: View {
     }
 
     func autoSaveDraftOnDismiss() async {
-        await autoSaveDraft(requireApplicableResponse: false)
+        await autoSaveDraft(requireApplicableResponse: false, dismissalSnapshot: nil)
+    }
+
+    private func autoSaveDraftOnDismiss(snapshot: DismissalSaveSnapshot) async {
+        await autoSaveDraft(requireApplicableResponse: false, dismissalSnapshot: snapshot)
     }
 
     func autoSaveDraftAfterInactivity() async {
-        await autoSaveDraft(requireApplicableResponse: true)
+        await autoSaveDraft(requireApplicableResponse: true, dismissalSnapshot: nil)
     }
 
-    private func autoSaveDraft(requireApplicableResponse: Bool) async {
-        guard canStartComposeOperation(kind: .autoSaveDraft) else { return }
-        guard ComposeDraftBuilder.canSave(
+    private func autoSaveDraft(
+        requireApplicableResponse: Bool,
+        dismissalSnapshot: DismissalSaveSnapshot?
+    ) async {
+        if dismissalSnapshot != nil {
+            guard !isWorkBlocked, !restorationBlocksWork else { return }
+        } else {
+            guard canStartComposeOperation(kind: .autoSaveDraft) else { return }
+        }
+        let hasContentToSave = ComposeDraftBuilder.canSave(
             to: resolvedToRecipients,
             cc: resolvedCcRecipients,
             bcc: resolvedBccRecipients,
             subject: subject,
             bodyText: bodyTextExcludingManagedSignature,
             hasAttachments: !pendingAttachments.isEmpty,
-            hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil
-        ) else { return }
+            hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil,
+            hasInlineImages: !activeInlineImages.isEmpty
+        )
+        guard dismissalSnapshot != nil || hasContentToSave || hasPersistedDraft else { return }
         let request = startComposeOperation(kind: .autoSaveDraft)
-        defer { finishComposeOperation(request) }
-        do {
-            let saved = try await persistDraft(for: request)
-            if requireApplicableResponse {
-                guard canApplyComposeOperationResponse(request) else { return }
+        let task = Task { @MainActor in
+            defer {
+                finishComposeOperation(request)
+                if activeComposeOperationRequest == nil {
+                    inlineAttachmentSession.activeAutoSaveTask = nil
+                }
             }
-            savedDraftRemoteID = saved.remoteID
-            await onCompletion(.savedDraft(saved))
-        } catch is CancellationError {
-            // Composer dismissed during auto-save — acceptable.
-        } catch {
-            errorMessage = ComposePresentation.saveDraftErrorMessage(for: error)
+            do {
+                let saved = try await persistDraft(for: request, dismissalSnapshot: dismissalSnapshot)
+                if requireApplicableResponse {
+                    guard canApplyComposeOperationResponse(request) else { return }
+                }
+                savedDraftRemoteID = saved.remoteID
+                inlineAttachmentSession.latestSavedRemoteID = saved.remoteID
+                hasSavedDraftInSession = true
+                await onCompletion(.savedDraft(saved))
+            } catch is CancellationError {
+                // Composer dismissed during auto-save — acceptable.
+            } catch {
+                errorMessage = ComposePresentation.saveDraftErrorMessage(for: error)
+            }
         }
+        if dismissalSnapshot == nil {
+            inlineAttachmentSession.activeAutoSaveTask = task
+        }
+        await task.value
     }
 
     private func draftForSend(request: ComposeOperationRequest) async throws -> Draft {
@@ -3989,30 +4179,32 @@ public struct ComposeView: View {
         return saved
     }
 
-    /// Reconciles the inline-image registry against the serialised HTML body,
-    /// then stages any images whose Content-IDs are absent from
-    /// `stagedInlineAttachments` with the backend.
-    private func stageInlineImages() async throws {
+    /// Stages any currently referenced inline images whose Content-IDs are absent
+    /// from `inlineAttachmentSession.staged` with the backend.
+    ///
+    /// Keeps unreferenced entries in `inlineImageRegistry` and
+    /// `inlineAttachmentSession.staged` for the lifetime of the compose session so
+    /// Undo after an autosave still has the image bytes and attachment ID
+    /// available; outgoing drafts only include `activeInlineContentIDs`.
+    private func stageInlineImages(cidSourceHTML: String? = nil) async throws {
         if restorationBlocksWork {
             throw MailBackendError
                 .backendSpecific(message: draftRestorationError ?? ComposeDraftRestoration.recoveryUnavailableMessage)
         }
-        let html = composeBodyFormat == .richTextHTML ? (bodyHTML ?? bodyText) : bodyText
         let images = ComposeDraftBuilder.inlineAttachments(
             fromRegistry: inlineImageRegistry,
             draftID: draftID,
-            bodyHTML: html
+            bodyHTML: cidSourceHTML ?? fullInlineCIDSourceHTML,
+            reconcileRegistry: false
         )
-        if restoredDraft != nil {
-            var remaining = ComposeAttachmentImport.maxAttachmentByteCount
-            let sizes = pendingAttachments.map { ($0.filename, $0.data.count) } + images.map { ($0.filename, $0.data.count) }
-            for (filename, count) in sizes {
-                guard count <= remaining else {
-                    throw MailBackendError
-                        .backendSpecific(message: ComposeAttachmentImport.attachmentBudgetExceededMessage(filename: filename))
-                }
-                remaining -= count
+        var remaining = ComposeAttachmentImport.maxAttachmentByteCount
+        let sizes = pendingAttachments.map { ($0.filename, $0.data.count) } + images.map { ($0.filename, $0.data.count) }
+        for (filename, count) in sizes {
+            guard count <= remaining else {
+                throw MailBackendError
+                    .backendSpecific(message: ComposeAttachmentImport.attachmentBudgetExceededMessage(filename: filename))
             }
+            remaining -= count
         }
         let stagingSourceID = activeComposeSourceID
         let backend = selectedComposeBackend
@@ -4022,7 +4214,7 @@ public struct ComposeView: View {
             // must restage the same Content-ID instead of reusing another
             // account's opaque ID.
             guard ComposeAttachmentUploadState.shouldStageInlineAttachment(
-                stagedInlineAttachments[image.contentID],
+                inlineAttachmentSession.staged[image.contentID],
                 for: stagingSourceID
             ) else { continue }
             let attID: String
@@ -4044,29 +4236,51 @@ public struct ComposeView: View {
                     data: image.data
                 )
             }
-            stagedInlineAttachments[image.contentID] = ComposeStagedInlineAttachment(
+            inlineAttachmentSession.staged[image.contentID] = ComposeStagedInlineAttachment(
                 attachmentID: attID,
                 sourceID: stagingSourceID
             )
         }
-        // Remove any IDs whose images were reconciled away.
-        let stagedCIDs = Set(inlineImageRegistry.staged.map(\.contentID))
-        stagedInlineAttachments = stagedInlineAttachments.filter { stagedCIDs.contains($0.key) }
     }
 
-    private func persistDraft(for request: ComposeOperationRequest) async throws -> Draft {
-        htmlPublicationFlushBox.performFlush()
+    private func persistDraft(
+        for request: ComposeOperationRequest,
+        dismissalSnapshot: DismissalSaveSnapshot? = nil
+    ) async throws -> Draft {
+        if dismissalSnapshot == nil {
+            htmlPublicationFlushBox.performFlush()
+        }
         // Save and autosave must persist CID parts too, not only the send path.
         // The staging method is idempotent for already-known Content-IDs.
-        try await stageInlineImages()
-        let draft = currentDraft()
+        try await stageInlineImages(cidSourceHTML: dismissalSnapshot?.cidSourceHTML)
+        let draft: Draft
+        if var snapshotDraft = dismissalSnapshot?.draft, let activeCIDs = dismissalSnapshot?.activeCIDs {
+            snapshotDraft.remoteID = inlineAttachmentSession.latestSavedRemoteID
+                ?? savedDraftRemoteID
+                ?? snapshotDraft.remoteID
+            snapshotDraft.attachmentIDs = ComposeAttachmentUploadState.mergedAttachmentIDs(
+                inline: ComposeAttachmentUploadState.inlineAttachmentIDs(
+                    from: inlineAttachmentSession.staged,
+                    for: activeComposeSourceID,
+                    activeContentIDs: activeCIDs
+                ),
+                regular: ComposeAttachmentUploadState.uploadedAttachmentIDs(from: pendingAttachments)
+            )
+            draft = snapshotDraft
+        } else {
+            draft = currentDraft()
+        }
         var saved = try await save(draft)
         // Record the server-assigned id before any bail-out: if the request was
         // superseded by a newer keystroke, the draft we just saved still exists
         // on the server, so the next save must reuse this id to supersede it
         // rather than orphaning it as a duplicate draft.
         savedDraftRemoteID = saved.remoteID
-        guard canApplyComposeOperationResponse(request) else { throw CancellationError() }
+        inlineAttachmentSession.latestSavedRemoteID = saved.remoteID
+        hasSavedDraftInSession = true
+        if dismissalSnapshot == nil {
+            guard canApplyComposeOperationResponse(request) else { throw CancellationError() }
+        }
         let shouldUploadAttachments = ComposeAttachmentUploadState.shouldUploadAttachments(for: request.kind)
         if shouldUploadAttachments,
            ComposeAttachmentUploadState.unresolvedFailureMessage(for: pendingAttachments) != nil {
@@ -4105,6 +4319,7 @@ public struct ComposeView: View {
                 // As above, record the server id before cancellation checks so
                 // a newer operation supersedes the actual latest remote draft.
                 savedDraftRemoteID = saved.remoteID
+                inlineAttachmentSession.latestSavedRemoteID = saved.remoteID
                 guard canApplyComposeOperationResponse(request) else { throw CancellationError() }
             }
         }
@@ -4113,8 +4328,9 @@ public struct ComposeView: View {
 
     private var currentInlineAttachmentIDs: [String] {
         ComposeAttachmentUploadState.inlineAttachmentIDs(
-            from: stagedInlineAttachments,
-            for: activeComposeSourceID
+            from: inlineAttachmentSession.staged,
+            for: activeComposeSourceID,
+            activeContentIDs: activeInlineContentIDs
         )
     }
 
@@ -4128,7 +4344,7 @@ public struct ComposeView: View {
     func currentDraft() -> Draft {
         var draft = ComposeDraftBuilder.draft(
             id: draftID,
-            remoteID: savedDraftRemoteID,
+            remoteID: inlineAttachmentSession.latestSavedRemoteID ?? savedDraftRemoteID,
             identityID: selectedAliasID,
             replyingTo: replyingTo,
             forwardingFrom: forwardingFrom,
@@ -4201,6 +4417,7 @@ public struct ComposeView: View {
             bodyText: bodyTextExcludingManagedSignature,
             bodyHTML: composeBodyFormat == .richTextHTML ? bodyHTML : nil,
             attachmentIDs: pendingAttachments.map(\.id),
+            inlineImageCIDs: activeInlineImages.map(\.contentID),
             requestReadReceipt: requestReadReceipt,
             remindIfNoReply: remindIfNoReply
         )
@@ -4210,6 +4427,7 @@ public struct ComposeView: View {
         cancelAutoSaveDraftTask()
         guard ComposeAutoSavePolicy.shouldScheduleAutoSave(
             canSave: canSave,
+            hasPersistedDraft: hasPersistedDraft,
             isBusy: isBusy,
             isBlocked: isWorkBlocked || restorationBlocksWork
         ) else {

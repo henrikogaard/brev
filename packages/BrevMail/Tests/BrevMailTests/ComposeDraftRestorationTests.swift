@@ -315,8 +315,8 @@ struct ComposeDraftRestorationTests {
         ) != nil)
     }
 
-    @Test("plain-editor conversion loses CID markup so inline restoration must fail closed")
-    func inlineFailsClosed() {
+    @Test("inline CID drafts restore when local payloads match, and fail closed without payloads or in plain-text mode")
+    func inlineRestorationValidationAndPlainMode() async {
         let html = "<p>Keep this image</p><img src=\"cid:photo\">"
         let text = ComposeHTMLBodyPolicy.editorText(fromStoredHTML: html)
         #expect(!ComposeHTMLBodyPolicy.html(fromEditorText: text).contains("cid:photo"))
@@ -324,14 +324,23 @@ struct ComposeDraftRestorationTests {
             id: "R",
             filename: "photo.png",
             mimeType: "image/png",
-            data: Data([1]),
+            data: Data([0x89, 0x50, 0x4E, 0x47]),
             isInline: true,
             contentID: "photo"
         )
-        #expect(ComposeDraftRestoration.validationError(
-            draft: Draft(id: "local", htmlBody: html, attachmentIDs: ["R"]),
-            attachments: [payload]
-        ) != nil)
+        let draft = Draft(id: "local", htmlBody: html, attachmentIDs: ["R"])
+        #expect(ComposeDraftRestoration.validationError(draft: draft, attachments: [payload]) == nil)
+        #expect(ComposeDraftRestoration.pendingAttachments(from: [payload]).isEmpty)
+        #expect(ComposeDraftRestoration.inlineAttachments(from: [payload]) == [payload])
+        // Missing payload still fails closed.
         #expect(ComposeDraftRestoration.validationError(draft: Draft(id: "local", htmlBody: html), attachments: []) != nil)
+        // Plain-text editor mode still refuses inline images.
+        await #expect(throws: (any Error).self) {
+            _ = try await ComposeDraftBodyRestoration.prepare(
+                draft: draft,
+                attachments: [payload],
+                format: .plainText
+            )
+        }
     }
 }

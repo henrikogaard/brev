@@ -26,6 +26,7 @@ struct ComposePreservedQuoteSection: View {
     let preservedQuotedHTML: String
     let inheritedDirection: String?
     let leadingContextText: String
+    let inlineImages: [ComposeInlineImage]
     let stripTrackingPixels: Bool
     let fontFamily: MailboxFontFamily
     let textSize: MailboxTextSize
@@ -35,6 +36,7 @@ struct ComposePreservedQuoteSection: View {
         preservedQuotedHTML: String,
         inheritedDirection: String? = nil,
         leadingContextText: String = "",
+        inlineImages: [ComposeInlineImage] = [],
         stripTrackingPixels: Bool = true,
         fontFamily: MailboxFontFamily = .system,
         textSize: MailboxTextSize = .medium,
@@ -44,6 +46,7 @@ struct ComposePreservedQuoteSection: View {
         self.preservedQuotedHTML = preservedQuotedHTML
         self.inheritedDirection = inheritedDirection
         self.leadingContextText = leadingContextText
+        self.inlineImages = inlineImages
         self.stripTrackingPixels = stripTrackingPixels
         self.fontFamily = fontFamily
         self.textSize = textSize
@@ -103,7 +106,8 @@ struct ComposePreservedQuoteSection: View {
                         html: ComposeHTMLPreviewSource.sanitizedQuotePreviewHTML(
                             preservedQuotedHTML,
                             inheritedDirection: inheritedDirection,
-                            leadingContextText: leadingContextText
+                            leadingContextText: leadingContextText,
+                            inlineImages: inlineImages
                         ),
                         allowRemoteContent: false,
                         stripTrackingPixels: stripTrackingPixels,

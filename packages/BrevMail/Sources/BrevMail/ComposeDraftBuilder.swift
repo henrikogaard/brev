@@ -266,26 +266,28 @@ enum ComposeDraftBuilder {
         return body + separator + signatureBlock
     }
 
-    /// Reconciles the inline-image registry against the HTML body and returns
-    /// the images that are still referenced.
-    ///
-    /// Call this before staging inline images with the backend. Images whose
-    /// `cid:` references were deleted from the body are pruned from the registry
-    /// so they are not sent.
+    /// Returns the inline images still referenced by `bodyHTML`.
     ///
     /// - Parameters:
     ///   - registry: The per-compose registry that owns staged inline images.
     ///   - draftID: The draft ID (informational; not used to mutate the draft here).
     ///   - bodyHTML: The current serialised HTML body of the compose.
-    /// - Returns: The inline images that remain in the registry after reconcile.
+    ///   - reconcileRegistry: When `true` (default), prunes unreferenced images from
+    ///     `registry`. Pass `false` during live save/autosave so Undo can still
+    ///     restore a recently deleted inline image without losing its bytes.
+    /// - Returns: The inline images referenced by `bodyHTML`.
     static func inlineAttachments(
         fromRegistry registry: ComposeInlineImageRegistry,
         draftID: String,
-        bodyHTML: String
+        bodyHTML: String,
+        reconcileRegistry: Bool = true
     ) -> [ComposeInlineImage] {
         let referencedCIDs = ComposeInlineImageRegistry.contentIDs(inHTML: bodyHTML)
-        registry.reconcile(keepingContentIDs: referencedCIDs)
-        return registry.staged
+        if reconcileRegistry {
+            registry.reconcile(keepingContentIDs: referencedCIDs)
+            return registry.staged
+        }
+        return registry.referencedImages(keepingContentIDs: referencedCIDs)
     }
 
     static func canSave(
@@ -295,9 +297,11 @@ enum ComposeDraftBuilder {
         subject: String,
         bodyText: String,
         hasAttachments: Bool,
-        hasPreservedQuotedHTML: Bool = false
+        hasPreservedQuotedHTML: Bool = false,
+        hasInlineImages: Bool = false
     ) -> Bool {
         hasAttachments
+            || hasInlineImages
             || hasPreservedQuotedHTML
             || !recipientAddresses(from: to + cc + bcc).isEmpty
             || !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -378,18 +382,41 @@ enum ComposeHTMLBodyPolicy {
         let nsRange = NSRange(withoutUnsafeBlocks.startIndex..., in: withoutUnsafeBlocks)
         var result = ""
         var lastIndex = withoutUnsafeBlocks.startIndex
+        var preDepth = 0
+        var codeDepth = 0
         for match in regex.matches(in: withoutUnsafeBlocks, range: nsRange) {
             guard let range = Range(match.range, in: withoutUnsafeBlocks) else { continue }
-            appendEscapedRichText(
-                String(withoutUnsafeBlocks[lastIndex ..< range.lowerBound]),
-                to: &result
-            )
-            if let sanitizedTag = sanitizedRichHTMLTag(String(withoutUnsafeBlocks[range])) {
+            let textSlice = String(withoutUnsafeBlocks[lastIndex ..< range.lowerBound])
+            if preDepth > 0 || codeDepth > 0 {
+                if !textSlice.isEmpty {
+                    result.append(escapeHTML(decodeHTMLEntities(textSlice)))
+                }
+            } else {
+                appendEscapedRichText(textSlice, to: &result)
+            }
+            let rawTag = String(withoutUnsafeBlocks[range])
+            if let sanitizedTag = sanitizedRichHTMLTag(rawTag) {
+                if sanitizedTag == "<pre>" {
+                    preDepth += 1
+                } else if sanitizedTag == "</pre>" {
+                    preDepth = max(0, preDepth - 1)
+                } else if sanitizedTag == "<code>" {
+                    codeDepth += 1
+                } else if sanitizedTag == "</code>" {
+                    codeDepth = max(0, codeDepth - 1)
+                }
                 result.append(sanitizedTag)
             }
             lastIndex = range.upperBound
         }
-        appendEscapedRichText(String(withoutUnsafeBlocks[lastIndex...]), to: &result)
+        let tail = String(withoutUnsafeBlocks[lastIndex...])
+        if preDepth > 0 || codeDepth > 0 {
+            if !tail.isEmpty {
+                result.append(escapeHTML(decodeHTMLEntities(tail)))
+            }
+        } else {
+            appendEscapedRichText(tail, to: &result)
+        }
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -415,8 +442,13 @@ enum ComposeHTMLBodyPolicy {
                 options: .regularExpression
             )
             .replacingOccurrences(
-                of: #"(?i)</\s*(p|div|li|tr|h[1-6])\s*>"#,
+                of: #"(?i)</\s*(p|div|li|tr|pre|h[1-6])\s*>"#,
                 with: "\n",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"(?i)</\s*(td|th)\s*>"#,
+                with: "\t",
                 options: .regularExpression
             )
         let withoutTags = withLineBreaks.replacingOccurrences(
@@ -491,7 +523,7 @@ enum ComposeHTMLBodyPolicy {
 
     private static func removingUnsafeHTMLBlocks(from value: String) -> String {
         value.replacingOccurrences(
-            of: #"(?is)<\s*(script|style|iframe|object|embed|meta|link)\b[^>]*>.*?</\s*\1\s*>"#,
+            of: #"(?is)<\s*(script|style|iframe|object|embed|form|meta|link)\b[^>]*>.*?</\s*\1\s*>"#,
             with: "",
             options: .regularExpression
         )
@@ -511,7 +543,9 @@ enum ComposeHTMLBodyPolicy {
         if trimmed.dropFirst().trimmingCharacters(in: .whitespaces).hasPrefix("/") {
             let tagName = tagName(in: trimmed, closing: true)
             switch canonicalTagName(tagName) {
-            case "a", "blockquote", "div", "em", "li", "ol", "p", "strong", "u", "ul":
+            case "a", "blockquote", "code", "div", "em", "h1", "h2", "h3",
+                 "li", "ol", "p", "pre", "s", "strong", "table", "tbody",
+                 "td", "th", "thead", "tr", "u", "ul":
                 return "</\(canonicalTagName(tagName))>"
             default:
                 return nil
@@ -535,7 +569,9 @@ enum ComposeHTMLBodyPolicy {
             }
             let alt = attribute("alt", in: trimmed).map { " alt=\"\(escapeHTML(decodeHTMLEntities($0)))\"" } ?? ""
             return "<img src=\"\(escapeHTML(decodeHTMLEntities(src)))\"\(alt)>"
-        case "blockquote", "div", "em", "li", "ol", "p", "strong", "u", "ul":
+        case "blockquote", "code", "div", "em", "h1", "h2", "h3",
+             "li", "ol", "p", "pre", "s", "strong", "table", "tbody",
+             "td", "th", "thead", "tr", "u", "ul":
             return "<\(tagName)>"
         default:
             return nil
@@ -557,6 +593,7 @@ enum ComposeHTMLBodyPolicy {
         switch tagName.lowercased() {
         case "b": return "strong"
         case "i": return "em"
+        case "del", "strike": return "s"
         default: return tagName.lowercased()
         }
     }
@@ -599,14 +636,7 @@ enum ComposeHTMLBodyPolicy {
     }
 
     private static func decodeHTMLEntities(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "&nbsp;", with: " ")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-            .replacingOccurrences(of: "&apos;", with: "'")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&amp;", with: "&")
+        ComposeHTMLPasteSanitizer.decodeHTMLEntities(value)
     }
 }
 
@@ -615,18 +645,20 @@ enum ComposeAutoSavePolicy {
 
     static func shouldScheduleAutoSave(
         canSave: Bool,
+        hasPersistedDraft: Bool = false,
         isBusy: Bool,
         isBlocked: Bool
     ) -> Bool {
-        canSave && !isBusy && !isBlocked
+        (canSave || hasPersistedDraft) && !isBusy && !isBlocked
     }
 
     static func shouldAutoSaveOnDismiss(
         canSave: Bool,
+        hasPersistedDraft: Bool = false,
         isBusy: Bool,
         hasCompletedExplicitOperation: Bool
     ) -> Bool {
-        canSave && !isBusy && !hasCompletedExplicitOperation
+        (canSave || hasPersistedDraft) && !isBusy && !hasCompletedExplicitOperation
     }
 }
 

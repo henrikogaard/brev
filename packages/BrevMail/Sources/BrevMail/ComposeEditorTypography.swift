@@ -26,6 +26,16 @@ enum ComposeEditorTypography {
         textSize.bodyPointSize
     }
 
+    /// Relative point-size multiplier for semantic heading levels (`h1`–`h3`).
+    static func headingScale(for level: Int) -> CGFloat {
+        switch level {
+        case 1: return 1.5
+        case 2: return 1.3
+        case 3: return 1.15
+        default: return 1.0
+        }
+    }
+
     #if canImport(AppKit)
     static func nsFont(family: MailboxFontFamily, textSize: MailboxTextSize) -> NSFont {
         let size = pointSize(for: textSize)
@@ -42,15 +52,41 @@ enum ComposeEditorTypography {
         return NSFont(descriptor: descriptor, size: size) ?? system
     }
 
-    /// Replaces every run's font with `base`, keeping only its bold and italic
-    /// traits. Used for restored Drafts, whose importer fonts are not authored.
+    /// Monospaced editor font used for inline `<code>` and `<pre><code>` blocks.
+    static func monospacedNSFont(textSize: MailboxTextSize) -> NSFont {
+        NSFont.monospacedSystemFont(ofSize: pointSize(for: textSize), weight: .regular)
+    }
+
+    /// Replaces every run's font with `base`, preserving bold/italic traits,
+    /// heading scale (`h1`–`h3`), monospaced code runs, and inline image attachments.
     static func applyBaseFont(_ base: NSFont, to storage: NSTextStorage) {
         let range = NSRange(location: 0, length: storage.length)
         guard range.length > 0 else { return }
+        let mono = NSFont.monospacedSystemFont(ofSize: base.pointSize, weight: .regular)
         storage.beginEditing()
-        storage.enumerateAttribute(.font, in: range) { value, run, _ in
-            let emphasis = ((value as? NSFont)?.fontDescriptor.symbolicTraits ?? []).intersection(emphasisTraits)
-            storage.addAttribute(.font, value: font(base, emphasis: emphasis) ?? value ?? base, range: run)
+        storage.enumerateAttributes(in: range) { attributes, run, _ in
+            if attributes[ComposeInlineImageAttribute.contentID] != nil || attributes[.attachment] != nil {
+                return
+            }
+            let currentFont = attributes[.font] as? NSFont
+            var emphasis = (currentFont?.fontDescriptor.symbolicTraits ?? []).intersection(emphasisTraits)
+            if (attributes[ComposeRichTextAttribute.inlineCode] as? Bool) == true
+                || attributes[ComposeRichTextAttribute.codeBlockID] != nil {
+                storage.addAttribute(.font, value: font(mono, emphasis: emphasis) ?? mono, range: run)
+                return
+            }
+            if let level = attributes[ComposeRichTextAttribute.headingLevel] as? Int, (1 ... 3).contains(level) {
+                emphasis.insert(.bold)
+                let scaledSize = base.pointSize * headingScale(for: level)
+                let scaledBase = NSFont(descriptor: base.fontDescriptor, size: scaledSize) ?? base
+                storage.addAttribute(.font, value: font(scaledBase, emphasis: emphasis) ?? scaledBase, range: run)
+                return
+            }
+            if let cell = attributes[ComposeRichTextAttribute.tableCell] as? ComposeTableCellMetadata,
+               cell.isHeader {
+                emphasis.insert(.bold)
+            }
+            storage.addAttribute(.font, value: font(base, emphasis: emphasis) ?? currentFont ?? base, range: run)
         }
         storage.endEditing()
     }
@@ -93,6 +129,57 @@ enum ComposeEditorTypography {
         let base = UIFont.systemFont(ofSize: size)
         let designed = base.fontDescriptor.withDesign(design).map { UIFont(descriptor: $0, size: size) } ?? base
         return UIFontMetrics(forTextStyle: .body).scaledFont(for: designed, compatibleWith: traitCollection)
+    }
+
+    /// Monospaced editor font used for inline `<code>` and `<pre><code>` blocks on iOS.
+    static func monospacedUIFont(
+        textSize: MailboxTextSize,
+        compatibleWith traitCollection: UITraitCollection? = nil
+    ) -> UIFont {
+        let base = UIFont.monospacedSystemFont(ofSize: pointSize(for: textSize), weight: .regular)
+        return UIFontMetrics(forTextStyle: .body).scaledFont(for: base, compatibleWith: traitCollection)
+    }
+
+    /// Replaces every run's font with `base` on iOS while keeping bold/italic traits,
+    /// heading scale, monospaced code runs, and inline image attachments intact.
+    static func applyBaseFont(_ base: UIFont, to storage: NSTextStorage) {
+        let range = NSRange(location: 0, length: storage.length)
+        guard range.length > 0 else { return }
+        let mono = UIFont.monospacedSystemFont(ofSize: base.pointSize, weight: .regular)
+        storage.beginEditing()
+        storage.enumerateAttributes(in: range) { attributes, run, _ in
+            if attributes[ComposeInlineImageAttribute.contentID] != nil || attributes[.attachment] != nil {
+                return
+            }
+            let currentFont = attributes[.font] as? UIFont
+            var traits = (currentFont?.fontDescriptor.symbolicTraits ?? []).intersection([.traitBold, .traitItalic])
+            if (attributes[ComposeRichTextAttribute.inlineCode] as? Bool) == true
+                || attributes[ComposeRichTextAttribute.codeBlockID] != nil {
+                let target = mono.fontDescriptor.withSymbolicTraits(traits).map {
+                    UIFont(descriptor: $0, size: mono.pointSize)
+                } ?? mono
+                storage.addAttribute(.font, value: target, range: run)
+                return
+            }
+            if let level = attributes[ComposeRichTextAttribute.headingLevel] as? Int, (1 ... 3).contains(level) {
+                traits.insert(.traitBold)
+                let scaled = base.withSize(base.pointSize * headingScale(for: level))
+                let target = scaled.fontDescriptor.withSymbolicTraits(traits).map {
+                    UIFont(descriptor: $0, size: scaled.pointSize)
+                } ?? scaled
+                storage.addAttribute(.font, value: target, range: run)
+                return
+            }
+            if let cell = attributes[ComposeRichTextAttribute.tableCell] as? ComposeTableCellMetadata,
+               cell.isHeader {
+                traits.insert(.traitBold)
+            }
+            let target = base.fontDescriptor.withSymbolicTraits(traits).map {
+                UIFont(descriptor: $0, size: base.pointSize)
+            } ?? base
+            storage.addAttribute(.font, value: target, range: run)
+        }
+        storage.endEditing()
     }
     #endif
 }

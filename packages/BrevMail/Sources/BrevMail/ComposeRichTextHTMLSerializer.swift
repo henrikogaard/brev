@@ -18,16 +18,27 @@ import AppKit
 import UIKit
 #endif
 
-/// Serializes an `NSAttributedString` (rich compose body) into HTML constrained to the
-/// ADR-0038 allowlist: `a, blockquote, br, div, em, img (cid: only), li, ol, p, strong, u, ul`.
+/// Serializes an `NSAttributedString` (rich compose body) into clean semantic HTML
+/// covering Brev's rich-compose allowlist:
+/// `a` (http/https/mailto), `blockquote`, `br`, `code`, `div`, `em`, `h1`–`h3`,
+/// `img` (`cid:` only), `li`, `ol`, `p`, `pre`, `s`, `strong`,
+/// `table`/`thead`/`tbody`/`tr`/`th`/`td`, `u`, `ul`.
 ///
 /// Shared by macOS and iOS native compose editors.
 enum ComposeRichTextHTMLSerializer {
-    /// Converts an attributed string to HTML.
-    ///
-    /// Paragraphs separated by `\n` are processed individually. Consecutive paragraphs that
-    /// share the same `NSTextList` marker are grouped into `<ul>` or `<ol>` blocks. All other
-    /// paragraphs keep their run-level formatting (bold, italic, underline, link, image).
+    private struct Paragraph {
+        let range: NSRange
+        let textList: NSTextList?
+        let codeBlockID: String?
+        let headingLevel: Int?
+        let tableCell: ComposeTableCellMetadata?
+
+        var isBlockElement: Bool {
+            textList != nil || codeBlockID != nil || headingLevel != nil || tableCell != nil
+        }
+    }
+
+    /// Converts an attributed string to semantic HTML.
     static func html(from attributedString: NSAttributedString) -> String {
         guard attributedString.length > 0 else { return "" }
 
@@ -44,33 +55,58 @@ enum ComposeRichTextHTMLSerializer {
             searchStart = nextStart
         }
 
-        struct Paragraph {
-            let range: NSRange
-            let textList: NSTextList?
-        }
         let paragraphs: [Paragraph] = paragraphRanges.map { range in
-            guard range.length > 0 else { return Paragraph(range: range, textList: nil) }
-            var textList: NSTextList?
-            if let style = attributedString.attribute(.paragraphStyle, at: range.location, effectiveRange: nil)
-                as? NSParagraphStyle,
-                let first = style.textLists.first {
-                textList = first
-            }
-            return Paragraph(range: range, textList: textList)
+            classifyParagraph(range, in: attributedString)
         }
 
         var result = ""
         var index = 0
-        var lastWasNonList = false
+        var lastWasPlain = false
         while index < paragraphs.count {
             let para = paragraphs[index]
 
-            if let list = para.textList {
+            if let cell = para.tableCell {
+                var groupEnd = index + 1
+                while groupEnd < paragraphs.count,
+                      paragraphs[groupEnd].tableCell?.tableID == cell.tableID {
+                    groupEnd += 1
+                }
+                result += serializeTable(
+                    paragraphs: Array(paragraphs[index ..< groupEnd]),
+                    in: attributedString
+                )
+                index = groupEnd
+                lastWasPlain = false
+            } else if let blockID = para.codeBlockID {
+                var groupEnd = index + 1
+                while groupEnd < paragraphs.count,
+                      paragraphs[groupEnd].codeBlockID == blockID {
+                    groupEnd += 1
+                }
+                result += serializeCodeBlock(
+                    paragraphs: Array(paragraphs[index ..< groupEnd]),
+                    in: attributedString
+                )
+                index = groupEnd
+                lastWasPlain = false
+            } else if let level = para.headingLevel, (1 ... 3).contains(level) {
+                let innerHTML = runHTML(
+                    for: para.range,
+                    in: attributedString,
+                    suppressBaseBold: true
+                )
+                result += "<h\(level)>\(innerHTML)</h\(level)>"
+                index += 1
+                lastWasPlain = false
+            } else if let list = para.textList {
                 let tag = listTag(for: list.markerFormat)
                 result += "<\(tag)>"
                 var groupIndex = index
                 while groupIndex < paragraphs.count,
                       let groupList = paragraphs[groupIndex].textList,
+                      paragraphs[groupIndex].tableCell == nil,
+                      paragraphs[groupIndex].codeBlockID == nil,
+                      paragraphs[groupIndex].headingLevel == nil,
                       groupList.markerFormat == list.markerFormat {
                     let innerHTML = runHTML(for: paragraphs[groupIndex].range, in: attributedString)
                     result += "<li>\(innerHTML)</li>"
@@ -78,23 +114,283 @@ enum ComposeRichTextHTMLSerializer {
                 }
                 result += "</\(tag)>"
                 index = groupIndex
-                lastWasNonList = false
+                lastWasPlain = false
             } else {
-                if lastWasNonList {
+                if lastWasPlain {
                     result += "<br>"
                 }
                 let innerHTML = runHTML(for: para.range, in: attributedString)
                 result += innerHTML
+                // Preserve an explicit empty line sitting directly before a block
+                // element (e.g. `Intro\n\n<h1>Title</h1>`) across round-trips.
+                if innerHTML.isEmpty,
+                   lastWasPlain,
+                   index + 1 < paragraphs.count,
+                   paragraphs[index + 1].isBlockElement {
+                    result += "<br>"
+                }
                 index += 1
-                lastWasNonList = true
+                lastWasPlain = true
             }
         }
 
         return result
     }
 
+    // MARK: - Block Classification & Serialization
+
+    private static func classifyParagraph(
+        _ range: NSRange,
+        in attributedString: NSAttributedString
+    ) -> Paragraph {
+        guard range.length > 0 else {
+            return Paragraph(range: range, textList: nil, codeBlockID: nil, headingLevel: nil, tableCell: nil)
+        }
+        let attrs = attributedString.attributes(at: range.location, effectiveRange: nil)
+
+        if let explicitCell = attrs[ComposeRichTextAttribute.tableCell] as? ComposeTableCellMetadata {
+            return Paragraph(
+                range: range,
+                textList: nil,
+                codeBlockID: nil,
+                headingLevel: nil,
+                tableCell: explicitCell
+            )
+        }
+
+        #if os(macOS)
+        if let style = attrs[.paragraphStyle] as? NSParagraphStyle,
+           let block = style.textBlocks.compactMap({ $0 as? NSTextTableBlock }).first {
+            let tableID = "nstexttable-\(ObjectIdentifier(block.table).hashValue)"
+            let fallbackCell = ComposeTableCellMetadata(
+                tableID: tableID,
+                row: block.startingRow,
+                column: block.startingColumn,
+                isHeader: block.startingRow == 0 && isBold(attrs)
+            )
+            return Paragraph(
+                range: range,
+                textList: nil,
+                codeBlockID: nil,
+                headingLevel: nil,
+                tableCell: fallbackCell
+            )
+        }
+        #endif
+
+        if let codeBlockID = attrs[ComposeRichTextAttribute.codeBlockID] as? String {
+            return Paragraph(
+                range: range,
+                textList: nil,
+                codeBlockID: codeBlockID,
+                headingLevel: nil,
+                tableCell: nil
+            )
+        }
+
+        if let headingLevel = attrs[ComposeRichTextAttribute.headingLevel] as? Int,
+           (1 ... 3).contains(headingLevel) {
+            return Paragraph(
+                range: range,
+                textList: nil,
+                codeBlockID: nil,
+                headingLevel: headingLevel,
+                tableCell: nil
+            )
+        }
+
+        var textList: NSTextList?
+        if let style = attrs[.paragraphStyle] as? NSParagraphStyle,
+           let first = style.textLists.first {
+            textList = first
+        }
+        return Paragraph(
+            range: range,
+            textList: textList,
+            codeBlockID: nil,
+            headingLevel: nil,
+            tableCell: nil
+        )
+    }
+
+    private static func serializeCodeBlock(
+        paragraphs: [Paragraph],
+        in attributedString: NSAttributedString
+    ) -> String {
+        let nsString = attributedString.string as NSString
+        var output = ""
+        var currentCodeLines: [String] = []
+
+        func flushCodeLines() {
+            guard !currentCodeLines.isEmpty else { return }
+            output += "<pre><code>\(currentCodeLines.joined(separator: "\n"))</code></pre>"
+            currentCodeLines.removeAll(keepingCapacity: true)
+        }
+
+        for para in paragraphs {
+            var effective = para.range
+            if effective.length > 0 {
+                let lastChar = nsString.substring(with: NSRange(location: effective.upperBound - 1, length: 1))
+                if lastChar == "\n" {
+                    effective = NSRange(location: effective.location, length: effective.length - 1)
+                }
+            }
+            guard effective.length > 0 else {
+                currentCodeLines.append("")
+                continue
+            }
+
+            // Never drop an inline image attachment or emit raw `\u{FFFC}` inside
+            // `<pre><code>`: break out any inline image runs cleanly.
+            var hasInlineImage = false
+            attributedString.enumerateAttribute(
+                ComposeInlineImageAttribute.contentID,
+                in: effective,
+                options: []
+            ) { value, _, stop in
+                if value != nil {
+                    hasInlineImage = true
+                    stop.pointee = true
+                }
+            }
+
+            if !hasInlineImage {
+                currentCodeLines.append(escapedHTMLText(nsString.substring(with: effective)))
+                continue
+            }
+
+            var lineSegment = ""
+            attributedString.enumerateAttributes(in: effective, options: []) { attrs, runRange, _ in
+                if let contentID = attrs[ComposeInlineImageAttribute.contentID] as? String {
+                    if !lineSegment.isEmpty {
+                        currentCodeLines.append(lineSegment)
+                        lineSegment = ""
+                    }
+                    flushCodeLines()
+                    let altSuffix: String
+                    if let alt = attrs[ComposeInlineImageAttribute.alt] as? String, !alt.isEmpty {
+                        altSuffix = " alt=\"\(escapedAttribute(alt))\""
+                    } else {
+                        altSuffix = ""
+                    }
+                    output += "<img src=\"cid:\(escapedAttribute(contentID))\"\(altSuffix)>"
+                } else {
+                    let raw = nsString.substring(with: runRange)
+                        .replacingOccurrences(of: "\u{FFFC}", with: "")
+                    if !raw.isEmpty {
+                        lineSegment += escapedHTMLText(raw)
+                    }
+                }
+            }
+            if !lineSegment.isEmpty {
+                currentCodeLines.append(lineSegment)
+            }
+        }
+
+        flushCodeLines()
+        return output
+    }
+
+    private static func serializeTable(
+        paragraphs: [Paragraph],
+        in attributedString: NSAttributedString
+    ) -> String {
+        struct CellEntry {
+            let row: Int
+            let column: Int
+            var isHeader: Bool
+            var lines: [String]
+
+            var html: String {
+                lines.joined(separator: "<br>")
+            }
+        }
+
+        // Coalesce multiple paragraphs sharing the same `(row, column)` into a
+        // single cell joined with `<br>` instead of emitting duplicate columns.
+        var cellsByRowAndCol: [Int: [Int: CellEntry]] = [:]
+        var maxColumnIndex = -1
+        for para in paragraphs {
+            guard let meta = para.tableCell else { continue }
+            let lineHTML = runHTML(
+                for: para.range,
+                in: attributedString,
+                suppressBaseBold: meta.isHeader
+            )
+            maxColumnIndex = max(maxColumnIndex, meta.column)
+            if var existing = cellsByRowAndCol[meta.row]?[meta.column] {
+                existing.lines.append(lineHTML)
+                existing.isHeader = existing.isHeader || meta.isHeader
+                cellsByRowAndCol[meta.row]?[meta.column] = existing
+            } else {
+                cellsByRowAndCol[meta.row, default: [:]][meta.column] = CellEntry(
+                    row: meta.row,
+                    column: meta.column,
+                    isHeader: meta.isHeader,
+                    lines: [lineHTML]
+                )
+            }
+        }
+
+        let maxCols = maxColumnIndex + 1
+        guard maxCols > 0 else { return "" }
+        let sortedRowKeys = cellsByRowAndCol.keys.sorted()
+        let orderedRows: [[Int: CellEntry]] = sortedRowKeys.compactMap { cellsByRowAndCol[$0] }
+
+        var headerRows: [[Int: CellEntry]] = []
+        var bodyRows: [[Int: CellEntry]] = []
+        var stillInHeader = true
+        for row in orderedRows {
+            let entries = row.values
+            if stillInHeader, !entries.isEmpty, entries.allSatisfy(\.isHeader) {
+                headerRows.append(row)
+            } else {
+                stillInHeader = false
+                bodyRows.append(row)
+            }
+        }
+
+        var out = "<table>"
+        if !headerRows.isEmpty {
+            out += "<thead>"
+            for row in headerRows {
+                out += "<tr>"
+                for col in 0 ..< maxCols {
+                    let content = row[col]?.html ?? ""
+                    out += "<th>\(content)</th>"
+                }
+                out += "</tr>"
+            }
+            out += "</thead>"
+        }
+        if !bodyRows.isEmpty {
+            out += "<tbody>"
+            for row in bodyRows {
+                out += "<tr>"
+                for col in 0 ..< maxCols {
+                    if let cell = row[col] {
+                        let tag = cell.isHeader ? "th" : "td"
+                        out += "<\(tag)>\(cell.html)</\(tag)>"
+                    } else {
+                        out += "<td></td>"
+                    }
+                }
+                out += "</tr>"
+            }
+            out += "</tbody>"
+        }
+        out += "</table>"
+        return out
+    }
+
+    // MARK: - Inline Runs
+
     /// Generates inline HTML for all attribute runs within a paragraph range.
-    private static func runHTML(for range: NSRange, in attributedString: NSAttributedString) -> String {
+    private static func runHTML(
+        for range: NSRange,
+        in attributedString: NSAttributedString,
+        suppressBaseBold: Bool = false
+    ) -> String {
         guard range.length > 0 else { return "" }
 
         let nsString = attributedString.string as NSString
@@ -107,7 +403,12 @@ enum ComposeRichTextHTMLSerializer {
 
         var html = ""
         attributedString.enumerateAttributes(in: effectiveRange) { attributes, runRange, _ in
-            html += wrapping(for: runRange, in: attributedString, attributes: attributes)
+            html += wrapping(
+                for: runRange,
+                in: attributedString,
+                attributes: attributes,
+                suppressBaseBold: suppressBaseBold
+            )
         }
         return html
     }
@@ -116,17 +417,31 @@ enum ComposeRichTextHTMLSerializer {
     private static func wrapping(
         for range: NSRange,
         in attributedString: NSAttributedString,
-        attributes: [NSAttributedString.Key: Any]
+        attributes: [NSAttributedString.Key: Any],
+        suppressBaseBold: Bool
     ) -> String {
         if let contentID = attributes[ComposeInlineImageAttribute.contentID] as? String {
-            return "<img src=\"cid:\(escapedAttribute(contentID))\">"
+            let altSuffix: String
+            if let alt = attributes[ComposeInlineImageAttribute.alt] as? String, !alt.isEmpty {
+                altSuffix = " alt=\"\(escapedAttribute(alt))\""
+            } else {
+                altSuffix = ""
+            }
+            return "<img src=\"cid:\(escapedAttribute(contentID))\"\(altSuffix)>"
         }
 
         let rawText = attributedString.attributedSubstring(from: range).string
-        let textHTML = ComposeHTMLBodyPolicy.html(fromEditorText: rawText)
+        let isInlineCode = (attributes[ComposeRichTextAttribute.inlineCode] as? Bool) == true
+        let textHTML = isInlineCode
+            ? escapedHTMLText(rawText)
+            : ComposeHTMLBodyPolicy.html(fromEditorText: rawText)
         guard !textHTML.isEmpty else { return "" }
 
         var wrapped = textHTML
+
+        if isInlineCode {
+            wrapped = "<code>\(wrapped)</code>"
+        }
 
         if let link = attributes[.link] {
             let href: String
@@ -137,15 +452,20 @@ enum ComposeRichTextHTMLSerializer {
             } else {
                 href = String(describing: link)
             }
-            wrapped = "<a href=\"\(escapedAttribute(href))\">\(wrapped)</a>"
+            if let safeHref = ComposeHTMLPasteSanitizer.sanitizedSafeHref(href) {
+                wrapped = "<a href=\"\(escapedAttribute(safeHref))\">\(wrapped)</a>"
+            }
         }
-        if attributes[.underlineStyle] != nil {
+        if isStrikethrough(attributes) {
+            wrapped = "<s>\(wrapped)</s>"
+        }
+        if isUnderlined(attributes) {
             wrapped = "<u>\(wrapped)</u>"
         }
         if isItalic(attributes) {
             wrapped = "<em>\(wrapped)</em>"
         }
-        if isBold(attributes) {
+        if !suppressBaseBold, isBold(attributes) {
             wrapped = "<strong>\(wrapped)</strong>"
         }
         return wrapped
@@ -173,8 +493,33 @@ enum ComposeRichTextHTMLSerializer {
         #endif
     }
 
+    /// Whether the run carries a non-zero underline style.
+    static func isUnderlined(_ attributes: [NSAttributedString.Key: Any]) -> Bool {
+        guard let raw = attributes[.underlineStyle] else { return false }
+        if let intValue = raw as? Int { return intValue != 0 }
+        if let number = raw as? NSNumber { return number.intValue != 0 }
+        return true
+    }
+
+    /// Whether the run carries a non-zero strikethrough style.
+    static func isStrikethrough(_ attributes: [NSAttributedString.Key: Any]) -> Bool {
+        guard let raw = attributes[.strikethroughStyle] else { return false }
+        if let intValue = raw as? Int { return intValue != 0 }
+        if let number = raw as? NSNumber { return number.intValue != 0 }
+        return true
+    }
+
     private static func listTag(for markerFormat: NSTextList.MarkerFormat) -> String {
         markerFormat == .decimal ? "ol" : "ul"
+    }
+
+    private static func escapedHTMLText(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
     }
 
     private static func escapedAttribute(_ value: String) -> String {
