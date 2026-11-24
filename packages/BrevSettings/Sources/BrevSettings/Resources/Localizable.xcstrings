@@ -15028,6 +15028,17 @@
           }
         }
       }
+    },
+    "Apple Intelligence is assigned to a specific account alongside another default provider. Manage per-account routing in Settings → Writing → AI Writer.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Intelligence er tilordnet en bestemt konto sammen med en annen standardleverandør. Administrer ruting per konto i Innstillinger → Skriving → AI-skrivehjelp."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -389,12 +389,16 @@ struct PrivacyOnboardingTests {
 
     @Test("Settings Search indexes the Review Privacy & Convenience Choices entry")
     func settingsSearchFindsPrivacyWalkthrough() {
+        let expectedTitle = String(
+            localized: "Review Privacy & Convenience Choices…",
+            bundle: PrivacySection.resourceBundle
+        )
         let results = SettingsSearchResult.results(
-            for: "Convenience Choices",
+            for: expectedTitle,
             sections: SettingsSection.allCases
         )
         #expect(results.contains {
-            $0.section == .privacy && $0.title == "Review Privacy & Convenience Choices…"
+            $0.section == .privacy && $0.title == expectedTitle
         })
     }
 
@@ -518,20 +522,27 @@ struct PrivacyOnboardingTests {
         enableDraft.onDeviceAIEnabled = true
         enableDraft.apply(to: store, relativeTo: beforeEnable, appleIntelligenceAvailability: .available)
 
-        // User later switches default in AI Settings to `custom`, while assigning Apple Intelligence to one account.
+        // User later switches default in AI Settings to `custom`, without leaving an Apple Intelligence
+        // per-account override, then disables Apple Intelligence (or verifies custom stays default).
         var updatedConfigs = try store.aiProviderConfigurations().map { config in
             var copy = config
             copy.isDefault = (config.id == custom.id)
             return copy
         }
         try store.saveAIProviderConfigurations(updatedConfigs)
-        var assignments = AIProviderAccountAssignments()
-        assignments.assign(providerID: AppleIntelligenceAIBackend.providerID, toAccountID: "acct-personal")
-        try store.saveAIProviderAssignments(assignments)
+
+        // When Apple Intelligence is not default and not assigned, load reports it off, and custom remains default.
+        let loadedAfterSwitch = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        #expect(!loadedAfterSwitch.onDeviceAIEnabled)
+
+        // Even if Apple Intelligence is re-enabled and then disabled after a newer default replaced it,
+        // the displaced Ollama default is never re-promoted over `custom`.
+        var reEnableDraft = loadedAfterSwitch
+        reEnableDraft.onDeviceAIEnabled = true
+        reEnableDraft.apply(to: store, relativeTo: loadedAfterSwitch, appleIntelligenceAvailability: .available)
 
         let beforeDisable = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
         #expect(beforeDisable.onDeviceAIEnabled)
-
         var disableDraft = beforeDisable
         disableDraft.onDeviceAIEnabled = false
         disableDraft.apply(to: store, relativeTo: beforeDisable, appleIntelligenceAvailability: .available)
@@ -542,12 +553,146 @@ struct PrivacyOnboardingTests {
         #expect(updatedConfigs.first { $0.kind == .appleIntelligence }?.isEnabled == false)
     }
 
-    @Test("account-assigned non-default Apple Intelligence loads as enabled and disables without touching other routes")
-    func accountAssignedAppleIntelligenceLoadsAndDisablesCleanly() throws {
-        let (defaults, suite) = try makeDefaults("account-assigned-apple-ai")
+    @Test("stale assignedAccountID on superseded external provider does not block Apple Intelligence opt-in")
+    func staleExternalAssignedAccountIDDoesNotBlockOnDeviceOptIn() throws {
+        let (defaults, suite) = try makeDefaults("stale-external-override")
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let store = SettingsPersistenceStore(defaults: defaults)
+        // Simulate saveAssignment replacing account's override in AIProviderAccountAssignments
+        // while leaving stale `assignedAccountID` on the old cloud profile.
+        let staleCloud = try #require(AIProviderConfiguration(
+            id: AIProviderID("cloud-openai"),
+            kind: .openAICompatible,
+            displayName: "OpenAI",
+            endpointURL: URL(string: "https://api.openai.com/v1"),
+            modelID: "gpt-4.1-mini",
+            isEnabled: true,
+            isDefault: false,
+            assignedAccountID: "acct-work"
+        ))
+        let apple = AIProviderConfiguration.appleIntelligence(
+            isEnabled: true,
+            isDefault: false,
+            assignedAccountID: "acct-work"
+        )
+        try store.saveAIProviderConfigurations([staleCloud, apple])
+        var assignments = AIProviderAccountAssignments()
+        assignments.assign(providerID: apple.id, toAccountID: "acct-work")
+        try store.saveAIProviderAssignments(assignments)
+        AIWriterSettings(isEnabled: false, consentGiven: false, proactiveOnDeviceTriageEnabled: false).save(to: defaults)
+
+        #expect(PrivacyOnboardingChoices.onDeviceAIBlockReason(in: store) == nil)
+        #expect(!PrivacyOnboardingChoices.blocksOnDeviceAIOptInDueToExternalAccountRoutes(in: store))
+
+        let initial = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        var draft = initial
+        draft.onDeviceAIEnabled = true
+        let result = draft.apply(to: store, relativeTo: initial, appleIntelligenceAvailability: .available)
+
+        #expect(result.aiConfigurationChanged)
+        #expect(store.aiWriterSettings().isAvailable)
+
+        let resolver = try AIProviderResolver(
+            settings: store.aiWriterSettings(),
+            assignments: store.aiProviderAssignments(),
+            providerConfigurations: store.aiProviderConfigurations()
+        )
+        let resolved = resolver.resolve(
+            accountID: "acct-work",
+            accountBackendIdentifier: "imap",
+            backendSupportsAIWriter: false
+        )
+        #expect(resolved.source == .configuredProvider)
+        #expect(resolved.providerID == AppleIntelligenceAIBackend.providerID)
+    }
+
+    @Test("account-assigned Apple Intelligence with another default fails closed to avoid dead override or silent cloud reroute")
+    func accountAssignedAppleIntelligenceWithOtherDefaultFailsClosed() throws {
+        let (defaults, suite) = try makeDefaults("account-assigned-apple-with-default")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let cloud = try #require(AIProviderConfiguration(
+            id: AIProviderID("cloud-openai"),
+            kind: .openAICompatible,
+            displayName: "OpenAI",
+            endpointURL: URL(string: "https://api.openai.com/v1"),
+            modelID: "gpt-4.1-mini",
+            isEnabled: true,
+            isDefault: true,
+            assignedAccountID: nil
+        ))
+        let apple = AIProviderConfiguration.appleIntelligence(
+            isEnabled: true,
+            isDefault: false,
+            assignedAccountID: "acct-personal"
+        )
+        try store.saveAIProviderConfigurations([cloud, apple])
+        var assignments = AIProviderAccountAssignments()
+        assignments.assign(providerID: apple.id, toAccountID: "acct-personal")
+        try store.saveAIProviderAssignments(assignments)
+        AIWriterSettings(isEnabled: true, consentGiven: true, proactiveOnDeviceTriageEnabled: true).save(to: defaults)
+
+        #expect(
+            PrivacyOnboardingChoices.onDeviceAIBlockReason(in: store)
+                == .appleIntelligenceAccountOverrideWithOtherDefault
+        )
+        let loaded = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        #expect(loaded.onDeviceAIEnabled)
+
+        var disableDraft = loaded
+        disableDraft.onDeviceAIEnabled = false
+        let result = disableDraft.apply(to: store, relativeTo: loaded, appleIntelligenceAvailability: .available)
+
+        // Fails closed: neither leaves a dead override nor reroutes `acct-personal` to cloud.
+        #expect(!result.aiConfigurationChanged)
+        let resolver = try AIProviderResolver(
+            settings: store.aiWriterSettings(),
+            assignments: store.aiProviderAssignments(),
+            providerConfigurations: store.aiProviderConfigurations()
+        )
+        let resolvedPersonal = resolver.resolve(
+            accountID: "acct-personal",
+            accountBackendIdentifier: "imap",
+            backendSupportsAIWriter: false
+        )
+        #expect(resolvedPersonal.source == .configuredProvider)
+        #expect(resolvedPersonal.providerID == AppleIntelligenceAIBackend.providerID)
+    }
+
+    @Test("account-assigned Apple Intelligence without another default removes override cleanly on opt-out")
+    func accountAssignedAppleIntelligenceWithoutOtherDefaultCleansOverrideOnOptOut() throws {
+        let (defaults, suite) = try makeDefaults("account-assigned-apple-only")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let apple = AIProviderConfiguration.appleIntelligence(
+            isEnabled: true,
+            isDefault: false,
+            assignedAccountID: "acct-personal"
+        )
+        try store.saveAIProviderConfigurations([apple])
+        var assignments = AIProviderAccountAssignments()
+        assignments.assign(providerID: apple.id, toAccountID: "acct-personal")
+        try store.saveAIProviderAssignments(assignments)
+        AIWriterSettings(isEnabled: true, consentGiven: true, proactiveOnDeviceTriageEnabled: true).save(to: defaults)
+
+        #expect(PrivacyOnboardingChoices.onDeviceAIBlockReason(in: store) == nil)
+        let loaded = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        #expect(loaded.onDeviceAIEnabled)
+        #expect(loaded.proactiveOnDeviceTriageEnabled)
+
+        var disableDraft = loaded
+        disableDraft.onDeviceAIEnabled = false
+        let result = disableDraft.apply(to: store, relativeTo: loaded, appleIntelligenceAvailability: .available)
+
+        #expect(result.aiConfigurationChanged)
+        #expect(!store.aiWriterSettings().isAvailable)
+        #expect(!store.aiWriterSettings().proactiveOnDeviceTriageEnabled)
+        #expect(try store.aiProviderAssignments().providerID(forAccountID: "acct-personal") == nil)
+
+        // Even if AI Writer is later re-enabled with a new default, no dead Apple Intelligence override remains.
         let ollama = try #require(AIProviderConfiguration(
             id: AIProviderID("local-ollama"),
             kind: .ollamaLocal,
@@ -558,32 +703,20 @@ struct PrivacyOnboardingTests {
             isDefault: true,
             assignedAccountID: nil
         ))
-        let apple = AIProviderConfiguration.appleIntelligence(
-            isEnabled: true,
-            isDefault: false,
-            assignedAccountID: "acct-personal"
+        var updatedConfigs = try store.aiProviderConfigurations()
+        updatedConfigs.append(ollama)
+        let resolver = try AIProviderResolver(
+            settings: AIWriterSettings(isEnabled: true, consentGiven: true),
+            assignments: store.aiProviderAssignments(),
+            providerConfigurations: updatedConfigs
         )
-        try store.saveAIProviderConfigurations([ollama, apple])
-        var assignments = AIProviderAccountAssignments()
-        assignments.assign(providerID: apple.id, toAccountID: "acct-personal")
-        try store.saveAIProviderAssignments(assignments)
-        AIWriterSettings(isEnabled: true, consentGiven: true, proactiveOnDeviceTriageEnabled: true).save(to: defaults)
-
-        let loaded = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
-        #expect(loaded.onDeviceAIEnabled)
-        #expect(loaded.proactiveOnDeviceTriageEnabled)
-
-        var disableDraft = loaded
-        disableDraft.onDeviceAIEnabled = false
-        let result = disableDraft.apply(to: store, relativeTo: loaded, appleIntelligenceAvailability: .available)
-
-        #expect(result.aiConfigurationChanged)
-        let configs = try store.aiProviderConfigurations()
-        #expect(configs.first { $0.kind == .appleIntelligence }?.isEnabled == false)
-        #expect(configs.first { $0.id == ollama.id }?.isDefault == true)
-        #expect(configs.first { $0.id == ollama.id }?.isEnabled == true)
-        #expect(store.aiWriterSettings().isAvailable)
-        #expect(!store.aiWriterSettings().proactiveOnDeviceTriageEnabled)
+        let resolved = resolver.resolve(
+            accountID: "acct-personal",
+            accountBackendIdentifier: "imap",
+            backendSupportsAIWriter: false
+        )
+        #expect(resolved.source == .configuredProvider)
+        #expect(resolved.providerID == ollama.id)
     }
 
     @Test("trusted-sender toggle respects rich HTML renderer gate and accurate tracking-pixel copy")
@@ -610,20 +743,34 @@ struct PrivacyOnboardingTests {
             useRichRenderer: false,
             stripTrackingPixels: true
         )
-        #expect(plainTextSubtitle.contains("rich HTML reader"))
-
         let strippedSubtitle = PrivacyOnboardingCopy.trustedSendersSubtitle(
             useRichRenderer: true,
             stripTrackingPixels: true
         )
-        #expect(strippedSubtitle.contains("tracking-pixel removal stays on"))
-
         let unstrippedSubtitle = PrivacyOnboardingCopy.trustedSendersSubtitle(
             useRichRenderer: true,
             stripTrackingPixels: false
         )
-        #expect(!unstrippedSubtitle.contains("tracking-pixel removal stays on"))
-        #expect(unstrippedSubtitle.contains("Tracking-pixel removal is currently off"))
+
+        #expect(
+            plainTextSubtitle == String(
+                localized: "Requires the rich HTML reader in Settings → Reading → Mailbox View before remote images can load automatically.",
+                bundle: PrivacySection.resourceBundle
+            )
+        )
+        #expect(
+            strippedSubtitle == String(
+                localized: "Loads remote images automatically only for Contacts and senders you have replied to. Unknown senders stay blocked and tracking-pixel removal stays on.",
+                bundle: PrivacySection.resourceBundle
+            )
+        )
+        #expect(
+            unstrippedSubtitle == String(
+                localized: "Loads remote images automatically only for Contacts and senders you have replied to. Tracking-pixel removal is currently off in Settings → Privacy, so trusted senders may load tracking images.",
+                bundle: PrivacySection.resourceBundle
+            )
+        )
+        #expect(Set([plainTextSubtitle, strippedSubtitle, unstrippedSubtitle]).count == 3)
     }
 
     @Test("presentation policy blocks onboarding during active sign-in/restore and after failed restore of saved accounts")

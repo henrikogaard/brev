@@ -1,5 +1,16 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #356 round-2 review fixes (Upgrade #9)
+
+- Goal: address all 3 round-2 Devin Review items (`PRRT_kwDOUHC-Ds67oeMD`, `PRRT_kwDOUHC-Ds67oeOC`, `PRRT_kwDOUHC-Ds67oeP9`) on PR #356 (`feature/onboarding-privacy-choices`) in one commit.
+- Changes:
+  - `PrivacyOnboardingSettings.swift` & `PrivacyOnboardingSheet.swift`:
+    - Aligned all AI override checks (`load`, `onDeviceAIBlockReason`, and alternate-route detection on opt-out) strictly with `AIProviderAccountAssignments` (matching `AIProviderResolver.resolve`), ignoring stale `AIProviderConfiguration.assignedAccountID` profile metadata.
+    - Added `PrivacyOnboardingAIControlBlockReason.appleIntelligenceAccountOverrideWithOtherDefault` so per-account Apple Intelligence alongside another usable default fails closed (directing to Settings → Writing → AI Writer instead of leaving a dead override or silently rerouting to a cloud default); when no other default exists, opting out cleans Apple Intelligence entries from `AIProviderAccountAssignments` via `removeAIProviderAssignments(providerID:)`.
+  - `Localizable.xcstrings`: added `en`/`nb` entry for `customPerAccountAIRoutingMessage`.
+  - `PrivacyOnboardingTests.swift`: replaced English-only substring assertions with catalog-backed `String(localized:bundle: PrivacySection.resourceBundle)` comparisons and added `AIProviderResolver.resolve`-backed regression tests for stale `assignedAccountID`, fail-closed account override alongside a cloud default, and clean override removal when no other default exists.
+- Verification: local `.xcstrings` JSON + `nb` coverage, `scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`, and privacy-audit regex verification; remote `macmini-devbox` `BrevSettingsTests` (`PrivacyOnboardingTests`, `PrivacyOnboardingSnapshotTests`, `BackupTests`, `SettingsSearchPlatformTests`) and `/tmp/brev-wave4a` cleanup.
+
 ## 2026-11-24 — Agent — PR #356 round-1 review fixes (Upgrade #9)
 
 - Goal: address all 8 round-1 Codex + Devin review threads on PR #356 (`feature/onboarding-privacy-choices`) in one commit.

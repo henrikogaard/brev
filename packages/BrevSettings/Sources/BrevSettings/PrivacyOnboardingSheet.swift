@@ -28,7 +28,7 @@ public struct PrivacyOnboardingSheet: View {
     private let appleIntelligenceAvailability: AppleIntelligenceAvailability
     private let isRichHTMLRendererEnabled: Bool
     private let stripTrackingPixelsEnabled: Bool
-    private let isOnDeviceAIBlockedByExternalRoutes: Bool
+    private let onDeviceAIBlockReason: PrivacyOnboardingAIControlBlockReason?
     private let onAIProviderConfigurationChanged: () async -> Void
     private let onAvatarPreferencesChanged: @Sendable (AvatarPreferences) async -> Void
     private let onDismiss: () -> Void
@@ -61,8 +61,7 @@ public struct PrivacyOnboardingSheet: View {
         let mailboxView = settingsStore.mailboxViewSettings()
         isRichHTMLRendererEnabled = mailboxView.useRichRenderer
         stripTrackingPixelsEnabled = mailboxView.stripTrackingPixels
-        isOnDeviceAIBlockedByExternalRoutes =
-            PrivacyOnboardingChoices.blocksOnDeviceAIOptInDueToExternalAccountRoutes(in: settingsStore)
+        onDeviceAIBlockReason = PrivacyOnboardingChoices.onDeviceAIBlockReason(in: settingsStore)
         let loaded = PrivacyOnboardingChoices.load(
             from: settingsStore,
             appleIntelligenceAvailability: appleIntelligenceAvailability
@@ -352,7 +351,7 @@ public struct PrivacyOnboardingSheet: View {
     }
 
     private var canToggleOnDeviceAI: Bool {
-        appleIntelligenceAvailability.isSelectable && !isOnDeviceAIBlockedByExternalRoutes
+        appleIntelligenceAvailability.isSelectable && onDeviceAIBlockReason == nil
     }
 
     private var onDeviceAICard: some View {
@@ -388,8 +387,8 @@ public struct PrivacyOnboardingSheet: View {
         guard appleIntelligenceAvailability.isSelectable else {
             return appleIntelligenceAvailability.settingsStatusMessage
         }
-        if isOnDeviceAIBlockedByExternalRoutes {
-            return PrivacyOnboardingCopy.externalAccountAIRouteBlockedMessage
+        if let onDeviceAIBlockReason {
+            return onDeviceAIBlockReason.message
         }
         return String(
             localized: "Runs AI Writer, thread summaries, and mailbox Assistant locally (\(OnDeviceAIPlatformLabel.transparencyLabel)) with zero network calls and no API key. Cloud and custom providers are never configured here.",
@@ -399,9 +398,9 @@ public struct PrivacyOnboardingSheet: View {
 
     private var onDeviceAIBinding: Binding<Bool> {
         Binding(
-            get: { canToggleOnDeviceAI && choices.onDeviceAIEnabled },
+            get: { appleIntelligenceAvailability.isSelectable && choices.onDeviceAIEnabled },
             set: { newValue in
-                guard canToggleOnDeviceAI || !newValue else { return }
+                guard canToggleOnDeviceAI else { return }
                 choices.onDeviceAIEnabled = newValue
                 if !newValue {
                     choices.proactiveOnDeviceTriageEnabled = false
@@ -413,14 +412,12 @@ public struct PrivacyOnboardingSheet: View {
     private var proactiveTriageBinding: Binding<Bool> {
         Binding(
             get: {
-                canToggleOnDeviceAI
+                appleIntelligenceAvailability.isSelectable
                     && choices.onDeviceAIEnabled
                     && choices.proactiveOnDeviceTriageEnabled
             },
             set: { newValue in
-                guard (canToggleOnDeviceAI && choices.onDeviceAIEnabled) || !newValue else {
-                    return
-                }
+                guard canToggleOnDeviceAI && choices.onDeviceAIEnabled else { return }
                 choices.proactiveOnDeviceTriageEnabled = newValue
             }
         )

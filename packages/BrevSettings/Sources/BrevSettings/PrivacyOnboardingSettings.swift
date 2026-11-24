@@ -97,6 +97,34 @@ public enum PrivacyOnboardingCopy {
         localized: "An external AI provider is assigned to an account. Review per-account routing in Settings → Writing → AI Writer before turning AI on.",
         bundle: .module
     )
+
+    /// Explanation shown when toggling Apple Intelligence from the walkthrough is blocked
+    /// because Apple Intelligence is assigned to a specific account alongside another default
+    /// provider, so opting out would either leave a dead override or silently reroute that
+    /// account to the other default.
+    public static let customPerAccountAIRoutingMessage = String(
+        localized: "Apple Intelligence is assigned to a specific account alongside another default provider. Manage per-account routing in Settings → Writing → AI Writer.",
+        bundle: .module
+    )
+}
+
+/// Reason why the walkthrough disables its simplified On-Device AI toggle to fail closed.
+public enum PrivacyOnboardingAIControlBlockReason: Equatable, Sendable {
+    /// Turning on global AI consent would immediately activate an external per-account route.
+    case externalAccountOverrideRequiresAISettings
+    /// Turning off per-account Apple Intelligence would leave a dead override or silently
+    /// reroute that account to another default provider.
+    case appleIntelligenceAccountOverrideWithOtherDefault
+
+    /// Plain-language localized message shown under the disabled walkthrough toggle.
+    public var message: String {
+        switch self {
+        case .externalAccountOverrideRequiresAISettings:
+            PrivacyOnboardingCopy.externalAccountAIRouteBlockedMessage
+        case .appleIntelligenceAccountOverrideWithOtherDefault:
+            PrivacyOnboardingCopy.customPerAccountAIRoutingMessage
+        }
+    }
 }
 
 /// Editable opt-in convenience choices presented by the Privacy & Convenience walkthrough.
@@ -175,9 +203,7 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
                   config.isEnabled,
                   config.validationIssues.isEmpty
             else { return false }
-            return config.isDefault
-                || config.assignedAccountID != nil
-                || assignedProviderIDs.contains(config.id)
+            return config.isDefault || assignedProviderIDs.contains(config.id)
         }
         let onDeviceAIActive = appleIntelligenceAvailability.isSelectable
             && aiWriter.isAvailable
@@ -195,29 +221,71 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
         )
     }
 
-    /// Returns `true` when turning on global AI consent from the walkthrough would immediately
-    /// activate an external/non-on-device per-account AI override without separate endpoint consent.
+    /// Returns the fail-closed block reason when the walkthrough's simplified On-Device AI
+    /// toggle cannot safely mutate AI routing, or `nil` when toggling is safe.
     ///
-    /// Fails closed so a zero-network on-device prompt can never silently grant consent for a
-    /// previously configured cloud or BYOK per-account route.
-    public static func blocksOnDeviceAIOptInDueToExternalAccountRoutes(
+    /// Uses `AIProviderAccountAssignments` strictly (matching `AIProviderResolver.resolve`)
+    /// rather than stale `AIProviderConfiguration.assignedAccountID` profile metadata.
+    public static func onDeviceAIBlockReason(
         in settingsStore: SettingsPersistenceStore = .standard
-    ) -> Bool {
-        guard !settingsStore.aiWriterSettings().isAvailable else { return false }
+    ) -> PrivacyOnboardingAIControlBlockReason? {
+        let aiWriter = settingsStore.aiWriterSettings()
         let configs = (try? settingsStore.aiProviderConfigurations()) ?? []
         let assignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
         let assignedIDs = assignments.assignedProviderIDs
 
-        if assignedIDs.contains(legacyBuiltInExternalProviderID) {
-            return true
+        if !aiWriter.isAvailable {
+            let hasExternalOverride = assignedIDs.contains(legacyBuiltInExternalProviderID)
+                || configs.contains { config in
+                    !config.kind.isOnDevice
+                        && config.isEnabled
+                        && config.validationIssues.isEmpty
+                        && assignedIDs.contains(config.id)
+                }
+            if hasExternalOverride {
+                return .externalAccountOverrideRequiresAISettings
+            }
         }
-        return configs.contains { config in
-            guard !config.kind.isOnDevice,
-                  config.isEnabled,
-                  config.validationIssues.isEmpty
-            else { return false }
-            return config.assignedAccountID != nil || assignedIDs.contains(config.id)
+
+        let hasAssignedAppleIntelligence = configs.contains { config in
+            config.kind == .appleIntelligence
+                && config.isEnabled
+                && config.validationIssues.isEmpty
+                && assignedIDs.contains(config.id)
         }
+        if aiWriter.isAvailable && hasAssignedAppleIntelligence {
+            let hasOtherUsableDefault = configs.contains { config in
+                config.kind != .appleIntelligence
+                    && config.isDefault
+                    && config.isEnabled
+                    && config.validationIssues.isEmpty
+            }
+            let displacedRawID = settingsStore.defaults.string(
+                forKey: PrivacyOnboardingSettings.Key.displacedDefaultAIProviderID
+            )
+            let hasRestorableDisplacedDefault = displacedRawID.map { rawID in
+                let displacedID = AIProviderID(rawID)
+                return configs.contains {
+                    $0.id == displacedID
+                        && $0.kind != .appleIntelligence
+                        && $0.isEnabled
+                        && $0.validationIssues.isEmpty
+                }
+            } ?? false
+            if hasOtherUsableDefault || hasRestorableDisplacedDefault {
+                return .appleIntelligenceAccountOverrideWithOtherDefault
+            }
+        }
+
+        return nil
+    }
+
+    /// Returns `true` when turning on global AI consent from the walkthrough would immediately
+    /// activate an external/non-on-device per-account AI override without separate endpoint consent.
+    public static func blocksOnDeviceAIOptInDueToExternalAccountRoutes(
+        in settingsStore: SettingsPersistenceStore = .standard
+    ) -> Bool {
+        onDeviceAIBlockReason(in: settingsStore) == .externalAccountOverrideRequiresAISettings
     }
 
     /// Result describing which subsystems changed when applying walkthrough choices.
@@ -343,10 +411,10 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
         relativeTo initial: PrivacyOnboardingChoices,
         appleIntelligenceAvailability: AppleIntelligenceAvailability
     ) -> Bool {
-        let isBlockedByExternalRoutes = Self.blocksOnDeviceAIOptInDueToExternalAccountRoutes(in: settingsStore)
-        let effectiveOnDeviceAI = appleIntelligenceAvailability.isSelectable
-            && onDeviceAIEnabled
-            && (!isBlockedByExternalRoutes || initial.onDeviceAIEnabled)
+        guard Self.onDeviceAIBlockReason(in: settingsStore) == nil else {
+            return false
+        }
+        let effectiveOnDeviceAI = appleIntelligenceAvailability.isSelectable && onDeviceAIEnabled
         let effectiveProactive = effectiveOnDeviceAI && proactiveOnDeviceTriageEnabled
         let initialProactive = initial.onDeviceAIEnabled && initial.proactiveOnDeviceTriageEnabled
 
@@ -398,6 +466,9 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
                 aiWriter.proactiveOnDeviceTriageEnabled = effectiveProactive
                 settingsStore.save(aiWriter)
             } else {
+                let disabledAppleIDs = configs
+                    .filter { $0.kind == .appleIntelligence }
+                    .map(\.id)
                 configs = configs.map { existingConfig in
                     guard existingConfig.kind == .appleIntelligence else { return existingConfig }
                     var updated = existingConfig
@@ -423,17 +494,22 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
                 defaults.removeObject(forKey: PrivacyOnboardingSettings.Key.displacedDefaultAIProviderID)
                 try? settingsStore.saveAIProviderConfigurations(configs)
 
+                // Clear per-account Apple Intelligence assignments so opt-out never leaves
+                // dead overrides in `AIProviderAccountAssignments`.
+                for providerID in disabledAppleIDs {
+                    try? settingsStore.removeAIProviderAssignments(providerID: providerID)
+                }
+
                 let assignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
                 let assignedIDs = assignments.assignedProviderIDs
-                let hasOtherUsableRoute = configs.contains { config in
-                    guard config.kind != .appleIntelligence,
-                          config.isEnabled,
-                          config.validationIssues.isEmpty
-                    else { return false }
-                    return config.isDefault
-                        || config.assignedAccountID != nil
-                        || assignedIDs.contains(config.id)
-                }
+                let hasOtherUsableRoute = assignedIDs.contains(Self.legacyBuiltInExternalProviderID)
+                    || configs.contains { config in
+                        guard config.kind != .appleIntelligence,
+                              config.isEnabled,
+                              config.validationIssues.isEmpty
+                        else { return false }
+                        return config.isDefault || assignedIDs.contains(config.id)
+                    }
                 let hadPriorAIWriterConsent = defaults.object(
                     forKey: PrivacyOnboardingSettings.Key.aiWriterWasAvailableBeforeOnDeviceOptIn
                 ) as? Bool ?? true
