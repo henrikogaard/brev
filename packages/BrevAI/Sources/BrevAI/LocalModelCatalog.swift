@@ -23,7 +23,7 @@ public struct LocalModelDescriptor: Codable, Equatable, Hashable, Identifiable, 
     /// Human-readable model name shown in Settings.
     public let displayName: String
 
-    /// Concise summary of the model's intended mail-assistance strengths.
+    /// Localized summary of the model's intended mail-assistance strengths.
     public let summary: String
 
     /// Compact parameter count label (for example `"3B"` or `"3.8B"`).
@@ -38,7 +38,7 @@ public struct LocalModelDescriptor: Codable, Equatable, Hashable, Identifiable, 
     /// SPDX license identifier for the model weights (for example `"Apache-2.0"` or `"MIT"`).
     public let licenseSPDX: String
 
-    /// Strictly HTTPS source URL for user-initiated weight downloads.
+    /// Strictly HTTPS source URL pinned to an immutable upstream revision for user-initiated downloads.
     public let downloadURL: URL
 
     /// Expected lowercase 64-character SHA-256 hex digest verified before activating weights.
@@ -111,58 +111,72 @@ public struct LocalModelDescriptor: Codable, Equatable, Hashable, Identifiable, 
 }
 
 /// Curated catalog of small, open-licensed on-device models available for user-initiated download (#304).
+///
+/// Every curated entry is pinned to an immutable upstream Hugging Face Git commit revision with
+/// its verified LFS file size and SHA-256 digest (checked against the Hugging Face model blobs API).
 public enum LocalModelCatalog {
     /// Default catalog model selected when creating a downloaded-model provider profile.
     public static let defaultModelID = "qwen2.5-3b-instruct-q4km"
 
     /// Curated open-weights models that run offline after explicit user download and SHA-256 verification.
-    public static let curatedModels: [LocalModelDescriptor] = [
-        LocalModelDescriptor(
-            id: "qwen2.5-3b-instruct-q4km",
-            displayName: "Qwen 2.5 3B Instruct",
-            summary: "Balanced multilingual drafting, rewriting, and thread summaries.",
-            parameterCountLabel: "3B",
-            quantization: "Q4_K_M",
-            expectedByteCount: 2_104_932_736,
-            licenseSPDX: "Apache-2.0",
-            downloadURL: URL(
-                string: "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
-            )!,
-            sha256Hex: "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18b9a9f89614a",
-            minimumMemoryGiB: 8,
-            fileName: "qwen2.5-3b-instruct-q4_k_m.gguf"
-        ),
-        LocalModelDescriptor(
-            id: "llama-3.2-3b-instruct-q4km",
-            displayName: "Llama 3.2 3B Instruct",
-            summary: "Fast everyday replies, tone adjustments, and concise summaries.",
-            parameterCountLabel: "3B",
-            quantization: "Q4_K_M",
-            expectedByteCount: 2_019_377_696,
-            licenseSPDX: "Llama-3.2",
-            downloadURL: URL(
-                string: "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
-            )!,
-            sha256Hex: "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff",
-            minimumMemoryGiB: 8,
-            fileName: "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
-        ),
-        LocalModelDescriptor(
-            id: "phi-4-mini-instruct-q4km",
-            displayName: "Phi-4 Mini Instruct",
-            summary: "Strong structured reasoning for longer mail threads and action extraction.",
-            parameterCountLabel: "3.8B",
-            quantization: "Q4_K_M",
-            expectedByteCount: 2_491_875_008,
-            licenseSPDX: "MIT",
-            downloadURL: URL(
-                string: "https://huggingface.co/bartowski/microsoft_Phi-4-mini-instruct-GGUF/resolve/main/microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"
-            )!,
-            sha256Hex: "7f6f18e42f12e3f810bc79a8d2c7a480501c1125fd19d2b0d2c0a56a2b93e0e1",
-            minimumMemoryGiB: 8,
-            fileName: "microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"
-        )
-    ]
+    public static var curatedModels: [LocalModelDescriptor] {
+        [
+            LocalModelDescriptor(
+                id: "qwen2.5-3b-instruct-q4km",
+                displayName: "Qwen 2.5 3B Instruct",
+                summary: String(
+                    localized: "Balanced multilingual drafting, rewriting, and thread summaries.",
+                    bundle: .module
+                ),
+                parameterCountLabel: "3B",
+                quantization: "Q4_K_M",
+                expectedByteCount: 2_104_932_768,
+                licenseSPDX: "Apache-2.0",
+                downloadURL: URL(
+                    string: "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/7dabda4d13d513e3e842b20f0d435c732f172cbe/qwen2.5-3b-instruct-q4_k_m.gguf"
+                )!,
+                sha256Hex: "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d",
+                minimumMemoryGiB: 8,
+                fileName: "qwen2.5-3b-instruct-q4_k_m.gguf"
+            ),
+            LocalModelDescriptor(
+                id: "llama-3.2-3b-instruct-q4km",
+                displayName: "Llama 3.2 3B Instruct",
+                summary: String(
+                    localized: "Fast everyday replies, tone adjustments, and concise summaries.",
+                    bundle: .module
+                ),
+                parameterCountLabel: "3B",
+                quantization: "Q4_K_M",
+                expectedByteCount: 2_019_377_696,
+                licenseSPDX: "Llama-3.2",
+                downloadURL: URL(
+                    string: "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+                )!,
+                sha256Hex: "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff",
+                minimumMemoryGiB: 8,
+                fileName: "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+            ),
+            LocalModelDescriptor(
+                id: "phi-4-mini-instruct-q4km",
+                displayName: "Phi-4 Mini Instruct",
+                summary: String(
+                    localized: "Strong structured reasoning for longer mail threads and action extraction.",
+                    bundle: .module
+                ),
+                parameterCountLabel: "3.8B",
+                quantization: "Q4_K_M",
+                expectedByteCount: 2_491_874_688,
+                licenseSPDX: "MIT",
+                downloadURL: URL(
+                    string: "https://huggingface.co/bartowski/microsoft_Phi-4-mini-instruct-GGUF/resolve/7ff82c2aaa4dde30121698a973765f39be5288c0/microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"
+                )!,
+                sha256Hex: "01999f17c39cc3074afae5e9c539bc82d45f2dd7faa3917c66cbef76fce8c0c2",
+                minimumMemoryGiB: 8,
+                fileName: "microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"
+            )
+        ]
+    }
 
     /// Returns the catalog descriptor matching `id`, if present.
     public static func model(id: String) -> LocalModelDescriptor? {

@@ -27,6 +27,7 @@ struct AIWriterSection: View {
     private let accounts: [BrevAccount]
     private let appleIntelligenceAvailability: AppleIntelligenceAvailability
     private let localModelDownloadManager: LocalModelDownloadManager
+    private let isLocalModelPlatformSupported: Bool
     private let onProviderConfigurationChanged: () async -> Void
 
     init(
@@ -35,6 +36,7 @@ struct AIWriterSection: View {
         accounts: [BrevAccount] = [],
         appleIntelligenceAvailability: AppleIntelligenceAvailability = .current(),
         localModelDownloadManager: LocalModelDownloadManager = .shared,
+        isLocalModelPlatformSupported: Bool = DefaultLocalModelInferenceRuntime.isPlatformSupported,
         onProviderConfigurationChanged: @escaping () async -> Void = {}
     ) {
         self.settingsStore = settingsStore
@@ -42,6 +44,7 @@ struct AIWriterSection: View {
         self.accounts = accounts
         self.appleIntelligenceAvailability = appleIntelligenceAvailability
         self.localModelDownloadManager = localModelDownloadManager
+        self.isLocalModelPlatformSupported = isLocalModelPlatformSupported
         self.onProviderConfigurationChanged = onProviderConfigurationChanged
         _settings = State(initialValue: settingsStore.aiWriterSettings())
         _providerSummary = State(
@@ -114,6 +117,8 @@ struct AIWriterSection: View {
                     secretStore: providerSecretStore,
                     accounts: accounts,
                     appleIntelligenceAvailability: appleIntelligenceAvailability,
+                    localModelDownloadManager: localModelDownloadManager,
+                    isLocalModelPlatformSupported: isLocalModelPlatformSupported,
                     refreshRevision: providerRefreshRevision,
                     onProviderConfigurationChanged: {
                         await refreshConfiguredProvider()
@@ -124,6 +129,7 @@ struct AIWriterSection: View {
                 LocalModelsSettingsGroup(
                     downloadManager: localModelDownloadManager,
                     activeModelID: activeDownloadedModelID,
+                    isPlatformSupported: isLocalModelPlatformSupported,
                     onSelectModel: { descriptor in
                         await selectDownloadedLocalModel(descriptor)
                     },
@@ -247,6 +253,7 @@ struct AIWriterSection: View {
 
     @MainActor
     private func selectDownloadedLocalModel(_ descriptor: LocalModelDescriptor) async {
+        guard isLocalModelPlatformSupported else { return }
         let existing = ((try? settingsStore.aiProviderConfigurations()) ?? [])
             .first { $0.id == LocalDownloadedModelAIBackend.providerID }
         let configuration = AIProviderConfiguration.onDeviceDownloadedModel(

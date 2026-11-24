@@ -28,6 +28,7 @@ struct LocalModelsSettingsGroup: View {
     private let catalog: [LocalModelDescriptor]
     private let downloadManager: LocalModelDownloadManager
     private let activeModelID: String?
+    private let isPlatformSupported: Bool
     private let observeLiveUpdates: Bool
     private let onSelectModel: (LocalModelDescriptor) async -> Void
     private let onModelDeleted: (LocalModelDescriptor) async -> Void
@@ -36,6 +37,7 @@ struct LocalModelsSettingsGroup: View {
         catalog: [LocalModelDescriptor] = LocalModelCatalog.curatedModels,
         downloadManager: LocalModelDownloadManager = .shared,
         activeModelID: String? = nil,
+        isPlatformSupported: Bool = DefaultLocalModelInferenceRuntime.isPlatformSupported,
         initialStates: [String: LocalModelDownloadState]? = nil,
         initialTotalInstalledBytes: Int64? = nil,
         onSelectModel: @escaping (LocalModelDescriptor) async -> Void = { _ in },
@@ -44,6 +46,7 @@ struct LocalModelsSettingsGroup: View {
         self.catalog = catalog
         self.downloadManager = downloadManager
         self.activeModelID = activeModelID
+        self.isPlatformSupported = isPlatformSupported
         observeLiveUpdates = initialStates == nil
         self.onSelectModel = onSelectModel
         self.onModelDeleted = onModelDeleted
@@ -69,6 +72,14 @@ struct LocalModelsSettingsGroup: View {
             symbolName: "arrow.down.circle"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
+                if !isPlatformSupported {
+                    SettingsInfoCallout(
+                        symbolName: "desktopcomputer",
+                        message: DefaultLocalModelInferenceRuntime.platformUnsupportedMessage,
+                        tone: .info
+                    )
+                }
+
                 storageSummaryRow
 
                 ForEach(catalog) { model in
@@ -128,7 +139,7 @@ struct LocalModelsSettingsGroup: View {
                     Text(verbatim: Self.specsLine(for: model))
                         .brevFont(.caption)
                         .foregroundStyle(theme.textSecondary.color)
-                    Text(verbatim: model.summary)
+                    Text(model.summary)
                         .brevFont(.footnote)
                         .foregroundStyle(theme.textSecondary.color)
                         .fixedSize(horizontal: false, vertical: true)
@@ -159,11 +170,17 @@ struct LocalModelsSettingsGroup: View {
         state: LocalModelDownloadState,
         isActive: Bool
     ) -> some View {
+        let actions = LocalModelRowActionPolicy(
+            state: state,
+            isPlatformSupported: isPlatformSupported,
+            isActive: isActive
+        )
         switch state {
         case .notDownloaded:
             SettingsButton(String(localized: "Download", bundle: .module), style: .secondary) {
                 startDownload(for: model)
             }
+            .disabled(!actions.canDownload)
         case .downloading:
             SettingsButton(String(localized: "Cancel", bundle: .module), style: .secondary) {
                 Task { await downloadManager.cancelDownload(modelID: model.id) }
@@ -184,8 +201,10 @@ struct LocalModelsSettingsGroup: View {
                     .foregroundStyle(theme.accent.color)
                 } else {
                     SettingsButton(String(localized: "Use model", bundle: .module), style: .secondary) {
+                        guard actions.canUseModel else { return }
                         Task { await onSelectModel(model) }
                     }
+                    .disabled(!actions.canUseModel)
                 }
                 SettingsButton(
                     String(localized: "Delete", bundle: .module),
@@ -194,11 +213,13 @@ struct LocalModelsSettingsGroup: View {
                 ) {
                     deleteWeights(for: model)
                 }
+                .disabled(!actions.canDelete)
             }
         case .failed:
             SettingsButton(String(localized: "Retry", bundle: .module), style: .secondary) {
                 startDownload(for: model)
             }
+            .disabled(!actions.canDownload)
         }
     }
 
@@ -246,6 +267,7 @@ struct LocalModelsSettingsGroup: View {
     }
 
     private func startDownload(for model: LocalModelDescriptor) {
+        guard isPlatformSupported else { return }
         actionErrorMessage = nil
         Task {
             do {
@@ -299,5 +321,32 @@ struct LocalModelsSettingsGroup: View {
 
     private static func formatBytes(_ byteCount: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: max(0, byteCount), countStyle: .file)
+    }
+}
+
+/// Platform capability and state gating for Local Models row controls (#304).
+struct LocalModelRowActionPolicy: Equatable {
+    let state: LocalModelDownloadState
+    let isPlatformSupported: Bool
+    let isActive: Bool
+
+    var canDownload: Bool {
+        guard isPlatformSupported else { return false }
+        switch state {
+        case .notDownloaded, .failed:
+            return true
+        case .downloading, .verifying, .installed:
+            return false
+        }
+    }
+
+    var canUseModel: Bool {
+        isPlatformSupported && state.isInstalled && !isActive
+    }
+
+    /// Delete stays enabled whenever verified weights exist on disk so users can reclaim storage
+    /// even on platforms without local runtime support.
+    var canDelete: Bool {
+        state.isInstalled
     }
 }

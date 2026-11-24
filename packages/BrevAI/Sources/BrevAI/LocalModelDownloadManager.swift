@@ -11,6 +11,7 @@
  */
 
 import CryptoKit
+import Darwin
 import Foundation
 
 /// Observable download and installation state for a curated local AI model (#304).
@@ -207,7 +208,9 @@ public struct URLSessionLocalModelDownloadTransport: LocalModelDownloadTransport
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw LocalModelDownloadError.transportError("Unexpected non-HTTP response.")
+            throw LocalModelDownloadError.transportError(
+                String(localized: "Unexpected non-HTTP response.", bundle: .module)
+            )
         }
         guard (200 ... 299).contains(httpResponse.statusCode) else {
             throw LocalModelDownloadError.httpError(statusCode: httpResponse.statusCode)
@@ -304,6 +307,9 @@ public actor LocalModelDownloadManager {
 
     /// Creates a local model download manager.
     ///
+    /// Cleans up abandoned `.part` staging files on startup (skipping any file locked by an active download)
+    /// without making any network requests.
+    ///
     /// - Parameters:
     ///   - storageDirectory: Backup-excluded root directory (defaults to `Application Support/Brev/LocalModels`).
     ///   - catalog: Curated model catalog (defaults to `LocalModelCatalog.curatedModels`).
@@ -319,6 +325,7 @@ public actor LocalModelDownloadManager {
         self.catalog = catalog
         self.transport = transport
         self.now = now
+        Self.cleanupAbandonedStagingFiles(in: storageDirectory)
         states = Self.scanInstalledStates(in: storageDirectory, catalog: catalog)
     }
 
@@ -428,7 +435,9 @@ public actor LocalModelDownloadManager {
             throw error
         }
         guard LocalModelDescriptor.isValidSHA256Hex(descriptor.sha256Hex) else {
-            let error = LocalModelDownloadError.storageError("Invalid expected SHA-256 digest in catalog.")
+            let error = LocalModelDownloadError.storageError(
+                String(localized: "Invalid expected SHA-256 digest in catalog.", bundle: .module)
+            )
             setState(.failed(message: error.localizedDescription), for: modelID)
             throw error
         }
@@ -472,13 +481,16 @@ public actor LocalModelDownloadManager {
         let manifestURL = modelDir.appendingPathComponent(Self.manifestFileName, isDirectory: false)
         let maxAllowedBytes = Self.maximumAllowedBytes(for: descriptor)
 
+        let streamState: StreamingWriteState
         do {
             try prepareBackupExcludedDirectory(storageDirectory)
             try prepareBackupExcludedDirectory(modelDir)
             try? FileManager.default.removeItem(at: partURL)
-            guard FileManager.default.createFile(atPath: partURL.path, contents: nil) else {
-                throw LocalModelDownloadError.storageError("Could not create temporary download file.")
-            }
+            streamState = try StreamingWriteState(
+                fileURL: partURL,
+                expectedByteCount: descriptor.expectedByteCount,
+                maxAllowedBytes: maxAllowedBytes
+            )
             try applyBackupExclusion(to: partURL)
         } catch let error as LocalModelDownloadError {
             setState(.failed(message: error.localizedDescription), for: modelID)
@@ -488,12 +500,6 @@ public actor LocalModelDownloadManager {
             setState(.failed(message: wrapped.localizedDescription), for: modelID)
             throw wrapped
         }
-
-        let streamState = StreamingWriteState(
-            fileURL: partURL,
-            expectedByteCount: descriptor.expectedByteCount,
-            maxAllowedBytes: maxAllowedBytes
-        )
 
         setState(
             .downloading(progress: 0, bytesWritten: 0, totalBytes: descriptor.expectedByteCount),
@@ -640,6 +646,38 @@ public actor LocalModelDownloadManager {
         return try? JSONDecoder().decode(LocalModelInstallManifest.self, from: data)
     }
 
+    /// Removes abandoned `.part` staging files left behind by crashed or terminated sessions.
+    ///
+    /// Uses a non-blocking advisory `flock(LOCK_EX | LOCK_NB)` so an active download in another
+    /// Brev process holding an exclusive lock on its `.part` file is left untouched.
+    private static func cleanupAbandonedStagingFiles(in root: URL) {
+        guard let modelDirectories = try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for directory in modelDirectories {
+            guard (try? directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
+                  let entries = try? FileManager.default.contentsOfDirectory(
+                      at: directory,
+                      includingPropertiesForKeys: [.isRegularFileKey],
+                      options: [.skipsHiddenFiles]
+                  )
+            else { continue }
+
+            for entry in entries where entry.pathExtension == "part" {
+                let fd = open(entry.path, O_RDWR)
+                guard fd >= 0 else { continue }
+                if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+                    try? FileManager.default.removeItem(at: entry)
+                    _ = flock(fd, LOCK_UN)
+                }
+                close(fd)
+            }
+        }
+    }
+
     private static func scanInstalledStates(
         in root: URL,
         catalog: [LocalModelDescriptor]
@@ -683,10 +721,26 @@ private final class StreamingWriteState: @unchecked Sendable {
     private var hasher = SHA256()
     private var bytesWritten: Int64 = 0
 
-    init(fileURL: URL, expectedByteCount: Int64, maxAllowedBytes: Int64) {
+    init(fileURL: URL, expectedByteCount: Int64, maxAllowedBytes: Int64) throws {
         self.fileURL = fileURL
         self.expectedByteCount = expectedByteCount
         self.maxAllowedBytes = maxAllowedBytes
+
+        let fd = open(fileURL.path, O_RDWR | O_CREAT | O_TRUNC, 0o600)
+        guard fd >= 0 else {
+            throw LocalModelDownloadError.storageError(
+                String(localized: "Could not create temporary download file.", bundle: .module)
+            )
+        }
+        // Hold an advisory exclusive lock while the download is active so startup cleanup
+        // in another process never deletes an in-flight `.part` file.
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            close(fd)
+            throw LocalModelDownloadError.storageError(
+                String(localized: "Could not lock temporary download file.", bundle: .module)
+            )
+        }
+        fileHandle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     }
 
     func append(chunk: Data, reportedTotalBytes: Int64) throws -> ProgressSnapshot {
@@ -698,13 +752,10 @@ private final class StreamingWriteState: @unchecked Sendable {
             throw LocalModelDownloadError.sizeLimitExceeded(written: nextTotal, limit: maxAllowedBytes)
         }
 
-        let handle: FileHandle
-        if let existing = fileHandle {
-            handle = existing
-        } else {
-            let opened = try FileHandle(forWritingTo: fileURL)
-            fileHandle = opened
-            handle = opened
+        guard let handle = fileHandle else {
+            throw LocalModelDownloadError.storageError(
+                String(localized: "Could not create temporary download file.", bundle: .module)
+            )
         }
         try handle.write(contentsOf: chunk)
         hasher.update(data: chunk)
@@ -721,6 +772,7 @@ private final class StreamingWriteState: @unchecked Sendable {
 
         if let handle = fileHandle {
             try handle.synchronize()
+            _ = flock(handle.fileDescriptor, LOCK_UN)
             try handle.close()
             fileHandle = nil
         }
@@ -734,6 +786,7 @@ private final class StreamingWriteState: @unchecked Sendable {
         defer { lock.unlock() }
 
         if let handle = fileHandle {
+            _ = flock(handle.fileDescriptor, LOCK_UN)
             try? handle.close()
             fileHandle = nil
         }

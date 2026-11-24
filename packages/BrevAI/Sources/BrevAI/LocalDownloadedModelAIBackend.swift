@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import Darwin
 import Foundation
 
 /// Local inference runtime seam for running verified on-device GGUF weights strictly offline (#304).
@@ -26,9 +27,27 @@ public protocol LocalModelInferenceRuntime: Sendable {
 /// Default local inference runtime that discovers a local GGUF CLI runtime on macOS or fails closed offline.
 ///
 /// This runtime performs zero network calls. On macOS it checks configured local paths for an installed
-/// `llama-cli` / `llama-completion` helper; if none is present (or on iOS), it fails closed with an
-/// actionable localized error while keeping verified weights intact.
+/// `llama-cli` / `llama-completion` helper, passes prompts via private `0600` temporary files (never in
+/// command-line arguments visible to `ps`), drains stdout and stderr concurrently to avoid pipe deadlocks,
+/// and terminates/reaps the child process promptly on Swift `Task` cancellation.
 public struct DefaultLocalModelInferenceRuntime: LocalModelInferenceRuntime {
+    /// Whether this platform currently supports executing downloaded local models natively.
+    public static var isPlatformSupported: Bool {
+        #if os(macOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// Plain-language localized message explaining why local model downloads are gated on unsupported platforms.
+    public static var platformUnsupportedMessage: String {
+        String(
+            localized: "Downloaded local models currently require a Mac. Use Apple Intelligence or a configured provider on this device.",
+            bundle: .module
+        )
+    }
+
     private let executableSearchPaths: [String]
     private let maxResponseTokens: Int
 
@@ -66,6 +85,8 @@ public struct DefaultLocalModelInferenceRuntime: LocalModelInferenceRuntime {
         instructions: String,
         prompt: String
     ) async throws -> String {
+        try Task.checkCancellation()
+
         #if os(macOS)
         guard let executablePath = executableSearchPaths.first(where: {
             FileManager.default.isExecutableFile(atPath: $0)
@@ -86,12 +107,7 @@ public struct DefaultLocalModelInferenceRuntime: LocalModelInferenceRuntime {
         )
         #else
         _ = (modelURL, instructions, prompt)
-        throw AIBackendError.unavailable(
-            String(
-                localized: "The downloaded model weights are verified on this device, but no compatible local inference runtime is installed yet.",
-                bundle: .module
-            )
-        )
+        throw AIBackendError.unavailable(Self.platformUnsupportedMessage)
         #endif
     }
 
@@ -102,57 +118,240 @@ public struct DefaultLocalModelInferenceRuntime: LocalModelInferenceRuntime {
         instructions: String,
         prompt: String
     ) async throws -> String {
+        try Task.checkCancellation()
+
+        let promptFiles = try PrivatePromptFiles.create(instructions: instructions, prompt: prompt)
+        defer { promptFiles.cleanup() }
+
+        let cancellationBox = SubprocessCancellationBox()
         let tokenBudget = maxResponseTokens
-        return try await Task.detached(priority: .userInitiated) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executablePath)
-            process.arguments = [
-                "-m", modelURL.path,
-                "-sys", instructions,
-                "-p", prompt,
-                "-n", String(tokenBudget),
-                "--no-display-prompt",
-                "--single-turn"
-            ]
 
-            let stdoutPipe = Pipe()
-            let stderrPipe = Pipe()
-            process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
-            process.standardInput = FileHandle.nullDevice
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: executablePath)
+                    // Pass mail and instruction text exclusively through private 0600 temp files
+                    // (never as CLI arguments visible to other same-user processes via `ps`).
+                    process.arguments = [
+                        "-m", modelURL.path,
+                        "--system-prompt-file", promptFiles.instructionsURL.path,
+                        "-f", promptFiles.promptURL.path,
+                        "-n", String(tokenBudget),
+                        "--no-display-prompt",
+                        "--single-turn"
+                    ]
 
-            do {
-                try process.run()
-            } catch {
-                throw AIBackendError.unavailable(
-                    String(
-                        localized: "The local model runtime failed to generate a response: \(error.localizedDescription)",
-                        bundle: .module
-                    )
-                )
+                    let stdoutPipe = Pipe()
+                    let stderrPipe = Pipe()
+                    process.standardOutput = stdoutPipe
+                    process.standardError = stderrPipe
+                    process.standardInput = FileHandle.nullDevice
+
+                    guard cancellationBox.registerBeforeLaunch(process) else {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+
+                    do {
+                        try process.run()
+                    } catch {
+                        cancellationBox.clearProcess()
+                        continuation.resume(
+                            throwing: AIBackendError.unavailable(
+                                String(
+                                    localized: "The local model runtime failed to generate a response: \(error.localizedDescription)",
+                                    bundle: .module
+                                )
+                            )
+                        )
+                        return
+                    }
+
+                    // Close the parent's copies of the write ends so reading reaches EOF once the child exits.
+                    try? stdoutPipe.fileHandleForWriting.close()
+                    try? stderrPipe.fileHandleForWriting.close()
+
+                    // Drain stdout and stderr concurrently while the subprocess runs so large diagnostics
+                    // or generated replies cannot fill either pipe buffer and deadlock waitUntilExit().
+                    let readGroup = DispatchGroup()
+                    let outputBox = PipeOutputBox()
+
+                    readGroup.enter()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                        outputBox.setStdout(data)
+                        readGroup.leave()
+                    }
+
+                    readGroup.enter()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let data = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                        outputBox.setStderr(data)
+                        readGroup.leave()
+                    }
+
+                    readGroup.wait()
+                    process.waitUntilExit()
+                    cancellationBox.clearProcess()
+
+                    if cancellationBox.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+
+                    guard process.terminationStatus == 0 else {
+                        let stderrText = String(data: outputBox.stderrData, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        let detail = (stderrText?.isEmpty == false ? stderrText : nil)
+                            ?? String(localized: "exit status \(process.terminationStatus)", bundle: .module)
+                        continuation.resume(
+                            throwing: AIBackendError.unavailable(
+                                String(
+                                    localized: "The local model runtime failed to generate a response: \(detail)",
+                                    bundle: .module
+                                )
+                            )
+                        )
+                        return
+                    }
+
+                    let output = (String(data: outputBox.stdoutData, encoding: .utf8) ?? "")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    continuation.resume(returning: output)
+                }
             }
-
-            process.waitUntilExit()
-            let outputData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-
-            guard process.terminationStatus == 0 else {
-                let stderrText = String(data: errorData, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "exit status \(process.terminationStatus)"
-                throw AIBackendError.unavailable(
-                    String(
-                        localized: "The local model runtime failed to generate a response: \(stderrText)",
-                        bundle: .module
-                    )
-                )
-            }
-
-            return (String(data: outputData, encoding: .utf8) ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }.value
+        } onCancel: {
+            cancellationBox.cancelAndTerminate()
+        }
     }
     #endif
 }
+
+#if os(macOS)
+private struct PrivatePromptFiles: Sendable {
+    let directoryURL: URL
+    let instructionsURL: URL
+    let promptURL: URL
+
+    static func create(instructions: String, prompt: String) throws -> PrivatePromptFiles {
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-local-ai-\(UUID().uuidString)", isDirectory: true)
+        guard mkdir(directoryURL.path, 0o700) == 0 else {
+            throw AIBackendError.unavailable(
+                String(
+                    localized: "Could not prepare private temporary prompt files for local inference.",
+                    bundle: .module
+                )
+            )
+        }
+
+        let instructionsURL = directoryURL.appendingPathComponent("instructions.txt", isDirectory: false)
+        let promptURL = directoryURL.appendingPathComponent("prompt.txt", isDirectory: false)
+        do {
+            try writePrivateFile(instructions, to: instructionsURL)
+            try writePrivateFile(prompt, to: promptURL)
+        } catch {
+            try? FileManager.default.removeItem(at: directoryURL)
+            throw error
+        }
+
+        return PrivatePromptFiles(
+            directoryURL: directoryURL,
+            instructionsURL: instructionsURL,
+            promptURL: promptURL
+        )
+    }
+
+    func cleanup() {
+        try? FileManager.default.removeItem(at: instructionsURL)
+        try? FileManager.default.removeItem(at: promptURL)
+        try? FileManager.default.removeItem(at: directoryURL)
+    }
+
+    private static func writePrivateFile(_ text: String, to url: URL) throws {
+        let fd = open(url.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+        guard fd >= 0 else {
+            throw AIBackendError.unavailable(
+                String(
+                    localized: "Could not prepare private temporary prompt files for local inference.",
+                    bundle: .module
+                )
+            )
+        }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? handle.close() }
+        try handle.write(contentsOf: Data(text.utf8))
+    }
+}
+
+private final class PipeOutputBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _stdout = Data()
+    private var _stderr = Data()
+
+    var stdoutData: Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return _stdout
+    }
+
+    var stderrData: Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return _stderr
+    }
+
+    func setStdout(_ data: Data) {
+        lock.lock()
+        _stdout = data
+        lock.unlock()
+    }
+
+    func setStderr(_ data: Data) {
+        lock.lock()
+        _stderr = data
+        lock.unlock()
+    }
+}
+
+private final class SubprocessCancellationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _isCancelled = false
+    private var runningProcess: Process?
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _isCancelled
+    }
+
+    func registerBeforeLaunch(_ process: Process) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !_isCancelled else { return false }
+        runningProcess = process
+        return true
+    }
+
+    func clearProcess() {
+        lock.lock()
+        runningProcess = nil
+        lock.unlock()
+    }
+
+    func cancelAndTerminate() {
+        lock.lock()
+        _isCancelled = true
+        let process = runningProcess
+        lock.unlock()
+
+        if let process, process.isRunning {
+            process.terminate()
+        }
+    }
+}
+#endif
 
 /// On-device `AIBackend` backed by user-downloaded, SHA-256-verified local model weights (#304, Slice 2).
 ///
@@ -208,6 +407,7 @@ public struct LocalDownloadedModelAIBackend: AIBackend {
         to messages: [AIMessage],
         instruction: String?
     ) async throws -> AIResponse {
+        try Task.checkCancellation()
         let (modelURL, descriptor) = try await verifiedInstalledModel()
         let bounded = try AISafetyPolicy.validatedMessages(messages, budget: effectiveBudget)
 
@@ -223,6 +423,7 @@ public struct LocalDownloadedModelAIBackend: AIBackend {
             instructions: instructions,
             prompt: prompt
         )
+        try Task.checkCancellation()
         return AIResponse(text: text)
     }
 
@@ -230,6 +431,7 @@ public struct LocalDownloadedModelAIBackend: AIBackend {
         _ action: AIShortcutAction,
         on text: String
     ) async throws -> AIResponse {
+        try Task.checkCancellation()
         let (modelURL, descriptor) = try await verifiedInstalledModel()
         let bounded = try AISafetyPolicy.validatedMessages(
             [AIMessage(role: .user, content: text)],
@@ -250,6 +452,7 @@ public struct LocalDownloadedModelAIBackend: AIBackend {
             instructions: instructions,
             prompt: prompt
         )
+        try Task.checkCancellation()
         return AIResponse(text: result)
     }
 

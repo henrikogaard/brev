@@ -16074,6 +16074,17 @@
           }
         }
       }
+    },
+    "Download this model in Local Models below before enabling it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last ned denne modellen i Lokale modeller nedenfor før du aktiverer den."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

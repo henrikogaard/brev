@@ -12,6 +12,7 @@
 
 @testable import BrevAI
 import CryptoKit
+import Darwin
 import Foundation
 import Testing
 
@@ -107,6 +108,16 @@ struct LocalModelDownloadAndBackendTests {
             #expect(model.hasValidHTTPSDownloadURL)
             #expect(model.downloadURL.scheme == "https")
             #expect(LocalModelDescriptor.isValidSHA256Hex(model.sha256Hex))
+            // Curated upstream URLs must pin an immutable 40-char commit revision, never mutable /resolve/main/.
+            #expect(!model.downloadURL.path.contains("/resolve/main/"))
+            let components = model.downloadURL.pathComponents
+            let resolveIndex = components.firstIndex(of: "resolve")
+            #expect(resolveIndex != nil)
+            if let resolveIndex, components.indices.contains(resolveIndex + 1) {
+                let revision = components[resolveIndex + 1]
+                #expect(revision.count == 40)
+                #expect(revision.utf8.allSatisfy { ($0 >= 48 && $0 <= 57) || ($0 >= 97 && $0 <= 102) })
+            }
         }
     }
 
@@ -543,6 +554,178 @@ struct LocalModelDownloadAndBackendTests {
         #expect(overrideBackend.transparencyLabel == OnDeviceAIPlatformLabel.transparencyLabel)
     }
 
+    @Test("Startup cleans up abandoned .part staging files while leaving locked active staging files intact")
+    func startupCleansAbandonedPartFilesOnly() async throws {
+        let tempRoot = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let abandonedDir = tempRoot.appendingPathComponent("abandoned-model", isDirectory: true)
+        let activeDir = tempRoot.appendingPathComponent("active-model", isDirectory: true)
+        try FileManager.default.createDirectory(at: abandonedDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: activeDir, withIntermediateDirectories: true)
+
+        let abandonedPart = abandonedDir.appendingPathComponent("abandoned.gguf.part")
+        try Data("stale-partial-bytes".utf8).write(to: abandonedPart)
+
+        let lockedPart = activeDir.appendingPathComponent("active.gguf.part")
+        let fd = open(lockedPart.path, O_RDWR | O_CREAT | O_TRUNC, 0o600)
+        #expect(fd >= 0)
+        #expect(flock(fd, LOCK_EX | LOCK_NB) == 0)
+        defer {
+            _ = flock(fd, LOCK_UN)
+            close(fd)
+        }
+
+        _ = LocalModelDownloadManager(storageDirectory: tempRoot, catalog: [])
+
+        #expect(!FileManager.default.fileExists(atPath: abandonedPart.path))
+        #expect(FileManager.default.fileExists(atPath: lockedPart.path))
+    }
+
+    @Test("Platform capability reports macOS runtime support and localized unsupported copy")
+    func platformCapabilityReporting() {
+        #if os(macOS)
+        #expect(DefaultLocalModelInferenceRuntime.isPlatformSupported)
+        #else
+        #expect(!DefaultLocalModelInferenceRuntime.isPlatformSupported)
+        #endif
+        #expect(!DefaultLocalModelInferenceRuntime.platformUnsupportedMessage.isEmpty)
+    }
+
+    #if os(macOS)
+    @Test("Subprocess drains >128 KiB on stdout and stderr concurrently without deadlocking")
+    func subprocessDrainsLargeStdoutAndStderrWithoutDeadlock() async throws {
+        let tempRoot = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let scriptURL = try Self.makeExecutableScript(
+            in: tempRoot,
+            name: "large-output.sh",
+            body: """
+            #!/bin/sh
+            # Emit >160 KiB to stderr and >160 KiB to stdout simultaneously to exceed macOS 64 KiB pipe buffers.
+            awk 'BEGIN { for (i = 0; i < 4096; i++) printf "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE\\n" }' >&2
+            awk 'BEGIN { for (i = 0; i < 4096; i++) printf "OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO\\n" }'
+            """
+        )
+
+        let descriptor = Self.makeDescriptor(id: "pipe-test", payload: Data("w".utf8))
+        let runtime = DefaultLocalModelInferenceRuntime(executableSearchPaths: [scriptURL.path])
+        let output = try await runtime.generate(
+            modelURL: tempRoot.appendingPathComponent("model.gguf"),
+            descriptor: descriptor,
+            instructions: "System rules",
+            prompt: "Mail text"
+        )
+        #expect(output.utf8.count > 131_072)
+        #expect(output.hasPrefix("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO"))
+    }
+
+    @Test("Cancelling Swift Task terminates subprocess promptly and throws CancellationError")
+    func cancellingTaskTerminatesSubprocessAndThrowsCancellationError() async throws {
+        let tempRoot = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let scriptURL = try Self.makeExecutableScript(
+            in: tempRoot,
+            name: "slow-model.sh",
+            body: """
+            #!/bin/sh
+            sleep 30
+            echo "STALE_OUTPUT_SHOULD_NEVER_RETURN"
+            """
+        )
+
+        let descriptor = Self.makeDescriptor(id: "cancel-proc", payload: Data("w".utf8))
+        let runtime = DefaultLocalModelInferenceRuntime(executableSearchPaths: [scriptURL.path])
+        let startedAt = Date()
+
+        let generationTask = Task {
+            try await runtime.generate(
+                modelURL: tempRoot.appendingPathComponent("model.gguf"),
+                descriptor: descriptor,
+                instructions: "System rules",
+                prompt: "Mail text"
+            )
+        }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        generationTask.cancel()
+
+        do {
+            _ = try await generationTask.value
+            Issue.record("Expected CancellationError when cancelling local inference task")
+        } catch is CancellationError {
+            #expect(Date().timeIntervalSince(startedAt) < 5.0)
+        } catch {
+            Issue.record("Expected CancellationError, got \(error)")
+        }
+    }
+
+    @Test("Subprocess passes prompt via private 0600 files (never CLI arguments) and cleans them up")
+    func subprocessKeepsMailTextOutOfCLIArgumentsAndCleansTempFiles() async throws {
+        let tempRoot = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let secretInstruction = "SECRET_SYSTEM_INSTRUCTION_TOKEN_98765"
+        let secretMail = "CONFIDENTIAL_MAIL_BODY_TOKEN_12345"
+        let scriptURL = try Self.makeExecutableScript(
+            in: tempRoot,
+            name: "inspect-args.sh",
+            body: """
+            #!/bin/sh
+            SYS_FILE=""
+            PROMPT_FILE=""
+            PREV=""
+            for arg in "$@"; do
+                if [ "$PREV" = "--system-prompt-file" ]; then
+                    SYS_FILE="$arg"
+                elif [ "$PREV" = "-f" ]; then
+                    PROMPT_FILE="$arg"
+                fi
+                PREV="$arg"
+            done
+            echo "ARGS:$*"
+            echo "SYS_PATH:$SYS_FILE"
+            echo "PROMPT_PATH:$PROMPT_FILE"
+            echo "SYS_PERM:$(stat -f %Lp "$SYS_FILE")"
+            echo "PROMPT_PERM:$(stat -f %Lp "$PROMPT_FILE")"
+            echo "SYS_CONTENT:$(cat "$SYS_FILE")"
+            echo "PROMPT_CONTENT:$(cat "$PROMPT_FILE")"
+            """
+        )
+
+        let descriptor = Self.makeDescriptor(id: "args-check", payload: Data("w".utf8))
+        let runtime = DefaultLocalModelInferenceRuntime(executableSearchPaths: [scriptURL.path])
+        let output = try await runtime.generate(
+            modelURL: tempRoot.appendingPathComponent("model.gguf"),
+            descriptor: descriptor,
+            instructions: secretInstruction,
+            prompt: secretMail
+        )
+
+        let lines = Dictionary(uniqueKeysWithValues: output.split(separator: "\n").compactMap { line -> (String, String)? in
+            guard let colon = line.firstIndex(of: ":") else { return nil }
+            let key = String(line[..<colon])
+            let value = String(line[line.index(after: colon)...])
+            return (key, value)
+        })
+
+        let argsLine = try #require(lines["ARGS"])
+        #expect(!argsLine.contains(secretInstruction))
+        #expect(!argsLine.contains(secretMail))
+        #expect(lines["SYS_PERM"] == "600")
+        #expect(lines["PROMPT_PERM"] == "600")
+        #expect(lines["SYS_CONTENT"] == secretInstruction)
+        #expect(lines["PROMPT_CONTENT"] == secretMail)
+
+        let sysPath = try #require(lines["SYS_PATH"])
+        let promptPath = try #require(lines["PROMPT_PATH"])
+        #expect(!FileManager.default.fileExists(atPath: sysPath))
+        #expect(!FileManager.default.fileExists(atPath: promptPath))
+    }
+    #endif
+
     @Test("Downloaded local model strings have Norwegian catalog translations")
     func norwegianCatalogCoverage() throws {
         let catalogURL = URL(fileURLWithPath: #filePath)
@@ -558,10 +741,20 @@ struct LocalModelDownloadAndBackendTests {
             "On this Mac (download a model)",
             "On this iPhone (download a model)",
             "On this iPad (download a model)",
+            "Balanced multilingual drafting, rewriting, and thread summaries.",
+            "Fast everyday replies, tone adjustments, and concise summaries.",
+            "Strong structured reasoning for longer mail threads and action extraction.",
             "Download a local model in Settings before running on-device AI.",
+            "Downloaded local models currently require a Mac. Use Apple Intelligence or a configured provider on this device.",
             "The downloaded model file failed SHA-256 verification and was removed.",
             "Model downloads require an HTTPS URL.",
-            "The model download was cancelled."
+            "The model download was cancelled.",
+            "Unexpected non-HTTP response.",
+            "Invalid expected SHA-256 digest in catalog.",
+            "Could not create temporary download file.",
+            "Could not lock temporary download file.",
+            "Could not prepare private temporary prompt files for local inference.",
+            "exit status %lld"
         ] {
             let entry = try #require(strings[key] as? [String: Any], "Missing BrevAI key: \(key)")
             let nb = (entry["localizations"] as? [String: Any])?["nb"] as? [String: Any]
@@ -576,6 +769,19 @@ struct LocalModelDownloadAndBackendTests {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
+
+    #if os(macOS)
+    private static func makeExecutableScript(
+        in directory: URL,
+        name: String,
+        body: String
+    ) throws -> URL {
+        let scriptURL = directory.appendingPathComponent(name, isDirectory: false)
+        try Data(body.utf8).write(to: scriptURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+        return scriptURL
+    }
+    #endif
 
     private static func makeDescriptor(
         id: String,

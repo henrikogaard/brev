@@ -331,6 +331,37 @@ enum AIProviderSettingsError: Error, LocalizedError, Sendable {
     }
 }
 
+/// Evaluates platform and installation gates before saving a provider draft in Settings.
+enum AIProviderEditorValidation {
+    static func blockingReason(
+        for draft: AIProviderSettingsDraft,
+        appleIntelligenceAvailability: AppleIntelligenceAvailability,
+        isLocalModelPlatformSupported: Bool,
+        installedLocalModelIDs: Set<String>
+    ) -> String? {
+        switch draft.kind {
+        case .appleIntelligence:
+            return appleIntelligenceAvailability.isSelectable
+                ? nil
+                : appleIntelligenceAvailability.settingsStatusMessage
+        case .onDeviceDownloadedModel:
+            guard draft.isEnabled else { return nil }
+            if !isLocalModelPlatformSupported {
+                return DefaultLocalModelInferenceRuntime.platformUnsupportedMessage
+            }
+            if !installedLocalModelIDs.contains(draft.modelID) {
+                return String(
+                    localized: "Download this model in Local Models below before enabling it.",
+                    bundle: .module
+                )
+            }
+            return nil
+        case .openAICompatible, .ollamaLocal, .customOpenAICompatible:
+            return nil
+        }
+    }
+}
+
 extension AIProviderKind {
     var settingsDisplayName: String {
         switch self {

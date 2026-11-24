@@ -332,6 +332,148 @@ struct AIProviderSettingsTests {
         #expect(edited.displayName == AIProviderKind.onDeviceDownloadedModel.settingsDisplayName)
     }
 
+    @Test("Editor validation blocks enabling an uninstalled local model and allows installed or disabled drafts")
+    func editorValidationBlocksUninstalledLocalModel() {
+        var enabledDraft = AIProviderSettingsDraft.new(kind: .onDeviceDownloadedModel)
+        enabledDraft.isEnabled = true
+
+        // Blocked when weights are not yet downloaded.
+        let missingWeightsReason = AIProviderEditorValidation.blockingReason(
+            for: enabledDraft,
+            appleIntelligenceAvailability: .available,
+            isLocalModelPlatformSupported: true,
+            installedLocalModelIDs: []
+        )
+        #expect(missingWeightsReason != nil)
+        #expect(missingWeightsReason?.contains("Local Models") == true)
+
+        // Blocked on unsupported platforms (e.g. iOS).
+        let unsupportedPlatformReason = AIProviderEditorValidation.blockingReason(
+            for: enabledDraft,
+            appleIntelligenceAvailability: .available,
+            isLocalModelPlatformSupported: false,
+            installedLocalModelIDs: [enabledDraft.modelID]
+        )
+        #expect(unsupportedPlatformReason == DefaultLocalModelInferenceRuntime.platformUnsupportedMessage)
+
+        // Allowed once installed on a supported platform.
+        #expect(
+            AIProviderEditorValidation.blockingReason(
+                for: enabledDraft,
+                appleIntelligenceAvailability: .available,
+                isLocalModelPlatformSupported: true,
+                installedLocalModelIDs: [enabledDraft.modelID]
+            ) == nil
+        )
+
+        // Saving a disabled draft remains allowed even if weights were deleted.
+        var disabledDraft = enabledDraft
+        disabledDraft.isEnabled = false
+        #expect(
+            AIProviderEditorValidation.blockingReason(
+                for: disabledDraft,
+                appleIntelligenceAvailability: .available,
+                isLocalModelPlatformSupported: true,
+                installedLocalModelIDs: []
+            ) == nil
+        )
+    }
+
+    @Test("Local model row action policy gates Download and Use model on platform support while keeping Delete enabled")
+    func localModelRowActionPolicyGatesUnsupportedPlatforms() {
+        let installedState = LocalModelDownloadState.installed(
+            installedAt: Date(timeIntervalSince1970: 1_760_000_000),
+            fileSizeBytes: 1024
+        )
+
+        let unsupportedNotDownloaded = LocalModelRowActionPolicy(
+            state: .notDownloaded,
+            isPlatformSupported: false,
+            isActive: false
+        )
+        #expect(!unsupportedNotDownloaded.canDownload)
+        #expect(!unsupportedNotDownloaded.canUseModel)
+        #expect(!unsupportedNotDownloaded.canDelete)
+
+        let unsupportedInstalled = LocalModelRowActionPolicy(
+            state: installedState,
+            isPlatformSupported: false,
+            isActive: false
+        )
+        #expect(!unsupportedInstalled.canDownload)
+        #expect(!unsupportedInstalled.canUseModel)
+        #expect(unsupportedInstalled.canDelete)
+
+        let supportedInstalled = LocalModelRowActionPolicy(
+            state: installedState,
+            isPlatformSupported: true,
+            isActive: false
+        )
+        #expect(!supportedInstalled.canDownload)
+        #expect(supportedInstalled.canUseModel)
+        #expect(supportedInstalled.canDelete)
+    }
+
+    @Test("External provider refresh preserves unsaved new and dirty editor drafts")
+    func externalRefreshPreservesUnsavedDrafts() throws {
+        let hosted = try #require(AIProviderConfiguration(
+            id: AIProviderID("hosted-1"),
+            kind: .openAICompatible,
+            displayName: "OpenAI",
+            endpointURL: URL(string: "https://api.openai.com/v1"),
+            modelID: "gpt-4.1-mini",
+            isEnabled: true,
+            isDefault: false,
+            assignedAccountID: nil
+        ))
+        let localModel = AIProviderConfiguration.onDeviceDownloadedModel(isEnabled: true, isDefault: true)
+        let updatedList = [hosted, localModel]
+
+        // 1. Adding a brand-new unsaved provider: keep selection nil and do not reload draft.
+        let newDraft = AIProviderSettingsDraft.new(kind: .customOpenAICompatible)
+        let addOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: true,
+            selectedProviderID: nil,
+            currentDraft: newDraft,
+            baselineDraft: newDraft,
+            updatedConfigurations: updatedList
+        )
+        #expect(addOutcome == .init(selectedProviderID: nil, shouldReloadDraft: false, shouldExitEditing: false))
+
+        // 2. Editing an existing provider with unsaved changes: keep selection and do not overwrite draft.
+        let baseline = AIProviderSettingsDraft(configuration: hosted, hasSavedAPIKey: true)
+        var dirty = baseline
+        dirty.displayName = "Unsaved Work Name"
+        let dirtyOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: true,
+            selectedProviderID: hosted.id,
+            currentDraft: dirty,
+            baselineDraft: baseline,
+            updatedConfigurations: updatedList
+        )
+        #expect(dirtyOutcome == .init(selectedProviderID: hosted.id, shouldReloadDraft: false, shouldExitEditing: false))
+
+        // 3. Editing an unchanged provider: stay on it and reload updated metadata.
+        let cleanOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: true,
+            selectedProviderID: hosted.id,
+            currentDraft: baseline,
+            baselineDraft: baseline,
+            updatedConfigurations: updatedList
+        )
+        #expect(cleanOutcome == .init(selectedProviderID: hosted.id, shouldReloadDraft: true, shouldExitEditing: false))
+
+        // 4. Edited provider was deleted externally: fall back to the remaining default provider.
+        let deletedOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: true,
+            selectedProviderID: AIProviderID("removed-id"),
+            currentDraft: dirty,
+            baselineDraft: baseline,
+            updatedConfigurations: [localModel]
+        )
+        #expect(deletedOutcome == .init(selectedProviderID: localModel.id, shouldReloadDraft: true, shouldExitEditing: false))
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "AIProviderSettingsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

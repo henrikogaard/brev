@@ -67,6 +67,17 @@
         }
       }
     },
+    "Balanced multilingual drafting, rewriting, and thread summaries.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Balansert flerspråklig utkastskriving, omskriving og trådsammendrag."
+          }
+        }
+      }
+    },
     "Blocked a non-HTTPS or disallowed redirect while downloading the model.": {
       "extractionState": "manual",
       "localizations": {
@@ -89,6 +100,17 @@
         }
       }
     },
+    "Could not create temporary download file.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke opprette midlertidig nedlastingsfil."
+          }
+        }
+      }
+    },
     "Could not download the local model: %@": {
       "extractionState": "manual",
       "localizations": {
@@ -96,6 +118,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kunne ikke laste ned den lokale modellen: %@"
+          }
+        }
+      }
+    },
+    "Could not lock temporary download file.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke låse midlertidig nedlastingsfil."
+          }
+        }
+      }
+    },
+    "Could not prepare private temporary prompt files for local inference.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke klargjøre private midlertidige ledetekstfiler for lokal inferens."
           }
         }
       }
@@ -133,6 +177,17 @@
         }
       }
     },
+    "Downloaded local models currently require a Mac. Use Apple Intelligence or a configured provider on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nedlastede lokale modeller krever for øyeblikket en Mac. Bruk Apple Intelligence eller en konfigurert leverandør på denne enheten."
+          }
+        }
+      }
+    },
     "Enter a model ID.": {
       "extractionState": "manual",
       "localizations": {
@@ -162,6 +217,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Skriv inn en http- eller https-endepunkts-URL."
+          }
+        }
+      }
+    },
+    "Fast everyday replies, tone adjustments, and concise summaries.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Raske hverdagssvar, tonejusteringer og konsise sammendrag."
+          }
+        }
+      }
+    },
+    "Invalid expected SHA-256 digest in catalog.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ugyldig forventet SHA-256-kontrollsum i katalogen."
           }
         }
       }
@@ -441,6 +518,17 @@
         }
       }
     },
+    "Strong structured reasoning for longer mail threads and action extraction.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sterk strukturert resonnering for lengre e-posttråder og uttrekk av oppgaver."
+          }
+        }
+      }
+    },
     "The content was filtered by the AI provider.": {
       "extractionState": "manual",
       "localizations": {
@@ -573,6 +661,17 @@
         }
       }
     },
+    "Unexpected non-HTTP response.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uventet ikke-HTTP-svar."
+          }
+        }
+      }
+    },
     "Urgent": {
       "extractionState": "manual",
       "localizations": {
@@ -591,6 +690,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "AI-forespørselen din behandles av kontoens leverandør og brukes som standard ikke til modelltrening."
+          }
+        }
+      }
+    },
+    "exit status %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "avslutningsstatus %lld"
           }
         }
       }

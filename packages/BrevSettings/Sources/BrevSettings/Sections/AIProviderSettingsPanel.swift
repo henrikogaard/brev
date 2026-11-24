@@ -19,8 +19,10 @@ import SwiftUI
 struct AIProviderSettingsPanel: View {
     @Environment(\.brevTheme) private var theme
     @State private var draft = AIProviderSettingsDraft.new(kind: .openAICompatible)
+    @State private var baselineDraft: AIProviderSettingsDraft?
     @State private var configurations: [AIProviderConfiguration] = []
     @State private var selectedProviderID: AIProviderID?
+    @State private var installedLocalModelIDs: Set<String> = []
     @State private var hasLoaded = false
     @State private var isEditingProvider = false
     @State private var isWorking = false
@@ -30,6 +32,8 @@ struct AIProviderSettingsPanel: View {
     private let secretStore: any AIProviderSecretStore
     private let accounts: [BrevAccount]
     private let appleIntelligenceAvailability: AppleIntelligenceAvailability
+    private let localModelDownloadManager: LocalModelDownloadManager
+    private let isLocalModelPlatformSupported: Bool
     private let refreshRevision: Int
     private let onProviderConfigurationChanged: () async -> Void
 
@@ -38,6 +42,8 @@ struct AIProviderSettingsPanel: View {
         secretStore: any AIProviderSecretStore,
         accounts: [BrevAccount] = [],
         appleIntelligenceAvailability: AppleIntelligenceAvailability = .current(),
+        localModelDownloadManager: LocalModelDownloadManager = .shared,
+        isLocalModelPlatformSupported: Bool = DefaultLocalModelInferenceRuntime.isPlatformSupported,
         refreshRevision: Int = 0,
         onProviderConfigurationChanged: @escaping () async -> Void = {}
     ) {
@@ -45,6 +51,8 @@ struct AIProviderSettingsPanel: View {
         self.secretStore = secretStore
         self.accounts = accounts
         self.appleIntelligenceAvailability = appleIntelligenceAvailability
+        self.localModelDownloadManager = localModelDownloadManager
+        self.isLocalModelPlatformSupported = isLocalModelPlatformSupported
         self.refreshRevision = refreshRevision
         self.onProviderConfigurationChanged = onProviderConfigurationChanged
     }
@@ -61,11 +69,16 @@ struct AIProviderSettingsPanel: View {
             }
             .task {
                 await loadDraftIfNeeded()
+                await refreshInstalledLocalModels()
             }
             .onChange(of: refreshRevision) { _, _ in
                 Task {
-                    refreshConfigurations(selecting: nil)
-                    await loadSelectedDraft()
+                    await handleExternalRefresh()
+                }
+            }
+            .onChange(of: isEditingProvider) { _, editing in
+                if editing {
+                    Task { await refreshInstalledLocalModels() }
                 }
             }
             .onChange(of: selectedProviderID) { _, providerID in
@@ -262,6 +275,13 @@ struct AIProviderSettingsPanel: View {
                         Text(model.displayName).tag(model.id)
                     }
                 }
+                if let blockingReason = editorBlockingReason {
+                    SettingsInfoCallout(
+                        symbolName: "exclamationmark.triangle",
+                        message: blockingReason,
+                        tone: .warning
+                    )
+                }
             } else if !appleIntelligenceAvailability.isSelectable {
                 SettingsInfoCallout(
                     symbolName: "exclamationmark.triangle",
@@ -448,6 +468,15 @@ struct AIProviderSettingsPanel: View {
         }
     }
 
+    private var editorBlockingReason: String? {
+        AIProviderEditorValidation.blockingReason(
+            for: draft,
+            appleIntelligenceAvailability: appleIntelligenceAvailability,
+            isLocalModelPlatformSupported: isLocalModelPlatformSupported,
+            installedLocalModelIDs: installedLocalModelIDs
+        )
+    }
+
     private var saveButton: some View {
         SettingsButton(String(localized: "Save provider", bundle: .module)) {
             Task { await saveDraft() }
@@ -455,7 +484,7 @@ struct AIProviderSettingsPanel: View {
         .disabled(
             isWorking
                 || !draft.validationIssues.isEmpty
-                || (draft.kind == .appleIntelligence && !appleIntelligenceAvailability.isSelectable)
+                || editorBlockingReason != nil
         )
     }
 
@@ -528,7 +557,9 @@ struct AIProviderSettingsPanel: View {
 
     private func beginAddingProvider() {
         selectedProviderID = nil
-        draft = .new(kind: .openAICompatible)
+        let newDraft = AIProviderSettingsDraft.new(kind: .openAICompatible)
+        draft = newDraft
+        baselineDraft = newDraft
         statusMessage = nil
         isEditingProvider = true
     }
@@ -554,11 +585,40 @@ struct AIProviderSettingsPanel: View {
 
     @MainActor
     private func loadSelectedDraft() async {
-        draft = await AIProviderSettingsPersistence.loadDraft(
+        let loaded = await AIProviderSettingsPersistence.loadDraft(
             providerID: selectedProviderID,
             settingsStore: settingsStore,
             secretStore: secretStore
         )
+        draft = loaded
+        baselineDraft = loaded
+    }
+
+    @MainActor
+    private func refreshInstalledLocalModels() async {
+        let installed = await localModelDownloadManager.installedModels()
+        installedLocalModelIDs = Set(installed.map(\.id))
+    }
+
+    @MainActor
+    private func handleExternalRefresh() async {
+        await refreshInstalledLocalModels()
+        let updatedConfigurations = (try? settingsStore.aiProviderConfigurations()) ?? []
+        let outcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: isEditingProvider,
+            selectedProviderID: selectedProviderID,
+            currentDraft: draft,
+            baselineDraft: baselineDraft,
+            updatedConfigurations: updatedConfigurations
+        )
+        configurations = updatedConfigurations
+        selectedProviderID = outcome.selectedProviderID
+        if outcome.shouldExitEditing {
+            isEditingProvider = false
+        }
+        if outcome.shouldReloadDraft {
+            await loadSelectedDraft()
+        }
     }
 
     @MainActor
@@ -589,7 +649,9 @@ struct AIProviderSettingsPanel: View {
                 settingsStore: settingsStore,
                 secretStore: secretStore
             )
-            draft = AIProviderSettingsDraft(configuration: saved, hasSavedAPIKey: false)
+            let savedDraft = AIProviderSettingsDraft(configuration: saved, hasSavedAPIKey: false)
+            draft = savedDraft
+            baselineDraft = savedDraft
             refreshConfigurations(selecting: saved.id)
             await onProviderConfigurationChanged()
             isEditingProvider = false
@@ -610,6 +672,14 @@ struct AIProviderSettingsPanel: View {
 
     @MainActor
     private func saveDraft() async {
+        await refreshInstalledLocalModels()
+        if let blockingReason = editorBlockingReason {
+            statusMessage = ProviderStatusMessage(
+                message: blockingReason,
+                tone: .warning
+            )
+            return
+        }
         isWorking = true
         defer { isWorking = false }
         do {
@@ -620,10 +690,12 @@ struct AIProviderSettingsPanel: View {
             )
             let hasSavedKey = saved.requiresAPIKey
                 && (draft.hasSavedAPIKey || !draft.pendingAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            draft = AIProviderSettingsDraft(
+            let savedDraft = AIProviderSettingsDraft(
                 configuration: saved,
                 hasSavedAPIKey: hasSavedKey
             )
+            draft = savedDraft
+            baselineDraft = savedDraft
             refreshConfigurations(selecting: saved.id)
             await onProviderConfigurationChanged()
             isEditingProvider = false
@@ -702,13 +774,69 @@ struct AIProviderSettingsPanel: View {
     }
 }
 
-/// Resolves the provider selection after cancelling the Add provider editor.
+/// Resolves the provider selection after cancelling the Add provider editor or refreshing externally.
 enum AIProviderEditorPresentation {
+    struct RefreshOutcome: Equatable {
+        let selectedProviderID: AIProviderID?
+        let shouldReloadDraft: Bool
+        let shouldExitEditing: Bool
+    }
+
     static func selectionAfterCancellingAdd(
         selectedProviderID: AIProviderID?,
         configuredProviderIDs: [AIProviderID]
     ) -> AIProviderID? {
         selectedProviderID ?? configuredProviderIDs.first
+    }
+
+    /// Computes how an external configuration refresh (such as selecting or deleting a local model)
+    /// updates the provider panel without discarding an unsaved open editor draft.
+    static func stateAfterExternalRefresh(
+        isEditingProvider: Bool,
+        selectedProviderID: AIProviderID?,
+        currentDraft: AIProviderSettingsDraft,
+        baselineDraft: AIProviderSettingsDraft?,
+        updatedConfigurations: [AIProviderConfiguration]
+    ) -> RefreshOutcome {
+        let fallbackSelection = updatedConfigurations.first(where: \.isDefault)?.id
+            ?? updatedConfigurations.first?.id
+
+        guard isEditingProvider else {
+            let preserved = selectedProviderID.flatMap { id in
+                updatedConfigurations.contains(where: { $0.id == id }) ? id : nil
+            }
+            return RefreshOutcome(
+                selectedProviderID: preserved ?? fallbackSelection,
+                shouldReloadDraft: true,
+                shouldExitEditing: false
+            )
+        }
+
+        // Adding a new provider: never clobber the unsaved draft.
+        guard let selectedProviderID else {
+            return RefreshOutcome(
+                selectedProviderID: nil,
+                shouldReloadDraft: false,
+                shouldExitEditing: false
+            )
+        }
+
+        // Edited provider was removed externally: fall back cleanly.
+        guard updatedConfigurations.contains(where: { $0.id == selectedProviderID }) else {
+            return RefreshOutcome(
+                selectedProviderID: fallbackSelection,
+                shouldReloadDraft: true,
+                shouldExitEditing: updatedConfigurations.isEmpty
+            )
+        }
+
+        // Edited provider still exists: preserve unsaved changes, reload only if unchanged.
+        let hasUnsavedChanges = baselineDraft.map { currentDraft != $0 } ?? true
+        return RefreshOutcome(
+            selectedProviderID: selectedProviderID,
+            shouldReloadDraft: !hasUnsavedChanges,
+            shouldExitEditing: false
+        )
     }
 }
 
