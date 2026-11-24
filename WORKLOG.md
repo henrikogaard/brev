@@ -1,5 +1,16 @@
 # Worklog
 
+## 2026-11-24 — Agent — Proactive Opt-In On-Device AI (#4)
+
+- Goal: implement opt-in proactive on-device AI summaries and priority triage (`Urgent` / `Needs reply`) restricted strictly to zero-network on-device AI backends on branch `feature/proactive-on-device-ai`.
+- Changes:
+  - `BrevAI`: added `AIBackend.isOnDeviceZeroNetwork` (default `false`; `true` only on `AppleIntelligenceAIBackend`), `AIWriterSettings.proactiveOnDeviceTriageEnabled` (`ai.proactiveOnDeviceTriageEnabled`, default `false`, cleared on `resetConsent()`, keeping `isEnabled: false,` and `ai.enabled` intact), `ThreadTriagePriority`, `ThreadTriageInsight`, `ProactiveTriageRedactor`, `ProactiveTriageResponseParser`, and bounded cancellable LRU actor `ProactiveOnDeviceTriageEngine` (strict privacy gate refusing all non-zero-network backends, Trash/Spam exclusion, sign-in code redaction, bounded concurrency, fingerprint invalidation, immediate cache wipe on opt-out).
+  - `BrevSettings`: added the opt-in **Automatic on-device summaries & priority** toggle and plain-language status note in `AIWriterSection` (disabled when AI is off or when a cloud/BYOK provider is selected), keeping AI settings excluded from `.brevbackup` and iCloud sync.
+  - `BrevMail` + app shells: added `OnDeviceThreadTriageStore` (owned by `AppSession`, cache-only input via `CachedMessageBodyProviding` without network fetches) and themed UI components (`ProactiveTriagePriorityBadge`, `MessageListRowTriageSnippet`, `ProactiveThreadTriageCard`) integrated into `MessageListRow`, `MessageListView`, `UnifiedInboxListView`, `ThreadConversationView`, `BrevMailRootView`, `apps/macOS/Sources/BrevApp.swift`, and `apps/iOS/Sources/BrevApp.swift`.
+  - Localization, docs, & CI: added `en` + `nb` String Catalog entries across `BrevAI`, `BrevSettings`, and `BrevMail`; updated `docs/design/ai-and-agents.md`, `PRIVACY.md`, `CHANGELOG.md`, and registered `ProactiveTriageSnapshotTests` in both the macOS<26 skip list and `snapshot-macos` `-only-testing` in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevAI`, `swift test --package-path packages/BrevSettings`, `swift test --package-path packages/BrevMail`, macOS 26+ `xcodebuild -testLanguage en -testRegion en_US` snapshot suites (`AIOnDeviceSettingsSnapshotTests`, `ProactiveTriageSnapshotTests`, `ThreadHeaderSnapshotTests`), visual inspection of all 4 new light/dark PNG baselines, privacy-audit regex verification, `scripts/format.sh`, and `scripts/lint.sh`.
+- Skipped: live interactive Apple Intelligence (`FoundationModels`) manual QA on a signed `Brev Test (YYYY-MM-DD).app` bundle remains for human QA.
+
 ## 2026-11-24 — Agent — Issue #8 (Trusted-sender remote image tier)
 
 - Goal: implement opt-in **Load remote images for trusted senders** (#8) so users can automatically load remote images from exact normalized email addresses in local Contacts or previously emailed/replied-to recipients without prompting for Contacts permission or making extra network calls, while keeping remote content blocked by default and continuing to strip tracking pixels.

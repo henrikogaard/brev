@@ -73,6 +73,82 @@ struct AIOnDeviceSettingsSnapshotTests {
         )
     }
 
+    @Test("AIWriterSection renders proactive toggle enabled on-device and disabled for cloud BYOK", arguments: ["light", "dark"])
+    func proactiveOnDeviceToggleStates(_ mode: String) throws {
+        guard #available(macOS 26.0, *) else { return }
+
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+
+        let onDeviceSuite = "AIProactiveOnDevice-\(UUID().uuidString)"
+        let onDeviceDefaults = try #require(UserDefaults(suiteName: onDeviceSuite))
+        defer { onDeviceDefaults.removePersistentDomain(forName: onDeviceSuite) }
+        let onDeviceStore = SettingsPersistenceStore(defaults: onDeviceDefaults)
+        onDeviceStore.save(AIWriterSettings(
+            isEnabled: true,
+            consentGiven: true,
+            proactiveOnDeviceTriageEnabled: true
+        ))
+        try onDeviceStore.saveAIProviderConfigurations([
+            AIProviderConfiguration.appleIntelligence(isEnabled: true, isDefault: true)
+        ])
+
+        let cloudSuite = "AIProactiveCloud-\(UUID().uuidString)"
+        let cloudDefaults = try #require(UserDefaults(suiteName: cloudSuite))
+        defer { cloudDefaults.removePersistentDomain(forName: cloudSuite) }
+        let cloudStore = SettingsPersistenceStore(defaults: cloudDefaults)
+        cloudStore.save(AIWriterSettings(
+            isEnabled: true,
+            consentGiven: true,
+            proactiveOnDeviceTriageEnabled: true
+        ))
+        let cloudConfig = try #require(AIProviderConfiguration(
+            id: AIProviderID("openai"),
+            kind: .openAICompatible,
+            displayName: "OpenAI",
+            endpointURL: URL(string: "https://api.openai.com/v1"),
+            modelID: "gpt-4o",
+            isEnabled: true,
+            isDefault: true,
+            assignedAccountID: nil
+        ))
+        try cloudStore.saveAIProviderConfigurations([cloudConfig])
+
+        let combined = VStack(alignment: .leading, spacing: 20) {
+            AIWriterSection(
+                settingsStore: onDeviceStore,
+                providerSecretStore: NoOpSecretStore(),
+                appleIntelligenceAvailability: .available
+            )
+            .frame(height: 280, alignment: .top)
+            .clipped()
+
+            AIWriterSection(
+                settingsStore: cloudStore,
+                providerSecretStore: NoOpSecretStore(),
+                appleIntelligenceAvailability: .available
+            )
+            .frame(height: 292, alignment: .top)
+            .clipped()
+        }
+        .padding(16)
+        .frame(width: 680, height: 616, alignment: .topLeading)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .tint(theme.accent.color)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .environment(\.locale, Locale(identifier: "en_US"))
+        .defaultAppStorage(onDeviceDefaults)
+
+        let host = NSHostingController(rootView: combined)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(
+            of: Self.retinaImage(of: host, size: CGSize(width: 680, height: 616)),
+            as: .image(precision: 0.99),
+            named: "ai-proactive-toggle-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     private static func retinaImage<Content: View>(
         of host: NSHostingController<Content>,
         size: CGSize

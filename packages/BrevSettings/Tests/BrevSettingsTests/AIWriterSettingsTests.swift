@@ -26,6 +26,8 @@ struct AIWriterSettingsTests {
         #expect(settings.isEnabled == false)
         #expect(settings.consentGiven == false)
         #expect(settings.isAvailable == false)
+        #expect(settings.proactiveOnDeviceTriageEnabled == false)
+        #expect(settings.isProactiveOnDeviceTriageAvailable == false)
     }
 
     @Test("enabling AI writer grants consent and saving round trips")
@@ -34,24 +36,57 @@ struct AIWriterSettingsTests {
         var settings = AIWriterSettings.defaults
 
         settings.setAvailable(true)
+        settings.proactiveOnDeviceTriageEnabled = true
         settings.save(to: defaults)
         let restored = AIWriterSettings.load(from: defaults)
 
         #expect(restored.isEnabled)
         #expect(restored.consentGiven)
         #expect(restored.isAvailable)
+        #expect(restored.proactiveOnDeviceTriageEnabled)
+        #expect(restored.isProactiveOnDeviceTriageAvailable)
     }
 
-    @Test("resetting AI writer consent clears both persisted flags")
+    @Test("resetting AI writer consent clears all persisted flags")
     func resettingAIWriterConsentClearsBothPersistedFlags() throws {
         let defaults = try Self.makeDefaults()
-        var settings = AIWriterSettings(isEnabled: true, consentGiven: true)
+        var settings = AIWriterSettings(
+            isEnabled: true,
+            consentGiven: true,
+            proactiveOnDeviceTriageEnabled: true
+        )
 
         settings.resetConsent()
         settings.save(to: defaults)
         let restored = AIWriterSettings.load(from: defaults)
 
         #expect(restored == .defaults)
+        #expect(restored.proactiveOnDeviceTriageEnabled == false)
+    }
+
+    @Test("proactive on-device AI settings strings have Norwegian catalog translations")
+    func proactiveOnDeviceNorwegianCatalogCoverage() throws {
+        let catalogURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/BrevSettings/Resources/Localizable.xcstrings")
+        let data = try Data(contentsOf: catalogURL)
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try #require(json["strings"] as? [String: Any])
+
+        for key in [
+            "Automatic on-device summaries & priority",
+            "Generates short thread summaries and Urgent or Needs reply badges automatically only when an on-device AI provider is active. Never sends mail to cloud providers.",
+            "Turn on AI Writer above and choose an on-device provider to enable automatic summaries.",
+            "Only available when an on-device AI provider is active. Cloud and BYOK providers require an explicit click.",
+            "Runs automatically only for accounts using on-device AI. Accounts with a cloud or BYOK override stay manual."
+        ] {
+            let entry = try #require(strings[key] as? [String: Any], "Missing BrevSettings key: \(key)")
+            let nb = (entry["localizations"] as? [String: Any])?["nb"] as? [String: Any]
+            let unit = nb?["stringUnit"] as? [String: Any]
+            #expect((unit?["value"] as? String)?.isEmpty == false, "Missing nb translation for: \(key)")
+        }
     }
 
     private static func makeDefaults() throws -> UserDefaults {

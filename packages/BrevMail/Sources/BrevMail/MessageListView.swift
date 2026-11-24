@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevAI
 import BrevAvatars
 import BrevBackend
 import BrevDesign
@@ -79,6 +80,8 @@ public struct MessageListView: View {
     /// server, then reload) so a pull behaves like the Refresh command. It returns nil when
     /// the refresh never reached the backend; nil here reloads the cached list only.
     private let onRefresh: (() async -> Bool?)?
+    private let aiBackend: (any AIBackend)?
+    private let triageStore: OnDeviceThreadTriageStore?
 
     @State private var loadedFolderHeaders: [MessageHeader] = []
     @State private var headers: [MessageHeader] = []
@@ -159,6 +162,10 @@ public struct MessageListView: View {
     @AppStorage(MailPinnedMessages.storageKey) private var pinnedMessageIDsRaw = ""
     @AppStorage(LocalRulesSettings.Key.isAutomaticExecutionEnabled)
     private var isAutomaticLocalRulesEnabled = false
+    @AppStorage(AIWriterSettings.Key.isEnabled) private var aiEnabled = false
+    @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
+    @AppStorage(AIWriterSettings.Key.proactiveOnDeviceTriageEnabled)
+    private var proactiveOnDeviceTriageEnabled = false
     @State private var activeInboxCategory: InboxCategory = .all
     @State private var activePeopleUpdatesTab: InboxSplitTab = .people
     @State private var inboxCategoryOverrideRevision = 0
@@ -228,7 +235,9 @@ public struct MessageListView: View {
         onRefresh: (() async -> Bool?)? = nil,
         currentBackendsProvider: (@MainActor () -> [any MailBackend])? = nil,
         sourceSectionsRevisionProvider: (() -> Int)? = nil,
-        isSourceAvailable: ((MailSourceID) -> Bool)? = nil
+        isSourceAvailable: ((MailSourceID) -> Bool)? = nil,
+        aiBackend: (any AIBackend)? = nil,
+        triageStore: OnDeviceThreadTriageStore? = nil
     ) {
         self.navigation = navigation
         _localMessageWorkflowState = localMessageWorkflowState
@@ -254,6 +263,8 @@ public struct MessageListView: View {
         self.currentWorkflowStateProvider = currentWorkflowStateProvider
         self.sourceSectionsRevisionProvider = sourceSectionsRevisionProvider
         self.isSourceAvailable = isSourceAvailable
+        self.aiBackend = aiBackend
+        self.triageStore = triageStore
         if !navigation.hasUserSelectedSearchExecution {
             navigation.searchExecution = MessageListSearchExecutionPolicy.defaultExecution(
                 capabilities: backend.capabilities
@@ -276,6 +287,15 @@ public struct MessageListView: View {
                 guard phase == .active else { return }
                 snoozeWakeScheduleRevision += 1
                 reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            .onChange(of: aiEnabled) { _, newValue in
+                if !newValue { triageStore?.clearAll() }
+            }
+            .onChange(of: proactiveOnDeviceTriageEnabled) { _, newValue in
+                if !newValue { triageStore?.clearAll() }
+            }
+            .task(id: proactiveTriageTaskKey) {
+                scheduleProactiveOnDeviceTriageIfEligible()
             }
             // Not a `.task(id:)`: that also runs on appear, where the `reloadKey` task has
             // already loaded the folder or run the search, and fetched the first page twice.
@@ -1398,6 +1418,67 @@ public struct MessageListView: View {
         #endif
     }
 
+    private var proactiveTriageSettings: AIWriterSettings {
+        AIWriterSettings(
+            isEnabled: aiEnabled,
+            consentGiven: aiConsentGiven,
+            proactiveOnDeviceTriageEnabled: proactiveOnDeviceTriageEnabled
+        )
+    }
+
+    private var proactiveTriageTaskKey: String {
+        let topIDs = headers.prefix(15).map(\.id).joined(separator: ",")
+        return "\(backend.account.id)|\(folder?.id ?? "")|\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(aiBackend?.identifier ?? "")|\(topIDs)"
+    }
+
+    private func threadHeadersForTriage(for header: MessageHeader) -> [MessageHeader] {
+        guard !header.threadID.isEmpty else { return [header] }
+        let matched = headers.filter { $0.threadID == header.threadID }
+        return matched.isEmpty ? [header] : matched
+    }
+
+    private func proactiveTriageInsight(for header: MessageHeader) -> ThreadTriageInsight? {
+        guard proactiveTriageSettings.isProactiveOnDeviceTriageAvailable,
+              let aiBackend,
+              aiBackend.isOnDeviceZeroNetwork,
+              !OnDeviceThreadTriageStore.isExcludedFolder(folder),
+              let triageStore
+        else { return nil }
+        let group = threadHeadersForTriage(for: header)
+        let key = OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: header)
+        let fingerprint = OnDeviceThreadTriageStore.sourceFingerprint(for: group)
+        return triageStore.cachedInsight(for: key, sourceFingerprint: fingerprint)
+    }
+
+    private func scheduleProactiveOnDeviceTriageIfEligible() {
+        guard let triageStore else { return }
+        let settings = proactiveTriageSettings
+        guard settings.isProactiveOnDeviceTriageAvailable else {
+            triageStore.clearAll()
+            return
+        }
+        guard let aiBackend, aiBackend.isOnDeviceZeroNetwork, !OnDeviceThreadTriageStore.isExcludedFolder(folder) else {
+            return
+        }
+        var seenKeys = Set<String>()
+        var groups: [[MessageHeader]] = []
+        for header in headers {
+            let key = OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: header)
+            guard seenKeys.insert(key).inserted else { continue }
+            groups.append(threadHeadersForTriage(for: header))
+            if groups.count >= 15 { break }
+        }
+        triageStore.scheduleVisibleThreads(
+            accountID: backend.account.id,
+            threadGroups: groups,
+            folder: folder,
+            settings: settings,
+            backend: aiBackend,
+            cachedBodyProvider: backend.extensionService(CachedMessageBodyProviding.self),
+            sourceID: sourceID
+        )
+    }
+
     @ViewBuilder
     private func parentMessageRow(
         for header: MessageHeader,
@@ -1432,6 +1513,7 @@ public struct MessageListView: View {
                 accountID: backend.account.id,
                 settings: SignInCodeSettings.load(from: .standard)
             )?.code,
+            triageInsight: proactiveTriageInsight(for: header),
             isBlockedSender: blockedSenderEmailSet.contains(header.from.email.lowercased()),
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,
@@ -4925,6 +5007,9 @@ struct MessageListRow: View {
     /// Ephemeral sign-in code for opted-in accounts (#239, ADR-0088 §7); nil
     /// renders nothing and leaves default row geometry unchanged.
     let signInCode: String?
+    /// Cached zero-network on-device triage insight (opt-in proactive AI); nil
+    /// renders the standard raw snippet with zero layout change.
+    let triageInsight: ThreadTriageInsight?
     let isBlockedSender: Bool
     let hasFollowUp: Bool
     let followUpDue: Bool
@@ -5053,6 +5138,7 @@ struct MessageListRow: View {
         accountDotColor: Color? = nil,
         matchedAttachmentName: String? = nil,
         signInCode: String? = nil,
+        triageInsight: ThreadTriageInsight? = nil,
         isBlockedSender: Bool,
         hasFollowUp: Bool,
         followUpDue: Bool = false,
@@ -5080,6 +5166,7 @@ struct MessageListRow: View {
         self.accountDotColor = accountDotColor
         self.matchedAttachmentName = matchedAttachmentName
         self.signInCode = signInCode
+        self.triageInsight = triageInsight
         self.isBlockedSender = isBlockedSender
         self.hasFollowUp = hasFollowUp
         self.followUpDue = followUpDue
@@ -5177,7 +5264,19 @@ struct MessageListRow: View {
                 if contentPresentation.showsLabelChips {
                     labelChips
                 }
-                if contentPresentation.previewLineCount > 0 {
+                if let triageInsight {
+                    MessageListRowTriageSnippet(
+                        insight: triageInsight,
+                        isSelected: isSelected,
+                        selectionTextColor: selectionPalette.text.color,
+                        selectionDetailColor: selectionPalette.detail.color,
+                        fontFamily: fontFamily,
+                        detailPointSize: detailPointSize,
+                        captionPointSize: metadataPointSize,
+                        previewLineCount: contentPresentation.previewLineCount,
+                        usesAccessibilityLayout: usesAccessibilityLayout
+                    )
+                } else if contentPresentation.previewLineCount > 0 {
                     Text(MessageListPresentation.previewText(from: header.snippet, subject: header.subject))
                         .font(fontFamily.font(size: detailPointSize))
                         .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)

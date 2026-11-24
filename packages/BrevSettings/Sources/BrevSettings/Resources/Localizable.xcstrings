@@ -4253,6 +4253,17 @@
         }
       }
     },
+    "Automatic on-device summaries & priority": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatiske sammendrag og prioritet på enheten"
+          }
+        }
+      }
+    },
     "Enable AI Writer": {
       "extractionState": "manual",
       "localizations": {
@@ -4260,6 +4271,50 @@
           "stringUnit": {
             "state": "translated",
             "value": "Slå på AI-skriver"
+          }
+        }
+      }
+    },
+    "Generates short thread summaries and Urgent or Needs reply badges automatically only when an on-device AI provider is active. Never sends mail to cloud providers.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lager korte trådsammendrag og Haster- eller Trenger svar-merker automatisk bare når en AI-leverandør på enheten er aktiv. Sender aldri e-post til skyleverandører."
+          }
+        }
+      }
+    },
+    "Only available when an on-device AI provider is active. Cloud and BYOK providers require an explicit click.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bare tilgjengelig når en AI-leverandør på enheten er aktiv. Sky- og BYOK-leverandører krever et eksplisitt klikk."
+          }
+        }
+      }
+    },
+    "Runs automatically only for accounts using on-device AI. Accounts with a cloud or BYOK override stay manual.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kjører automatisk bare for kontoer som bruker AI på enheten. Kontoer med sky- eller BYOK-overstyring forblir manuelle."
+          }
+        }
+      }
+    },
+    "Turn on AI Writer above and choose an on-device provider to enable automatic summaries.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå på AI-skriver over og velg en leverandør på enheten for å aktivere automatiske sammendrag."
           }
         }
       }

@@ -66,6 +66,8 @@ public struct ThreadConversationView: View {
     let dateTextProvider: ((MessageHeader) -> String)?
     let readerFooter: AnyView?
     private let aiBackend: (any AIBackend)?
+    private let triageStore: OnDeviceThreadTriageStore?
+    private let initialProactiveTriageInsight: ThreadTriageInsight?
     /// Shared-calendar RSVP reconciliation (#10); nil leaves the
     /// mail-only confirmation unchanged.
     let inviteReconciler: CalendarInviteReconciler?
@@ -88,6 +90,8 @@ public struct ThreadConversationView: View {
     @State private var aiSummaryState: ThreadAISummaryState?
     @AppStorage(AIWriterSettings.Key.isEnabled) private var aiEnabled = false
     @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
+    @AppStorage(AIWriterSettings.Key.proactiveOnDeviceTriageEnabled)
+    private var proactiveOnDeviceTriageEnabled = false
     @AppStorage(MailboxViewPreferenceKey.threadMessageOrder)
     private var threadMessageOrderRaw = MailboxThreadOrder.oldestFirst.rawValue
     @AppStorage(LocalMessageWorkflowStateStorage.storageKey)
@@ -111,6 +115,8 @@ public struct ThreadConversationView: View {
         allFolders: [Folder] = [],
         canFileLocally: Bool = false,
         aiBackend: (any AIBackend)? = nil,
+        triageStore: OnDeviceThreadTriageStore? = nil,
+        initialProactiveTriageInsight: ThreadTriageInsight? = nil,
         preloadedBodies: [MessageHeader.ID: RenderedBody] = [:],
         showsAvatars: Bool = true,
         autoScrollsToExpandedMessage: Bool = true,
@@ -127,6 +133,8 @@ public struct ThreadConversationView: View {
         self.allFolders = allFolders
         self.canFileLocally = canFileLocally
         self.aiBackend = aiBackend
+        self.triageStore = triageStore
+        self.initialProactiveTriageInsight = initialProactiveTriageInsight
         self.preloadedBodies = preloadedBodies
         self.showsAvatars = showsAvatars
         self.autoScrollsToExpandedMessage = autoScrollsToExpandedMessage
@@ -224,6 +232,10 @@ public struct ThreadConversationView: View {
                         )
                         .padding(.horizontal, BrevSpacing.md)
                         .padding(.bottom, BrevSpacing.sm)
+                    } else if let proactiveInsight = activeProactiveTriageInsight {
+                        ProactiveThreadTriageCard(insight: proactiveInsight)
+                            .padding(.horizontal, BrevSpacing.md)
+                            .padding(.bottom, BrevSpacing.sm)
                     }
 
                     LazyVStack(spacing: 0) {
@@ -345,6 +357,15 @@ public struct ThreadConversationView: View {
                             proxy.scrollTo(expandedID, anchor: .top)
                         }
                     }
+                }
+                .onChange(of: aiEnabled) { _, newValue in
+                    if !newValue { triageStore?.clearAll() }
+                }
+                .onChange(of: proactiveOnDeviceTriageEnabled) { _, newValue in
+                    if !newValue { triageStore?.clearAll() }
+                }
+                .task(id: proactiveThreadTriageTaskID) {
+                    await refreshProactiveThreadTriageIfEligible()
                 }
                 .focusedSceneValue(\.mailPrintExportActions, printExportActions)
             #if os(iOS)
@@ -983,11 +1004,70 @@ public struct ThreadConversationView: View {
 
     private var aiSummaryAvailabilityState: ThreadAISummaryAvailabilityState {
         ThreadAISummaryAvailabilityState(
-            settings: AIWriterSettings(isEnabled: aiEnabled, consentGiven: aiConsentGiven),
+            settings: AIWriterSettings(
+                isEnabled: aiEnabled,
+                consentGiven: aiConsentGiven,
+                proactiveOnDeviceTriageEnabled: proactiveOnDeviceTriageEnabled
+            ),
             hasProviderBackend: aiBackend != nil,
             isBusy: isWorkBlocked,
             hasActiveRequest: activeAISummaryRequest != nil,
             messageCount: threadHeaders.count
+        )
+    }
+
+    private var currentThreadFolder: Folder? {
+        guard let folderID = threadHeaders.last?.folderID else { return nil }
+        return allFolders.first { $0.id == folderID }
+    }
+
+    private var proactiveTriageSettings: AIWriterSettings {
+        AIWriterSettings(
+            isEnabled: aiEnabled,
+            consentGiven: aiConsentGiven,
+            proactiveOnDeviceTriageEnabled: proactiveOnDeviceTriageEnabled
+        )
+    }
+
+    private var proactiveThreadTriageTaskID: String {
+        let fingerprint = OnDeviceThreadTriageStore.sourceFingerprint(for: threadHeaders)
+        return "\(backend.account.id)|\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(aiBackend?.identifier ?? "")|\(fingerprint)"
+    }
+
+    private var activeProactiveTriageInsight: ThreadTriageInsight? {
+        guard proactiveTriageSettings.isProactiveOnDeviceTriageAvailable,
+              let aiBackend,
+              aiBackend.isOnDeviceZeroNetwork,
+              !OnDeviceThreadTriageStore.isExcludedFolder(currentThreadFolder),
+              let latest = threadHeaders.last
+        else { return nil }
+        if let initialProactiveTriageInsight {
+            return initialProactiveTriageInsight
+        }
+        guard let triageStore else { return nil }
+        let key = OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: latest)
+        let fingerprint = OnDeviceThreadTriageStore.sourceFingerprint(for: threadHeaders)
+        return triageStore.cachedInsight(for: key, sourceFingerprint: fingerprint)
+    }
+
+    private func refreshProactiveThreadTriageIfEligible() async {
+        guard initialProactiveTriageInsight == nil, let triageStore else { return }
+        let settings = proactiveTriageSettings
+        guard settings.isProactiveOnDeviceTriageAvailable else {
+            triageStore.clearAll()
+            return
+        }
+        guard let aiBackend, aiBackend.isOnDeviceZeroNetwork else { return }
+        let preloadedPlain = preloadedBodies.compactMapValues(\.plainText)
+        _ = await triageStore.triageIfEligible(
+            accountID: backend.account.id,
+            headers: threadHeaders,
+            folder: currentThreadFolder,
+            settings: settings,
+            backend: aiBackend,
+            cachedBodyProvider: backend.extensionService(CachedMessageBodyProviding.self),
+            preloadedPlainTextByID: preloadedPlain,
+            sourceID: sourceID
         )
     }
 

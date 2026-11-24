@@ -673,9 +673,28 @@ provider.
 Manual thread summaries use the same AI consent and destination label.
 When you explicitly choose **Summarize Thread** in a loaded conversation,
 Brev sends only that bounded thread context and the summary prompt to the
-configured AI provider. Brev does not summarize mail in the background,
-send notification content to AI, persist summaries as mailbox metadata,
-or use summaries for training.
+configured AI provider. Brev does not summarize mail in the background with
+cloud or BYOK providers, send notification content to AI, persist summaries as
+mailbox metadata, or use summaries for training.
+
+**Proactive on-device summaries & priority triage (opt-in)**
+
+If you explicitly turn on **Automatic on-device summaries & priority** in
+Settings → Writing → AI Writer (off by default, device-local only, excluded
+from `.brevbackup` and iCloud sync), Brev can automatically generate short
+thread preview summaries and `Urgent` / `Needs reply` badges strictly when
+the account's active AI backend is zero-network on-device (such as Apple
+Intelligence via `FoundationModels`).
+
+- **Zero network egress:** Cloud, BYOK, provider-hosted, and localhost HTTP
+  endpoints are never invoked automatically; accounts using those providers
+  always remain explicit click-only.
+- **Cache-only input:** Proactive triage reads only already-cached local
+  headers and bodies and never initiates mail network fetches.
+- **Safety filters:** Trash and Spam folders are excluded, sign-in codes and
+  verification links are redacted before prompting, and results stay in a
+  bounded in-memory LRU cache that clears immediately when AI or proactive
+  triage is turned off.
 
 Mailbox chat Q&A uses the same consent and provider routing. When you
 explicitly send a question from the AI Sidebar, Brev first runs a

@@ -443,6 +443,7 @@ public struct BrevMailRootView: View {
     private let aiBackend: (any AIBackend)?
     private let aiBackends: [BrevAccount.ID: any AIBackend]
     private let aiBackendsGeneration: Int
+    @State private var onDeviceThreadTriageStore: OnDeviceThreadTriageStore
     private let settingsStore: SettingsPersistenceStore
     private let onSignOut: (() async -> Void)?
     private let onChangeTheme: (BrevTheme) -> Void
@@ -604,6 +605,7 @@ public struct BrevMailRootView: View {
         aiBackend: (any AIBackend)? = nil,
         aiBackends: [BrevAccount.ID: any AIBackend] = [:],
         aiBackendsGeneration: Int = 0,
+        onDeviceThreadTriageStore: OnDeviceThreadTriageStore? = nil,
         settingsStore: SettingsPersistenceStore = .standard,
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
@@ -648,6 +650,7 @@ public struct BrevMailRootView: View {
             self.aiBackends = aiBackends
         }
         self.aiBackendsGeneration = aiBackendsGeneration
+        _onDeviceThreadTriageStore = State(initialValue: onDeviceThreadTriageStore ?? OnDeviceThreadTriageStore())
         self.settingsStore = settingsStore
         let workflowStateData = settingsStore.data(forKey: LocalMessageWorkflowStateStorage.storageKey) ?? Data()
         _localMessageWorkflowStateData = State(initialValue: workflowStateData)
@@ -1524,6 +1527,8 @@ public struct BrevMailRootView: View {
                         isWorkBlocked: isCommandMutationBlocked || isReaderComposeBlocked,
                         allFolders: sourceFolders,
                         canFileLocally: localBackend != nil,
+                        aiBackend: aiBackend(for: owner.account),
+                        triageStore: onDeviceThreadTriageStore,
                         inviteReconciler: inviteReconciler,
                         readerFooter: nil
                     )
@@ -2211,6 +2216,8 @@ public struct BrevMailRootView: View {
                         isWorkBlocked: isCommandMutationBlocked || isReaderComposeBlocked,
                         allFolders: folders,
                         canFileLocally: localBackend != nil,
+                        aiBackend: selectedAIBackend,
+                        triageStore: onDeviceThreadTriageStore,
                         inviteReconciler: inviteReconciler,
                         readerFooter: readerFooter
                     )
@@ -2806,7 +2813,9 @@ public struct BrevMailRootView: View {
                     onRefresh: listPullToRefresh,
                     currentBackendsProvider: { currentBackendsProvider() },
                     sourceSectionsRevisionProvider: { sourceSectionsRevision },
-                    isSourceAvailable: { sourceID in sourceSections.contains { $0.id == sourceID } }
+                    isSourceAvailable: { sourceID in sourceSections.contains { $0.id == sourceID } },
+                    aiBackendsByAccountID: aiBackends,
+                    triageStore: onDeviceThreadTriageStore
                 )
             } else {
                 Group {
@@ -2845,7 +2854,9 @@ public struct BrevMailRootView: View {
                         onRefresh: listPullToRefresh,
                         currentBackendsProvider: { currentBackendsProvider() },
                         sourceSectionsRevisionProvider: { sourceSectionsRevision },
-                        isSourceAvailable: { sourceID in sourceSections.contains { $0.id == sourceID } }
+                        isSourceAvailable: { sourceID in sourceSections.contains { $0.id == sourceID } },
+                        aiBackend: selectedAIBackend,
+                        triageStore: onDeviceThreadTriageStore
                     )
                 }
             }

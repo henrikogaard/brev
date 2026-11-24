@@ -48,6 +48,8 @@ public final class AppSession {
     /// provider identifier stays the same.
     public private(set) var aiBackendsGeneration = 0
     public var aiBackend: (any AIBackend)?
+    /// Session-owned local cache and scheduler for opt-in proactive zero-network on-device triage.
+    public let onDeviceThreadTriageStore = OnDeviceThreadTriageStore()
     public var theme: BrevTheme {
         didSet {
             ThemePreferences.save(theme, defaults: themeDefaults)
@@ -781,6 +783,7 @@ public final class AppSession {
             builtInBackends: builtInAIBackends
         )
         aiBackend = backend.flatMap { aiBackends[$0.account.id] }
+        onDeviceThreadTriageStore.clearAll()
     }
 
     public func signIn(requestInitialMailboxSelection: Bool = true) async {
@@ -1298,6 +1301,7 @@ public final class AppSession {
             canRetrySessionRestore = false
             aiBackends.removeAll()
             builtInAIBackends.removeAll()
+            onDeviceThreadTriageStore.clearAll()
             return
         }
         await signOut(account: account)
@@ -1628,6 +1632,7 @@ public final class AppSession {
         }
         aiBackends[account.id] = nil
         builtInAIBackends[account.id] = nil
+        onDeviceThreadTriageStore.clearAll()
         if backend?.account.id == account.id {
             backend = nil
             aiBackend = nil

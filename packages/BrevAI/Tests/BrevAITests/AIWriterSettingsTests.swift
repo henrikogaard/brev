@@ -25,6 +25,8 @@ struct AIWriterSettingsTests {
         #expect(settings.isEnabled == false)
         #expect(settings.consentGiven == false)
         #expect(settings.isAvailable == false)
+        #expect(settings.proactiveOnDeviceTriageEnabled == false)
+        #expect(settings.isProactiveOnDeviceTriageAvailable == false)
     }
 
     @Test("availability persists through the shared storage keys")
@@ -33,24 +35,33 @@ struct AIWriterSettingsTests {
         var settings = AIWriterSettings.defaults
 
         settings.setAvailable(true)
+        settings.proactiveOnDeviceTriageEnabled = true
         settings.save(to: defaults)
         let restored = AIWriterSettings.load(from: defaults)
 
         #expect(defaults.bool(forKey: AIWriterSettings.Key.isEnabled))
         #expect(defaults.bool(forKey: AIWriterSettings.Key.consentGiven))
+        #expect(defaults.bool(forKey: AIWriterSettings.Key.proactiveOnDeviceTriageEnabled))
         #expect(restored.isAvailable)
+        #expect(restored.proactiveOnDeviceTriageEnabled)
+        #expect(restored.isProactiveOnDeviceTriageAvailable)
     }
 
-    @Test("reset consent clears enabled and consent flags")
+    @Test("reset consent clears enabled, consent, and proactive triage flags")
     func resetConsentClearsEnabledAndConsentFlags() throws {
         let defaults = try Self.makeDefaults()
-        var settings = AIWriterSettings(isEnabled: true, consentGiven: true)
+        var settings = AIWriterSettings(
+            isEnabled: true,
+            consentGiven: true,
+            proactiveOnDeviceTriageEnabled: true
+        )
 
         settings.resetConsent()
         settings.save(to: defaults)
         let restored = AIWriterSettings.load(from: defaults)
 
         #expect(restored == .defaults)
+        #expect(restored.proactiveOnDeviceTriageEnabled == false)
     }
 
     @Test("privacy copy uses provider-hosted defaults")

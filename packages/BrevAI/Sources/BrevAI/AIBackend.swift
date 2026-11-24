@@ -34,6 +34,14 @@ public protocol AIBackend: Sendable {
     /// standard cloud cap.
     var contextBudget: AIBackendContextBudget? { get }
 
+    /// Whether this backend executes strictly on-device with zero network egress.
+    ///
+    /// Only zero-network on-device backends (such as Apple Intelligence via
+    /// `FoundationModels` or future user-downloaded local weights) return `true`.
+    /// Cloud, BYOK, provider-hosted, and localhost HTTP endpoints return `false`
+    /// so proactive background triage fails closed to explicit manual clicks.
+    var isOnDeviceZeroNetwork: Bool { get }
+
     /// Generate a reply or draft from a conversation context with an
     /// optional instruction like "write a polite decline".
     func generateReply(
@@ -55,6 +63,11 @@ public extension AIBackend {
     /// Cloud and external OpenAI-compatible backends keep each surface's default cap.
     var contextBudget: AIBackendContextBudget? {
         nil
+    }
+
+    /// Backends default to non-zero-network so proactive background triage fails closed.
+    var isOnDeviceZeroNetwork: Bool {
+        false
     }
 }
 

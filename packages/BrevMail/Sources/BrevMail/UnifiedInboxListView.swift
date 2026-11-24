@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevAI
 import BrevAvatars
 import BrevBackend
 import BrevDesign
@@ -94,6 +95,8 @@ struct UnifiedInboxListView: View {
     /// Pull-to-refresh handler; the mailbox root passes its full refresh so a pull fetches
     /// from every account. nil reloads the cached list only.
     private let onRefresh: (() async -> Bool?)?
+    private let aiBackendsByAccountID: [BrevAccount.ID: any AIBackend]
+    private let triageStore: OnDeviceThreadTriageStore?
 
     @State private var requestedScope: String?
     @State private var loadedContentKey: String?
@@ -147,6 +150,10 @@ struct UnifiedInboxListView: View {
         InboxClassificationMode.off.rawValue
     @AppStorage(MailboxViewPreferenceKey.groupByThread) private var groupByThread = true
     @AppStorage(MailPinnedMessages.storageKey) private var pinnedMessageIDsRaw = ""
+    @AppStorage(AIWriterSettings.Key.isEnabled) private var aiEnabled = false
+    @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
+    @AppStorage(AIWriterSettings.Key.proactiveOnDeviceTriageEnabled)
+    private var proactiveOnDeviceTriageEnabled = false
     @State private var activeInboxCategory: InboxCategory = .all
     @State private var inboxCategoryOverrideRevision = 0
     @State private var inboxCategoryOverrideStore = InboxCategoryOverrideStore()
@@ -196,7 +203,9 @@ struct UnifiedInboxListView: View {
         onRefresh: (() async -> Bool?)? = nil,
         currentBackendsProvider: (@MainActor () -> [any MailBackend])? = nil,
         sourceSectionsRevisionProvider: (() -> Int)? = nil,
-        isSourceAvailable: ((MailSourceID) -> Bool)? = nil
+        isSourceAvailable: ((MailSourceID) -> Bool)? = nil,
+        aiBackendsByAccountID: [BrevAccount.ID: any AIBackend] = [:],
+        triageStore: OnDeviceThreadTriageStore? = nil
     ) {
         self.navigation = navigation
         _localMessageWorkflowState = localMessageWorkflowState
@@ -225,6 +234,8 @@ struct UnifiedInboxListView: View {
         self.currentBackendsProvider = currentBackendsProvider
         self.sourceSectionsRevisionProvider = sourceSectionsRevisionProvider
         self.isSourceAvailable = isSourceAvailable
+        self.aiBackendsByAccountID = aiBackendsByAccountID
+        self.triageStore = triageStore
         // A smart view *is* a saved filter, so entering one seeds the shared
         // filter with its query. The filter now lives on the navigation state
         // so the macOS toolbar can host the control, which means seeding it
@@ -255,6 +266,77 @@ struct UnifiedInboxListView: View {
         return palette[index].color
     }
 
+    private var unifiedProactiveTriageSettings: AIWriterSettings {
+        AIWriterSettings(
+            isEnabled: aiEnabled,
+            consentGiven: aiConsentGiven,
+            proactiveOnDeviceTriageEnabled: proactiveOnDeviceTriageEnabled
+        )
+    }
+
+    private var unifiedProactiveTriageTaskKey: String {
+        let topIDs = items.prefix(15).map(\.id).joined(separator: ",")
+        let backendIDs = aiBackendsByAccountID
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key):\($0.value.identifier)" }
+            .joined(separator: ",")
+        return "\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(backendIDs)|\(topIDs)"
+    }
+
+    private func threadHeadersForTriage(for item: UnifiedInboxItem) -> [MessageHeader] {
+        guard !item.header.threadID.isEmpty else { return [item.header] }
+        let matched = items
+            .filter { $0.sourceID.accountID == item.sourceID.accountID && $0.header.threadID == item.header.threadID }
+            .map(\.header)
+        return matched.isEmpty ? [item.header] : matched
+    }
+
+    private func proactiveTriageInsight(for item: UnifiedInboxItem) -> ThreadTriageInsight? {
+        guard unifiedProactiveTriageSettings.isProactiveOnDeviceTriageAvailable,
+              let aiBackend = aiBackendsByAccountID[item.sourceID.accountID],
+              aiBackend.isOnDeviceZeroNetwork,
+              !OnDeviceThreadTriageStore.isExcludedFolder(item.folder),
+              let triageStore
+        else { return nil }
+        let group = threadHeadersForTriage(for: item)
+        let key = OnDeviceThreadTriageStore.cacheKey(accountID: item.sourceID.accountID, header: item.header)
+        let fingerprint = OnDeviceThreadTriageStore.sourceFingerprint(for: group)
+        return triageStore.cachedInsight(for: key, sourceFingerprint: fingerprint)
+    }
+
+    private func scheduleUnifiedProactiveTriageIfEligible() {
+        guard let triageStore else { return }
+        let settings = unifiedProactiveTriageSettings
+        guard settings.isProactiveOnDeviceTriageAvailable else {
+            triageStore.clearAll()
+            return
+        }
+        var seenKeys = Set<String>()
+        var scheduled = 0
+        for item in items {
+            guard scheduled < 15 else { break }
+            guard let aiBackend = aiBackendsByAccountID[item.sourceID.accountID],
+                  aiBackend.isOnDeviceZeroNetwork,
+                  !OnDeviceThreadTriageStore.isExcludedFolder(item.folder)
+            else { continue }
+            let key = OnDeviceThreadTriageStore.cacheKey(accountID: item.sourceID.accountID, header: item.header)
+            guard seenKeys.insert(key).inserted else { continue }
+            let group = threadHeadersForTriage(for: item)
+            let ownerBackend = backends.first { $0.account.id == item.sourceID.accountID }
+            triageStore.scheduleVisibleThreads(
+                accountID: item.sourceID.accountID,
+                threadGroups: [group],
+                folder: item.folder,
+                settings: settings,
+                backend: aiBackend,
+                cachedBodyProvider: ownerBackend?.extensionService(CachedMessageBodyProviding.self),
+                sourceID: item.sourceID,
+                maxThreads: 1
+            )
+            scheduled += 1
+        }
+    }
+
     var body: some View {
         workflowObservedContent
             .onChange(of: localMessageWorkflowState) {
@@ -265,6 +347,15 @@ struct UnifiedInboxListView: View {
                 guard phase == .active else { return }
                 snoozeWakeScheduleRevision += 1
                 reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: navigation.selectedMessageID != nil)
+            }
+            .onChange(of: aiEnabled) { _, newValue in
+                if !newValue { triageStore?.clearAll() }
+            }
+            .onChange(of: proactiveOnDeviceTriageEnabled) { _, newValue in
+                if !newValue { triageStore?.clearAll() }
+            }
+            .task(id: unifiedProactiveTriageTaskKey) {
+                scheduleUnifiedProactiveTriageIfEligible()
             }
         #if os(iOS)
             .toolbar { selectionToolbar(visibleItems: presentationSnapshot.visibleItems) }
@@ -1608,6 +1699,7 @@ struct UnifiedInboxListView: View {
                 accountID: item.sourceID.accountID,
                 settings: SignInCodeSettings.load(from: .standard)
             )?.code,
+            triageInsight: proactiveTriageInsight(for: item),
             isBlockedSender: false,
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,

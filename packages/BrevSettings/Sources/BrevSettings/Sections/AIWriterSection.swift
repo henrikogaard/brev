@@ -19,8 +19,7 @@ import SwiftUI
 struct AIWriterSection: View {
     @Environment(\.brevTheme) private var theme
     @State private var settings: AIWriterSettings
-    @State private var configuredProvider: AIProviderConfiguration?
-    @State private var hasNonOnDeviceAccountOverride = false
+    @State private var providerSummary: AIWriterSectionProviderSummary
 
     private let settingsStore: SettingsPersistenceStore
     private let providerSecretStore: any AIProviderSecretStore
@@ -41,6 +40,25 @@ struct AIWriterSection: View {
         self.appleIntelligenceAvailability = appleIntelligenceAvailability
         self.onProviderConfigurationChanged = onProviderConfigurationChanged
         _settings = State(initialValue: settingsStore.aiWriterSettings())
+        _providerSummary = State(
+            initialValue: AIWriterSectionProviderSummary.load(
+                from: settingsStore,
+                accounts: accounts,
+                appleIntelligenceAvailability: appleIntelligenceAvailability
+            )
+        )
+    }
+
+    private var configuredProvider: AIProviderConfiguration? {
+        providerSummary.configuredProvider
+    }
+
+    private var hasNonOnDeviceAccountOverride: Bool {
+        providerSummary.hasNonOnDeviceAccountOverride
+    }
+
+    private var canToggleProactiveOnDeviceTriage: Bool {
+        settings.isAvailable && providerSummary.hasActiveOnDeviceProvider
     }
 
     var body: some View {
@@ -68,6 +86,23 @@ struct AIWriterSection: View {
                     )
 
                     providerStatus
+
+                    SettingsToggleRow(
+                        symbolName: "text.badge.star",
+                        title: String(localized: "Automatic on-device summaries & priority", bundle: .module),
+                        subtitle: String(
+                            localized: "Generates short thread summaries and Urgent or Needs reply badges automatically only when an on-device AI provider is active. Never sends mail to cloud providers.",
+                            bundle: .module
+                        ),
+                        isOn: proactiveOnDeviceBinding
+                    )
+                    .disabled(!canToggleProactiveOnDeviceTriage)
+
+                    if let proactiveStatusNote {
+                        Text(proactiveStatusNote)
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textSecondary.color)
+                    }
                 }
 
                 AIProviderSettingsPanel(
@@ -108,6 +143,41 @@ struct AIWriterSection: View {
                 settingsStore.save(settings)
             }
         )
+    }
+
+    private var proactiveOnDeviceBinding: Binding<Bool> {
+        Binding(
+            get: {
+                canToggleProactiveOnDeviceTriage && settings.proactiveOnDeviceTriageEnabled
+            },
+            set: { newValue in
+                guard canToggleProactiveOnDeviceTriage || !newValue else { return }
+                settings.proactiveOnDeviceTriageEnabled = newValue
+                settingsStore.save(settings)
+            }
+        )
+    }
+
+    private var proactiveStatusNote: String? {
+        if !settings.isAvailable {
+            return String(
+                localized: "Turn on AI Writer above and choose an on-device provider to enable automatic summaries.",
+                bundle: .module
+            )
+        }
+        if !providerSummary.hasActiveOnDeviceProvider {
+            return String(
+                localized: "Only available when an on-device AI provider is active. Cloud and BYOK providers require an explicit click.",
+                bundle: .module
+            )
+        }
+        if hasNonOnDeviceAccountOverride, settings.proactiveOnDeviceTriageEnabled {
+            return String(
+                localized: "Runs automatically only for accounts using on-device AI. Accounts with a cloud or BYOK override stay manual.",
+                bundle: .module
+            )
+        }
+        return nil
     }
 
     @ViewBuilder
@@ -153,8 +223,26 @@ struct AIWriterSection: View {
 
     @MainActor
     private func refreshConfiguredProvider() async {
+        providerSummary = AIWriterSectionProviderSummary.load(
+            from: settingsStore,
+            accounts: accounts,
+            appleIntelligenceAvailability: appleIntelligenceAvailability
+        )
+    }
+}
+
+private struct AIWriterSectionProviderSummary: Equatable {
+    let configuredProvider: AIProviderConfiguration?
+    let hasActiveOnDeviceProvider: Bool
+    let hasNonOnDeviceAccountOverride: Bool
+
+    static func load(
+        from settingsStore: SettingsPersistenceStore,
+        accounts: [BrevAccount],
+        appleIntelligenceAvailability: AppleIntelligenceAvailability
+    ) -> AIWriterSectionProviderSummary {
         let configurations = (try? settingsStore.aiProviderConfigurations()) ?? []
-        configuredProvider = configurations.first(where: \.isDefault) ?? configurations.first
+        let configuredProvider = configurations.first(where: \.isDefault) ?? configurations.first
         let assignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
         let providersByID = Dictionary(uniqueKeysWithValues: configurations.map { ($0.id, $0) })
         let legacyOverrideByAccountID: [String: AIProviderConfiguration] = configurations.reduce(into: [:]) { map, config in
@@ -162,7 +250,8 @@ struct AIWriterSection: View {
             map[accountID] = config
         }
         let allAccountIDs = Set(accounts.map(\.id)).union(legacyOverrideByAccountID.keys)
-        hasNonOnDeviceAccountOverride = allAccountIDs.contains { accountID in
+
+        let hasNonOnDeviceAccountOverride = allAccountIDs.contains { accountID in
             if let assignedProviderID = assignments.providerID(forAccountID: accountID) {
                 guard let provider = providersByID[assignedProviderID] else { return false }
                 return provider.isEnabled && !provider.kind.isOnDevice
@@ -170,5 +259,36 @@ struct AIWriterSection: View {
             guard let legacyProvider = legacyOverrideByAccountID[accountID] else { return false }
             return legacyProvider.isEnabled && !legacyProvider.kind.isOnDevice
         }
+
+        let isDefaultOnDeviceActive: Bool = {
+            guard let configuredProvider,
+                  configuredProvider.isEnabled,
+                  configuredProvider.kind.isOnDevice,
+                  configuredProvider.validationIssues.isEmpty
+            else { return false }
+            if configuredProvider.kind == .appleIntelligence {
+                return appleIntelligenceAvailability.isSelectable
+            }
+            return true
+        }()
+
+        let hasOnDeviceAccountAssignment = allAccountIDs.contains { accountID in
+            guard let assignedProviderID = assignments.providerID(forAccountID: accountID),
+                  let provider = providersByID[assignedProviderID],
+                  provider.isEnabled,
+                  provider.kind.isOnDevice,
+                  provider.validationIssues.isEmpty
+            else { return false }
+            if provider.kind == .appleIntelligence {
+                return appleIntelligenceAvailability.isSelectable
+            }
+            return true
+        }
+
+        return AIWriterSectionProviderSummary(
+            configuredProvider: configuredProvider,
+            hasActiveOnDeviceProvider: isDefaultOnDeviceActive || hasOnDeviceAccountAssignment,
+            hasNonOnDeviceAccountOverride: hasNonOnDeviceAccountOverride
+        )
     }
 }
