@@ -136,5 +136,156 @@ struct SMIMEOutboundMessagePreparerTests {
         CMSDecoderCopySignerStatus(decoder, 0, SecPolicyCreateBasicX509(), false, &signerStatus, &trust, &certVerify)
         #expect(signerStatus == .valid)
     }
+
+    @Test("macOS native CMS preflight rejects incompatible DSA Bcc certificate before any SMTP submission")
+    func macOSPreflightRejectsIncompatibleDSABccCertBeforeAnySMTPSend() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-macos-dsa-preflight-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        func runOpenSSL(_ args: [String]) throws {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/openssl")
+            p.arguments = args
+            let errPipe = Pipe()
+            p.standardError = errPipe
+            try p.run()
+            p.waitUntilExit()
+            if p.terminationStatus != 0 {
+                let err = String(decoding: errPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                throw NSError(domain: "openssl", code: Int(p.terminationStatus), userInfo: [NSLocalizedDescriptionKey: err])
+            }
+        }
+
+        // Generate RSA sender + To cert and an incompatible DSA Bcc cert.
+        let (_, rsaCert) = try loadFixture()
+        let dsaParam = dir.appendingPathComponent("dsa.pem")
+        let dsaKey = dir.appendingPathComponent("dsa.key")
+        let dsaCertURL = dir.appendingPathComponent("dsa.der")
+        try runOpenSSL(["dsaparam", "-out", dsaParam.path, "1024"])
+        try runOpenSSL(["gendsa", "-out", dsaKey.path, dsaParam.path])
+        try runOpenSSL([
+            "req", "-new", "-x509", "-key", dsaKey.path,
+            "-outform", "DER", "-out", dsaCertURL.path,
+            "-days", "1", "-subj", "/CN=DSA-Bcc/emailAddress=dsa-bcc@brev.example"
+        ])
+        let dsaCert = try #require(SecCertificateCreateWithData(nil, Data(contentsOf: dsaCertURL) as CFData))
+
+        struct MultiCertResolver: SMIMEIdentityResolving {
+            let certsByEmail: [String: SecCertificate]
+            func signingIdentity(forSenderEmail email: String) async -> SecIdentity? { nil }
+            func encryptionCertificates(forRecipients emails: [String]) async -> [String: SecCertificate] {
+                var out: [String: SecCertificate] = [:]
+                for email in emails {
+                    let key = OutboundAddressNormalizer.normalize(email)
+                    if let cert = certsByEmail[key] {
+                        out[key] = cert
+                    }
+                }
+                return out
+            }
+        }
+
+        let resolver = MultiCertResolver(certsByEmail: [
+            smimeEmail: rsaCert,
+            "bob@brev.example": rsaCert,
+            "dsa-bcc@brev.example": dsaCert,
+        ])
+        let preparer = SMIMEOutboundMessagePreparer(resolver: resolver, encodingBackend: .platformDefault)
+
+        actor SubmissionCounter {
+            private(set) var count = 0
+            func increment() { count += 1 }
+        }
+        let counter = SubmissionCounter()
+
+        let account = BrevAccount(
+            id: "acct-dsa-preflight",
+            displayName: "Sender",
+            emailAddress: smimeEmail
+        )
+        let config = IMAPAccountConfiguration(
+            accountID: "acct-dsa-preflight",
+            emailAddress: smimeEmail,
+            displayName: "Sender",
+            incoming: MailServerSettings(
+                kind: .imap,
+                host: "imap.brev.example",
+                port: 993,
+                tlsMode: .implicit,
+                authentication: .password
+            ),
+            outgoing: MailServerSettings(
+                kind: .smtp,
+                host: "smtp.brev.example",
+                port: 465,
+                tlsMode: .implicit,
+                authentication: .password
+            ),
+            credentialID: "acct-dsa-preflight"
+        )
+        let credential = MailAccountCredential(
+            incomingUsername: smimeEmail,
+            outgoingUsername: smimeEmail,
+            secret: "test",
+            authentication: .password
+        )
+        let backend = IMAPSMTPBackend(
+            account: account,
+            configuration: config,
+            credential: credential,
+            listFolders: { _, _ in [
+                IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
+                IMAPFolderListing(path: "Sent", displayName: "Sent", delimiter: "/", flags: ["sent"], role: .sent),
+            ] },
+            sendMessage: { _, _, _ in
+                await counter.increment()
+                return SendResult(sentMessageID: "unexpected")
+            },
+            outboundMessagePreparer: preparer
+        )
+        try await backend.connect()
+
+        let draft = Draft(
+            id: "draft-dsa-bcc",
+            to: [Correspondent(email: "bob@brev.example")],
+            bcc: [Correspondent(email: "dsa-bcc@brev.example")],
+            subject: "DSA preflight",
+            htmlBody: "<p>Secret</p>",
+            securityMode: .encrypt
+        )
+
+        await #expect(throws: Error.self) {
+            _ = try await backend.send(draft: draft)
+        }
+        // Fail-closed: preflight probe rejected the DSA Bcc cert BEFORE Bob's envelope was sent.
+        #expect(await counter.count == 0)
+
+        // Meanwhile, a macOS-supported EC P-256 recipient certificate still passes native preflight.
+        let ecKey = dir.appendingPathComponent("ec.key")
+        let ecCertURL = dir.appendingPathComponent("ec.der")
+        try runOpenSSL(["ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", ecKey.path])
+        try runOpenSSL([
+            "req", "-new", "-x509", "-key", ecKey.path,
+            "-outform", "DER", "-out", ecCertURL.path,
+            "-days", "1", "-subj", "/CN=EC-Bcc/emailAddress=ec-bcc@brev.example"
+        ])
+        let ecCert = try #require(SecCertificateCreateWithData(nil, Data(contentsOf: ecCertURL) as CFData))
+        let ecResolver = MultiCertResolver(certsByEmail: [
+            smimeEmail: rsaCert,
+            "bob@brev.example": rsaCert,
+            "ec-bcc@brev.example": ecCert,
+        ])
+        let ecPreparer = SMIMEOutboundMessagePreparer(resolver: ecResolver, encodingBackend: .platformDefault)
+        try await ecPreparer.validate(
+            request: OutboundMessageSecurityRequest(
+                senderEmail: smimeEmail,
+                to: ["bob@brev.example"],
+                bcc: ["ec-bcc@brev.example"],
+                mode: .encrypt
+            )
+        )
+    }
     #endif
 }

@@ -792,9 +792,18 @@ public final class SentMessageLedger: @unchecked Sendable {
         lock.withLock { load(accountID: accountID).contains(draftID) }
     }
 
-    func contains(draftID: String, envelopeKey: String, accountID: BrevAccount.ID) -> Bool {
+    func containsRecipient(
+        draftID: String,
+        contentFingerprint: String,
+        recipientEmail: String,
+        accountID: BrevAccount.ID
+    ) -> Bool {
         contains(
-            draftID: Self.envelopeLedgerID(draftID: draftID, envelopeKey: envelopeKey),
+            draftID: Self.recipientLedgerID(
+                draftID: draftID,
+                contentFingerprint: contentFingerprint,
+                recipientEmail: recipientEmail
+            ),
             accountID: accountID
         )
     }
@@ -811,15 +820,37 @@ public final class SentMessageLedger: @unchecked Sendable {
         }
     }
 
-    func record(draftID: String, envelopeKey: String, accountID: BrevAccount.ID) {
-        record(
-            draftID: Self.envelopeLedgerID(draftID: draftID, envelopeKey: envelopeKey),
-            accountID: accountID
-        )
+    func recordRecipients(
+        _ recipientEmails: [String],
+        draftID: String,
+        contentFingerprint: String,
+        accountID: BrevAccount.ID
+    ) {
+        guard !recipientEmails.isEmpty else { return }
+        lock.withLock {
+            var ids = load(accountID: accountID)
+            for email in recipientEmails {
+                let entryID = Self.recipientLedgerID(
+                    draftID: draftID,
+                    contentFingerprint: contentFingerprint,
+                    recipientEmail: email
+                )
+                ids.removeAll { $0 == entryID }
+                ids.append(entryID)
+            }
+            if ids.count > maxEntries {
+                ids.removeFirst(ids.count - maxEntries)
+            }
+            persist(ids, accountID: accountID)
+        }
     }
 
-    private static func envelopeLedgerID(draftID: String, envelopeKey: String) -> String {
-        "\(draftID)#env:\(envelopeKey)"
+    private static func recipientLedgerID(
+        draftID: String,
+        contentFingerprint: String,
+        recipientEmail: String
+    ) -> String {
+        "\(draftID)#fp:\(contentFingerprint)#rcpt:\(recipientEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
     }
 
     /// Removes an account's ledger from the standard store without a live

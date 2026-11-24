@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import CryptoKit
 import Foundation
 import OSLog
 
@@ -215,11 +216,12 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     /// draft that already went out (#14). Optional/opt-in: wired in production,
     /// left nil (a no-op) by default so it doesn't add shared state to tests.
     private let sentMessageLedger: SentMessageLedger?
-    /// In-memory fallback tracking per-envelope acceptance during multi-envelope
-    /// encrypted Bcc sends so retries within the same session never duplicate
-    /// already-accepted envelopes even when no persisted ledger is injected.
-    private let acceptedEnvelopesLock = NSLock()
-    private var acceptedEnvelopeKeys: Set<String> = []
+    /// In-memory fallback tracking per-recipient acceptance keyed by
+    /// `(draftID, contentFingerprint)` during multi-envelope sends so retries
+    /// within the same session never duplicate already-accepted recipients even
+    /// when no persisted ledger is injected.
+    private let acceptedRecipientsLock = NSLock()
+    private var acceptedRecipientKeys: Set<String> = []
     /// Cancellation-aware polling loop for delivering due scheduled drafts.
     /// Guarded by `scheduledSendTaskLock`: `connect()` (start) and `disconnect()`
     /// (stop) run on the cooperative pool and can race, so this reference must be
@@ -2328,14 +2330,24 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             from: from,
             attachments: attachments
         ).build()
+        // Fingerprint delivery content (From + Subject + Body + Attachments +
+        // Security mode, independent of envelope grouping) so partial retries
+        // skip already-accepted recipients even when recipients are added or
+        // removed, while genuine content edits start a fresh delivery snapshot.
+        let contentFingerprint = Self.deliveryContentFingerprint(
+            from: from,
+            draft: draft,
+            attachments: attachments
+        )
         // Pre-validate signing/encryption material up front so any missing or
         // incompatible certificate fails closed BEFORE any SMTP transaction
         // starts, then stream envelopes one at a time so multi-Bcc encrypted
         // sends with large attachments never retain all encrypted buffers in
-        // memory simultaneously and retries skip already-accepted envelopes.
-        let envelopePlans = try await outboundEnvelopePlans(
+        // memory simultaneously and retries skip already-accepted recipients.
+        let sendPlan = try await outboundEnvelopePlans(
             draft: draft,
-            recipientEmails: recipientEmails
+            recipientEmails: recipientEmails,
+            contentFingerprint: contentFingerprint
         )
         if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) {
             throw ScheduledSendEditingError.sessionChanged
@@ -2346,10 +2358,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         var accumulatedWarnings: [SendResultWarning] = []
         var activeCredential = credential
 
-        for (index, plan) in envelopePlans.enumerated() {
-            if isEnvelopeAccepted(draftID: draft.id, envelopeKey: plan.envelopeKey) {
-                continue
-            }
+        for plan in sendPlan.envelopes {
             let preparedData = try await preparedSingleEnvelopeData(
                 messageData,
                 securityRequest: plan.securityRequest
@@ -2385,8 +2394,12 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     submission
                 )
             }
-            recordEnvelopeAccepted(draftID: draft.id, envelopeKey: plan.envelopeKey)
-            if index == 0 {
+            recordRecipientsAccepted(
+                plan.recipientEmails,
+                draftID: draft.id,
+                contentFingerprint: contentFingerprint
+            )
+            if sentCopyData == nil, plan.isSentCopyCandidate {
                 sentCopyData = preparedData
             }
             lastResult = submissionResult
@@ -2397,7 +2410,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             scheduledFor: lastResult.scheduledFor,
             warnings: accumulatedWarnings
         )
-        // All envelopes were accepted; record the full draft so a later replay
+        // All recipients were accepted; record the full draft so a later replay
         // of the same draft skips delivery completely.
         if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) { return result }
         if let scheduledGeneration {
@@ -2409,13 +2422,13 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         } else {
             sentMessageLedger?.record(draftID: draft.id, accountID: account.id)
         }
-        clearInMemoryAcceptedEnvelopes(for: draft.id)
+        clearInMemoryAcceptedRecipients(for: draft.id)
         let finalSentCopyData: Data = if let sentCopyData {
             sentCopyData
         } else {
             try await preparedSingleEnvelopeData(
                 messageData,
-                securityRequest: envelopePlans[0].securityRequest
+                securityRequest: sendPlan.sentCopySecurityRequest
             )
         }
         let (sentCopyUID, sentCopyWarning) = await appendSentCopyIfPossible(finalSentCopyData)
@@ -2445,36 +2458,31 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     }
 
     private struct OutboundEnvelopePlan {
-        let envelopeKey: String
         let securityRequest: OutboundMessageSecurityRequest?
         let recipientEmails: [String]
+        let isSentCopyCandidate: Bool
     }
 
-    /// Plans the SMTP envelope(s) for `draft` and pre-validates signing and
-    /// encryption material for ALL recipients before any SMTP transmission.
+    private struct OutboundSendPlan {
+        let envelopes: [OutboundEnvelopePlan]
+        let sentCopySecurityRequest: OutboundMessageSecurityRequest?
+    }
+
+    /// Plans the pending SMTP envelope(s) for `draft` and pre-validates signing
+    /// and encryption material for ALL pending recipients before any SMTP
+    /// transmission.
     ///
-    /// For encrypted sends with Bcc recipients, returns one descriptor for
-    /// visible recipients (`To` + `Cc`) and one per `Bcc` recipient so each
-    /// envelope can be encrypted, sent, and released one at a time without
-    /// leaking Bcc `IssuerAndSerialNumber` metadata or holding all encrypted
-    /// buffers in memory concurrently.
+    /// Recipients already recorded as accepted for `(draft.id, contentFingerprint)`
+    /// are skipped even if the user added a new visible recipient or removed the
+    /// last Bcc between retry attempts. For encrypted sends with pending Bcc
+    /// recipients, returns one descriptor for pending visible recipients (`To` +
+    /// `Cc`) and one per pending `Bcc` recipient so each envelope can be encrypted,
+    /// sent, and released one at a time without leaking Bcc metadata.
     private func outboundEnvelopePlans(
         draft: Draft,
-        recipientEmails: [String]
-    ) async throws -> [OutboundEnvelopePlan] {
-        guard draft.securityMode != .none else {
-            return [
-                OutboundEnvelopePlan(
-                    envelopeKey: "plain",
-                    securityRequest: nil,
-                    recipientEmails: recipientEmails
-                )
-            ]
-        }
-        guard let outboundMessagePreparer else {
-            throw OutboundCryptoEngineUnavailableError(mode: draft.securityMode)
-        }
-
+        recipientEmails: [String],
+        contentFingerprint: String
+    ) async throws -> OutboundSendPlan {
         let visibleTo = draft.to.map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let visibleCc = draft.cc.map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let visibleEmails = Self.deduplicatedRecipientEmails(visibleTo + visibleCc)
@@ -2483,47 +2491,104 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             draft.bcc.map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         ).filter { !visibleNormalized.contains($0.lowercased()) }
 
-        // Pre-validate all signing + encryption material for every recipient
-        // up front (fail closed before sending the first envelope).
-        let aggregateRequest = OutboundMessageSecurityRequest(
+        func isPending(_ email: String) -> Bool {
+            !isRecipientAccepted(
+                draftID: draft.id,
+                contentFingerprint: contentFingerprint,
+                recipientEmail: email
+            )
+        }
+
+        guard draft.securityMode != .none else {
+            let pendingAll = recipientEmails.filter(isPending)
+            guard !pendingAll.isEmpty else {
+                return OutboundSendPlan(envelopes: [], sentCopySecurityRequest: nil)
+            }
+            return OutboundSendPlan(
+                envelopes: [
+                    OutboundEnvelopePlan(
+                        securityRequest: nil,
+                        recipientEmails: pendingAll,
+                        isSentCopyCandidate: true
+                    )
+                ],
+                sentCopySecurityRequest: nil
+            )
+        }
+        guard let outboundMessagePreparer else {
+            throw OutboundCryptoEngineUnavailableError(mode: draft.securityMode)
+        }
+
+        let pendingVisibleTo = Self.deduplicatedRecipientEmails(visibleTo).filter(isPending)
+        let pendingVisibleToLower = Set(pendingVisibleTo.map { $0.lowercased() })
+        let pendingVisibleCc = Self.deduplicatedRecipientEmails(visibleCc).filter { email in
+            !pendingVisibleToLower.contains(email.lowercased()) && isPending(email)
+        }
+        let pendingVisibleEmails = Self.deduplicatedRecipientEmails(pendingVisibleTo + pendingVisibleCc)
+        let pendingBccEmails = isolatedBccEmails.filter(isPending)
+
+        let sentCopyRequest = OutboundMessageSecurityRequest(
             senderEmail: configuration.emailAddress,
             to: visibleTo,
             cc: visibleCc,
-            bcc: isolatedBccEmails,
+            bcc: [],
             mode: draft.securityMode
         )
-        try await outboundMessagePreparer.validate(request: aggregateRequest)
 
-        guard draft.securityMode.requiresEncryption, !isolatedBccEmails.isEmpty else {
-            return [
-                OutboundEnvelopePlan(
-                    envelopeKey: "single",
-                    securityRequest: aggregateRequest,
-                    recipientEmails: recipientEmails
-                )
-            ]
+        guard !pendingVisibleEmails.isEmpty || !pendingBccEmails.isEmpty else {
+            // Every recipient was already accepted on a prior attempt for this
+            // exact content fingerprint — skip all SMTP sends and only ensure
+            // the Sent copy can be prepared.
+            try await outboundMessagePreparer.validate(request: sentCopyRequest)
+            return OutboundSendPlan(envelopes: [], sentCopySecurityRequest: sentCopyRequest)
+        }
+
+        // Pre-validate all signing + encryption material for every pending
+        // recipient up front (fail closed before sending the first envelope).
+        let aggregatePendingRequest = OutboundMessageSecurityRequest(
+            senderEmail: configuration.emailAddress,
+            to: pendingVisibleTo,
+            cc: pendingVisibleCc,
+            bcc: pendingBccEmails,
+            mode: draft.securityMode
+        )
+        try await outboundMessagePreparer.validate(request: aggregatePendingRequest)
+
+        guard draft.securityMode.requiresEncryption, !pendingBccEmails.isEmpty else {
+            let pendingAll = Self.deduplicatedRecipientEmails(pendingVisibleEmails + pendingBccEmails)
+            let isFullVisibleCopy = pendingVisibleEmails.count == visibleEmails.count
+            return OutboundSendPlan(
+                envelopes: [
+                    OutboundEnvelopePlan(
+                        securityRequest: aggregatePendingRequest,
+                        recipientEmails: pendingAll,
+                        isSentCopyCandidate: isFullVisibleCopy && pendingBccEmails.isEmpty
+                    )
+                ],
+                sentCopySecurityRequest: sentCopyRequest
+            )
         }
 
         var plans: [OutboundEnvelopePlan] = []
-        if !visibleEmails.isEmpty {
+        if !pendingVisibleEmails.isEmpty {
+            let isFullVisibleCopy = pendingVisibleEmails.count == visibleEmails.count
             plans.append(
                 OutboundEnvelopePlan(
-                    envelopeKey: "visible",
                     securityRequest: OutboundMessageSecurityRequest(
                         senderEmail: configuration.emailAddress,
-                        to: visibleTo,
-                        cc: visibleCc,
+                        to: pendingVisibleTo,
+                        cc: pendingVisibleCc,
                         bcc: [],
                         mode: draft.securityMode
                     ),
-                    recipientEmails: visibleEmails
+                    recipientEmails: pendingVisibleEmails,
+                    isSentCopyCandidate: isFullVisibleCopy
                 )
             )
         }
-        for bccEmail in isolatedBccEmails {
+        for bccEmail in pendingBccEmails {
             plans.append(
                 OutboundEnvelopePlan(
-                    envelopeKey: "bcc:\(bccEmail.lowercased())",
                     securityRequest: OutboundMessageSecurityRequest(
                         senderEmail: configuration.emailAddress,
                         to: [],
@@ -2531,11 +2596,12 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                         bcc: [bccEmail],
                         mode: draft.securityMode
                     ),
-                    recipientEmails: [bccEmail]
+                    recipientEmails: [bccEmail],
+                    isSentCopyCandidate: false
                 )
             )
         }
-        return plans
+        return OutboundSendPlan(envelopes: plans, sentCopySecurityRequest: sentCopyRequest)
     }
 
     private func preparedSingleEnvelopeData(
@@ -2549,25 +2615,96 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return try await outboundMessagePreparer.prepare(mimeData: messageData, request: securityRequest)
     }
 
-    private func isEnvelopeAccepted(draftID: String, envelopeKey: String) -> Bool {
+    /// Computes a deterministic SHA-256 fingerprint over the message's delivery
+    /// content (From, Subject, Body, Attachments, and Security mode), independent
+    /// of recipient envelope grouping.
+    private static func deliveryContentFingerprint(
+        from: Correspondent,
+        draft: Draft,
+        attachments: [MIMEMessageAttachment]
+    ) -> String {
+        var hasher = SHA256()
+        func feed(_ string: String) {
+            let bytes = Data(string.utf8)
+            var count = UInt64(bytes.count).bigEndian
+            withUnsafeBytes(of: &count) { hasher.update(bufferPointer: $0) }
+            hasher.update(data: bytes)
+        }
+        func feedData(_ data: Data) {
+            var count = UInt64(data.count).bigEndian
+            withUnsafeBytes(of: &count) { hasher.update(bufferPointer: $0) }
+            hasher.update(data: data)
+        }
+
+        let securityToken = switch draft.securityMode {
+        case .none: "none"
+        case .sign: "sign"
+        case .encrypt: "encrypt"
+        case .signAndEncrypt: "signAndEncrypt"
+        }
+
+        feed(from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        feed(draft.subject)
+        feed(draft.htmlBody)
+        feed(securityToken)
+        feed(draft.inReplyToMessageID ?? "")
+        feed(draft.forwardedMessageID ?? "")
+        var attachmentCount = UInt64(attachments.count).bigEndian
+        withUnsafeBytes(of: &attachmentCount) { hasher.update(bufferPointer: $0) }
+        for attachment in attachments {
+            feed(attachment.filename)
+            feed(attachment.mimeType)
+            feed(attachment.isInline ? "1" : "0")
+            feed(attachment.contentID ?? "")
+            feedData(attachment.data)
+        }
+
+        let digest = hasher.finalize()
+        return digest.prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func isRecipientAccepted(
+        draftID: String,
+        contentFingerprint: String,
+        recipientEmail: String
+    ) -> Bool {
+        let normalized = recipientEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if let sentMessageLedger,
-           sentMessageLedger.contains(draftID: draftID, envelopeKey: envelopeKey, accountID: account.id) {
+           sentMessageLedger.containsRecipient(
+               draftID: draftID,
+               contentFingerprint: contentFingerprint,
+               recipientEmail: normalized,
+               accountID: account.id
+           ) {
             return true
         }
-        let memoryKey = "\(draftID)#env:\(envelopeKey)"
-        return acceptedEnvelopesLock.withLock { acceptedEnvelopeKeys.contains(memoryKey) }
+        let memoryKey = "\(draftID)#fp:\(contentFingerprint)#rcpt:\(normalized)"
+        return acceptedRecipientsLock.withLock { acceptedRecipientKeys.contains(memoryKey) }
     }
 
-    private func recordEnvelopeAccepted(draftID: String, envelopeKey: String) {
-        sentMessageLedger?.record(draftID: draftID, envelopeKey: envelopeKey, accountID: account.id)
-        let memoryKey = "\(draftID)#env:\(envelopeKey)"
-        acceptedEnvelopesLock.withLock { _ = acceptedEnvelopeKeys.insert(memoryKey) }
+    private func recordRecipientsAccepted(
+        _ recipientEmails: [String],
+        draftID: String,
+        contentFingerprint: String
+    ) {
+        sentMessageLedger?.recordRecipients(
+            recipientEmails,
+            draftID: draftID,
+            contentFingerprint: contentFingerprint,
+            accountID: account.id
+        )
+        acceptedRecipientsLock.withLock {
+            for email in recipientEmails {
+                let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                _ = acceptedRecipientKeys.insert("\(draftID)#fp:\(contentFingerprint)#rcpt:\(normalized)")
+            }
+        }
     }
 
-    private func clearInMemoryAcceptedEnvelopes(for draftID: String) {
-        let prefix = "\(draftID)#env:"
-        acceptedEnvelopesLock.withLock {
-            acceptedEnvelopeKeys = acceptedEnvelopeKeys.filter { !$0.hasPrefix(prefix) }
+    private func clearInMemoryAcceptedRecipients(for draftID: String) {
+        let prefix = "\(draftID)#fp:"
+        acceptedRecipientsLock.withLock {
+            acceptedRecipientKeys = acceptedRecipientKeys.filter { !$0.hasPrefix(prefix) }
         }
     }
 

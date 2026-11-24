@@ -575,7 +575,7 @@ struct SecuritySection: View {
                     }
                     return
                 }
-                let payload = try SecurityKeyMaterialPayloadDecoder.formattedExportPayload(
+                let resolved = try SecurityKeyMaterialPayloadDecoder.resolvedExportPayload(
                     from: data,
                     record: record,
                     preferences: exportPreferences
@@ -583,7 +583,8 @@ struct SecuritySection: View {
                 await MainActor.run {
                     exportPreview = ExportPreview(
                         title: record.label,
-                        payload: payload
+                        payload: resolved.payload,
+                        formatNote: resolved.formatFallbackNote
                     )
                 }
             } catch let exportError as SecurityKeyMaterialExportError {
@@ -607,6 +608,11 @@ struct SecuritySection: View {
                 Text(preview.title)
                     .brevFont(.headline)
                     .foregroundStyle(theme.textPrimary.color)
+                if let formatNote = preview.formatNote {
+                    Text(formatNote)
+                        .brevFont(.caption)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
                 TextEditor(text: .constant(preview.payload))
                     .frame(minHeight: 220)
                     .padding(BrevSpacing.xs)
@@ -649,6 +655,7 @@ struct SecuritySection: View {
 private struct ExportPreview: Identifiable {
     let title: String
     let payload: String
+    let formatNote: String?
 
     var id: String { title + ":\(payload.count)" }
 }

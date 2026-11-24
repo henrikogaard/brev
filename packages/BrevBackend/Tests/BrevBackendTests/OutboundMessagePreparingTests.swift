@@ -400,4 +400,186 @@ struct OutboundPreparationSendTests {
         #expect(allSubmissions.map(\.recipientEmails) == [["bob@example.org"], ["secret@example.org"]])
         #expect(await capture.appendData.count == 1)
     }
+
+    @Test("adding a new visible Cc recipient after partial Bcc failure delivers only new Cc and Bcc without re-sending To")
+    func partialBccRetryWithAddedVisibleCcSkipsAcceptedTo() async throws {
+        let suiteName = "brev.ledger.cc.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let ledger = SentMessageLedger(defaults: defaults)
+
+        let capture = DataCapture()
+        let preparer = CapturingPreparer(handler: { _, request in
+            let tag = "ENV:to=\(request.to.joined(separator: ","));cc=\(request.cc.joined(separator: ","));bcc=\(request.bcc.joined(separator: ","))"
+            return Data(tag.utf8)
+        })
+
+        actor RejectOnceBccSMTP {
+            private var rejected = false
+            func handle(_ submission: SMTPMessageSubmission) throws -> SendResult {
+                if submission.recipientEmails == ["secret@example.org"], !rejected {
+                    rejected = true
+                    throw URLError(.networkConnectionLost)
+                }
+                return SendResult(sentMessageID: "ok-\(submission.recipientEmails.joined(separator: ","))")
+            }
+        }
+        let smtp = RejectOnceBccSMTP()
+
+        func makeBackendWithLedger() -> IMAPSMTPBackend {
+            IMAPSMTPBackend(
+                account: Fixtures.account,
+                configuration: Fixtures.configuration,
+                credential: Fixtures.credential,
+                listFolders: { _, _ in [
+                    IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
+                    IMAPFolderListing(path: "Sent", displayName: "Sent", delimiter: "/", flags: ["sent"], role: .sent),
+                ] },
+                sendMessage: { _, _, submission in
+                    let result = try await smtp.handle(submission)
+                    await capture.recordSubmission(submission)
+                    return result
+                },
+                appendSentMessage: { _, _, _, messageData, _ in
+                    await capture.recordAppend(messageData)
+                    return 1
+                },
+                outboundMessagePreparer: preparer,
+                sentMessageLedger: ledger
+            )
+        }
+
+        let initialDraft = Draft(
+            id: "draft-bcc-add-cc",
+            to: [Correspondent(email: "bob@example.org")],
+            bcc: [Correspondent(email: "secret@example.org")],
+            subject: "Same Content",
+            htmlBody: "<p>Unchanged body</p>",
+            securityMode: .encrypt
+        )
+
+        // Attempt 1: Bob succeeds, secret fails.
+        let attempt1 = makeBackendWithLedger()
+        try await attempt1.connect()
+        await #expect(throws: Error.self) {
+            _ = try await attempt1.send(draft: initialDraft)
+        }
+        #expect(await capture.submissions.map(\.recipientEmails) == [["bob@example.org"]])
+
+        // Attempt 2: User adds Alice to Cc with the same message content & draft ID.
+        // Bob must NOT be re-sent; Alice and secret each receive their envelope.
+        var retryDraft = initialDraft
+        retryDraft.cc = [Correspondent(email: "alice@example.org")]
+
+        let attempt2 = makeBackendWithLedger()
+        try await attempt2.connect()
+        _ = try await attempt2.send(draft: retryDraft)
+
+        let submissions = await capture.submissions
+        #expect(submissions.map(\.recipientEmails) == [
+            ["bob@example.org"],
+            ["alice@example.org"],
+            ["secret@example.org"],
+        ])
+        #expect(String(decoding: submissions[1].messageData, as: UTF8.self) == "ENV:to=;cc=alice@example.org;bcc=")
+        #expect(String(decoding: submissions[2].messageData, as: UTF8.self) == "ENV:to=;cc=;bcc=secret@example.org")
+        #expect(await capture.appendData.count == 1)
+    }
+
+    @Test("removing the last Bcc after partial failure does not re-send already-accepted To; editing content starts fresh")
+    func partialBccRetryAfterRemovingLastBccDoesNotResendVisible() async throws {
+        let suiteName = "brev.ledger.dropbcc.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let ledger = SentMessageLedger(defaults: defaults)
+
+        let capture = DataCapture()
+        let preparer = CapturingPreparer(handler: { _, request in
+            let tag = "ENV:to=\(request.to.joined(separator: ","));bcc=\(request.bcc.joined(separator: ","))"
+            return Data(tag.utf8)
+        })
+
+        func makeBackendWithLedger(failBcc: Bool) -> IMAPSMTPBackend {
+            IMAPSMTPBackend(
+                account: Fixtures.account,
+                configuration: Fixtures.configuration,
+                credential: Fixtures.credential,
+                listFolders: { _, _ in [
+                    IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
+                    IMAPFolderListing(path: "Sent", displayName: "Sent", delimiter: "/", flags: ["sent"], role: .sent),
+                ] },
+                sendMessage: { _, _, submission in
+                    if failBcc, submission.recipientEmails == ["secret@example.org"] {
+                        throw URLError(.networkConnectionLost)
+                    }
+                    await capture.recordSubmission(submission)
+                    return SendResult(sentMessageID: "ok")
+                },
+                appendSentMessage: { _, _, _, messageData, _ in
+                    await capture.recordAppend(messageData)
+                    return 1
+                },
+                outboundMessagePreparer: preparer,
+                sentMessageLedger: ledger
+            )
+        }
+
+        let initialDraft = Draft(
+            id: "draft-bcc-remove-last",
+            to: [Correspondent(email: "bob@example.org")],
+            bcc: [Correspondent(email: "secret@example.org")],
+            subject: "Same Subject",
+            htmlBody: "<p>Original body</p>",
+            securityMode: .encrypt
+        )
+
+        // Attempt 1: Bob succeeds, secret fails.
+        let attempt1 = makeBackendWithLedger(failBcc: true)
+        try await attempt1.connect()
+        await #expect(throws: Error.self) {
+            _ = try await attempt1.send(draft: initialDraft)
+        }
+        #expect(await capture.submissions.map(\.recipientEmails) == [["bob@example.org"]])
+
+        // Attempt 2: User edits body BEFORE removing Bcc — content fingerprint changes,
+        // so Bob receives the updated body when retrying (tested on a second draft below),
+        // while keeping identical content and removing the last Bcc sends 0 SMTP envelopes!
+        var withoutBcc = initialDraft
+        withoutBcc.bcc = []
+        let attempt2 = makeBackendWithLedger(failBcc: false)
+        try await attempt2.connect()
+        _ = try await attempt2.send(draft: withoutBcc)
+
+        // Zero additional SMTP sends for Bob; Sent copy was appended once.
+        #expect(await capture.submissions.map(\.recipientEmails) == [["bob@example.org"]])
+        #expect(await capture.appendData.count == 1)
+
+        // Verify content-fingerprint sensitivity: a partial failure followed by a body edit
+        // treats the edited draft as a new delivery snapshot and delivers fresh to Bob.
+        let editedInitial = Draft(
+            id: "draft-bcc-edited-content",
+            to: [Correspondent(email: "bob@example.org")],
+            bcc: [Correspondent(email: "secret@example.org")],
+            subject: "V1",
+            htmlBody: "<p>First version</p>",
+            securityMode: .encrypt
+        )
+        let attempt3 = makeBackendWithLedger(failBcc: true)
+        try await attempt3.connect()
+        await #expect(throws: Error.self) {
+            _ = try await attempt3.send(draft: editedInitial)
+        }
+        var editedRetry = editedInitial
+        editedRetry.htmlBody = "<p>Second version</p>"
+        editedRetry.bcc = []
+        let attempt4 = makeBackendWithLedger(failBcc: false)
+        try await attempt4.connect()
+        _ = try await attempt4.send(draft: editedRetry)
+
+        #expect(await capture.submissions.map(\.recipientEmails) == [
+            ["bob@example.org"],
+            ["bob@example.org"],
+            ["bob@example.org"],
+        ])
+    }
 }

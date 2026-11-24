@@ -137,6 +137,10 @@ public struct SMIMEOutboundMessagePreparer: OutboundMessagePreparing {
             }
             if usesPureSwiftEncoder {
                 try PureSwiftCMSEncoder.validateEncryptionCertificates(certs)
+            } else {
+                #if os(macOS)
+                try CMS.validateEncryptionCertificates(certs)
+                #endif
             }
         }
     }
@@ -323,7 +327,41 @@ enum CMS {
         return signed
     }
 
+    /// Verifies each recipient certificate uses an asymmetric key algorithm
+    /// supported by macOS `CMSEncoder` `EnvelopedData` (RSA or EC). Apple's
+    /// `CMSEncoder` can silently omit unsupported recipients (such as DSA)
+    /// without returning an `OSStatus` error, so we check key types up front.
+    private static func validateRecipientKeyTypes(_ certificates: [SecCertificate]) throws {
+        guard !certificates.isEmpty else {
+            throw CMSError.operationFailed(errSecParam)
+        }
+        let supportedKeyTypes: Set<String> = [
+            kSecAttrKeyTypeRSA as String,
+            kSecAttrKeyTypeECSECPrimeRandom as String,
+        ]
+        for certificate in certificates {
+            guard let publicKey = SecCertificateCopyKey(certificate),
+                  let attributes = SecKeyCopyAttributes(publicKey) as? [String: Any],
+                  let keyType = attributes[kSecAttrKeyType as String] as? String,
+                  supportedKeyTypes.contains(keyType)
+            else {
+                throw PureSwiftCMSError.unsupportedEncryptionKeyAlgorithm
+            }
+        }
+    }
+
+    /// Pre-validates that every recipient certificate is compatible with macOS
+    /// `CMSEncoder` `EnvelopedData` (RSA `KeyTransRecipientInfo` or EC
+    /// `KeyAgreeRecipientInfo`) and passes a 1-byte native probe.
+    static func validateEncryptionCertificates(_ certificates: [SecCertificate]) throws {
+        try validateRecipientKeyTypes(certificates)
+        for certificate in certificates {
+            _ = try envelopedData(of: Data([0]), certificates: [certificate])
+        }
+    }
+
     static func envelopedData(of content: Data, certificates: [SecCertificate]) throws -> Data {
+        try validateRecipientKeyTypes(certificates)
         var encoderOpt: CMSEncoder?
         try check(CMSEncoderCreate(&encoderOpt))
         guard let encoder = encoderOpt else { throw CMSError.encoderUnavailable }

@@ -187,6 +187,35 @@ struct SecurityKeyMaterialPayloadDecoderTests {
                 preferences: pemAllowedPrefs
             )
         }
+
+        // Settings UI helper (`resolvedExportPayload`) smoothly falls back from
+        // global `.pkcs12` preference to `.pem` for standalone public X.509
+        // certificates with an explanatory note, while still honoring `.der` and
+        // still blocking unlabeled private PKCS#12 blobs.
+        let resolvedPublic = try SecurityKeyMaterialPayloadDecoder.resolvedExportPayload(
+            from: derCert,
+            record: publicCertRecord,
+            preferences: .defaults
+        )
+        #expect(resolvedPublic.effectiveFormat == .pem)
+        #expect(resolvedPublic.payload.hasPrefix("-----BEGIN CERTIFICATE-----"))
+        #expect(resolvedPublic.formatFallbackNote != nil)
+
+        let resolvedDER = try SecurityKeyMaterialPayloadDecoder.resolvedExportPayload(
+            from: derCert,
+            record: publicCertRecord,
+            preferences: derPrefs
+        )
+        #expect(resolvedDER.effectiveFormat == .der)
+        #expect(resolvedDER.formatFallbackNote == nil)
+
+        #expect(throws: SecurityKeyMaterialExportError.privateMaterialExportDisabled) {
+            _ = try SecurityKeyMaterialPayloadDecoder.resolvedExportPayload(
+                from: p12Data,
+                record: unlabeledPrivateRecord,
+                preferences: .defaults
+            )
+        }
     }
 
     #if os(macOS)

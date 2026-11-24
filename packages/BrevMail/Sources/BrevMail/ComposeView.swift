@@ -970,6 +970,7 @@ public struct ComposeView: View {
                     .layoutPriority(hostStyle == .inline ? 1 : 0)
             }
             scheduledSendBanner
+            securityUnsupportedBackendBanner
             errorBanner
         }
     }
@@ -1007,9 +1008,27 @@ public struct ComposeView: View {
         }
     }
 
+    private var activeUnsupportedBackendSecurityWarning: String? {
+        ComposeSecurityPresentation.unsupportedBackendWarning(
+            isSigningEnabled: signMessage,
+            isEncryptionEnabled: encryptMessage,
+            supportsOutboundSMIME: selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME)
+        )
+    }
+
+    @ViewBuilder
+    private var securityUnsupportedBackendBanner: some View {
+        ComposeSecurityWarningBanner(
+            isSigningEnabled: signMessage,
+            isEncryptionEnabled: encryptMessage,
+            supportsOutboundSMIME: selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME)
+        )
+    }
+
     @ViewBuilder
     private var errorBanner: some View {
         if let errorMessage,
+           errorMessage != activeUnsupportedBackendSecurityWarning,
            ComposePresentation.showsErrorBanner(errorMessage: errorMessage, restorationError: draftRestorationError) {
             let status = ComposePresentation.errorStatus(errorMessage)
             BrevDivider()

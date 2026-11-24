@@ -196,6 +196,68 @@ public enum SecurityKeyMaterialPayloadDecoder {
         return isPKCS12Archive(data) || isPKCS8PrivateKey(data)
     }
 
+    /// Output of `resolvedExportPayload(from:record:preferences:)`, carrying the
+    /// formatted text, effective format used, and an optional localized note when
+    /// a standalone public certificate was automatically exported as PEM instead
+    /// of PKCS#12.
+    public struct ResolvedExportPayload: Equatable, Sendable {
+        public let payload: String
+        public let effectiveFormat: SecuritySMIMEExportFormat
+        public let formatFallbackNote: String?
+
+        public init(
+            payload: String,
+            effectiveFormat: SecuritySMIMEExportFormat,
+            formatFallbackNote: String? = nil
+        ) {
+            self.payload = payload
+            self.effectiveFormat = effectiveFormat
+            self.formatFallbackNote = formatFallbackNote
+        }
+    }
+
+    /// Resolves the effective export format and formatted payload for Settings UI
+    /// export. When the global preference is `.pkcs12` but `data` is a standalone
+    /// public X.509 certificate (no private material), automatically formats as
+    /// `.pem` with a clear localized note instead of forcing users to toggle their
+    /// global format preference. `formattedExportPayload` itself remains strict.
+    public static func resolvedExportPayload(
+        from data: Data,
+        record: SecurityKeyMaterialSettings.Record,
+        preferences: SecurityKeyMaterialSettings.ImportExportPreferences
+    ) throws -> ResolvedExportPayload {
+        if preferences.smimeExportFormat == .pkcs12,
+           !record.hasPrivateMaterial,
+           !containsPrivateMaterial(in: data),
+           x509CertificateDER(from: data) != nil {
+            var pemPreferences = preferences
+            pemPreferences.smimeExportFormat = .pem
+            let payload = try formattedExportPayload(
+                from: data,
+                record: record,
+                preferences: pemPreferences
+            )
+            return ResolvedExportPayload(
+                payload: payload,
+                effectiveFormat: .pem,
+                formatFallbackNote: String(
+                    localized: "Exported as PEM because this record is a public certificate without a private key.",
+                    bundle: .module
+                )
+            )
+        }
+        let payload = try formattedExportPayload(
+            from: data,
+            record: record,
+            preferences: preferences
+        )
+        return ResolvedExportPayload(
+            payload: payload,
+            effectiveFormat: preferences.smimeExportFormat,
+            formatFallbackNote: nil
+        )
+    }
+
     /// Formats stored key material for text export while enforcing the
     /// private-material export opt-in guard (checked against BOTH metadata and
     /// actual bytes) and honoring `preferences.smimeExportFormat`.

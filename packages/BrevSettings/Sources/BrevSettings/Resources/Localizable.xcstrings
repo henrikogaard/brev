@@ -15083,6 +15083,16 @@
           }
         }
       }
+    },
+    "Exported as PEM because this record is a public certificate without a private key.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksportert som PEM fordi denne oppføringen er et offentlig sertifikat uten privat nøkkel."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
