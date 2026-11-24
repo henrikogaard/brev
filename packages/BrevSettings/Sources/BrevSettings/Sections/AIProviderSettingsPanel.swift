@@ -30,6 +30,7 @@ struct AIProviderSettingsPanel: View {
     private let secretStore: any AIProviderSecretStore
     private let accounts: [BrevAccount]
     private let appleIntelligenceAvailability: AppleIntelligenceAvailability
+    private let refreshRevision: Int
     private let onProviderConfigurationChanged: () async -> Void
 
     init(
@@ -37,12 +38,14 @@ struct AIProviderSettingsPanel: View {
         secretStore: any AIProviderSecretStore,
         accounts: [BrevAccount] = [],
         appleIntelligenceAvailability: AppleIntelligenceAvailability = .current(),
+        refreshRevision: Int = 0,
         onProviderConfigurationChanged: @escaping () async -> Void = {}
     ) {
         self.settingsStore = settingsStore
         self.secretStore = secretStore
         self.accounts = accounts
         self.appleIntelligenceAvailability = appleIntelligenceAvailability
+        self.refreshRevision = refreshRevision
         self.onProviderConfigurationChanged = onProviderConfigurationChanged
     }
 
@@ -58,6 +61,12 @@ struct AIProviderSettingsPanel: View {
             }
             .task {
                 await loadDraftIfNeeded()
+            }
+            .onChange(of: refreshRevision) { _, _ in
+                Task {
+                    refreshConfigurations(selecting: nil)
+                    await loadSelectedDraft()
+                }
             }
             .onChange(of: selectedProviderID) { _, providerID in
                 Task { await selectProvider(providerID) }
@@ -212,7 +221,7 @@ struct AIProviderSettingsPanel: View {
                     Text(kind.settingsTitle).tag(kind)
                 }
             }
-            .disabled(draft.kind == .appleIntelligence)
+            .disabled(draft.kind.isOnDevice)
 
             providerTextField(
                 title: String(localized: "Display name", bundle: .module),
@@ -239,6 +248,20 @@ struct AIProviderSettingsPanel: View {
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
                 #endif
+            } else if draft.kind == .onDeviceDownloadedModel {
+                SettingsPickerRow(
+                    symbolName: "arrow.down.circle",
+                    title: String(localized: "Downloaded model", bundle: .module),
+                    subtitle: String(
+                        localized: "Manage model downloads and SHA-256 verification in Local Models below.",
+                        bundle: .module
+                    ),
+                    selection: $draft.modelID
+                ) {
+                    ForEach(LocalModelCatalog.curatedModels) { model in
+                        Text(model.displayName).tag(model.id)
+                    }
+                }
             } else if !appleIntelligenceAvailability.isSelectable {
                 SettingsInfoCallout(
                     symbolName: "exclamationmark.triangle",
@@ -352,9 +375,14 @@ struct AIProviderSettingsPanel: View {
     }
 
     private var editablePresets: [AIProviderKind] {
-        draft.kind == .appleIntelligence
-            ? [.appleIntelligence]
-            : AIProviderKind.allCases.filter { !$0.isOnDevice }
+        switch draft.kind {
+        case .appleIntelligence:
+            return [.appleIntelligence]
+        case .onDeviceDownloadedModel:
+            return [.onDeviceDownloadedModel]
+        case .openAICompatible, .ollamaLocal, .customOpenAICompatible:
+            return AIProviderKind.allCases.filter { !$0.isOnDevice }
+        }
     }
 
     private var presetBinding: Binding<AIProviderKind> {

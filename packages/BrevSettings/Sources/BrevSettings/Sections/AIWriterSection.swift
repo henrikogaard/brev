@@ -20,11 +20,13 @@ struct AIWriterSection: View {
     @Environment(\.brevTheme) private var theme
     @State private var settings: AIWriterSettings
     @State private var providerSummary: AIWriterSectionProviderSummary
+    @State private var providerRefreshRevision = 0
 
     private let settingsStore: SettingsPersistenceStore
     private let providerSecretStore: any AIProviderSecretStore
     private let accounts: [BrevAccount]
     private let appleIntelligenceAvailability: AppleIntelligenceAvailability
+    private let localModelDownloadManager: LocalModelDownloadManager
     private let onProviderConfigurationChanged: () async -> Void
 
     init(
@@ -32,12 +34,14 @@ struct AIWriterSection: View {
         providerSecretStore: any AIProviderSecretStore = AIProviderKeychainSecretStore(),
         accounts: [BrevAccount] = [],
         appleIntelligenceAvailability: AppleIntelligenceAvailability = .current(),
+        localModelDownloadManager: LocalModelDownloadManager = .shared,
         onProviderConfigurationChanged: @escaping () async -> Void = {}
     ) {
         self.settingsStore = settingsStore
         self.providerSecretStore = providerSecretStore
         self.accounts = accounts
         self.appleIntelligenceAvailability = appleIntelligenceAvailability
+        self.localModelDownloadManager = localModelDownloadManager
         self.onProviderConfigurationChanged = onProviderConfigurationChanged
         _settings = State(initialValue: settingsStore.aiWriterSettings())
         _providerSummary = State(
@@ -110,9 +114,21 @@ struct AIWriterSection: View {
                     secretStore: providerSecretStore,
                     accounts: accounts,
                     appleIntelligenceAvailability: appleIntelligenceAvailability,
+                    refreshRevision: providerRefreshRevision,
                     onProviderConfigurationChanged: {
                         await refreshConfiguredProvider()
                         await onProviderConfigurationChanged()
+                    }
+                )
+
+                LocalModelsSettingsGroup(
+                    downloadManager: localModelDownloadManager,
+                    activeModelID: activeDownloadedModelID,
+                    onSelectModel: { descriptor in
+                        await selectDownloadedLocalModel(descriptor)
+                    },
+                    onModelDeleted: { descriptor in
+                        await handleDeletedLocalModel(descriptor)
                     }
                 )
 
@@ -219,6 +235,47 @@ struct AIWriterSection: View {
             localized: "Consent is \(consentState). AI Writer cannot send anything until you configure a provider.",
             bundle: .module
         )
+    }
+
+    private var activeDownloadedModelID: String? {
+        guard let configuredProvider,
+              configuredProvider.kind == .onDeviceDownloadedModel,
+              configuredProvider.isEnabled
+        else { return nil }
+        return configuredProvider.modelID
+    }
+
+    @MainActor
+    private func selectDownloadedLocalModel(_ descriptor: LocalModelDescriptor) async {
+        let existing = ((try? settingsStore.aiProviderConfigurations()) ?? [])
+            .first { $0.id == LocalDownloadedModelAIBackend.providerID }
+        let configuration = AIProviderConfiguration.onDeviceDownloadedModel(
+            modelID: descriptor.id,
+            isEnabled: true,
+            isDefault: true,
+            assignedAccountID: existing?.assignedAccountID
+        )
+        let draft = AIProviderSettingsDraft(configuration: configuration, hasSavedAPIKey: false)
+        _ = try? await AIProviderSettingsPersistence.save(
+            draft,
+            settingsStore: settingsStore,
+            secretStore: providerSecretStore
+        )
+        providerRefreshRevision += 1
+        await refreshConfiguredProvider()
+        await onProviderConfigurationChanged()
+    }
+
+    @MainActor
+    private func handleDeletedLocalModel(_ descriptor: LocalModelDescriptor) async {
+        guard activeDownloadedModelID == descriptor.id else { return }
+        try? AIProviderSettingsPersistence.disable(
+            providerID: LocalDownloadedModelAIBackend.providerID,
+            settingsStore: settingsStore
+        )
+        providerRefreshRevision += 1
+        await refreshConfiguredProvider()
+        await onProviderConfigurationChanged()
     }
 
     @MainActor

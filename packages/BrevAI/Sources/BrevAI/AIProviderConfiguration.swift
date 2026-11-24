@@ -27,19 +27,22 @@ public struct AIProviderID: RawRepresentable, Codable, Hashable, Sendable {
 
 public enum AIProviderKind: String, Codable, CaseIterable, Sendable {
     case appleIntelligence
+    case onDeviceDownloadedModel
     case openAICompatible
     case ollamaLocal
     case customOpenAICompatible
 
-    /// Whether this provider runs strictly on-device with zero network egress (ADR-0094).
+    /// Whether this provider runs strictly on-device with zero network egress during inference (#304).
     public var isOnDevice: Bool {
-        self == .appleIntelligence
+        self == .appleIntelligence || self == .onDeviceDownloadedModel
     }
 
     var defaultDisplayName: String {
         switch self {
         case .appleIntelligence:
             return OnDeviceAIPlatformLabel.appleIntelligenceDisplayName
+        case .onDeviceDownloadedModel:
+            return OnDeviceAIPlatformLabel.downloadedModelDisplayName
         case .openAICompatible:
             return "OpenAI"
         case .ollamaLocal:
@@ -101,6 +104,9 @@ public struct AIProviderConfiguration: Codable, Equatable, Identifiable, Sendabl
     /// Synthetic non-network sentinel URL stored for on-device Apple Intelligence profiles.
     public static let appleIntelligenceEndpointURL = URL(string: "apple-intelligence://on-device")!
 
+    /// Synthetic non-network sentinel URL stored for downloaded local model profiles.
+    public static let onDeviceDownloadedModelEndpointURL = URL(string: "local-model://on-device")!
+
     /// Creates a local-only Apple Intelligence provider profile (ADR-0094).
     public static func appleIntelligence(
         isEnabled: Bool = false,
@@ -113,6 +119,25 @@ public struct AIProviderConfiguration: Codable, Equatable, Identifiable, Sendabl
             displayName: OnDeviceAIPlatformLabel.appleIntelligenceDisplayName,
             endpointURL: appleIntelligenceEndpointURL,
             modelID: "system-default",
+            isEnabled: isEnabled,
+            isDefault: isDefault,
+            assignedAccountID: assignedAccountID
+        )!
+    }
+
+    /// Creates a local-only downloaded-model provider profile (#304, Slice 2).
+    public static func onDeviceDownloadedModel(
+        modelID: String = LocalModelCatalog.defaultModelID,
+        isEnabled: Bool = false,
+        isDefault: Bool = true,
+        assignedAccountID: String? = nil
+    ) -> AIProviderConfiguration {
+        AIProviderConfiguration(
+            id: LocalDownloadedModelAIBackend.providerID,
+            kind: .onDeviceDownloadedModel,
+            displayName: OnDeviceAIPlatformLabel.downloadedModelDisplayName,
+            endpointURL: onDeviceDownloadedModelEndpointURL,
+            modelID: modelID,
             isEnabled: isEnabled,
             isDefault: isDefault,
             assignedAccountID: assignedAccountID
@@ -137,7 +162,7 @@ public struct AIProviderConfiguration: Codable, Equatable, Identifiable, Sendabl
     }
 
     public var transparencyLabel: String {
-        if kind == .appleIntelligence {
+        if kind.isOnDevice {
             return OnDeviceAIPlatformLabel.transparencyLabel
         }
         let host = endpointURL.host(percentEncoded: false) ?? endpointURL.host ?? endpointURL.absoluteString
@@ -149,13 +174,12 @@ public struct AIProviderConfiguration: Codable, Equatable, Identifiable, Sendabl
         if trimmedDisplayName.isEmpty {
             issues.append(.displayNameRequired)
         }
-        if !kind.isOnDevice {
-            if !isHTTPEndpoint {
-                issues.append(.httpEndpointRequired)
-            }
-            if modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                issues.append(.modelIDRequired)
-            }
+        if !kind.isOnDevice, !isHTTPEndpoint {
+            issues.append(.httpEndpointRequired)
+        }
+        if kind != .appleIntelligence,
+           modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append(.modelIDRequired)
         }
         return issues
     }

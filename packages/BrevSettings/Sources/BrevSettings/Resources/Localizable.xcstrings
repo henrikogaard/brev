@@ -15920,6 +15920,160 @@
           }
         }
       }
+    },
+    "%lld GB RAM": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld GB RAM"
+          }
+        }
+      }
+    },
+    "Active · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktiv · %@"
+          }
+        }
+      }
+    },
+    "Delete downloaded model weights?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slette nedlastede modellvekter?"
+          }
+        }
+      }
+    },
+    "Downloaded %@ of %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lastet ned %@ av %@"
+          }
+        }
+      }
+    },
+    "Downloaded model": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nedlastet modell"
+          }
+        }
+      }
+    },
+    "Installed · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installert · %@"
+          }
+        }
+      }
+    },
+    "Local model storage: %@ · Excluded from backups": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lokal modellagring: %@ · Utelatt fra sikkerhetskopier"
+          }
+        }
+      }
+    },
+    "Manage model downloads and SHA-256 verification in Local Models below.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Administrer modellnedlastinger og SHA-256-verifisering i Lokale modeller nedenfor."
+          }
+        }
+      }
+    },
+    "Open-weights model downloaded on demand; verified by SHA-256 and runs offline with no API key.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpen modell lastet ned ved behov; verifisert med SHA-256 og kjører uten nett uten API-nøkkel."
+          }
+        }
+      }
+    },
+    "Source: %@ · SHA-256 verified": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kilde: %@ · SHA-256-verifisert"
+          }
+        }
+      }
+    },
+    "Use model": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruk modell"
+          }
+        }
+      }
+    },
+    "Verifying SHA-256…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifiserer SHA-256…"
+          }
+        }
+      }
+    },
+    "Weights are downloaded only when you click Download, verified by SHA-256, stored locally outside backups, and run offline on this Mac.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vekter lastes bare ned når du klikker på Last ned, verifiseres med SHA-256, lagres lokalt utenfor sikkerhetskopier og kjører uten nett på denne Mac-en."
+          }
+        }
+      }
+    },
+    "Weights are downloaded only when you tap Download, verified by SHA-256, stored locally outside backups, and run offline on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vekter lastes bare ned når du trykker på Last ned, verifiseres med SHA-256, lagres lokalt utenfor sikkerhetskopier og kjører uten nett på denne enheten."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

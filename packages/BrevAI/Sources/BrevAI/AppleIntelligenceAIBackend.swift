@@ -166,6 +166,23 @@ public enum OnDeviceAIPlatformLabel {
             return String(localized: "On this iPad (Apple Intelligence)", bundle: .module)
         }
     }
+
+    /// Settings display name for a user-downloaded local model (`"On this Mac (download a model)"`, etc.).
+    public static var downloadedModelDisplayName: String {
+        downloadedModelDisplayName(for: .current)
+    }
+
+    /// Settings display name for a user-downloaded local model on a specific device kind.
+    public static func downloadedModelDisplayName(for device: DeviceKind) -> String {
+        switch device {
+        case .mac:
+            return String(localized: "On this Mac (download a model)", bundle: .module)
+        case .iPhone:
+            return String(localized: "On this iPhone (download a model)", bundle: .module)
+        case .iPad:
+            return String(localized: "On this iPad (download a model)", bundle: .module)
+        }
+    }
 }
 
 /// Seam wrapping on-device `FoundationModels` generation for deterministic unit testing.

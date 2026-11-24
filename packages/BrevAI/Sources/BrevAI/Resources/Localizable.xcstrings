@@ -67,6 +67,17 @@
         }
       }
     },
+    "Blocked a non-HTTPS or disallowed redirect while downloading the model.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blokkerte en ikke-HTTPS- eller ikke-tillatt omdirigering under nedlasting av modellen."
+          }
+        }
+      }
+    },
     "Brev computes counts locally and requires your exact confirmation before any mutation runs.": {
       "extractionState": "manual",
       "localizations": {
@@ -78,6 +89,28 @@
         }
       }
     },
+    "Could not download the local model: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste ned den lokale modellen: %@"
+          }
+        }
+      }
+    },
+    "Could not save the local model on this device: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke lagre den lokale modellen på denne enheten: %@"
+          }
+        }
+      }
+    },
     "Couldn't access the provider API key in Keychain.": {
       "extractionState": "manual",
       "localizations": {
@@ -85,6 +118,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kunne ikke få tilgang til leverandørens API-nøkkel i Nøkkelringen."
+          }
+        }
+      }
+    },
+    "Download a local model in Settings before running on-device AI.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last ned en lokal modell i Innstillinger før du kjører AI på enheten."
           }
         }
       }
@@ -166,6 +210,28 @@
         }
       }
     },
+    "Model download failed with HTTP status %lld.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modellnedlasting feilet med HTTP-status %lld."
+          }
+        }
+      }
+    },
+    "Model downloads require an HTTPS URL.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modellnedlastinger krever en HTTPS-URL."
+          }
+        }
+      }
+    },
     "Needs reply": {
       "extractionState": "manual",
       "localizations": {
@@ -210,6 +276,17 @@
         }
       }
     },
+    "On this Mac (download a model)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På denne Mac-en (last ned en modell)"
+          }
+        }
+      }
+    },
     "On this iPad": {
       "extractionState": "manual",
       "localizations": {
@@ -232,6 +309,17 @@
         }
       }
     },
+    "On this iPad (download a model)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På denne iPad-en (last ned en modell)"
+          }
+        }
+      }
+    },
     "On this iPhone": {
       "extractionState": "manual",
       "localizations": {
@@ -250,6 +338,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "På denne iPhone-en (Apple Intelligence)"
+          }
+        }
+      }
+    },
+    "On this iPhone (download a model)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På denne iPhone-en (last ned en modell)"
           }
         }
       }
@@ -353,6 +452,61 @@
         }
       }
     },
+    "The downloaded model file failed SHA-256 verification and was removed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den nedlastede modellfilen bestod ikke SHA-256-verifisering og ble fjernet."
+          }
+        }
+      }
+    },
+    "The downloaded model weights are verified on this device, but no compatible local inference runtime is installed yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De nedlastede modellvektene er verifisert på denne enheten, men ingen kompatibel lokal kjøretid for inferens er installert ennå."
+          }
+        }
+      }
+    },
+    "The local model runtime failed to generate a response: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den lokale modellkjøretiden kunne ikke generere et svar: %@"
+          }
+        }
+      }
+    },
+    "The model download exceeded the expected file size and was cancelled.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modellnedlastingen oversteg forventet filstørrelse og ble avbrutt."
+          }
+        }
+      }
+    },
+    "The model download was cancelled.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modellnedlastingen ble avbrutt."
+          }
+        }
+      }
+    },
     "The provider API key stored in Keychain is unreadable.": {
       "extractionState": "manual",
       "localizations": {
@@ -360,6 +514,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Leverandørens API-nøkkel lagret i Nøkkelringen er uleselig."
+          }
+        }
+      }
+    },
+    "The requested local model is not in Brev’s catalog.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den forespurte lokale modellen finnes ikke i Brevs katalog."
           }
         }
       }

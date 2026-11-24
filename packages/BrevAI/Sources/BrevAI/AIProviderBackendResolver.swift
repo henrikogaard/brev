@@ -22,19 +22,25 @@ public actor AIProviderBackendResolver {
     private let secretStore: any AIProviderSecretStore
     private let appleIntelligenceAvailability: @Sendable () -> AppleIntelligenceAvailability
     private let appleIntelligenceGenerator: any AppleIntelligenceTextGenerating
+    private let localModelDownloadManager: LocalModelDownloadManager
+    private let localModelRuntime: any LocalModelInferenceRuntime
 
     /// Creates a resolver backed by device-local provider metadata and Keychain secrets.
     public init(
         defaults: UserDefaults = .standard,
         secretStore: any AIProviderSecretStore = AIProviderKeychainSecretStore(),
         appleIntelligenceAvailability: @escaping @Sendable () -> AppleIntelligenceAvailability = { .current() },
-        appleIntelligenceGenerator: any AppleIntelligenceTextGenerating = SystemAppleIntelligenceGenerator()
+        appleIntelligenceGenerator: any AppleIntelligenceTextGenerating = SystemAppleIntelligenceGenerator(),
+        localModelDownloadManager: LocalModelDownloadManager = .shared,
+        localModelRuntime: any LocalModelInferenceRuntime = DefaultLocalModelInferenceRuntime()
     ) {
         configurationStore = AIProviderConfigurationStore(defaults: defaults)
         assignmentStore = AIProviderAccountAssignmentStore(defaults: defaults)
         self.secretStore = secretStore
         self.appleIntelligenceAvailability = appleIntelligenceAvailability
         self.appleIntelligenceGenerator = appleIntelligenceGenerator
+        self.localModelDownloadManager = localModelDownloadManager
+        self.localModelRuntime = localModelRuntime
     }
 
     /// Resolves one backend per account without making a network request.
@@ -101,6 +107,16 @@ public actor AIProviderBackendResolver {
                     generator: appleIntelligenceGenerator
                 )
             }
+        }
+
+        if configuration.kind == .onDeviceDownloadedModel {
+            return LocalDownloadedModelAIBackend(
+                modelID: configuration.modelID,
+                displayName: configuration.displayName,
+                transparencyLabel: configuration.transparencyLabel,
+                downloadManager: localModelDownloadManager,
+                runtime: localModelRuntime
+            )
         }
 
         let apiKey: String?

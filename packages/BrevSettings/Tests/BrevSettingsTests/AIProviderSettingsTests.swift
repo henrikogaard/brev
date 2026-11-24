@@ -295,6 +295,43 @@ struct AIProviderSettingsTests {
         #expect(await secrets.apiKeyValue(for: savedHosted.id) == "sk-test-secret")
     }
 
+    @Test("Downloaded local model draft requires no API key or URL, reports On this Mac, and preserves AI off-by-default")
+    func downloadedLocalModelDraftRequiresNoKeyAndPreservesDefaultOff() async throws {
+        let defaults = try Self.makeDefaults()
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let secrets = InMemoryProviderSecretStore()
+
+        let draft = AIProviderSettingsDraft.new(kind: .onDeviceDownloadedModel)
+        #expect(draft.id == LocalDownloadedModelAIBackend.providerID)
+        #expect(draft.requiresAPIKey == false)
+        #expect(draft.validationIssues.isEmpty)
+        #expect(draft.modelID == LocalModelCatalog.defaultModelID)
+        #expect(draft.transparencyPreview == OnDeviceAIPlatformLabel.transparencyLabel)
+        #expect(draft.apiKeyStatusText.contains("no API key"))
+
+        var enabledDraft = draft
+        enabledDraft.isEnabled = true
+        let saved = try await AIProviderSettingsPersistence.save(
+            enabledDraft,
+            settingsStore: store,
+            secretStore: secrets
+        )
+
+        #expect(saved.kind == .onDeviceDownloadedModel)
+        #expect(saved.id == LocalDownloadedModelAIBackend.providerID)
+        #expect(saved.transparencyLabel == OnDeviceAIPlatformLabel.transparencyLabel)
+        #expect(await secrets.apiKeyValue(for: saved.id) == nil)
+        #expect(store.aiWriterSettings() == AIWriterSettings.defaults)
+
+        var edited = AIProviderSettingsDraft(configuration: saved, hasSavedAPIKey: false)
+        edited.displayName = "Custom Local Name"
+        edited.applyPreset(.appleIntelligence)
+        #expect(edited.kind == .onDeviceDownloadedModel)
+        #expect(edited.displayName == "Custom Local Name")
+        edited.applyPreset(.onDeviceDownloadedModel)
+        #expect(edited.displayName == AIProviderKind.onDeviceDownloadedModel.settingsDisplayName)
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "AIProviderSettingsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
