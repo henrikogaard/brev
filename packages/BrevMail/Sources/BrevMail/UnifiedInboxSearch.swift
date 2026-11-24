@@ -61,6 +61,7 @@ struct UnifiedInboxSearchRequest: Equatable, Sendable {
 struct UnifiedInboxSearchPlan: Equatable, Sendable {
     let source: UnifiedInboxSearchSource
     let query: SearchQuery
+    let cachedPDFFolders: [Folder]?
 }
 
 enum UnifiedInboxSearchPolicy {
@@ -133,18 +134,26 @@ enum UnifiedInboxSearchPolicy {
         ).query
     }
 
-    static func waitingSearchQuery(
+    static func waitingSearchPlan(
         text: String,
         now: Date = Date(),
         calendar: Calendar = .current
-    ) -> SearchQuery {
+    ) -> NaturalLanguageSearchPlan {
         NaturalLanguageSearchPlanner.plan(
             for: text,
             folderID: nil,
             execution: .cacheOnly,
             now: now,
             calendar: calendar
-        ).query
+        )
+    }
+
+    static func waitingSearchQuery(
+        text: String,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> SearchQuery {
+        waitingSearchPlan(text: text, now: now, calendar: calendar).query
     }
 
     static func searchableSources(
@@ -181,7 +190,8 @@ enum UnifiedInboxSearchPolicy {
             if execution == .serverOnly, !supported.contains(.serverSideSearch) {
                 unavailableServerCount += 1
             } else {
-                plans.append(UnifiedInboxSearchPlan(source: source, query: query))
+                let cachedPDFFolders: [Folder]? = plan.searchesCachedPDFs ? section.folders : nil
+                plans.append(UnifiedInboxSearchPlan(source: source, query: query, cachedPDFFolders: cachedPDFFolders))
             }
         }
         return (plans, unavailableServerCount)

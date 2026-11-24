@@ -629,6 +629,51 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     // MARK: Read operations
 
+    /// Reads attachment metadata from locally stored payloads or parsed bodies, without fetching a message.
+    public func cachedAttachmentMessages(in folders: [Folder]) async -> [CachedAttachmentMessage] {
+        guard !folders.isEmpty else { return [] }
+        let labels = await (try? store.labels(accountID: account.id)) ?? []
+        var cursor: String?
+        var result: [CachedAttachmentMessage] = []
+        while !Task.isCancelled, let page = try? await store.cachedSearchPage(
+            accountID: account.id,
+            afterMessageID: cursor,
+            limit: 100
+        ),
+            let lastID = page.last?.id, cursor.map({ $0 < lastID }) ?? true {
+            cursor = lastID
+            for message in page {
+                guard !Task.isCancelled else { return [] }
+                let matches = folders.filter { folder in
+                    folder.id == "ALL_MAIL" ? !message.labelIDs.contains("SPAM") && !message.labelIDs.contains("TRASH")
+                        : message.labelIDs.contains(folder.id)
+                }
+                guard !matches.isEmpty else { continue }
+                let body: MessageBody
+                if Self.hasAttachments(message.payload) {
+                    body = Self.body(from: message)
+                } else if let cached = try? await readCache?.cachedBody(accountID: account.id, messageID: message.id) {
+                    body = cached
+                } else { continue }
+                guard !body.attachments.isEmpty else { continue }
+                for folder in matches {
+                    result.append(CachedAttachmentMessage(
+                        folder: folder,
+                        header: Self.header(from: message, folderID: folder.id, labels: labels),
+                        body: body
+                    ))
+                }
+            }
+        }
+        return result
+    }
+
+    /// Restricts cache reads to this Gmail account's mailbox.
+    public func cachedAttachmentMessages(in folders: [Folder], sourceID: MailSourceID) async -> [CachedAttachmentMessage] {
+        guard sourceID.accountID == account.id, sourceID.mailboxID == account.id else { return [] }
+        return await cachedAttachmentMessages(in: folders)
+    }
+
     public func body(for messageID: String) async throws -> MessageBody {
         try requireConnected()
         if let cached = try await readCache?.cachedBody(accountID: account.id, messageID: messageID) {
@@ -2593,28 +2638,43 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         messageID: String,
         plain: inout String?,
         html: inout String?,
-        attachments: inout [Attachment]
+        attachments: inout [Attachment],
+        path: String = "mime:0",
+        inRelatedContainer: Bool = false
     ) {
-        for child in part
-            .parts {
-            collectParts(child, messageID: messageID, plain: &plain, html: &html, attachments: &attachments)
-        }
         let mimeType = part.mimeType?.lowercased() ?? ""
+        let childInRelated = inRelatedContainer || mimeType == "multipart/related"
+        for (index, child) in part.parts.enumerated() {
+            collectParts(
+                child,
+                messageID: messageID,
+                plain: &plain,
+                html: &html,
+                attachments: &attachments,
+                path: "\(path).\(index)",
+                inRelatedContainer: childInRelated
+            )
+        }
         if mimeType == "text/plain", let data = part.body?.data.flatMap(decodeBase64URL) {
             plain = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
         } else if mimeType == "text/html", let data = part.body?.data.flatMap(decodeBase64URL) {
             html = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
         }
-        if let filename = part.filename, !filename.isEmpty {
-            let contentID = part.headers.first { $0.name.caseInsensitiveCompare("Content-ID") == .orderedSame }?.value
-            let providerAttachmentID = part.body?.attachmentID ?? part.partID ?? filename
+        if let filename = part.attachmentFilename, let key = part.attachmentKey(at: path) {
+            let headers = headerMap(part.headers)
+            let contentID = headers["content-id"]
+            let normalizedContentID = contentID?.trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
+            let disposition = headers["content-disposition"]?.components(separatedBy: ";").first?
+                .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let providerAttachmentID = part.body?.attachmentID ?? key
+            let isRelatedImage = inRelatedContainer && mimeType.hasPrefix("image/") && normalizedContentID != nil
             attachments.append(Attachment(
-                id: "gmail-attachment:\(messageID):\(part.partID ?? filename)",
+                id: "gmail-attachment:\(messageID):\(key)",
                 name: filename,
                 mimeType: part.mimeType ?? "application/octet-stream",
                 sizeBytes: part.body?.size ?? 0,
-                isInline: contentID != nil,
-                contentID: contentID?.trimmingCharacters(in: CharacterSet(charactersIn: "<>")),
+                isInline: isRelatedImage || (disposition.map { $0 == "inline" } ?? (normalizedContentID != nil)),
+                contentID: normalizedContentID,
                 resource: "\(messageID)|\(providerAttachmentID)"
             ))
         }
@@ -2622,14 +2682,14 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     private static func hasAttachments(_ part: GmailMessagePart?) -> Bool {
         guard let part else { return false }
-        return (part.filename?.isEmpty == false) || part.parts.contains(where: hasAttachments)
+        return part.attachmentFilename != nil || part.parts.contains(where: hasAttachments)
     }
 
-    private static func part(in root: GmailMessagePart?, id: String) -> GmailMessagePart? {
+    private static func part(in root: GmailMessagePart?, id: String, path: String = "mime:0") -> GmailMessagePart? {
         guard let root else { return nil }
-        if root.partID == id || root.body?.attachmentID == id { return root }
-        for child in root.parts where Self.part(in: child, id: id) != nil {
-            return Self.part(in: child, id: id)
+        if root.partID == id || root.body?.attachmentID == id || root.attachmentKey(at: path) == id { return root }
+        for (index, child) in root.parts.enumerated() {
+            if let match = Self.part(in: child, id: id, path: "\(path).\(index)") { return match }
         }
         return nil
     }

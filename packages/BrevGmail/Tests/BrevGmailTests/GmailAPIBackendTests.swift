@@ -17,6 +17,108 @@ import Testing
 
 @Suite("Gmail API read backend")
 struct GmailAPIBackendTests {
+    @Test("explicit MIME disposition takes precedence over Content-ID for cached PDFs")
+    func pdfDisposition() async throws {
+        let parts = [
+            GmailMessagePart(partID: "1", mimeType: "application/pdf", filename: "inline.pdf",
+                             headers: [.init(name: "content-disposition", value: "Inline; filename=inline.pdf")]),
+            GmailMessagePart(partID: "2", mimeType: "application/pdf", filename: "attached.pdf",
+                             headers: [.init(name: "Content-Disposition", value: "attachment; filename=attached.pdf"),
+                                       .init(name: "Content-ID", value: "<attached>")]),
+        ]
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "report", threadID: "t", labels: ["INBOX"], payload: GmailMessagePart(parts: parts)),
+        ]))
+        let transport = StubGmailTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let rows = await backend.cachedAttachmentMessages(in: [Folder(id: "INBOX", name: "Inbox", role: .inbox)])
+        let attachments = try #require(rows.first?.body.attachments)
+        #expect(attachments.filter(\.isInline).map(\.name) == ["inline.pdf"])
+        #expect(attachments.filter { !$0.isInline }.map(\.name) == ["attached.pdf"])
+        #expect(attachments.last?.contentID == "attached")
+        #expect(await transport.networkCalls == 0)
+    }
+
+    @Test("CID-referenced images inside multipart/related stay inline even when marked attachment")
+    func relatedImageWithAttachmentDispositionStaysInline() async throws {
+        let related = GmailMessagePart(
+            mimeType: "multipart/related",
+            parts: [
+                GmailMessagePart(partID: "1", mimeType: "text/html"),
+                GmailMessagePart(
+                    partID: "2",
+                    mimeType: "image/png",
+                    filename: "logo.png",
+                    headers: [
+                        .init(name: "Content-Disposition", value: "attachment; filename=logo.png"),
+                        .init(name: "Content-ID", value: "<logo>")
+                    ]
+                ),
+                GmailMessagePart(
+                    partID: "3",
+                    mimeType: "application/pdf",
+                    filename: "invoice.pdf",
+                    headers: [
+                        .init(name: "Content-Disposition", value: "attachment; filename=invoice.pdf"),
+                        .init(name: "Content-ID", value: "<invoice>")
+                    ]
+                ),
+            ]
+        )
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "cid-msg", threadID: "t-cid", labels: ["INBOX"], payload: related),
+        ]))
+        let transport = StubGmailTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let rows = await backend.cachedAttachmentMessages(in: [Folder(id: "INBOX", name: "Inbox", role: .inbox)])
+        let attachments = try #require(rows.first?.body.attachments)
+        #expect(attachments.filter(\.isInline).map(\.name) == ["logo.png"])
+        #expect(attachments.filter { !$0.isInline }.map(\.name) == ["invoice.pdf"])
+        #expect(await transport.networkCalls == 0)
+    }
+
+    @Test("cached attachment enumeration reads only the requested label without fetching bodies")
+    func cachedAttachmentsStayLocal() async throws {
+        let store = InMemoryGmailAccountStore()
+        let payload = GmailMessagePart(mimeType: "application/pdf", filename: "notes.pdf")
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "hit", threadID: "one", labels: ["INBOX"], payload: payload),
+            Self.message(id: "elsewhere", threadID: "two", labels: ["TRASH"], payload: payload),
+            Self.message(id: "unloaded", threadID: "three", labels: ["INBOX"]),
+        ]))
+        let transport = StubGmailTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let folders = [Folder(id: "INBOX", name: "Inbox", role: .inbox)]
+        let source = MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+        let matches = await backend.cachedAttachmentMessages(in: folders, sourceID: source)
+        #expect(matches.map(\.header.id) == ["hit"])
+        #expect(matches.first?.body.attachments.first?.name == "notes.pdf")
+        #expect(await transport.networkCalls == 0)
+    }
+
+    @Test("cached Gmail PDF MIME parts without names retain their independent attachment IDs")
+    func unnamedPDFParts() async throws {
+        let parts = [
+            GmailMessagePart(partID: "1", mimeType: "application/pdf", filename: "", body: .init(attachmentID: "att")),
+            GmailMessagePart(mimeType: "APPLICATION/PDF", body: .init(attachmentID: "second")),
+            GmailMessagePart(mimeType: "text/plain"),
+        ]
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "report", threadID: "t", labels: ["INBOX"], payload: GmailMessagePart(parts: parts)),
+        ]))
+        let transport = StubGmailTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let rows = await backend.cachedAttachmentMessages(in: [Folder(id: "INBOX", name: "Inbox", role: .inbox)])
+        let row = try #require(rows.first)
+        #expect(row.header.hasAttachments)
+        #expect(row.body.attachments.map(\.id) == ["gmail-attachment:report:1", "gmail-attachment:report:second"])
+        #expect(row.body.attachments.map(\.resource) == ["report|att", "report|second"])
+        #expect(await transport.networkCalls == 0)
+    }
+
     @Test("cached header point lookup respects label membership without network access")
     func cachedHeaderPointLookup() async throws {
         let store = InMemoryGmailAccountStore()

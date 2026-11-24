@@ -3331,6 +3331,7 @@ public struct MessageListView: View {
         mutationErrorStatus = nil
         loadMoreErrorStatus = nil
         guard let resolvedQuery = searchPlan.query else {
+            activeAttachmentSearchQuery = nil
             searchProgress.apply(MailSearchUpdate(headers: [], coverage: .cached, replacesResults: true, isComplete: true),
                                  source: progressSource, request: progressRequest)
             headers = []
@@ -3338,11 +3339,14 @@ public struct MessageListView: View {
             finishSearch(request, progressRequest: progressRequest)
             return
         }
-        activeAttachmentSearchQuery = resolvedQuery.hasAttachments != nil && resolvedQuery.execution != .cacheOnly
+        activeAttachmentSearchQuery = !searchPlan.searchesCachedPDFs
+            && resolvedQuery.hasAttachments != nil
+            && resolvedQuery.execution != .cacheOnly
             ? resolvedQuery : nil
         do {
             let results = try await MailSearchExecution
-                .run(backend: backend, query: resolvedQuery, sourceID: sourceID) { update in
+                .run(backend: backend, query: resolvedQuery, sourceID: sourceID,
+                     cachedPDFFolders: searchPlan.searchesCachedPDFs ? allFolders : nil) { update in
                     await MainActor.run {
                         guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request),
                               searchProgress.apply(
@@ -4581,7 +4585,7 @@ private extension NaturalLanguageSearchChip.Kind {
             return "calendar"
         case .unread:
             return "envelope.badge"
-        case .attachment:
+        case .attachment, .cachedPDF:
             return "paperclip"
         case .flagged:
             return "flag"

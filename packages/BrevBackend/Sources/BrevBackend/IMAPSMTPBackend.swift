@@ -1585,8 +1585,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         let parser = IMAPMessageBodyParser()
         var results: [CachedAttachmentMessage] = []
         for folder in folders {
+            guard !Task.isCancelled else { return [] }
             let headers = await cachedHeadersForEnumeration(folder: folder)
             for header in headers {
+                guard !Task.isCancelled else { return [] }
                 // Prefer the structured body cache: it is already parsed and
                 // avoids reparsing the complete raw source for every
                 // attachment-enumeration pass. Keep the source-cache fallback

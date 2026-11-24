@@ -243,8 +243,13 @@ public actor LocalMaildirStore {
 
     /// Streams every stored message in a folder (cur + new; tmp is skipped).
     public func enumerate(folderID: String) throws -> [StoredMessage] {
+        try compactMapMessages(folderID: folderID) { $0 }
+    }
+
+    /// Transforms one file at a time so metadata searches need not retain every message's raw bytes.
+    func compactMapMessages<T: Sendable>(folderID: String, _ transform: @Sendable (StoredMessage) -> T?) throws -> [T] {
         _ = try folder(id: folderID)
-        var stored: [StoredMessage] = []
+        var stored: [T] = []
         for sub in ["cur", "new"] {
             let directory = folderDirectory(id: folderID).appendingPathComponent(sub)
             guard let contents = try? FileManager.default.contentsOfDirectory(
@@ -252,13 +257,14 @@ public actor LocalMaildirStore {
             ) else { continue }
             for file in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
                 where !file.hasDirectoryPath {
+                try Task.checkCancellation()
                 let parsed = MaildirReader.parseFilename(file.lastPathComponent)
                 guard let data = try? Data(contentsOf: file) else { continue }
-                stored.append(StoredMessage(
+                if let value = transform(StoredMessage(
                     ref: LocalMessageRef(folderID: folderID, uniqueID: parsed.uniqueID),
                     flags: parsed.flags,
                     data: data
-                ))
+                )) { stored.append(value) }
             }
         }
         return stored

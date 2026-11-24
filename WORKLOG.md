@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-22 — Agent — #296 cached PDF search
+
+- Search maps PDF phrases to a removable chip and matches cached attachment metadata within each source. A filename ending in another extension, a PDF mentioned only in the subject, or an inline part is not a match. Removing the chip keeps other search predicates.
+- Reused the attachment browser's MIME/extension rule and cache-only enumeration, and supplied the missing Gmail, local Maildir and Mock implementations. No network, storage schema or indexing permission change.
+- Review: a keyword found only by the full-text index disappeared when adding the PDF chip. Folder, unified and saved searches now intersect source-local cache hits with PDF evidence; regression verifies an index-only hit and cache-only execution.
+- Gmail regressions cover explicit attachment disposition overriding Content-ID, and PDF media types with no filename. Both failed before the fixes. Attachment enumeration and cache cleanup use the same part IDs.
+- Verification: the missing chip failed first. Eleven focused Linux harness tests pass, covering the planner, token round trip, Norwegian strings, and metadata selection. Provider tests exercise Gmail without transport calls, local Maildir folder scope, and PDF vs. text drafts in Mock.
+- Linux cannot build the apps, run the full native suites or record snapshots. Check both native search fields and saved searches; snapshot needs recording on macOS 26. Account scope is separate work under #296.
+
 ## 2026-11-22 — Agent — #296 folder search chips
 
 - Recognize English and Norwegian phrases for Inbox, Sent, Drafts, Archive, Trash and Spam. Resolve the role within each source; skip sources missing the role and keep navigation anchored to the original list. Reuse the existing localized folder label.
@@ -8128,3 +8137,9 @@ buttons, and package-aware localization.
 - Goal: rebase `feature/search-folder-phrases` onto `origin/main` (`a1a8be0f`), record macOS 26+ snapshots for English/Norwegian folder phrase chips, register the suite in `.github/workflows/build.yml`, and verify locally on macOS.
 - Changes: rebased onto `origin/main`; added `SearchFolderPhraseSnapshotTests.swift` + light/dark PNG baselines; registered `SearchFolderPhraseSnapshotTests` in `.github/workflows/build.yml`.
 - Verification: `swift test --package-path packages/BrevMail --filter 'SearchFolderPhraseSnapshotTests|NaturalLanguageSearchPlannerTests|MailSearchTokensTests|MailboxSearchScopeTests'` (21 tests in 4 suites passed), visually inspected both PNGs, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check`.
+
+## 2026-11-23 — Agent — PR #332 / Issue #296 (rebase + macOS snapshots)
+
+- Goal: rebase `feature/cached-file-search` onto `origin/main` (`a1a8be0f`), record macOS 26+ snapshots for cached-PDF search chips, register the suite in `.github/workflows/build.yml`, and verify locally on macOS.
+- Changes: rebased onto `origin/main`; added `CachedPDFSearchSnapshotTests.swift` + light/dark PNG baselines covering English combined sender+PDF and Norwegian PDF queries; registered `CachedPDFSearchSnapshotTests` in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'CachedPDFSearchSnapshotTests|NaturalLanguageSearchPlannerTests|MailSearchTokensTests|MailboxSearchScopeTests|UnifiedInboxSearch'` (21 tests in 4 suites passed), `swift test --package-path packages/BrevBackend --filter 'Attachment|PDF|Search'` passed, `swift test --package-path packages/BrevGmail --filter 'Attachment|PDF|Search'` (15/15 passed), visually inspected PNGs, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`.

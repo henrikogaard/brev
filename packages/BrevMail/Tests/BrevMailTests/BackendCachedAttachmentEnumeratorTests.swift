@@ -102,6 +102,27 @@ struct BackendCachedAttachmentEnumeratorTests {
         let sources = await enumerator.cachedMessagesWithBodies()
         #expect(sources.isEmpty)
     }
+
+    @Test("adding PDF to a full-text query keeps index-only hits from the same mailbox")
+    func fileChipRefinesLocalIndex() async throws {
+        let folder = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let section = Self.source("first", folders: [folder])
+        let pdf = Self.attachmentMessage(folder: folder, headerID: "hit")
+        let other = Self.attachmentMessage(folder: folder, headerID: "no-keyword")
+        let backend = StubAttachmentBackend(account: section.account, messages: [pdf, other], indexedHeaders: [pdf.header])
+        let plan = NaturalLanguageSearchPlanner.plan(for: "quasar pdf", folderID: folder.id, execution: .cacheThenServer)
+        // The local index found "quasar" in the body or filename, nowhere in the header.
+        #expect(!plan.query.matches(pdf.header))
+        let matches = try await CachedPDFSearch.headers(
+            backend: backend,
+            query: plan.query,
+            folders: [folder],
+            sourceID: section.id
+        )
+        #expect(matches.map(\.id) == ["hit"])
+        #expect(backend.lastLookup?.0 == section.id)
+        #expect(backend.lastLookup?.1 == SearchQuery(text: "quasar", folderID: folder.id, execution: .cacheOnly))
+    }
 }
 
 /// Minimal `MailBackend` test double returning canned cached attachment
@@ -113,10 +134,14 @@ private final class StubAttachmentBackend: MailBackend, @unchecked Sendable {
     private let messages: [CachedAttachmentMessage]
     private let lock = NSLock()
     private var _requestedFolderIDs: [[Folder.ID]] = []
+    private let indexedHeaders: [MessageHeader]
+    private var lookup: (MailSourceID, SearchQuery)?
+    var lastLookup: (MailSourceID, SearchQuery)? { lock.withLock { lookup } }
 
-    init(account: BrevAccount, messages: [CachedAttachmentMessage]) {
+    init(account: BrevAccount, messages: [CachedAttachmentMessage], indexedHeaders: [MessageHeader] = []) {
         self.account = account
         self.messages = messages
+        self.indexedHeaders = indexedHeaders
     }
 
     var requestedFolderIDs: [[Folder.ID]] {
@@ -147,6 +172,11 @@ private final class StubAttachmentBackend: MailBackend, @unchecked Sendable {
     func discard(draftID _: String) async throws {}
     func send(draft _: Draft) async throws -> SendResult { SendResult(sentMessageID: "sent") }
     func search(_: SearchQuery) async throws -> [MessageHeader] { [] }
+    func search(_ query: SearchQuery, sourceID: MailSourceID) async throws -> [MessageHeader] {
+        lock.withLock { lookup = (sourceID, query) }
+        return indexedHeaders
+    }
+
     func calendarEvent(from attachmentID: String) async throws -> CalendarEvent {
         CalendarEvent(
             id: attachmentID,

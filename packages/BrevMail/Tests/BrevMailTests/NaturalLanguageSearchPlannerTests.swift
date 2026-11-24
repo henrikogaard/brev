@@ -36,6 +36,54 @@ struct NaturalLanguageSearchPlannerTests {
         #expect(literal.chips.isEmpty)
     }
 
+    @Test("PDF clauses combine with header filters; filenames and sender addresses stay literal")
+    func cachedPDFClause() throws {
+        for text in ["pdf from ada@example.test unread", "kvittering med PDF"] {
+            let plan = NaturalLanguageSearchPlanner.plan(for: text, execution: .cacheOnly)
+            let chip = try #require(plan.chips.first { $0.label == "Has: PDF (cached)" })
+            let remaining = NaturalLanguageSearchChipEditing.removing(chip, from: text)
+            #expect(!remaining.localizedCaseInsensitiveContains("pdf"))
+            let input = MailSearchTokens.extract(from: text)
+            let submitted = MailSearchTokens.composedText(freeText: input.remainingText, tokens: input.tokens)
+            #expect(NaturalLanguageSearchPlanner.plan(for: submitted, execution: .cacheOnly).query == plan.query)
+            #expect(NaturalLanguageSearchPlanner.plan(for: submitted, execution: .cacheOnly).chips
+                .contains { $0.label == chip.label })
+        }
+        let literal = NaturalLanguageSearchPlanner.plan(for: "minutes.pdf from pdf@example.test", execution: .cacheOnly)
+        #expect(literal.query.text == "minutes.pdf")
+        #expect(literal.query.from == "pdf@example.test")
+        #expect(literal.chips.count == 1)
+
+        // Removing PDF or non-folder chips preserves quoted senders including repeated spaces.
+        let quotedPDF = NaturalLanguageSearchPlanner.plan(
+            for: #"from "Acme  PDF" with   pdf unread"#,
+            execution: .cacheOnly
+        )
+        #expect(quotedPDF.query.from == "Acme  PDF")
+        #expect(quotedPDF.searchesCachedPDFs)
+        let pdfChip = try #require(quotedPDF.chips.first { $0.kind == .cachedPDF })
+        let withoutPDF = NaturalLanguageSearchChipEditing.removing(pdfChip, from: quotedPDF.originalText)
+        #expect(withoutPDF == #"from "Acme  PDF" unread"#)
+        let unreadChip = try #require(quotedPDF.chips.first { $0.kind == .unread })
+        let withoutUnread = NaturalLanguageSearchChipEditing.removing(unreadChip, from: withoutPDF)
+        #expect(withoutUnread == #"from "Acme  PDF""#)
+        #expect(NaturalLanguageSearchPlanner.plan(for: withoutUnread, execution: .cacheOnly).query.from == "Acme  PDF")
+    }
+
+    @Test("PDF chip and local coverage explanation have Norwegian copy")
+    func pdfCopy() throws {
+        let strings = try LocalizationCatalogTestSupport.loadCatalogStrings()
+        for (key, expected) in [
+            "Has: PDF (cached)": "Har: PDF (lokalt)",
+            "PDF search uses downloaded mail. Choose an on-device search.": "PDF-søk bruker nedlastet e-post. Velg søk på enheten."
+        ] {
+            let entry = strings[key] as? [String: Any]
+            let locales = entry?["localizations"] as? [String: Any]
+            let nb = locales?["nb"] as? [String: Any]
+            #expect((nb?["stringUnit"] as? [String: String])?["value"] == expected)
+        }
+    }
+
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

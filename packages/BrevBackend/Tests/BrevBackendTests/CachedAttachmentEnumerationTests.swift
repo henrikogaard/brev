@@ -159,11 +159,14 @@ struct CachedAttachmentEnumerationTests {
         #expect(messages.map(\.body.attachments.first?.id) == ["cached-attachment"])
     }
 
-    @Test("default MailBackend implementation returns no cached attachment messages")
-    func defaultImplementationIsEmpty() async {
+    @Test("Mock enumerates the preview calendar attachment from its own source only")
+    func mockEnumeratesCalendarInvite() async throws {
         let backend = MockBackend()
-        let messages = await backend.cachedAttachmentMessages(in: MockBackend.previewFolders)
-        #expect(messages.isEmpty)
+        let source = try await backend.sourceID(for: backend.currentMailbox())
+        let messages = await backend.cachedAttachmentMessages(in: MockBackend.previewFolders, sourceID: source)
+        #expect(messages.contains { $0.body.attachments.contains { $0.name == "hytte-weekend.ics" } })
+        let other = MailSourceID(accountID: "other", mailboxID: source.mailboxID)
+        #expect(await backend.cachedAttachmentMessages(in: MockBackend.previewFolders, sourceID: other).isEmpty)
     }
 
     @Test("enumerates attachment-bearing messages from the cache without connecting")

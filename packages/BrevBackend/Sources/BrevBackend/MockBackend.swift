@@ -500,6 +500,17 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         try await store.purgePersistentState()
     }
 
+    /// Enumerates attachments stored in the current mock mailbox without changing it.
+    public func cachedAttachmentMessages(in folders: [Folder]) async -> [CachedAttachmentMessage] {
+        await store.cachedAttachmentMessages(in: folders)
+    }
+
+    /// Enumerates seeded or composed attachments for the requested mailbox only.
+    public func cachedAttachmentMessages(in folders: [Folder], sourceID: MailSourceID) async -> [CachedAttachmentMessage] {
+        guard let mailbox = try? await mailboxID(for: sourceID) else { return [] }
+        return await store.cachedAttachmentMessages(in: folders, mailboxID: mailbox)
+    }
+
     /// Returns every seeded header owned by the requested mailbox and folder.
     public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
         if let cachedMessageHeadersHandler {
@@ -2435,6 +2446,16 @@ private actor Store {
 
     func allMessages(in mailboxID: Mailbox.ID) throws -> [MessageHeader] {
         try data(mailboxID: mailboxID).messagesByFolder.values.flatMap(\.self)
+    }
+
+    func cachedAttachmentMessages(in folders: [Folder], mailboxID: Mailbox.ID? = nil) -> [CachedAttachmentMessage] {
+        guard let data = try? data(mailboxID: mailboxID ?? activeMailboxID) else { return [] }
+        return folders.flatMap { folder in
+            data.messagesByFolder[folder.id, default: []].compactMap { header in
+                guard let body = data.messageBodies[header.id], !body.attachments.isEmpty else { return nil }
+                return CachedAttachmentMessage(folder: folder, header: header, body: body)
+            }
+        }
     }
 
     private func data(mailboxID: Mailbox.ID) throws -> MockMailboxData {
