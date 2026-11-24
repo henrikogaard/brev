@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-11-23 — Agent — PR #329 (#301 rebase and macOS snapshots)
+
+- Goal: rebase PR #329 onto `origin/main`, prevent headline truncation in narrow readers, and record the missing macOS 26 snapshots for `SenderWarningBanner` (look-alike collapsed/expanded and DMARC failure expanded, light/dark).
+- Changes: resolved `CHANGELOG.md`, `WORKLOG.md`, and `Localizable.xcstrings` rebase conflicts; added `initiallyExpanded` parameter and vertical `fixedSize` to `SenderWarningBanner`; added `SenderWarningBannerSnapshotTests` with 4 light/dark baselines; registered suite in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'SenderWarningBannerSnapshotTests|MessageHeaderAnalyzerTests|SenderDomainComparisonTests|BodyRendererTests|NotificationInlineReplyTests'`, `swift test --package-path packages/BrevSettings --filter RecentRecipientStoreTests`, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`; visually verified all 4 PNGs.
+- Handoff: pushed and marked ready for review; awaiting green CI to merge.
+
+## 2026-11-22 — Agent — #301 sender warning review
+
+- Inline image enrichment now preserves authentication metadata, and display-name checks recognize internationalized domains, including equivalent IDNA spellings.
+- Quick replies and notification replies use the same account-specific recipient history as the full composer. Scheduled and retry results do not mark recipients as written to.
+- Verification: Unicode regression failed before the fix. All 28 focused Linux harness tests pass. Native build, render tests and macOS 26 snapshots remain outstanding.
+
+## 2026-11-22 — Agent — #301 local sender warnings
+
+- Added a shared sender warning and details disclosure to the single reader, detached windows and expanded conversation cards. Domain checks use a small bundled brand list, look-alike spellings and outgoing correspondence; receiving a message does not make an address familiar.
+- Confirmed immediate sends mark an existing local recent-recipient record. Cached Sent contributes only recipients of the user's outgoing messages. A familiar address suppresses name/domain heuristics, while a reported DMARC failure and independent link warnings remain visible.
+- Verification: detector red before implementation; focused Foundation harness for detector, correspondence, catalog and existing link checks. SwiftUI layout, macOS/iOS builds and full package tests require macOS CI. The warning snapshot needs recording on macOS 26. No network call, protected-package change or snapshot PNG.
+
+
 ## 2026-11-23 — Agent — PR #328 (#300 command palette rebase, workspace destinations, and macOS snapshots)
 
 - Goal: rebase PR #328 onto `origin/main`, surface newly merged `Assistant`, `Triage`, and `Subscriptions` workspace destinations in the ⌘K palette, and record macOS 26+ palette snapshots.

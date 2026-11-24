@@ -22,13 +22,16 @@ public struct RecentRecipientObservation: Sendable, Hashable {
     public let email: String
     /// When this correspondence was last seen.
     public let date: Date
+    /// True only for recipients of an accepted, immediate outgoing send.
+    public let wasSentTo: Bool
 
     /// Creates a local correspondence observation.
-    public init(accountID: String, displayName: String?, email: String, date: Date) {
+    public init(accountID: String, displayName: String?, email: String, date: Date, wasSentTo: Bool = false) {
         self.accountID = accountID
         self.displayName = displayName
         self.email = email
         self.date = date
+        self.wasSentTo = wasSentTo
     }
 }
 
@@ -42,16 +45,19 @@ public struct RecentRecipient: Identifiable, Codable, Hashable, Sendable {
     public let email: String
     /// The newest message or successful send associated with this recipient.
     public let lastCorrespondenceAt: Date
+    /// Absent for legacy or incoming-only observations.
+    public let lastSentAt: Date?
 
     /// Stable per-account identity for SwiftUI lists and persistence updates.
     public var id: String { "\(accountID)|\(email.lowercased())" }
 
     /// Creates a locally persisted recipient record.
-    public init(accountID: String, displayName: String?, email: String, lastCorrespondenceAt: Date) {
+    public init(accountID: String, displayName: String?, email: String, lastCorrespondenceAt: Date, lastSentAt: Date? = nil) {
         self.accountID = accountID
         self.displayName = displayName
         self.email = email
         self.lastCorrespondenceAt = lastCorrespondenceAt
+        self.lastSentAt = lastSentAt
     }
 }
 
@@ -89,6 +95,9 @@ public struct RecipientSuggestionSettings: Equatable, Sendable {
 
 /// Stores a private, removable list of recipients learned from local mail data.
 public struct RecentRecipientStore {
+    /// Tells open readers to reload the local outgoing-address evidence.
+    public static let writtenAddressesDidChange = Notification.Name("mail.writtenAddressesDidChange")
+
     /// Maximum records retained for any one account to keep local lookup bounded.
     public static let maximumRecipientsPerAccount = 500
 
@@ -141,7 +150,9 @@ public struct RecentRecipientStore {
                     accountID: accountID,
                     displayName: resolvedDisplayName,
                     email: email,
-                    lastCorrespondenceAt: max(existing.lastCorrespondenceAt, observation.date)
+                    lastCorrespondenceAt: max(existing.lastCorrespondenceAt, observation.date),
+                    lastSentAt: observation.wasSentTo ? max(existing.lastSentAt ?? .distantPast, observation.date) : existing
+                        .lastSentAt
                 )
                 if next != existing {
                     byID[id] = next
@@ -152,7 +163,8 @@ public struct RecentRecipientStore {
                     accountID: accountID,
                     displayName: displayName,
                     email: email,
-                    lastCorrespondenceAt: observation.date
+                    lastCorrespondenceAt: observation.date,
+                    lastSentAt: observation.wasSentTo ? observation.date : nil
                 )
                 didChange = true
             }
@@ -169,6 +181,12 @@ public struct RecentRecipientStore {
             }
             .sorted(by: newestFirst)
         save(retained)
+        if observations.contains(where: \.wasSentTo) { notifyReaders() }
+    }
+
+    /// Addresses this account has actually sent to; incoming mail alone never adds an address.
+    public func writtenAddresses(accountID: String) -> Set<String> {
+        Set(storedRecipients().filter { $0.accountID == accountID && $0.lastSentAt != nil }.map(\.email))
     }
 
     /// Returns recent recipients matching a local query for one account.
@@ -208,6 +226,7 @@ public struct RecentRecipientStore {
         }
         saveDismissedAtByRecipientID(dismissedAtByRecipientID)
         save(existing.filter { normalizedEmail($0.email) != normalized })
+        notifyReaders()
     }
 
     /// Clears all Brev-only recent-recipient records without touching Apple Contacts.
@@ -215,6 +234,7 @@ public struct RecentRecipientStore {
         defaults.removeObject(forKey: Key.recipients)
         defaults.removeObject(forKey: Key.dismissedAtByRecipientID)
         defaults.set(Date(), forKey: Key.clearedAt)
+        notifyReaders()
     }
 
     /// Removes all recent-recipient data scoped to an account being removed.
@@ -223,10 +243,15 @@ public struct RecentRecipientStore {
         guard !normalizedAccountID.isEmpty else { return }
 
         save(storedRecipients().filter { $0.accountID != normalizedAccountID })
+        notifyReaders()
         let prefix = "\(normalizedAccountID)|"
         saveDismissedAtByRecipientID(
             storedDismissedAtByRecipientID().filter { !$0.key.hasPrefix(prefix) }
         )
+    }
+
+    private func notifyReaders() {
+        NotificationCenter.default.post(name: Self.writtenAddressesDidChange, object: nil)
     }
 
     private func storedRecipients() -> [RecentRecipient] {

@@ -86,6 +86,7 @@ enum DetachedMessageWindow {
             canFileLocally: canFileLocally,
             closeWindow: { [weak window] in window?.close() }
         )
+        .modifier(SenderWarningHistoryModifier(backend: backend, sourceID: sourceID, folders: allFolders))
         .readerCommandHandler { [weak window] request in
             // State changes schedule presentation for the next view update.
             // Obtain acceptance first so a busy or unavailable owner cannot

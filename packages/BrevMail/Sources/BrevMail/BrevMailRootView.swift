@@ -1450,6 +1450,10 @@ public struct BrevMailRootView: View {
     private func triageWorkspace(_ session: TriageSession) -> some View {
         let current = session.currentItem
         let currentOwner = current.map { backend(for: $0.sourceID) } ?? selectedBackend
+        let currentUnfilteredSection = current.flatMap { item in
+            visibleSourceSections.first { $0.id == item.sourceID }
+        }
+        let currentUnfilteredFolders = currentUnfilteredSection?.folders ?? folders
         let canArchive = current.map { item in
             guard let archive = triageArchiveFolder(for: item) else { return false }
             return item.header.folderID != archive.id
@@ -1489,38 +1493,47 @@ public struct BrevMailRootView: View {
             }
         ) { item, preloadedBody in
             let owner = backend(for: item.sourceID)
-            let sourceFolders = sidebarSourceSections.first { $0.id == item.sourceID }?.folders ?? folders
-            if owner.groupsMessagesIntoThreads, item.threadHeaders.count > 1 {
-                ThreadConversationView(
-                    threadHeaders: item.threadHeaders,
-                    backend: owner,
-                    sourceID: item.sourceID,
-                    mailboxLabel: sidebarSourceSections.first { $0.id == item.sourceID }?.mailbox.email,
-                    navigation: triageReaderNavigation,
-                    isWorkBlocked: isCommandMutationBlocked || isReaderComposeBlocked,
-                    allFolders: sourceFolders,
-                    canFileLocally: localBackend != nil,
-                    inviteReconciler: inviteReconciler,
-                    readerFooter: nil
-                )
-            } else {
-                MessageDetailView(
-                    backend: owner,
-                    sourceID: item.sourceID,
-                    header: item.header,
-                    navigation: triageReaderNavigation,
-                    allFolders: sourceFolders,
-                    isWorkBlocked: isMessageWorkBlocked || isReaderComposeBlocked,
-                    isMutationWorkBlocked: isCommandMutationBlocked,
-                    canFileLocally: localBackend != nil,
-                    inviteReconciler: inviteReconciler,
-                    contactActions: senderContactActions,
-                    driveFeature: driveFeature,
-                    readerFooter: nil,
-                    preloadedBody: preloadedBody
-                )
+            let sourceSection = sidebarSourceSections.first { $0.id == item.sourceID }
+            let sourceFolders = sourceSection?.folders ?? folders
+            Group {
+                if owner.groupsMessagesIntoThreads, item.threadHeaders.count > 1 {
+                    ThreadConversationView(
+                        threadHeaders: item.threadHeaders,
+                        backend: owner,
+                        sourceID: item.sourceID,
+                        mailboxLabel: sourceSection?.mailbox.email,
+                        navigation: triageReaderNavigation,
+                        isWorkBlocked: isCommandMutationBlocked || isReaderComposeBlocked,
+                        allFolders: sourceFolders,
+                        canFileLocally: localBackend != nil,
+                        inviteReconciler: inviteReconciler,
+                        readerFooter: nil
+                    )
+                } else {
+                    MessageDetailView(
+                        backend: owner,
+                        sourceID: item.sourceID,
+                        header: item.header,
+                        navigation: triageReaderNavigation,
+                        allFolders: sourceFolders,
+                        isWorkBlocked: isMessageWorkBlocked || isReaderComposeBlocked,
+                        isMutationWorkBlocked: isCommandMutationBlocked,
+                        canFileLocally: localBackend != nil,
+                        inviteReconciler: inviteReconciler,
+                        contactActions: senderContactActions,
+                        driveFeature: driveFeature,
+                        readerFooter: nil,
+                        preloadedBody: preloadedBody
+                    )
+                }
             }
         }
+        .modifier(SenderWarningHistoryModifier(
+            backend: currentOwner,
+            sourceID: current?.sourceID,
+            folders: currentUnfilteredFolders,
+            mailboxEmail: currentUnfilteredSection?.mailbox.email
+        ))
         .onChange(of: session.currentItem?.id) { _, _ in
             session.syncReaderNavigation(triageReaderNavigation)
         }
@@ -2200,6 +2213,10 @@ public struct BrevMailRootView: View {
                 }
             }
         }
+        .modifier(SenderWarningHistoryModifier(
+            backend: selectedBackend, sourceID: navigation.selectedSourceID,
+            folders: selectedSourceSection?.folders ?? folders, mailboxEmail: selectedSourceSection?.mailbox.email
+        ))
         // The compact iPhone reader is a sibling of the background workspace,
         // so install the owner here as well as on the root command context.
         .environment(\.localMessageWorkflowReaderState, localMessageWorkflowStateBinding.wrappedValue)
@@ -7354,7 +7371,7 @@ public struct BrevMailRootView: View {
         }
 
         let outcome = await NotificationInlineReplyPipeline.deliver(
-            draft: draft,
+            draft: draft, accountID: replyBackend.account.id,
             save: { draft in
                 if let sourceID {
                     return try await replyBackend.save(draft: draft, sourceID: sourceID)
@@ -7363,9 +7380,9 @@ public struct BrevMailRootView: View {
             },
             send: { draft in
                 if let sourceID {
-                    _ = try await replyBackend.send(draft: draft, sourceID: sourceID)
+                    return try await replyBackend.send(draft: draft, sourceID: sourceID)
                 } else {
-                    _ = try await replyBackend.send(draft: draft)
+                    return try await replyBackend.send(draft: draft)
                 }
             }
         )
@@ -7450,7 +7467,7 @@ public struct BrevMailRootView: View {
         }
 
         let outcome = await NotificationInlineReplyPipeline.deliver(
-            draft: draft,
+            draft: draft, accountID: routeBackend.account.id,
             save: { draft in
                 if let sourceID {
                     return try await routeBackend.save(draft: draft, sourceID: sourceID)
@@ -7459,9 +7476,9 @@ public struct BrevMailRootView: View {
             },
             send: { draft in
                 if let sourceID {
-                    _ = try await routeBackend.send(draft: draft, sourceID: sourceID)
+                    return try await routeBackend.send(draft: draft, sourceID: sourceID)
                 } else {
-                    _ = try await routeBackend.send(draft: draft)
+                    return try await routeBackend.send(draft: draft)
                 }
             }
         )

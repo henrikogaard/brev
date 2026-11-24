@@ -19,6 +19,14 @@ struct MessageSecurityAnalysis: Equatable, Sendable {
 
     static let empty = MessageSecurityAnalysis(warnings: [], linkWarnings: [])
 
+    /// The sender banner owns name/domain mismatches. Preserve independent reply-to and link checks.
+    var withoutDisplayNameWarning: Self {
+        Self(warnings: warnings.filter {
+            if case .displayNameDomainMismatch = $0.kind { return false }
+            return true
+        }, linkWarnings: linkWarnings)
+    }
+
     var hasWarnings: Bool {
         !warnings.isEmpty || !linkWarnings.isEmpty
     }
@@ -148,7 +156,7 @@ enum MessageSecurityWarningPolicy {
         return MessageSecurityAnalysis(warnings: warnings, linkWarnings: linkWarningResults)
     }
 
-    private static func displayNameDomainWarning(for sender: Correspondent) -> MessageSecurityWarning? {
+    static func displayNameDomainWarning(for sender: Correspondent) -> MessageSecurityWarning? {
         guard let senderDomain = domain(fromEmail: sender.email),
               let displayName = sender.name?.trimmingCharacters(in: .whitespacesAndNewlines),
               !displayName.isEmpty
@@ -372,7 +380,8 @@ enum MessageSecurityWarningPolicy {
     }
 
     private static func domains(in text: String) -> [String] {
-        let pattern = #"(?i)\b(?:[a-z0-9._%+-]+@)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)\b"#
+        let label = #"[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?"#
+        let pattern = #"(?i)\b(?:[\w.%+-]+@)?(\#(label)(?:\.\#(label))+)\b"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let range = NSRange(text.startIndex ..< text.endIndex, in: text)
         var seen: Set<String> = []
@@ -397,7 +406,7 @@ enum MessageSecurityWarningPolicy {
     /// which is unaffected, so genuine IP/punycode destinations are still checked.
     private static func hasPlausibleTLD(_ domain: String) -> Bool {
         guard let lastLabel = domain.split(separator: ".").last else { return false }
-        return lastLabel.count >= 2 && lastLabel.contains { $0.isASCII && $0.isLetter }
+        return lastLabel.count >= 2 && lastLabel.contains(where: \.isLetter)
     }
 
     private static func normalizeDomain(_ domain: String) -> String? {
@@ -409,8 +418,8 @@ enum MessageSecurityWarningPolicy {
     }
 
     private static func domainsAreRelated(_ lhs: String, _ rhs: String) -> Bool {
-        guard let lhs = normalizeDomain(lhs),
-              let rhs = normalizeDomain(rhs)
+        guard let lhs = SenderDomainComparison.decodedHost(lhs) ?? normalizeDomain(lhs),
+              let rhs = SenderDomainComparison.decodedHost(rhs) ?? normalizeDomain(rhs)
         else { return false }
         return lhs == rhs
             || lhs.hasSuffix(".\(rhs)")

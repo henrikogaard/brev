@@ -21,24 +21,35 @@ import Foundation
 /// (ADR-0028 invariant 3).
 public struct RenderedBody: Sendable {
     /// HTML content ready for display, or `nil` if unavailable.
-    public let html: String?
+    public private(set) var html: String?
     /// Plaintext content, or `nil` if unavailable.
     public let plainText: String?
     /// Attachments after any decryption unwrapping.
     public let attachments: [Attachment]
     /// Message signing/decryption status for trust UI.
     public let securityState: MessageSecurityState
+    /// Original transport authentication header for the reader's local sender checks.
+    public let authenticationResults: String?
 
     public init(
         html: String?,
         plainText: String?,
         attachments: [Attachment],
-        securityState: MessageSecurityState = .none
+        securityState: MessageSecurityState = .none,
+        authenticationResults: String? = nil
     ) {
         self.html = html
         self.plainText = plainText
         self.attachments = attachments
         self.securityState = securityState
+        self.authenticationResults = authenticationResults
+    }
+
+    /// Inline attachment enrichment changes only the HTML, retaining all security metadata.
+    func replacingHTML(_ html: String?) -> Self {
+        var copy = self
+        copy.html = html
+        return copy
     }
 }
 
@@ -67,7 +78,8 @@ public actor BodyRenderer {
             html: processed.body.html,
             plainText: processed.body.plainText,
             attachments: processed.body.attachments,
-            securityState: processed.securityState
+            securityState: processed.securityState,
+            authenticationResults: body.authenticationResults
         )
         MailUIPerformanceDiagnostics.logBodyRenderFinished(
             hasHTML: rendered.html != nil,

@@ -16875,6 +16875,94 @@
           }
         }
       }
+    },
+    "Sender address: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avsenderadresse: %@"
+          }
+        }
+      }
+    },
+    "Show sender details": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis avsenderdetaljer"
+          }
+        }
+      }
+    },
+    "The sender’s domain could not be verified": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avsenderens domene kunne ikke bekreftes"
+          }
+        }
+      }
+    },
+    "The name and sender domain don’t match": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Navnet og avsenderdomenet stemmer ikke overens"
+          }
+        }
+      }
+    },
+    "This message came from %@, which may be impersonating %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne meldingen kom fra %1$@, som kan utgi seg for å være %2$@."
+          }
+        }
+      }
+    },
+    "The authentication header reports a DMARC failure. Check the address before replying.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldingshodet viser at DMARC-kontrollen mislyktes. Sjekk adressen før du svarer."
+          }
+        }
+      }
+    },
+    "The display name mentions a different domain from the sender’s address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visningsnavnet inneholder et annet domene enn avsenderadressen."
+          }
+        }
+      }
+    },
+    "The name or domain resembles a familiar sender. Check the spelling before replying.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Navnet eller domenet ligner på en kjent avsender. Sjekk stavemåten før du svarer."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

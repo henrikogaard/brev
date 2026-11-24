@@ -71,6 +71,11 @@ public struct DetachedReaderWindowView: View {
                         canFileLocally: canFileLocally,
                         closeWindow: { dismissWindow(value: payload) }
                     )
+                    .modifier(SenderWarningHistoryModifier(
+                        backend: backend,
+                        sourceID: payload.sourceID,
+                        folders: resolvedFolders
+                    ))
                     .readerCommandHandler { request in
                         let source = request.sourceID ?? MailSourceID(
                             accountID: backend.account.id, mailboxID: backend.account.id

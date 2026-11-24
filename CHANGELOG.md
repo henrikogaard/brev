@@ -4,6 +4,7 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- The reader flags sender domains that resemble a familiar correspondent or brand. Expand the warning to check the address and see why it was flagged (#301).
 - On Mac, press ⌘K to search menu commands, accounts, mailboxes and settings.
 - On Mac, single-key shortcuts act on the selected message while the message list or reader has focus (`E` archive, `R` reply, `S` star, `#` delete, `H` snooze, `J`/`K` next and previous) and pause while typing; toggle them in Settings → Mailbox View (#300).
 - Cached expired snoozed messages outside the loaded Inbox page now reappear

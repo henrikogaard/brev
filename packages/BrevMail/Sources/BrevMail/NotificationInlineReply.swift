@@ -11,6 +11,7 @@
  */
 
 import BrevBackend
+import BrevSettings
 import Foundation
 
 enum NotificationInlineReplyComposer {
@@ -66,10 +67,13 @@ enum NotificationInlineReplyPipeline {
     /// Saves first because a notification reply has no open compose surface to
     /// retain the text if SMTP delivery fails. Sending the persisted value also
     /// preserves any backend-assigned remote draft identifier.
+    @MainActor
     static func deliver(
         draft: Draft,
+        accountID: String,
+        store: RecentRecipientStore = RecentRecipientStore(),
         save: (Draft) async throws -> Draft,
-        send: (Draft) async throws -> Void
+        send: (Draft) async throws -> SendResult
     ) async -> NotificationInlineReplyOutcome {
         let saved: Draft
         do {
@@ -79,7 +83,8 @@ enum NotificationInlineReplyPipeline {
         }
 
         do {
-            try await send(saved)
+            let result = try await send(saved)
+            store.recordDelivery(of: saved, result: result, accountID: accountID)
             return .sent
         } catch {
             return .failed(draftWasSaved: true)

@@ -700,7 +700,7 @@ public struct MessageDetailView: View {
                         BrevDivider()
                     }
 
-                    senderAuthWarningBanner(for: header)
+                    SenderWarningBanner(header: header, authenticationResults: messageBody?.authenticationResults)
 
                     if let signInCodeMatch = SignInCodeSurfacePolicy.bodyCode(
                         plainText: messageBody?.plainText,
@@ -1136,7 +1136,7 @@ public struct MessageDetailView: View {
             header: header,
             bodyHTML: messageBody?.html,
             replyTo: header.replyTo
-        )
+        ).withoutDisplayNameWarning
     }
 
     private var securityStatusRow: some View {
@@ -1936,30 +1936,6 @@ public struct MessageDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private func senderAuthWarningBanner(for header: MessageHeader) -> some View {
-        let warning = MessageHeaderAnalyzer.warning(
-            for: header,
-            authenticationResults: messageBody?.authenticationResults
-        )
-        if let warning {
-            switch warning {
-            case .dmarcFail, .dmarcFailAndDisplayNameMismatch:
-                BrevStatusBanner(
-                    style: .error,
-                    title: "This message failed DMARC — it may be spoofed",
-                    message: "The sender's domain could not be verified. Be cautious before clicking links or acting on requests."
-                )
-            case .displayNameMismatch:
-                BrevStatusBanner(
-                    style: .warning,
-                    title: "Sender name doesn't match address domain",
-                    message: "The display name contains a domain that differs from the actual sender address."
-                )
-            }
-        }
-    }
-
     private func bodyPresentation(for header: MessageHeader) -> MessageDetailBodyPresentation {
         let html = messageBody?.html
         let remoteContentState = html.map {
@@ -2537,12 +2513,7 @@ public struct MessageDetailView: View {
             if resolvedHTML != rendered.html {
                 messageBody = MessageDetailPresentation.displayBody(
                     loaded: loaded,
-                    rendered: RenderedBody(
-                        html: resolvedHTML,
-                        plainText: rendered.plainText,
-                        attachments: rendered.attachments,
-                        securityState: rendered.securityState
-                    ),
+                    rendered: rendered.replacingHTML(resolvedHTML),
                     fallbackSnippet: header.snippet
                 )
                 let importRequest = nextNativeHTMLImportRequest()

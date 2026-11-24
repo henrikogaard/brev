@@ -18,6 +18,17 @@ import Testing
 
 @Suite("BodyRenderer")
 struct BodyRendererTests {
+    @Test("conversation card receives authentication from the original message")
+    func preservesAuthenticationHeader() async {
+        let original = "mx.example; dmarc=fail header.from=example.org"
+        let body = MessageBody(messageID: "auth", authenticationResults: original)
+        let rendered = await BodyRenderer().render(body)
+        #expect(rendered.authenticationResults == original)
+        let enriched = rendered.replacingHTML("<p>Inline attachment resolved</p>")
+        #expect(enriched.html != rendered.html)
+        #expect(enriched.authenticationResults == original)
+    }
+
     @Test("default renderer surfaces encrypted state from crypto processor")
     func defaultRendererSurfacesEncryptedState() async {
         let renderer = BodyRenderer()
