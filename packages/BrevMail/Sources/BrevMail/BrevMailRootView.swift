@@ -973,6 +973,7 @@ public struct BrevMailRootView: View {
             .onChange(of: navigation.searchText) { _, newValue in
                 if MessageListReloadPolicy.operation(forSearchText: newValue) == .folder {
                     navigation.restoreSearchOriginIfNeeded()
+                    navigation.searchFieldScope = .all
                     navigation.searchAllMailboxes = true
                 }
             }
@@ -993,6 +994,9 @@ public struct BrevMailRootView: View {
             }
             .onChange(of: navigation.selectedFolderID) { _, selectedFolderID in
                 #if os(iOS)
+                guard MailCrossAccountSearchPolicy.shouldNavigateCompactOnFolderChange(
+                    searchOriginSourceFolderID: navigation.searchOriginSourceFolderID
+                ) else { return }
                 if selectedFolderID != nil {
                     openSelectedMessagesOnCompact()
                 } else {
@@ -5153,7 +5157,11 @@ public struct BrevMailRootView: View {
         currentID: Folder.ID?
     ) {
         guard !navigation.isUnifiedInboxSelected, !navigation.isSmartViewSelected,
-              !navigation.isAllAttachmentsSelected, !navigation.isAssistantSelected else { return }
+              !navigation.isAllAttachmentsSelected, !navigation.isAssistantSelected,
+              MailCrossAccountSearchPolicy.shouldSyncSelectedFolder(
+                  isCrossAccountSearchActive: isCrossAccountFolderSearchActive,
+                  searchOriginSourceFolderID: navigation.searchOriginSourceFolderID
+              ) else { return }
         let selectedFolderID = visibleFolderID(
             in: folders,
             sourceID: sourceID,
@@ -5168,7 +5176,11 @@ public struct BrevMailRootView: View {
 
     private func syncSelectedFolderForCurrentSource() {
         guard !navigation.isUnifiedInboxSelected, !navigation.isSmartViewSelected,
-              !navigation.isAllAttachmentsSelected, !navigation.isAssistantSelected else { return }
+              !navigation.isAllAttachmentsSelected, !navigation.isAssistantSelected,
+              MailCrossAccountSearchPolicy.shouldSyncSelectedFolder(
+                  isCrossAccountSearchActive: isCrossAccountFolderSearchActive,
+                  searchOriginSourceFolderID: navigation.searchOriginSourceFolderID
+              ) else { return }
         if let section = selectedSourceSection {
             syncSelectedFolderID(
                 for: section.folders,

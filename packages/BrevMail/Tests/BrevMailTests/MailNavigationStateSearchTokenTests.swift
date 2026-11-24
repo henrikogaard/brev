@@ -12,6 +12,7 @@
 
 import BrevBackend
 @testable import BrevMail
+import Combine
 import Foundation
 import Testing
 
@@ -112,12 +113,92 @@ struct MailNavigationStateSearchTokenTests {
         // Removing the result's source during cross-account search falls back cleanly to the surviving origin.
         state.searchText = "invoice"
         state.selectMessage(headerB, in: sourceB, headers: [headerB])
+        #expect(!MailCrossAccountSearchPolicy.shouldNavigateCompactOnFolderChange(
+            searchOriginSourceFolderID: state.searchOriginSourceFolderID
+        ))
+        #expect(!MailCrossAccountSearchPolicy.shouldSyncSelectedFolder(
+            isCrossAccountSearchActive: true,
+            searchOriginSourceFolderID: state.searchOriginSourceFolderID
+        ))
         state.reconcileReaderSources([sourceA])
         #expect(state.selectedSourceID == sourceA)
         #expect(state.selectedFolderID == "work")
         #expect(state.selectedMessageID == nil)
         #expect(state.searchOriginSourceFolderID == nil)
+        #expect(MailCrossAccountSearchPolicy.shouldNavigateCompactOnFolderChange(
+            searchOriginSourceFolderID: state.searchOriginSourceFolderID
+        ))
+        #expect(MailCrossAccountSearchPolicy.shouldSyncSelectedFolder(
+            isCrossAccountSearchActive: false,
+            searchOriginSourceFolderID: state.searchOriginSourceFolderID
+        ))
     }
+
+    @Test("field scope persists across mailbox scope switches and resets on clear or folder change")
+    func fieldScopePreservedAcrossMailboxScopeChanges() {
+        let sourceA = MailSourceID(accountID: "acct-a", mailboxID: "primary")
+        let state = MailNavigationState()
+        state.selectFolder("inbox", in: sourceA)
+        state.searchText = "maya"
+        state.searchFieldScope = .from
+        #expect(state.searchScope == .from)
+
+        state.setSearchAllMailboxes(false)
+        #expect(state.searchFieldScope == .from)
+        #expect(state.searchScope == .from)
+
+        state.setSearchAllMailboxes(true)
+        #expect(state.searchFieldScope == .from)
+        #expect(state.searchScope == .from)
+
+        state.clearSearch()
+        #expect(state.searchFieldScope == .all)
+        #expect(state.searchScope == .all)
+
+        state.searchFieldScope = .subject
+        state.selectFolder("sent", in: sourceA)
+        #expect(state.searchFieldScope == .all)
+    }
+
+    #if os(macOS)
+    @Test("reader J/K shortcuts step through unified results during cross-account search")
+    func readerShortcutsStepAcrossAccountsDuringCrossAccountSearch() {
+        let sourceA = MailSourceID(accountID: "acct-a", mailboxID: "primary")
+        let sourceB = MailSourceID(accountID: "acct-b", mailboxID: "primary")
+        let state = MailNavigationState()
+        state.selectFolder("work", in: sourceA)
+        state.searchText = "invoice"
+        let headerB = MessageHeader(
+            id: "msg-b",
+            threadID: "t-b",
+            folderID: "archive",
+            from: Correspondent(email: "maya@example.org"),
+            to: [],
+            subject: "Invoice B",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 200)
+        )
+        state.selectMessage(headerB, in: sourceB, headers: [headerB])
+
+        var steps: [Bool] = []
+        let cancellable = state.unifiedReaderStep.sink { steps.append($0) }
+        defer { cancellable.cancel() }
+
+        #expect(MailSingleKeyShortcut.next.performInReader(
+            navigation: state,
+            header: headerB,
+            sourceID: sourceB,
+            perform: { _, _ in false }
+        ))
+        #expect(MailSingleKeyShortcut.previous.performInReader(
+            navigation: state,
+            header: headerB,
+            sourceID: sourceB,
+            perform: { _, _ in false }
+        ))
+        #expect(steps == [true, false])
+    }
+    #endif
 
     @Test("a field token drives the list's search scope")
     func fieldTokenDrivesScope() {

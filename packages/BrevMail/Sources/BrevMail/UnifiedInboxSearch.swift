@@ -59,6 +59,24 @@ enum MailCrossAccountSearchPolicy {
             && searchAllMailboxes
             && MessageListReloadPolicy.operation(forSearchText: searchText) != .folder
     }
+
+    /// Compact iPhone navigation should not treat opening a cross-account result
+    /// from another folder as sidebar folder navigation back to the list.
+    static func shouldNavigateCompactOnFolderChange(
+        searchOriginSourceFolderID: SourceFolderID?
+    ) -> Bool {
+        searchOriginSourceFolderID == nil
+    }
+
+    /// Folder-visibility synchronization must not replace `selectedFolderID` or
+    /// clear `selectedMessageID` while cross-account search is presenting a
+    /// result that may live in another account's hidden folder.
+    static func shouldSyncSelectedFolder(
+        isCrossAccountSearchActive: Bool,
+        searchOriginSourceFolderID: SourceFolderID?
+    ) -> Bool {
+        !isCrossAccountSearchActive && searchOriginSourceFolderID == nil
+    }
 }
 
 struct UnifiedInboxSearchRequest: Equatable, Sendable {

@@ -167,8 +167,6 @@ struct UnifiedInboxListView: View {
     @State private var workflowSnoozeRequestGeneration = 0
     /// Memoizes search-chip detection per (text, mode, execution) triple.
     @State private var searchChipsCache = UnifiedInboxSearchChipsCache()
-    /// Field scope chosen from the macOS Filters menu during cross-account folder search.
-    @State private var crossAccountSearchScopeSelection: SearchScope = .all
     @State private var snoozeWakeScheduleRevision = 0
 
     init(
@@ -708,8 +706,7 @@ struct UnifiedInboxListView: View {
     }
 
     private var effectiveSearchScope: SearchScope {
-        guard isCrossAccountFolderSearch else { return .all }
-        return navigation.searchScope == .all ? crossAccountSearchScopeSelection : navigation.searchScope
+        isCrossAccountFolderSearch ? navigation.searchScope : .all
     }
 
     private var loadKey: LoadKey {
@@ -1302,7 +1299,7 @@ struct UnifiedInboxListView: View {
                 execution: unifiedSearchExecutionSelection,
                 availableExecutions: availableSearchExecutions,
                 folderScope: isCrossAccountFolderSearch ? crossAccountFolderScopeSelection : nil,
-                fieldScope: isCrossAccountFolderSearch ? $crossAccountSearchScopeSelection : nil
+                fieldScope: isCrossAccountFolderSearch ? $navigation.searchFieldScope : nil
             )
             if !naturalLanguageSearchChips.isEmpty {
                 ScrollView(.horizontal) {

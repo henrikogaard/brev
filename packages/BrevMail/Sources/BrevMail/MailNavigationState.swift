@@ -128,8 +128,16 @@ public final class MailNavigationState {
         didSet { if oldValue != searchTokens { restoredSelectionHeader = nil } }
     }
 
-    /// The field scope an active field token applies to the typed text.
-    var searchScope: SearchScope { MailSearchTokens.searchScope(for: searchTokens) }
+    /// Field scope chosen in the search options menu (shared across folder and
+    /// cross-account search surfaces so changing mailbox scope preserves it).
+    var searchFieldScope: SearchScope = .all
+
+    /// The field scope applied to the typed text: an iOS field token wins over
+    /// the options-bar selection.
+    var searchScope: SearchScope {
+        let tokenScope = MailSearchTokens.searchScope(for: searchTokens)
+        return tokenScope == .all ? searchFieldScope : tokenScope
+    }
 
     /// Search every mailbox across visible accounts by default (#296).
     /// Narrowing to "This folder" / "Current mailbox" flips this to `false`;
@@ -158,10 +166,11 @@ public final class MailNavigationState {
         searchFreeText = extraction.remainingText
     }
 
-    /// Clears the query, its tokens, and resets the mailbox scope to default.
+    /// Clears the query, its tokens, and resets the mailbox and field scopes to default.
     func clearSearch() {
         searchTokens = []
         searchFreeText = ""
+        searchFieldScope = .all
         searchAllMailboxes = true
         restoreSearchOriginIfNeeded()
     }
@@ -472,6 +481,7 @@ public final class MailNavigationState {
     public func selectUnifiedInbox() {
         selectedCollectionFolderID = nil
         searchOriginSourceFolderID = nil
+        searchFieldScope = .all
         searchAllMailboxes = true
         selectedSourceID = nil
         selectedFolderID = Self.unifiedInboxFolderID
@@ -573,6 +583,7 @@ public final class MailNavigationState {
     func selectSmartView(folderID: Folder.ID) {
         selectedCollectionFolderID = nil
         searchOriginSourceFolderID = nil
+        searchFieldScope = .all
         searchAllMailboxes = true
         selectedSourceID = nil
         selectedFolderID = folderID
@@ -587,6 +598,7 @@ public final class MailNavigationState {
     public func selectFolder(_ folderID: Folder.ID?, in sourceID: MailSourceID?) {
         selectedCollectionFolderID = nil
         searchOriginSourceFolderID = nil
+        searchFieldScope = .all
         searchAllMailboxes = true
         selectedSourceID = sourceID
         selectedFolderID = folderID
@@ -835,6 +847,7 @@ public final class MailNavigationState {
     public func resetForMailboxSwitch() {
         selectedCollectionFolderID = nil
         searchOriginSourceFolderID = nil
+        searchFieldScope = .all
         searchAllMailboxes = true
         selectedSourceID = nil
         selectedFolderID = nil
