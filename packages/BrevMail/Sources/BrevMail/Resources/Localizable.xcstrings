@@ -11816,6 +11816,23 @@
         }
       }
     },
+    "Received JMAP push verification challenge.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Received JMAP push verification challenge."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mottok JMAP-bekreftelsesutfordring for push."
+          }
+        }
+      }
+    },
     "Recent": {
       "extractionState": "manual",
       "localizations": {

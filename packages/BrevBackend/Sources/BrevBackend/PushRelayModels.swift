@@ -26,6 +26,14 @@ public enum PushRelayMode: String, Codable, CaseIterable, Equatable, Hashable, S
     public var id: String { rawValue }
 }
 
+/// Lifecycle state of a registered push subscription.
+public enum PushRelaySubscriptionState: String, Codable, Equatable, Hashable, Sendable {
+    /// JMAP RFC 8620 §7.2.2 subscription created on the server, awaiting verification challenge update.
+    case pendingVerification
+    /// Subscription verified (JMAP) or active (user-hosted relay) and ready to deliver wakes.
+    case active
+}
+
 /// Validation errors for user-configured push relay and JMAP WebPush endpoints.
 public enum PushRelayEndpointValidationError: Error, LocalizedError, Equatable, Sendable {
     case empty
@@ -84,6 +92,36 @@ public enum PushRelayEndpointValidator {
             throw PushRelayEndpointValidationError.malformedURL
         }
         return url
+    }
+
+    /// Returns a canonical origin string (`https://host` or `https://host:port` for non-443 ports)
+    /// used to scope saved Keychain bearer tokens per relay origin.
+    public static func originKey(for url: URL) -> String {
+        let scheme = (url.scheme ?? "https").lowercased()
+        let host = (url.host ?? "").lowercased()
+        if let port = url.port, !(scheme == "https" && port == 443) {
+            return "\(scheme)://\(host):\(port)"
+        }
+        return "\(scheme)://\(host)"
+    }
+
+    /// Validates `rawValue` and returns its normalized origin string.
+    public static func originKey(from rawValue: String) throws -> String {
+        let url = try validate(rawValue)
+        return originKey(for: url)
+    }
+
+    /// Compares two validated URLs canonically (scheme, lowercased host, effective port, path, query).
+    public static func representsSameDestination(_ lhs: URL, _ rhs: URL) -> Bool {
+        let lhsPort = lhs.port ?? (lhs.scheme?.lowercased() == "https" ? 443 : nil)
+        let rhsPort = rhs.port ?? (rhs.scheme?.lowercased() == "https" ? 443 : nil)
+        let lhsPath = lhs.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let rhsPath = rhs.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return lhs.scheme?.lowercased() == rhs.scheme?.lowercased()
+            && lhs.host?.lowercased() == rhs.host?.lowercased()
+            && lhsPort == rhsPort
+            && lhsPath == rhsPath
+            && lhs.query == rhs.query
     }
 }
 
@@ -178,27 +216,31 @@ public struct PushRelayEncryptionKeyMaterial: Codable, Equatable, Sendable, Cust
 
 /// Registration payload sent to a user-hosted HTTPS push relay or JMAP endpoint.
 ///
-/// Strictly limited to opaque device/account identifiers and optional RFC 8291
-/// public keys — never carries mail passwords, OAuth tokens, private keys, or message bodies.
+/// Strictly limited to opaque device/account tokens and optional RFC 8291
+/// public keys — never carries email addresses, mail passwords, OAuth tokens,
+/// private keys, or message bodies.
 public struct PushRelayRegistrationRequest: Codable, Equatable, Sendable {
     /// Selected push relay transport mode.
     public let mode: PushRelayMode
     /// Opaque per-device client identifier generated locally.
     public let deviceClientID: String
-    /// APNs device token or WebPush delivery endpoint URL.
+    /// Real platform-issued APNs device push token (required for `.userHostedRelay`).
     public let devicePushToken: String
-    /// Sorted, deduplicated opaque Brev account identifiers opted into wakes.
+    /// Distinct HTTPS WebPush delivery receiver URL (required for `.jmapWebPush`).
+    public let webPushDeliveryURL: String?
+    /// Sorted, deduplicated opaque device-local account tokens opted into wakes.
     public let accountIDs: [String]
     /// Optional RFC 8291 public encryption keys (`p256dh` and `auth`).
     public let keys: PushRelayPublicKeys?
     /// Platform label (`ios` or `macos`).
     public let platform: String
 
-    /// Creates a sanitized registration payload with deduplicated, sorted account IDs.
+    /// Creates a sanitized registration payload with deduplicated, sorted opaque account tokens.
     public init(
         mode: PushRelayMode,
         deviceClientID: String,
-        devicePushToken: String,
+        devicePushToken: String = "",
+        webPushDeliveryURL: String? = nil,
         accountIDs: [String],
         keys: PushRelayPublicKeys? = nil,
         platform: String = PushRelayRegistrationRequest.defaultPlatform
@@ -206,6 +248,8 @@ public struct PushRelayRegistrationRequest: Codable, Equatable, Sendable {
         self.mode = mode
         self.deviceClientID = deviceClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         self.devicePushToken = devicePushToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDelivery = webPushDeliveryURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.webPushDeliveryURL = trimmedDelivery?.isEmpty == false ? trimmedDelivery : nil
         self.accountIDs = Array(
             Set(
                 accountIDs
@@ -227,24 +271,43 @@ public struct PushRelayRegistrationRequest: Codable, Equatable, Sendable {
     }
 }
 
-/// Response returned after registering or refreshing a closed-app push subscription.
+/// Response returned after registering, refreshing, or verifying a closed-app push subscription.
 public struct PushRelayRegistrationResponse: Codable, Equatable, Sendable {
-    /// Server-assigned subscription identifier used for later refresh or unregistration.
+    /// Server-assigned subscription identifier used for later refresh, verification, or unregistration.
     public let subscriptionID: String
     /// Optional server-assigned subscription expiration timestamp.
     public let expiresAt: Date?
     /// Optional RFC 8620 §7.2 verification code returned by a JMAP server.
     public let verificationCode: String?
+    /// Subscription activation state (`.pendingVerification` for newly created JMAP subscriptions).
+    public let state: PushRelaySubscriptionState
 
     /// Creates a registration response value.
     public init(
         subscriptionID: String,
         expiresAt: Date? = nil,
-        verificationCode: String? = nil
+        verificationCode: String? = nil,
+        state: PushRelaySubscriptionState = .active
     ) {
         self.subscriptionID = subscriptionID
         self.expiresAt = expiresAt
         self.verificationCode = verificationCode
+        self.state = state
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case subscriptionID
+        case expiresAt
+        case verificationCode
+        case state
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        subscriptionID = try container.decode(String.self, forKey: .subscriptionID)
+        expiresAt = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
+        verificationCode = try container.decodeIfPresent(String.self, forKey: .verificationCode)
+        state = try container.decodeIfPresent(PushRelaySubscriptionState.self, forKey: .state) ?? .active
     }
 }
 
@@ -254,7 +317,7 @@ public struct PushRelayUnregistrationRequest: Codable, Equatable, Sendable {
     public let deviceClientID: String
     /// Last known subscription identifier, if available.
     public let subscriptionID: String?
-    /// Account identifiers being unregistered.
+    /// Opaque account tokens being unregistered.
     public let accountIDs: [String]
 
     /// Creates a sanitized unregistration payload.
@@ -279,7 +342,7 @@ public struct PushRelayUnregistrationRequest: Codable, Equatable, Sendable {
 /// Standards-compliant JMAP RFC 8620 §7.2 `PushSubscription/set` payload builder.
 ///
 /// Keeps the JMAP WebPush contract ready in `BrevBackend` so future `BrevJMAP`
-/// plugs straight into the same Keychain key pair and registration seam.
+/// plugs straight into the same Keychain key pair, verification flow, and registration seam.
 public struct JMAPWebPushSubscriptionSpec: Equatable, Sendable {
     /// Required JMAP capabilities for mail push subscriptions.
     public static let usingCapabilities: [String] = [
@@ -354,7 +417,7 @@ public struct JMAPWebPushSubscriptionSpec: Equatable, Sendable {
         )
     }
 
-    /// Encodes a complete RFC 8620 `PushSubscription/set` create request body as JSON.
+    /// Encodes a complete RFC 8620 §7.2 `PushSubscription/set` create request body as JSON.
     public func encodedSetCreateRequestData(
         clientCreationID: String = "brev-push-sub",
         callID: String = "c0"
@@ -384,10 +447,41 @@ public struct JMAPWebPushSubscriptionSpec: Equatable, Sendable {
                 ]
             ]
         ]
-        return try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
+        return try JSONSerialization.data(
+            withJSONObject: payload,
+            options: [.sortedKeys, .withoutEscapingSlashes]
+        )
     }
 
-    /// Encodes a complete RFC 8620 `PushSubscription/set` destroy request body as JSON.
+    /// Encodes an RFC 8620 §7.2.2 `PushSubscription/set` verification update request body as JSON.
+    public static func encodedSetVerifyRequestData(
+        subscriptionID: String,
+        verificationCode: String,
+        callID: String = "c0"
+    ) throws -> Data {
+        let payload: [String: Any] = [
+            "using": usingCapabilities,
+            "methodCalls": [
+                [
+                    "PushSubscription/set",
+                    [
+                        "update": [
+                            subscriptionID: [
+                                "verificationCode": verificationCode
+                            ]
+                        ]
+                    ],
+                    callID
+                ]
+            ]
+        ]
+        return try JSONSerialization.data(
+            withJSONObject: payload,
+            options: [.sortedKeys, .withoutEscapingSlashes]
+        )
+    }
+
+    /// Encodes a complete RFC 8620 §7.2 `PushSubscription/set` destroy request body as JSON.
     public static func encodedSetDestroyRequestData(
         subscriptionID: String,
         callID: String = "c0"
@@ -402,34 +496,49 @@ public struct JMAPWebPushSubscriptionSpec: Equatable, Sendable {
                 ]
             ]
         ]
-        return try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
+        return try JSONSerialization.data(
+            withJSONObject: payload,
+            options: [.sortedKeys, .withoutEscapingSlashes]
+        )
     }
 }
 
-/// Kind of opaque wake event delivered by a push relay or JMAP WebPush server.
+/// Kind of opaque wake or verification event delivered by a push relay or JMAP WebPush server.
 public enum PushWakeEventKind: String, Codable, Equatable, Hashable, Sendable {
     /// New message arrived in the mailbox.
     case newMail = "new_mail"
     /// Mailbox state changed (flags, moves, or unread count).
     case mailboxChanged = "mailbox_changed"
+    /// JMAP RFC 8620 §7.2.2 `PushVerification` challenge delivered to the WebPush URL.
+    case jmapVerification = "jmap_verification"
 }
 
-/// Opaque incoming wake payload decoded from an APNs silent notification or WebPush event.
+/// Opaque incoming wake payload or RFC 8620 §7.2.2 JMAP verification challenge
+/// decoded from an APNs silent notification or WebPush event.
 ///
-/// Carries only an account hint, optional opaque state token, and event kind —
-/// never plaintext message bodies, subjects, or credentials.
+/// Carries only an opaque account token, optional state token, or JMAP verification
+/// challenge — never plaintext message bodies, subjects, or credentials.
 public struct PushWakePayload: Codable, Equatable, Sendable {
-    private static let maxAccountIDLength = 256
+    private static let maxFieldLength = 256
     private static let maxStateTokenLength = 512
 
-    /// Opaque Brev account identifier to sync locally.
+    /// Opaque device-local account token to resolve and sync locally (empty for JMAP verification challenges).
     public let accountID: String
     /// Optional opaque server state token (e.g. IMAP MODSEQ / JMAP state string).
     public let stateToken: String?
     /// Coarse wake event classification.
     public let eventKind: PushWakeEventKind
+    /// JMAP `pushSubscriptionId` for RFC 8620 §7.2.2 `PushVerification` challenges.
+    public let pushSubscriptionID: String?
+    /// JMAP `verificationCode` for RFC 8620 §7.2.2 `PushVerification` challenges.
+    public let verificationCode: String?
 
-    /// Creates a wake payload directly.
+    /// Whether this payload is an RFC 8620 §7.2.2 JMAP `PushVerification` challenge.
+    public var isJMAPVerificationChallenge: Bool {
+        eventKind == .jmapVerification && pushSubscriptionID != nil && verificationCode != nil
+    }
+
+    /// Creates an opaque mail wake payload directly.
     public init(
         accountID: String,
         stateToken: String? = nil,
@@ -438,38 +547,85 @@ public struct PushWakePayload: Codable, Equatable, Sendable {
         self.accountID = accountID
         self.stateToken = stateToken
         self.eventKind = eventKind
+        pushSubscriptionID = nil
+        verificationCode = nil
     }
 
-    /// Safely decodes and validates a wake payload from UTF-8 JSON bytes.
+    private init(
+        accountID: String,
+        stateToken: String?,
+        eventKind: PushWakeEventKind,
+        pushSubscriptionID: String?,
+        verificationCode: String?
+    ) {
+        self.accountID = accountID
+        self.stateToken = stateToken
+        self.eventKind = eventKind
+        self.pushSubscriptionID = pushSubscriptionID
+        self.verificationCode = verificationCode
+    }
+
+    /// Creates a JMAP RFC 8620 §7.2.2 `PushVerification` challenge payload.
+    public static func jmapVerification(
+        pushSubscriptionId: String,
+        verificationCode: String
+    ) -> PushWakePayload {
+        PushWakePayload(
+            accountID: "",
+            stateToken: nil,
+            eventKind: .jmapVerification,
+            pushSubscriptionID: pushSubscriptionId.trimmingCharacters(in: .whitespacesAndNewlines),
+            verificationCode: verificationCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    /// Safely decodes and validates a wake payload or RFC 8620 §7.2.2 `PushVerification` from UTF-8 JSON bytes.
     /// Returns `nil` for malformed JSON, blank/oversized fields, or unknown event kinds.
     public init?(jsonData: Data) {
-        guard let decoded = try? JSONDecoder().decode(PushWakePayload.self, from: jsonData) else {
+        guard let object = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
             return nil
         }
-        guard let validated = Self.validated(
-            accountID: decoded.accountID,
-            stateToken: decoded.stateToken,
-            eventKind: decoded.eventKind
-        ) else {
-            return nil
-        }
-        self = validated
+        self.init(userInfo: object)
     }
 
-    /// Safely decodes and validates a wake payload from an APNs `userInfo` dictionary.
-    /// Supports both top-level keys and a nested `"brev"` dictionary while ignoring all other keys.
+    /// Safely decodes and validates a wake payload or RFC 8620 §7.2.2 `PushVerification`
+    /// from an APNs `userInfo` dictionary. Supports top-level keys or a nested `"brev"` dictionary
+    /// while ignoring all unexpected keys.
     public init?(userInfo: [AnyHashable: Any]) {
         let container: [AnyHashable: Any] = if let nested = userInfo["brev"] as? [AnyHashable: Any] {
             nested
         } else {
             userInfo
         }
+
+        // RFC 8620 §7.2.2 PushVerification challenge object.
+        if (container["@type"] as? String) == "PushVerification"
+            || (container["eventKind"] as? String) == PushWakeEventKind.jmapVerification.rawValue {
+            guard let rawSubID = (container["pushSubscriptionId"] as? String)
+                ?? (container["pushSubscriptionID"] as? String),
+                let rawCode = container["verificationCode"] as? String
+            else {
+                return nil
+            }
+            let subID = rawSubID.trimmingCharacters(in: .whitespacesAndNewlines)
+            let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !subID.isEmpty, subID.count <= Self.maxFieldLength,
+                  !code.isEmpty, code.count <= Self.maxStateTokenLength
+            else {
+                return nil
+            }
+            self = .jmapVerification(pushSubscriptionId: subID, verificationCode: code)
+            return
+        }
+
         guard let rawAccountID = container["accountID"] as? String else {
             return nil
         }
         let eventKind: PushWakeEventKind
         if let rawKind = container["eventKind"] as? String {
-            guard let parsed = PushWakeEventKind(rawValue: rawKind) else {
+            guard let parsed = PushWakeEventKind(rawValue: rawKind),
+                  parsed != .jmapVerification
+            else {
                 return nil
             }
             eventKind = parsed
@@ -477,7 +633,7 @@ public struct PushWakePayload: Codable, Equatable, Sendable {
             eventKind = .newMail
         }
         let rawStateToken = container["stateToken"] as? String
-        guard let validated = Self.validated(
+        guard let validated = Self.validatedWake(
             accountID: rawAccountID,
             stateToken: rawStateToken,
             eventKind: eventKind
@@ -487,13 +643,13 @@ public struct PushWakePayload: Codable, Equatable, Sendable {
         self = validated
     }
 
-    private static func validated(
+    private static func validatedWake(
         accountID: String,
         stateToken: String?,
         eventKind: PushWakeEventKind
     ) -> PushWakePayload? {
         let trimmedAccount = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedAccount.isEmpty, trimmedAccount.count <= maxAccountIDLength else {
+        guard !trimmedAccount.isEmpty, trimmedAccount.count <= maxFieldLength else {
             return nil
         }
         let normalizedState: String?

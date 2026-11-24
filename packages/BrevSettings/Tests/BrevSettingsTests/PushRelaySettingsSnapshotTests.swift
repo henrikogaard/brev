@@ -32,19 +32,28 @@ struct PushRelaySettingsSnapshotTests {
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
+        let endpoint = "https://push.northwind.example/v1/register"
         let settings = PushRelaySettings(
             isEnabled: true,
             mode: .userHostedRelay,
-            endpointURLString: "https://push.northwind.example/v1/register",
+            endpointURLString: endpoint,
             enabledAccountIDs: ["acct-work"],
+            opaqueAccountTokens: ["acct-work": "acct-opaque-work"],
             deviceClientID: "brev-dev-snapshot",
-            subscriptionID: "sub-snapshot-1",
-            lastRegisteredAt: Date(timeIntervalSince1970: 1_750_000_000),
+            activeRegistration: ActivePushRelayRegistration(
+                mode: .userHostedRelay,
+                endpointURLString: endpoint,
+                subscriptionID: "sub-snapshot-1",
+                state: .active,
+                registeredAt: Date(timeIntervalSince1970: 1_750_000_000)
+            ),
             lastRegistrationError: nil
         )
         settings.save(to: defaults)
 
-        let secretStore = InMemoryPushRelaySecretStore(bearerToken: "saved-keychain-secret")
+        let secretStore = InMemoryPushRelaySecretStore(
+            bearerTokensByOrigin: ["https://push.northwind.example": "saved-keychain-secret"]
+        )
         let accounts = [
             BrevAccount(id: "acct-work", displayName: "Work", emailAddress: "work@northwind.example"),
             BrevAccount(id: "acct-personal", displayName: "Personal", emailAddress: "personal@example.org")
@@ -55,12 +64,13 @@ struct PushRelaySettingsSnapshotTests {
                 settingsStore: SettingsPersistenceStore(defaults: defaults),
                 secretStore: secretStore,
                 accounts: accounts,
+                devicePushTokenProvider: { "deadbeef01234567" },
                 statusTimeZone: TimeZone(secondsFromGMT: 0) ?? .gmt,
                 statusLocale: Locale(identifier: "en_US")
             )
             .padding(BrevSpacing.xl)
         }
-        .frame(width: 680, height: 680)
+        .frame(width: 680, height: 700)
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
         .tint(theme.accent.color)
@@ -72,7 +82,7 @@ struct PushRelaySettingsSnapshotTests {
         let host = NSHostingController(rootView: view)
         host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
         assertSnapshot(
-            of: Self.retinaImage(of: host, size: CGSize(width: 680, height: 680)),
+            of: Self.retinaImage(of: host, size: CGSize(width: 680, height: 700)),
             as: .image(precision: 0.99),
             named: "push-relay-enabled-\(mode)",
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil

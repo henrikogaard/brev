@@ -18,21 +18,43 @@ public protocol PushRelayHTTPTransport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
 }
 
-/// Default `URLSession`-backed transport using an ephemeral configuration (no persistent cookies or disk cache).
+/// Blocks HTTP redirects so relay registration payloads and Bearer headers
+/// can never be forwarded to an unapproved cross-origin host.
+final class NoRedirectPushRelaySessionDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
+    }
+}
+
+/// Default `URLSession`-backed transport using an ephemeral configuration
+/// (no persistent cookies or disk cache) and strict redirect blocking.
 public struct URLSessionPushRelayTransport: PushRelayHTTPTransport {
     private let session: URLSession
+    private let redirectDelegate: NoRedirectPushRelaySessionDelegate?
 
-    /// Creates a transport backed by `session` (defaults to an ephemeral session).
-    public init(session: URLSession? = nil) {
+    /// Creates a transport backed by `session` (or an ephemeral, no-redirect session by default).
+    public init(session: URLSession? = nil, configuration: URLSessionConfiguration? = nil) {
         if let session {
             self.session = session
+            redirectDelegate = nil
         } else {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 15
-            configuration.timeoutIntervalForResource = 30
-            configuration.httpCookieAcceptPolicy = .never
-            configuration.httpShouldSetCookies = false
-            self.session = URLSession(configuration: configuration)
+            let config = configuration ?? {
+                let ephemeral = URLSessionConfiguration.ephemeral
+                ephemeral.timeoutIntervalForRequest = 15
+                ephemeral.timeoutIntervalForResource = 30
+                ephemeral.httpCookieAcceptPolicy = .never
+                ephemeral.httpShouldSetCookies = false
+                return ephemeral
+            }()
+            let delegate = NoRedirectPushRelaySessionDelegate()
+            redirectDelegate = delegate
+            self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         }
     }
 
@@ -45,14 +67,19 @@ public struct URLSessionPushRelayTransport: PushRelayHTTPTransport {
     }
 }
 
-/// Errors produced while registering, refreshing, or unregistering a closed-app push subscription.
+/// Errors produced while registering, refreshing, verifying, or unregistering a closed-app push subscription.
 public enum PushRelayClientError: Error, LocalizedError, Equatable, Sendable {
     case disabled
     case invalidEndpoint(PushRelayEndpointValidationError)
     case missingOptedInAccounts
     case missingDevicePushToken
+    case missingWebPushDeliveryURL
+    case webPushDeliveryURLMatchesAPIEndpoint
     case invalidDeviceClientID
+    case missingVerificationCode
+    case redirectBlocked(statusCode: Int)
     case httpFailure(statusCode: Int)
+    case jmapMethodRejected(String)
     case invalidResponse
     case transportFailure(String)
 
@@ -66,10 +93,20 @@ public enum PushRelayClientError: Error, LocalizedError, Equatable, Sendable {
             String(localized: "Choose at least one account before registering with your push relay.", bundle: .module)
         case .missingDevicePushToken:
             String(localized: "No device push token is available for registration.", bundle: .module)
+        case .missingWebPushDeliveryURL:
+            String(localized: "Enter a separate HTTPS WebPush delivery URL for JMAP push.", bundle: .module)
+        case .webPushDeliveryURLMatchesAPIEndpoint:
+            String(localized: "The WebPush delivery URL must be distinct from the JMAP API endpoint URL.", bundle: .module)
         case .invalidDeviceClientID:
             String(localized: "Device client identifier is missing.", bundle: .module)
+        case .missingVerificationCode:
+            String(localized: "Enter the verification code sent to your WebPush delivery URL.", bundle: .module)
+        case .redirectBlocked(let statusCode):
+            String(localized: "Push relay blocked an HTTP \(statusCode) redirect for security.", bundle: .module)
         case .httpFailure(let statusCode):
             String(localized: "Push relay returned HTTP status \(statusCode).", bundle: .module)
+        case .jmapMethodRejected(let reason):
+            String(localized: "JMAP server rejected the push subscription request: \(reason)", bundle: .module)
         case .invalidResponse:
             String(localized: "Push relay returned an invalid response.", bundle: .module)
         case .transportFailure(let detail):
@@ -78,11 +115,11 @@ public enum PushRelayClientError: Error, LocalizedError, Equatable, Sendable {
     }
 }
 
-/// Registers, refreshes, and unregisters device push subscriptions against a
+/// Registers, refreshes, verifies, and unregisters device push subscriptions against a
 /// user-configured HTTPS push relay or JMAP WebPush server (#11).
 ///
 /// Brev never hardcodes or contacts a Brev-hosted proxy. Every request targets
-/// only the user-supplied HTTPS URL after strict validation.
+/// only the user-supplied HTTPS URL after strict validation, and redirects are blocked.
 public actor PushRelayClient {
     private static let subscriptionIDHeader = "X-Brev-Subscription-ID"
     private static let jmapClientCreationID = "brev-push-sub"
@@ -95,6 +132,9 @@ public actor PushRelayClient {
     }
 
     /// Registers a device push subscription with the user-configured HTTPS endpoint.
+    ///
+    /// For `.jmapWebPush`, newly created subscriptions return `.pendingVerification`
+    /// per RFC 8620 §7.2.2 until `verifyJMAPSubscription` succeeds.
     public func register(
         endpointURLString: String,
         request: PushRelayRegistrationRequest,
@@ -124,13 +164,11 @@ public actor PushRelayClient {
         }
 
         let (data, response) = try await perform(urlRequest)
-        guard (200 ... 299).contains(response.statusCode) else {
-            throw PushRelayClientError.httpFailure(statusCode: response.statusCode)
-        }
+        try ensureNonRedirectSuccess(response)
         return try decodeRegistrationResponse(data: data, mode: request.mode)
     }
 
-    /// Refreshes an existing device push subscription against the user-configured HTTPS endpoint.
+    /// Refreshes an existing device push subscription against the same user-configured HTTPS endpoint.
     public func refresh(
         endpointURLString: String,
         subscriptionID: String,
@@ -162,13 +200,54 @@ public actor PushRelayClient {
         }
 
         let (data, response) = try await perform(urlRequest)
-        guard (200 ... 299).contains(response.statusCode) else {
-            throw PushRelayClientError.httpFailure(statusCode: response.statusCode)
-        }
+        try ensureNonRedirectSuccess(response)
         return try decodeRegistrationResponse(data: data, mode: request.mode)
     }
 
-    /// Unregisters a device push subscription cleanly. HTTP 2xx and 404 both succeed.
+    /// Completes RFC 8620 §7.2.2 JMAP `PushSubscription` verification by sending a
+    /// `PushSubscription/set` `update` with the `verificationCode` delivered to the WebPush URL.
+    public func verifyJMAPSubscription(
+        endpointURLString: String,
+        subscriptionID: String,
+        verificationCode: String,
+        bearerToken: String?
+    ) async throws -> PushRelayRegistrationResponse {
+        let endpointURL = try validatedEndpoint(endpointURLString)
+        let trimmedSubID = subscriptionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCode = verificationCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSubID.isEmpty else {
+            throw PushRelayClientError.invalidResponse
+        }
+        guard !trimmedCode.isEmpty else {
+            throw PushRelayClientError.missingVerificationCode
+        }
+
+        var req = URLRequest(url: endpointURL)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        applyBearerHeader(bearerToken, to: &req)
+        req.httpBody = try JMAPWebPushSubscriptionSpec.encodedSetVerifyRequestData(
+            subscriptionID: trimmedSubID,
+            verificationCode: trimmedCode
+        )
+
+        let (data, response) = try await perform(req)
+        try ensureNonRedirectSuccess(response)
+        try parseJMAPVerifyResponse(data: data, subscriptionID: trimmedSubID)
+        return PushRelayRegistrationResponse(
+            subscriptionID: trimmedSubID,
+            expiresAt: nil,
+            verificationCode: nil,
+            state: .active
+        )
+    }
+
+    /// Unregisters a device push subscription cleanly.
+    ///
+    /// - For `.userHostedRelay`: HTTP 2xx and 404 both succeed; 3xx redirects are blocked.
+    /// - For `.jmapWebPush`: parses the RFC 8620 `PushSubscription/set` response envelope
+    ///   and succeeds only when `subscriptionID` is in `destroyed` or `notDestroyed[id].type == "notFound"`.
     public func unregister(
         endpointURLString: String,
         request: PushRelayUnregistrationRequest,
@@ -180,7 +259,6 @@ public actor PushRelayClient {
             throw PushRelayClientError.invalidDeviceClientID
         }
 
-        let urlRequest: URLRequest
         switch mode {
         case .jmapWebPush:
             guard let subID = request.subscriptionID, !subID.isEmpty else {
@@ -194,20 +272,25 @@ public actor PushRelayClient {
             req.httpBody = try JMAPWebPushSubscriptionSpec.encodedSetDestroyRequestData(
                 subscriptionID: subID
             )
-            urlRequest = req
+            let (data, response) = try await perform(req)
+            try ensureNonRedirectSuccess(response)
+            try parseJMAPDestroyResponse(data: data, subscriptionID: subID)
+
         case .userHostedRelay, .disabled:
-            urlRequest = try makeRelayJSONRequest(
+            let urlRequest = try makeRelayJSONRequest(
                 url: endpointURL,
                 method: "DELETE",
                 body: request,
                 subscriptionID: request.subscriptionID,
                 bearerToken: bearerToken
             )
-        }
-
-        let (_, response) = try await perform(urlRequest)
-        guard (200 ... 299).contains(response.statusCode) || response.statusCode == 404 else {
-            throw PushRelayClientError.httpFailure(statusCode: response.statusCode)
+            let (_, response) = try await perform(urlRequest)
+            if (300 ... 399).contains(response.statusCode) {
+                throw PushRelayClientError.redirectBlocked(statusCode: response.statusCode)
+            }
+            guard (200 ... 299).contains(response.statusCode) || response.statusCode == 404 else {
+                throw PushRelayClientError.httpFailure(statusCode: response.statusCode)
+            }
         }
     }
 
@@ -220,11 +303,22 @@ public actor PushRelayClient {
         guard !request.deviceClientID.isEmpty else {
             throw PushRelayClientError.invalidDeviceClientID
         }
-        guard !request.devicePushToken.isEmpty else {
-            throw PushRelayClientError.missingDevicePushToken
-        }
         guard !request.accountIDs.isEmpty else {
             throw PushRelayClientError.missingOptedInAccounts
+        }
+        switch request.mode {
+        case .userHostedRelay:
+            guard !request.devicePushToken.isEmpty,
+                  request.devicePushToken != request.deviceClientID
+            else {
+                throw PushRelayClientError.missingDevicePushToken
+            }
+        case .jmapWebPush:
+            guard let deliveryURL = request.webPushDeliveryURL, !deliveryURL.isEmpty else {
+                throw PushRelayClientError.missingWebPushDeliveryURL
+            }
+        case .disabled:
+            throw PushRelayClientError.disabled
         }
     }
 
@@ -233,6 +327,15 @@ public actor PushRelayClient {
             return try PushRelayEndpointValidator.validate(raw)
         } catch let error as PushRelayEndpointValidationError {
             throw PushRelayClientError.invalidEndpoint(error)
+        }
+    }
+
+    private func ensureNonRedirectSuccess(_ response: HTTPURLResponse) throws {
+        if (300 ... 399).contains(response.statusCode) {
+            throw PushRelayClientError.redirectBlocked(statusCode: response.statusCode)
+        }
+        guard (200 ... 299).contains(response.statusCode) else {
+            throw PushRelayClientError.httpFailure(statusCode: response.statusCode)
         }
     }
 
@@ -262,16 +365,18 @@ public actor PushRelayClient {
         request: PushRelayRegistrationRequest,
         bearerToken: String?
     ) throws -> URLRequest {
-        let pushDeliveryURLString: String = if (try? PushRelayEndpointValidator.validate(request.devicePushToken)) != nil {
-            request.devicePushToken
-        } else {
-            endpointURL.absoluteString
+        guard let deliveryURLString = request.webPushDeliveryURL, !deliveryURLString.isEmpty else {
+            throw PushRelayClientError.missingWebPushDeliveryURL
+        }
+        let deliveryURL = try validatedEndpoint(deliveryURLString)
+        guard !PushRelayEndpointValidator.representsSameDestination(endpointURL, deliveryURL) else {
+            throw PushRelayClientError.webPushDeliveryURLMatchesAPIEndpoint
         }
         let spec: JMAPWebPushSubscriptionSpec
         do {
             spec = try JMAPWebPushSubscriptionSpec(
                 deviceClientID: request.deviceClientID,
-                urlString: pushDeliveryURLString,
+                urlString: deliveryURL.absoluteString,
                 keys: request.keys,
                 types: ["Email"]
             )
@@ -311,51 +416,109 @@ public actor PushRelayClient {
         data: Data,
         mode: PushRelayMode
     ) throws -> PushRelayRegistrationResponse {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        if let direct = try? decoder.decode(PushRelayRegistrationResponse.self, from: data),
-           !direct.subscriptionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return direct
+        switch mode {
+        case .jmapWebPush:
+            return try parseJMAPCreateResponse(data: data)
+        case .userHostedRelay, .disabled:
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            if let direct = try? decoder.decode(PushRelayRegistrationResponse.self, from: data),
+               !direct.subscriptionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return direct
+            }
+            throw PushRelayClientError.invalidResponse
         }
-        if mode == .jmapWebPush, let jmapResponse = parseJMAPSetResponse(data: data) {
-            return jmapResponse
-        }
-        throw PushRelayClientError.invalidResponse
     }
 
-    private func parseJMAPSetResponse(data: Data) -> PushRelayRegistrationResponse? {
+    private func jmapSetResponseArguments(from data: Data) -> [String: Any]? {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let methodResponses = root["methodResponses"] as? [[Any]]
         else {
             return nil
         }
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime]
-
         for entry in methodResponses {
             guard entry.count >= 2,
                   let methodName = entry[0] as? String,
                   methodName == "PushSubscription/set",
-                  let args = entry[1] as? [String: Any],
-                  let created = args["created"] as? [String: [String: Any]]
+                  let args = entry[1] as? [String: Any]
             else {
                 continue
             }
-            let createdRecord = created[Self.jmapClientCreationID] ?? created.values.first
-            guard let record = createdRecord,
-                  let subscriptionID = record["id"] as? String,
-                  !subscriptionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else {
-                continue
-            }
-            let expiresAt: Date? = (record["expires"] as? String).flatMap { isoFormatter.date(from: $0) }
-            let verificationCode = record["verificationCode"] as? String
-            return PushRelayRegistrationResponse(
-                subscriptionID: subscriptionID,
-                expiresAt: expiresAt,
-                verificationCode: verificationCode
-            )
+            return args
         }
         return nil
+    }
+
+    private func parseJMAPCreateResponse(data: Data) throws -> PushRelayRegistrationResponse {
+        guard let args = jmapSetResponseArguments(from: data) else {
+            throw PushRelayClientError.invalidResponse
+        }
+        if let notCreated = args["notCreated"] as? [String: [String: Any]],
+           let failure = notCreated[Self.jmapClientCreationID] ?? notCreated.values.first {
+            let reason = (failure["description"] as? String)
+                ?? (failure["type"] as? String)
+                ?? "notCreated"
+            throw PushRelayClientError.jmapMethodRejected(reason)
+        }
+        guard let created = args["created"] as? [String: [String: Any]] else {
+            throw PushRelayClientError.invalidResponse
+        }
+        let createdRecord = created[Self.jmapClientCreationID] ?? created.values.first
+        guard let record = createdRecord,
+              let subscriptionID = record["id"] as? String,
+              !subscriptionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            throw PushRelayClientError.invalidResponse
+        }
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        let expiresAt: Date? = (record["expires"] as? String).flatMap { isoFormatter.date(from: $0) }
+        let verificationCode = record["verificationCode"] as? String
+        // RFC 8620 §7.2.2: newly created JMAP PushSubscriptions stay unverified until
+        // the server's PushVerification challenge code is returned via PushSubscription/set update.
+        return PushRelayRegistrationResponse(
+            subscriptionID: subscriptionID,
+            expiresAt: expiresAt,
+            verificationCode: verificationCode,
+            state: .pendingVerification
+        )
+    }
+
+    private func parseJMAPVerifyResponse(data: Data, subscriptionID: String) throws {
+        guard let args = jmapSetResponseArguments(from: data) else {
+            throw PushRelayClientError.invalidResponse
+        }
+        if let notUpdated = args["notUpdated"] as? [String: [String: Any]],
+           let failure = notUpdated[subscriptionID] {
+            let reason = (failure["description"] as? String)
+                ?? (failure["type"] as? String)
+                ?? "notUpdated"
+            throw PushRelayClientError.jmapMethodRejected(reason)
+        }
+        guard let updated = args["updated"] as? [String: Any],
+              updated.keys.contains(subscriptionID)
+        else {
+            throw PushRelayClientError.invalidResponse
+        }
+    }
+
+    private func parseJMAPDestroyResponse(data: Data, subscriptionID: String) throws {
+        guard let args = jmapSetResponseArguments(from: data) else {
+            throw PushRelayClientError.invalidResponse
+        }
+        if let destroyed = args["destroyed"] as? [String],
+           destroyed.contains(subscriptionID) {
+            return
+        }
+        if let notDestroyed = args["notDestroyed"] as? [String: [String: Any]],
+           let failure = notDestroyed[subscriptionID] {
+            let errorType = failure["type"] as? String
+            if errorType == "notFound" {
+                return
+            }
+            let reason = (failure["description"] as? String) ?? errorType ?? "notDestroyed"
+            throw PushRelayClientError.jmapMethodRejected(reason)
+        }
+        throw PushRelayClientError.invalidResponse
     }
 }

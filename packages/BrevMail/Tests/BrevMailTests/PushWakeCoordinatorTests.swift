@@ -20,52 +20,63 @@ import Testing
 @MainActor
 struct PushWakeCoordinatorTests {
     private static let workAccount = BrevAccount(
-        id: "acct-work",
+        id: BrevAccount.imapSMTPAccountID(forEmailAddress: "work@example.org"),
         displayName: "Work",
         emailAddress: "work@example.org"
     )
     private static let personalAccount = BrevAccount(
-        id: "acct-personal",
+        id: BrevAccount.imapSMTPAccountID(forEmailAddress: "personal@example.org"),
         displayName: "Personal",
         emailAddress: "personal@example.org"
     )
+    private static let workOpaqueToken = "acct-opaque-work-1"
+    private static let personalOpaqueToken = "acct-opaque-personal-2"
 
-    @Test("ignores wakes with zero sync calls when closed-app push is disabled")
+    @Test("ignores wakes with zero sync or notification calls when closed-app push is disabled")
     func ignoresWakesWhenDisabled() async {
         let recorder = SyncedAccountRecorder()
+        var notifiedCount = 0
         let coordinator = PushWakeCoordinator(
             settingsProvider: {
                 PushRelaySettings(
                     isEnabled: false,
                     mode: .userHostedRelay,
                     endpointURLString: "https://relay.example.com/push",
-                    enabledAccountIDs: [Self.workAccount.id]
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
                 )
             },
             backendsProvider: { [MockBackend(account: Self.workAccount)] },
             refreshBackends: { backends in
                 await recorder.record(backends.map(\.account.id))
                 return nil
-            }
+            },
+            notifyArrivedMail: { _, _ in notifiedCount += 1 }
         )
 
         let result = await coordinator.handleWake(
-            PushWakePayload(accountID: Self.workAccount.id, stateToken: "s1", eventKind: .newMail)
+            PushWakePayload(accountID: Self.workOpaqueToken, stateToken: "s1", eventKind: .newMail)
         )
         #expect(result == .ignoredDisabled)
         #expect(await recorder.syncedAccountIDs().isEmpty)
+        #expect(notifiedCount == 0)
     }
 
-    @Test("ignores wakes for accounts that are not opted in")
-    func ignoresNonOptedInAccount() async {
+    @Test("ignores wakes for non-opted-in accounts and rejects unmapped raw IMAP account IDs")
+    func ignoresNonOptedInAndRawEmailAccountIDs() async {
         let recorder = SyncedAccountRecorder()
+        var notifiedCount = 0
         let coordinator = PushWakeCoordinator(
             settingsProvider: {
                 PushRelaySettings(
                     isEnabled: true,
                     mode: .userHostedRelay,
                     endpointURLString: "https://relay.example.com/push",
-                    enabledAccountIDs: [Self.workAccount.id]
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [
+                        Self.workAccount.id: Self.workOpaqueToken,
+                        Self.personalAccount.id: Self.personalOpaqueToken
+                    ]
                 )
             },
             backendsProvider: {
@@ -74,26 +85,39 @@ struct PushWakeCoordinatorTests {
             refreshBackends: { backends in
                 await recorder.record(backends.map(\.account.id))
                 return nil
-            }
+            },
+            notifyArrivedMail: { _, _ in notifiedCount += 1 }
         )
 
-        let result = await coordinator.handleWake(
-            PushWakePayload(accountID: Self.personalAccount.id, stateToken: nil, eventKind: .mailboxChanged)
+        let nonOptedInResult = await coordinator.handleWake(
+            PushWakePayload(accountID: Self.personalOpaqueToken, stateToken: nil, eventKind: .mailboxChanged)
         )
-        #expect(result == .ignoredAccountNotOptedIn(accountID: Self.personalAccount.id))
+        #expect(nonOptedInResult == .ignoredAccountNotOptedIn(accountID: Self.personalOpaqueToken))
+
+        // Raw `imap-smtp:work@example.org` ID MUST NOT match — only the opaque device-local token matches.
+        let rawIDResult = await coordinator.handleWake(
+            PushWakePayload(accountID: Self.workAccount.id, stateToken: nil, eventKind: .newMail)
+        )
+        #expect(rawIDResult == .ignoredAccountNotOptedIn(accountID: Self.workAccount.id))
         #expect(await recorder.syncedAccountIDs().isEmpty)
+        #expect(notifiedCount == 0)
     }
 
-    @Test("syncs only the targeted opted-in account on valid wake")
-    func syncsOnlyTargetedOptedInAccount() async {
+    @Test("reverse-maps opaque token, syncs only the targeted opted-in account, and invokes scene-less notification seam")
+    func syncsOnlyTargetedOptedInAccountAndNotifies() async {
         let recorder = SyncedAccountRecorder()
+        var notifiedAccounts: [String] = []
         let coordinator = PushWakeCoordinator(
             settingsProvider: {
                 PushRelaySettings(
                     isEnabled: true,
                     mode: .userHostedRelay,
                     endpointURLString: "https://relay.example.com/push",
-                    enabledAccountIDs: [Self.workAccount.id, Self.personalAccount.id]
+                    enabledAccountIDs: [Self.workAccount.id, Self.personalAccount.id],
+                    opaqueAccountTokens: [
+                        Self.workAccount.id: Self.workOpaqueToken,
+                        Self.personalAccount.id: Self.personalOpaqueToken
+                    ]
                 )
             },
             backendsProvider: {
@@ -102,13 +126,16 @@ struct PushWakeCoordinatorTests {
             refreshBackends: { backends in
                 await recorder.record(backends.map(\.account.id))
                 return nil
+            },
+            notifyArrivedMail: { backend, _ in
+                notifiedAccounts.append(backend.account.id)
             }
         )
 
         let userInfo: [AnyHashable: Any] = [
             "aps": ["content-available": 1],
             "brev": [
-                "accountID": Self.workAccount.id,
+                "accountID": Self.workOpaqueToken,
                 "stateToken": "modseq-99",
                 "eventKind": "new_mail"
             ]
@@ -116,6 +143,43 @@ struct PushWakeCoordinatorTests {
         let result = await coordinator.handleRemoteNotificationUserInfo(userInfo)
         #expect(result == .synced(accountID: Self.workAccount.id))
         #expect(await recorder.syncedAccountIDs() == [[Self.workAccount.id]])
+        #expect(notifiedAccounts == [Self.workAccount.id])
+    }
+
+    @Test("routes RFC 8620 §7.2.2 JMAP PushVerification challenges without triggering mail sync")
+    func handlesJMAPVerificationChallenge() async {
+        let recorder = SyncedAccountRecorder()
+        var capturedChallenge: (String, String)?
+        let coordinator = PushWakeCoordinator(
+            settingsProvider: {
+                PushRelaySettings(
+                    isEnabled: true,
+                    mode: .jmapWebPush,
+                    endpointURLString: "https://jmap.example.com/api",
+                    webPushDeliveryURLString: "https://webpush.example.com/push/dev1",
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
+                )
+            },
+            backendsProvider: { [MockBackend(account: Self.workAccount)] },
+            refreshBackends: { backends in
+                await recorder.record(backends.map(\.account.id))
+                return nil
+            },
+            notifyArrivedMail: { _, _ in }
+        )
+        coordinator.onJMAPVerificationChallenge = { subID, code in
+            capturedChallenge = (subID, code)
+        }
+
+        let challengeJSON = Data("""
+        {"@type":"PushVerification","pushSubscriptionId":"jmap-sub-42","verificationCode":"verify-token-9"}
+        """.utf8)
+        let result = await coordinator.handleWakeData(challengeJSON)
+        #expect(result == .jmapVerificationChallenge(subscriptionID: "jmap-sub-42", verificationCode: "verify-token-9"))
+        #expect(capturedChallenge?.0 == "jmap-sub-42")
+        #expect(capturedChallenge?.1 == "verify-token-9")
+        #expect(await recorder.syncedAccountIDs().isEmpty)
     }
 
     @Test("restores accounts on cold wake when backends are initially empty")
@@ -128,7 +192,9 @@ struct PushWakeCoordinatorTests {
                     isEnabled: true,
                     mode: .jmapWebPush,
                     endpointURLString: "https://jmap.example.com/api",
-                    enabledAccountIDs: [Self.workAccount.id]
+                    webPushDeliveryURLString: "https://webpush.example.com/push/dev1",
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
                 )
             },
             backendsProvider: {
@@ -140,11 +206,12 @@ struct PushWakeCoordinatorTests {
             refreshBackends: { backends in
                 await recorder.record(backends.map(\.account.id))
                 return nil
-            }
+            },
+            notifyArrivedMail: { _, _ in }
         )
 
         let result = await coordinator.handleWake(
-            PushWakePayload(accountID: Self.workAccount.id, stateToken: "jmap-state-7", eventKind: .mailboxChanged)
+            PushWakePayload(accountID: Self.workOpaqueToken, stateToken: "jmap-state-7", eventKind: .mailboxChanged)
         )
         #expect(restored)
         #expect(result == .synced(accountID: Self.workAccount.id))
@@ -160,14 +227,16 @@ struct PushWakeCoordinatorTests {
                     isEnabled: true,
                     mode: .userHostedRelay,
                     endpointURLString: "https://relay.example.com/push",
-                    enabledAccountIDs: [Self.workAccount.id]
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
                 )
             },
             backendsProvider: { [MockBackend(account: Self.workAccount)] },
             refreshBackends: { backends in
                 await recorder.record(backends.map(\.account.id))
                 return nil
-            }
+            },
+            notifyArrivedMail: { _, _ in }
         )
 
         let result = await coordinator.handleRemoteNotificationUserInfo(["aps": ["content-available": 1]])
@@ -175,25 +244,29 @@ struct PushWakeCoordinatorTests {
         #expect(await recorder.syncedAccountIDs().isEmpty)
     }
 
-    @Test("reports sync failures cleanly")
+    @Test("reports sync failures cleanly without firing arrival notifications")
     func reportsSyncFailure() async {
+        var notifiedCount = 0
         let coordinator = PushWakeCoordinator(
             settingsProvider: {
                 PushRelaySettings(
                     isEnabled: true,
                     mode: .userHostedRelay,
                     endpointURLString: "https://relay.example.com/push",
-                    enabledAccountIDs: [Self.workAccount.id]
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
                 )
             },
             backendsProvider: { [MockBackend(account: Self.workAccount)] },
-            refreshBackends: { _ in "IMAP connection timed out" }
+            refreshBackends: { _ in "IMAP connection timed out" },
+            notifyArrivedMail: { _, _ in notifiedCount += 1 }
         )
 
         let result = await coordinator.handleWake(
-            PushWakePayload(accountID: Self.workAccount.id, stateToken: nil, eventKind: .newMail)
+            PushWakePayload(accountID: Self.workOpaqueToken, stateToken: nil, eventKind: .newMail)
         )
         #expect(result == .failed(accountID: Self.workAccount.id, message: "IMAP connection timed out"))
+        #expect(notifiedCount == 0)
     }
 }
 

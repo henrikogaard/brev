@@ -1678,6 +1678,91 @@
           }
         }
       }
+    },
+    "Enter a separate HTTPS WebPush delivery URL for JMAP push.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a separate HTTPS WebPush delivery URL for JMAP push."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn en separat HTTPS-adresse for levering av JMAP WebPush."
+          }
+        }
+      }
+    },
+    "The WebPush delivery URL must be distinct from the JMAP API endpoint URL.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The WebPush delivery URL must be distinct from the JMAP API endpoint URL."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leveringsadressen for WebPush må være forskjellig fra JMAP API-endepunktet."
+          }
+        }
+      }
+    },
+    "Enter the verification code sent to your WebPush delivery URL.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the verification code sent to your WebPush delivery URL."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn bekreftelseskoden som ble sendt til WebPush-leveringsadressen din."
+          }
+        }
+      }
+    },
+    "Push relay blocked an HTTP %lld redirect for security.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push relay blocked an HTTP %lld redirect for security."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push-reléet blokkerte en HTTP %lld-viderekobling av sikkerhetshensyn."
+          }
+        }
+      }
+    },
+    "JMAP server rejected the push subscription request: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP server rejected the push subscription request: %@"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP-serveren avviste forespørselen om push-abonnement: %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

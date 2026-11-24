@@ -15603,6 +15603,312 @@
           }
         }
       }
+    },
+    "A real APNs device token is required before this device can register with a self-hosted push relay. This build does not have APNs push entitlements enabled.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A real APNs device token is required before this device can register with a self-hosted push relay. This build does not have APNs push entitlements enabled."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En ekte APNs-enhetstoken kreves før denne enheten kan registrere seg hos et egenhostet push-relé. Denne versjonen har ikke APNs-rettigheter aktivert."
+          }
+        }
+      }
+    },
+    "Couldn't determine a valid HTTPS relay origin for the saved bearer token.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't determine a valid HTTPS relay origin for the saved bearer token."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke finne en gyldig HTTPS-opprinnelse for det lagrede Bearer-tokenet."
+          }
+        }
+      }
+    },
+    "Enter the RFC 8620 §7.2.2 verification code delivered to your WebPush URL to activate this subscription.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the RFC 8620 §7.2.2 verification code delivered to your WebPush URL to activate this subscription."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn RFC 8620 §7.2.2-bekreftelseskoden som ble levert til WebPush-adressen din for å aktivere abonnementet."
+          }
+        }
+      }
+    },
+    "HTTPS endpoint owned by you (credentials in URLs and plain HTTP are rejected and never saved).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPS endpoint owned by you (credentials in URLs and plain HTTP are rejected and never saved)."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPS-endepunkt du selv kontrollerer (påloggingsinformasjon i URL og ukryptert HTTP avvises og lagres aldri)."
+          }
+        }
+      }
+    },
+    "JMAP API endpoint URL": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP API endpoint URL"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL for JMAP API-endepunkt"
+          }
+        }
+      }
+    },
+    "JMAP verification code": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP verification code"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP-bekreftelseskode"
+          }
+        }
+      }
+    },
+    "Off by default and stored only on this device. Wakes carry only an opaque account token, never email addresses, mail bodies, or passwords.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off by default and stored only on this device. Wakes carry only an opaque account token, never email addresses, mail bodies, or passwords."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Av som standard og lagres kun på denne enheten. Vekkesignaler inneholder bare en anonym konto-token, aldri e-postadresser, meldingsinnhold eller passord."
+          }
+        }
+      }
+    },
+    "Only randomly generated opaque tokens for checked accounts are registered; disabled accounts ignore wakes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only randomly generated opaque tokens for checked accounts are registered; disabled accounts ignore wakes."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kun tilfeldig genererte anonyme tokens for valgte kontoer registreres; deaktiverte kontoer ignorerer vekkesignaler."
+          }
+        }
+      }
+    },
+    "Pending JMAP verification • %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pending JMAP verification • %@"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Venter på JMAP-bekreftelse • %@"
+          }
+        }
+      }
+    },
+    "Push wakes carry only an opaque device-local account token—never email addresses, message bodies, or mail passwords. Relay secrets stay in this device's Keychain, scoped per relay origin, and never sync.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push wakes carry only an opaque device-local account token—never email addresses, message bodies, or mail passwords. Relay secrets stay in this device's Keychain, scoped per relay origin, and never sync."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push-vekkesignaler inneholder bare en anonym enhetslokal konto-token – aldri e-postadresser, meldingsinnhold eller passord. Reléhemmeligheter forblir i Nøkkelring på denne enheten, adskilt per opprinnelse, og synkroniseres aldri."
+          }
+        }
+      }
+    },
+    "Saved in Keychain for this origin (enter new value to replace)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved in Keychain for this origin (enter new value to replace)"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagret i Nøkkelring for denne opprinnelsen (skriv inn ny verdi for å erstatte)"
+          }
+        }
+      }
+    },
+    "Separate HTTPS receiver URL where your JMAP server posts encrypted RFC 8291 pushes and verification challenges.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Separate HTTPS receiver URL where your JMAP server posts encrypted RFC 8291 pushes and verification challenges."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Separat HTTPS-mottakeradresse der JMAP-serveren sender krypterte RFC 8291-pushvarsler og bekreftelsesutfordringer."
+          }
+        }
+      }
+    },
+    "Stored in this device's Keychain scoped to the relay origin and never reused for another server.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored in this device's Keychain scoped to the relay origin and never reused for another server."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagres i Nøkkelring på denne enheten per reléopprinnelse og gjenbrukes aldri for en annen server."
+          }
+        }
+      }
+    },
+    "Verification code": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verification code"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekreftelseskode"
+          }
+        }
+      }
+    },
+    "Verify Subscription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify Subscription"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekreft abonnement"
+          }
+        }
+      }
+    },
+    "WebPush delivery URL": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebPush delivery URL"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leverings-URL for WebPush"
+          }
+        }
+      }
+    },
+    "https://jmap.example.com/jmap/api/": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https://jmap.example.com/jmap/api/"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https://jmap.example.com/jmap/api/"
+          }
+        }
+      }
+    },
+    "https://webpush.example.com/push/device": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https://webpush.example.com/push/device"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https://webpush.example.com/push/device"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

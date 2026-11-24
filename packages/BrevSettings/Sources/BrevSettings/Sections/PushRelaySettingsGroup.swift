@@ -19,84 +19,35 @@ import SwiftUI
 /// embedded in `NotificationSection` (#11).
 ///
 /// Collapsed to a single off-by-default toggle until enabled so users who do
-/// not run a self-hosted relay or JMAP server see minimal visual weight and
-/// existing notification snapshots remain clean.
+/// not run a self-hosted relay or JMAP server see minimal visual weight.
 struct PushRelaySettingsGroup: View {
     @Environment(\.brevTheme) private var theme
-    @State private var settings: PushRelaySettings
-    @State private var bearerTokenInput = ""
-    @State private var hasSavedBearerToken = false
-    @State private var isWorking = false
+    @State private var controller: PushRelayRegistrationController
 
-    private let settingsStore: SettingsPersistenceStore
-    private let secretStore: any PushRelaySecretStore
     private let accounts: [BrevAccount]
     private let statusTimeZone: TimeZone
     private let statusLocale: Locale
-    private let onRegister: (PushRelaySettings, String?) async throws -> PushRelayRegistrationResponse
-    private let onUnregister: (PushRelaySettings, String?) async throws -> Void
 
     init(
         settingsStore: SettingsPersistenceStore = .standard,
         secretStore: any PushRelaySecretStore = PushRelayKeychainSecretStore(),
+        client: PushRelayClient = PushRelayClient(),
         accounts: [BrevAccount] = [],
+        devicePushTokenProvider: @escaping () -> String? = { nil },
         statusTimeZone: TimeZone = .current,
-        statusLocale: Locale = .current,
-        onRegister: ((PushRelaySettings, String?) async throws -> PushRelayRegistrationResponse)? = nil,
-        onUnregister: ((PushRelaySettings, String?) async throws -> Void)? = nil
+        statusLocale: Locale = .current
     ) {
-        self.settingsStore = settingsStore
-        self.secretStore = secretStore
         self.accounts = accounts
         self.statusTimeZone = statusTimeZone
         self.statusLocale = statusLocale
-        let loaded = settingsStore.pushRelaySettings()
-        _settings = State(initialValue: loaded)
-        _hasSavedBearerToken = State(initialValue: (try? secretStore.bearerToken()) != nil)
-
-        self.onRegister = onRegister ?? { currentSettings, bearerToken in
-            let client = PushRelayClient()
-            let keyMaterial = try secretStore.loadOrCreateEncryptionKeyMaterial()
-            let publicKeys = try keyMaterial.publicKeys()
-            var mutable = currentSettings
-            let clientID = mutable.ensureDeviceClientID()
-            let request = PushRelayRegistrationRequest(
-                mode: currentSettings.mode,
-                deviceClientID: clientID,
-                devicePushToken: Self.localDeviceRegistrationToken(for: currentSettings, clientID: clientID),
-                accountIDs: Array(currentSettings.enabledAccountIDs).sorted(),
-                keys: publicKeys,
-                platform: Self.currentPlatformIdentifier
+        _controller = State(
+            initialValue: PushRelayRegistrationController(
+                settingsStore: settingsStore,
+                secretStore: secretStore,
+                client: client,
+                devicePushTokenProvider: devicePushTokenProvider
             )
-            if let existingID = currentSettings.subscriptionID {
-                return try await client.refresh(
-                    endpointURLString: currentSettings.endpointURLString,
-                    subscriptionID: existingID,
-                    request: request,
-                    bearerToken: bearerToken
-                )
-            }
-            return try await client.register(
-                endpointURLString: currentSettings.endpointURLString,
-                request: request,
-                bearerToken: bearerToken
-            )
-        }
-
-        self.onUnregister = onUnregister ?? { currentSettings, bearerToken in
-            let client = PushRelayClient()
-            let request = PushRelayUnregistrationRequest(
-                deviceClientID: currentSettings.deviceClientID,
-                subscriptionID: currentSettings.subscriptionID,
-                accountIDs: Array(currentSettings.enabledAccountIDs).sorted()
-            )
-            try await client.unregister(
-                endpointURLString: currentSettings.endpointURLString,
-                request: request,
-                mode: currentSettings.mode,
-                bearerToken: bearerToken
-            )
-        }
+        )
     }
 
     var body: some View {
@@ -113,13 +64,13 @@ struct PushRelaySettingsGroup: View {
                     symbolName: "antenna.radiowaves.left.and.right",
                     title: String(localized: "Enable self-hosted closed-app push", bundle: .module),
                     subtitle: String(
-                        localized: "Off by default and stored only on this device. Wakes carry only an opaque account hint, never mail bodies or passwords.",
+                        localized: "Off by default and stored only on this device. Wakes carry only an opaque account token, never email addresses, mail bodies, or passwords.",
                         bundle: .module
                     ),
                     isOn: enabledBinding
                 )
 
-                if settings.isEnabled {
+                if controller.settings.isEnabled {
                     enabledConfigurationRows
                 }
             }
@@ -131,7 +82,7 @@ struct PushRelaySettingsGroup: View {
         SettingsInfoCallout(
             symbolName: "lock.shield",
             message: String(
-                localized: "Push wakes carry only an opaque account hint—never message bodies, subjects, or mail passwords. Relay secrets stay in this device's Keychain and never sync.",
+                localized: "Push wakes carry only an opaque device-local account token—never email addresses, message bodies, or mail passwords. Relay secrets stay in this device's Keychain, scoped per relay origin, and never sync.",
                 bundle: .module
             ),
             tone: .info
@@ -140,7 +91,7 @@ struct PushRelaySettingsGroup: View {
         SettingsPickerRow(
             symbolName: "arrow.triangle.branch",
             title: String(localized: "Push transport", bundle: .module),
-            subtitle: settings.mode.settingsSubtitle,
+            subtitle: controller.settings.mode.settingsSubtitle,
             selection: modeBinding
         ) {
             ForEach(PushRelayMode.configurableModes) { mode in
@@ -148,26 +99,48 @@ struct PushRelaySettingsGroup: View {
             }
         }
 
+        if controller.settings.mode == .userHostedRelay,
+           controller.availableDevicePushToken == nil {
+            SettingsInfoCallout(
+                symbolName: "info.circle",
+                message: String(
+                    localized: "A real APNs device token is required before this device can register with a self-hosted push relay. This build does not have APNs push entitlements enabled.",
+                    bundle: .module
+                ),
+                tone: .info
+            )
+        }
+
         endpointFieldSection
+        if controller.settings.mode == .jmapWebPush {
+            webPushDeliveryFieldSection
+        }
         bearerTokenSection
         accountOptInSection
         actionAndStatusSection
+        if controller.isAwaitingJMAPVerification {
+            jmapVerificationSection
+        }
     }
 
     private var endpointFieldSection: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             SettingsRowLabel(
                 symbolName: "link",
-                title: String(localized: "Push relay URL", bundle: .module),
+                title: controller.settings.mode == .jmapWebPush
+                    ? String(localized: "JMAP API endpoint URL", bundle: .module)
+                    : String(localized: "Push relay URL", bundle: .module),
                 subtitle: String(
-                    localized: "HTTPS endpoint owned by you (credentials in URLs and plain HTTP are rejected).",
+                    localized: "HTTPS endpoint owned by you (credentials in URLs and plain HTTP are rejected and never saved).",
                     bundle: .module
                 )
             )
 
             TextField(
-                String(localized: "https://push.example.com/register", bundle: .module),
-                text: endpointBinding
+                controller.settings.mode == .jmapWebPush
+                    ? String(localized: "https://jmap.example.com/jmap/api/", bundle: .module)
+                    : String(localized: "https://push.example.com/register", bundle: .module),
+                text: endpointDraftBinding
             )
             .textFieldStyle(.roundedBorder)
             .autocorrectionDisabled()
@@ -177,7 +150,40 @@ struct PushRelaySettingsGroup: View {
             #endif
                 .settingsStackedControl()
 
-            if let validationError = endpointValidationError {
+            if let validationError = controller.endpointValidationError {
+                Text(validationError)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.danger.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .settingsStackedControl()
+            }
+        }
+    }
+
+    private var webPushDeliveryFieldSection: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            SettingsRowLabel(
+                symbolName: "arrow.down.to.line",
+                title: String(localized: "WebPush delivery URL", bundle: .module),
+                subtitle: String(
+                    localized: "Separate HTTPS receiver URL where your JMAP server posts encrypted RFC 8291 pushes and verification challenges.",
+                    bundle: .module
+                )
+            )
+
+            TextField(
+                String(localized: "https://webpush.example.com/push/device", bundle: .module),
+                text: webPushDeliveryDraftBinding
+            )
+            .textFieldStyle(.roundedBorder)
+            .autocorrectionDisabled()
+            #if os(iOS)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+            #endif
+                .settingsStackedControl()
+
+            if let validationError = controller.webPushDeliveryValidationError {
                 Text(validationError)
                     .brevFont(.caption)
                     .foregroundStyle(theme.danger.color)
@@ -193,17 +199,17 @@ struct PushRelaySettingsGroup: View {
                 symbolName: "key",
                 title: String(localized: "Bearer token (optional)", bundle: .module),
                 subtitle: String(
-                    localized: "Stored only in this device's Keychain and sent as an Authorization header to your relay.",
+                    localized: "Stored in this device's Keychain scoped to the relay origin and never reused for another server.",
                     bundle: .module
                 )
             )
 
             HStack(spacing: BrevSpacing.sm) {
                 SecureField(
-                    hasSavedBearerToken
-                        ? String(localized: "Saved in Keychain (enter new value to replace)", bundle: .module)
+                    controller.hasSavedBearerToken
+                        ? String(localized: "Saved in Keychain for this origin (enter new value to replace)", bundle: .module)
                         : String(localized: "Optional bearer token", bundle: .module),
-                    text: $bearerTokenInput
+                    text: $controller.bearerTokenInput
                 )
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled()
@@ -211,12 +217,12 @@ struct PushRelaySettingsGroup: View {
                     .textInputAutocapitalization(.never)
                 #endif
 
-                if hasSavedBearerToken {
+                if controller.hasSavedBearerToken {
                     SettingsButton(
                         String(localized: "Clear token", bundle: .module),
                         style: .secondary
                     ) {
-                        clearSavedBearerToken()
+                        controller.clearSavedBearerTokenForCurrentOrigin()
                     }
                 }
             }
@@ -230,7 +236,7 @@ struct PushRelaySettingsGroup: View {
                 symbolName: "person.2",
                 title: String(localized: "Accounts eligible for push wakes", bundle: .module),
                 subtitle: String(
-                    localized: "Only opaque account identifiers for checked accounts are registered; disabled accounts ignore wakes.",
+                    localized: "Only randomly generated opaque tokens for checked accounts are registered; disabled accounts ignore wakes.",
                     bundle: .module
                 )
             )
@@ -265,48 +271,101 @@ struct PushRelaySettingsGroup: View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
             SettingsButtonRow {
                 SettingsButton(
-                    isWorking
+                    controller.isWorking
                         ? String(localized: "Working…", bundle: .module)
                         : String(localized: "Test & Register", bundle: .module),
                     style: .primary
                 ) {
-                    Task { await registerRelay() }
+                    Task { await controller.register() }
                 }
-                .disabled(!canRegister || isWorking)
+                .disabled(!controller.canRegister || controller.isWorking)
 
                 SettingsButton(
                     String(localized: "Unregister", bundle: .module),
                     style: .secondary
                 ) {
-                    Task { await unregisterRelay() }
+                    Task { await controller.unregisterActiveRegistration() }
                 }
-                .disabled(!canUnregister || isWorking)
+                .disabled(!controller.canUnregister || controller.isWorking)
             }
 
             statusReadout
         }
     }
 
+    private var jmapVerificationSection: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            SettingsRowLabel(
+                symbolName: "checkmark.shield",
+                title: String(localized: "JMAP verification code", bundle: .module),
+                subtitle: String(
+                    localized: "Enter the RFC 8620 §7.2.2 verification code delivered to your WebPush URL to activate this subscription.",
+                    bundle: .module
+                )
+            )
+
+            HStack(spacing: BrevSpacing.sm) {
+                TextField(
+                    String(localized: "Verification code", bundle: .module),
+                    text: $controller.verificationCodeInput
+                )
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                #endif
+
+                SettingsButton(
+                    String(localized: "Verify Subscription", bundle: .module),
+                    style: .primary
+                ) {
+                    Task { await controller.verifyActiveJMAPSubscription() }
+                }
+                .disabled(
+                    controller.verificationCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || controller.isWorking
+                )
+            }
+            .settingsStackedControl()
+        }
+    }
+
     @ViewBuilder
     private var statusReadout: some View {
-        if let errorMessage = settings.lastRegistrationError {
+        if let errorMessage = controller.settings.lastRegistrationError {
             SettingsInfoCallout(
                 symbolName: "exclamationmark.triangle",
                 message: errorMessage,
                 tone: .warning
             )
-        } else if let registeredAt = settings.lastRegisteredAt {
-            HStack(spacing: BrevSpacing.xs) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(theme.success.color)
-                Text(
-                    String(
-                        localized: "Registered with relay • \(formattedStatusDate(registeredAt))",
-                        bundle: .module
+        } else if let active = controller.settings.activeRegistration {
+            switch active.state {
+            case .pendingVerification:
+                HStack(spacing: BrevSpacing.xs) {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .foregroundStyle(theme.warning.color)
+                    Text(
+                        String(
+                            localized: "Pending JMAP verification • \(formattedStatusDate(active.registeredAt))",
+                            bundle: .module
+                        )
                     )
-                )
-                .brevFont(.caption)
-                .foregroundStyle(theme.textSecondary.color)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                }
+            case .active:
+                HStack(spacing: BrevSpacing.xs) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(theme.success.color)
+                    Text(
+                        String(
+                            localized: "Registered with relay • \(formattedStatusDate(active.registeredAt))",
+                            bundle: .module
+                        )
+                    )
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                }
             }
         } else {
             Text("Not registered with a relay yet.", bundle: .module)
@@ -315,139 +374,41 @@ struct PushRelaySettingsGroup: View {
         }
     }
 
-    private var endpointValidationError: String? {
-        let trimmed = settings.endpointURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        do {
-            _ = try PushRelayEndpointValidator.validate(trimmed)
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
-    }
-
-    private var canRegister: Bool {
-        guard settings.isEnabled, settings.mode != .disabled else { return false }
-        guard !settings.enabledAccountIDs.isEmpty else { return false }
-        return (try? settings.validatedEndpointURL()) != nil
-    }
-
-    private var canUnregister: Bool {
-        guard (try? settings.validatedEndpointURL()) != nil else { return false }
-        return settings.lastRegisteredAt != nil || settings.subscriptionID != nil
-    }
-
     private var enabledBinding: Binding<Bool> {
         Binding(
-            get: { settings.isEnabled },
+            get: { controller.settings.isEnabled },
             set: { newValue in
-                let previousSettings = settings
-                settings.isEnabled = newValue
-                if newValue {
-                    if settings.mode == .disabled {
-                        settings.mode = .userHostedRelay
-                    }
-                    _ = settings.ensureDeviceClientID()
-                } else {
-                    settings.lastRegistrationError = nil
-                }
-                settingsStore.save(settings)
-
-                if !newValue, previousSettings.subscriptionID != nil || previousSettings.lastRegisteredAt != nil {
-                    Task { await unregisterRelay(using: previousSettings) }
-                }
+                Task { await controller.setEnabled(newValue) }
             }
         )
     }
 
     private var modeBinding: Binding<PushRelayMode> {
         Binding(
-            get: { settings.mode == .disabled ? .userHostedRelay : settings.mode },
-            set: { newValue in
-                settings.mode = newValue
-                settingsStore.save(settings)
-            }
+            get: { controller.settings.mode == .disabled ? .userHostedRelay : controller.settings.mode },
+            set: { controller.setMode($0) }
         )
     }
 
-    private var endpointBinding: Binding<String> {
+    private var endpointDraftBinding: Binding<String> {
         Binding(
-            get: { settings.endpointURLString },
-            set: { newValue in
-                settings.endpointURLString = newValue
-                settingsStore.save(settings)
-            }
+            get: { controller.endpointDraft },
+            set: { controller.updateEndpointDraft($0) }
+        )
+    }
+
+    private var webPushDeliveryDraftBinding: Binding<String> {
+        Binding(
+            get: { controller.webPushDeliveryURLDraft },
+            set: { controller.updateWebPushDeliveryURLDraft($0) }
         )
     }
 
     private func accountBinding(for accountID: String) -> Binding<Bool> {
         Binding(
-            get: { settings.enabledAccountIDs.contains(accountID) },
-            set: { isOn in
-                settings.setAccount(accountID, enabled: isOn)
-                settingsStore.save(settings)
-            }
+            get: { controller.settings.enabledAccountIDs.contains(accountID) },
+            set: { controller.setAccount(accountID, enabled: $0) }
         )
-    }
-
-    private func clearSavedBearerToken() {
-        try? secretStore.saveBearerToken(nil)
-        bearerTokenInput = ""
-        hasSavedBearerToken = false
-    }
-
-    private func persistPendingBearerTokenIfNeeded() throws -> String? {
-        let trimmedInput = bearerTokenInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedInput.isEmpty {
-            try secretStore.saveBearerToken(trimmedInput)
-            bearerTokenInput = ""
-            hasSavedBearerToken = true
-            return trimmedInput
-        }
-        return try secretStore.bearerToken()
-    }
-
-    @MainActor
-    private func registerRelay() async {
-        guard !isWorking else { return }
-        isWorking = true
-        defer { isWorking = false }
-
-        do {
-            _ = try settings.validatedEndpointURL()
-            let token = try persistPendingBearerTokenIfNeeded()
-            _ = settings.ensureDeviceClientID()
-            let response = try await onRegister(settings, token)
-            settings.subscriptionID = response.subscriptionID
-            settings.lastRegisteredAt = Date()
-            settings.lastRegistrationError = nil
-            settingsStore.save(settings)
-        } catch {
-            settings.lastRegistrationError = error.localizedDescription
-            settingsStore.save(settings)
-        }
-    }
-
-    @MainActor
-    private func unregisterRelay(using snapshot: PushRelaySettings? = nil) async {
-        guard !isWorking else { return }
-        isWorking = true
-        defer { isWorking = false }
-
-        let target = snapshot ?? settings
-        do {
-            let token = try secretStore.bearerToken()
-            if (try? target.validatedEndpointURL()) != nil {
-                try await onUnregister(target, token)
-            }
-            settings.subscriptionID = nil
-            settings.lastRegisteredAt = nil
-            settings.lastRegistrationError = nil
-            settingsStore.save(settings)
-        } catch {
-            settings.lastRegistrationError = error.localizedDescription
-            settingsStore.save(settings)
-        }
     }
 
     private func formattedStatusDate(_ date: Date) -> String {
@@ -457,25 +418,5 @@ struct PushRelaySettingsGroup: View {
         formatter.timeZone = statusTimeZone
         formatter.locale = statusLocale
         return formatter.string(from: date)
-    }
-
-    private static var currentPlatformIdentifier: String {
-        #if os(iOS)
-        "ios"
-        #else
-        "macos"
-        #endif
-    }
-
-    private static func localDeviceRegistrationToken(
-        for settings: PushRelaySettings,
-        clientID: String
-    ) -> String {
-        switch settings.mode {
-        case .jmapWebPush:
-            settings.endpointURLString
-        case .userHostedRelay, .disabled:
-            clientID
-        }
     }
 }

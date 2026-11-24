@@ -17,29 +17,34 @@ import Security
 /// Errors raised when reading or writing device-local push relay secrets.
 public enum PushRelaySecretStoreError: Error, LocalizedError, Equatable, Sendable {
     case encodingFailed
+    case invalidOrigin
     case keychain(status: OSStatus)
 
     public var errorDescription: String? {
         switch self {
         case .encodingFailed:
             String(localized: "Couldn't encode the push relay secret.", bundle: .module)
+        case .invalidOrigin:
+            String(localized: "Couldn't determine a valid HTTPS relay origin for the saved bearer token.", bundle: .module)
         case .keychain:
             String(localized: "Couldn't access the push relay secret in Keychain.", bundle: .module)
         }
     }
 }
 
-/// Device-local secret storage for the optional push relay bearer token and
+/// Device-local secret storage for origin-scoped push relay bearer tokens and
 /// RFC 8291 P-256 ECDH private key material (#11).
 ///
-/// Secrets MUST live in Keychain (`ThisDeviceOnly`) and never in `UserDefaults`,
-/// logs, backups, or iCloud sync.
+/// Secrets MUST live in Keychain (`ThisDeviceOnly`), scoped per normalized
+/// relay origin (`scheme://host[:port]`) so switching relay servers never
+/// forwards an earlier server's credential to a new host.
 public protocol PushRelaySecretStore: Sendable {
-    /// Returns the stored optional bearer token, or `nil` when unset.
-    func bearerToken() throws -> String?
+    /// Returns the stored optional bearer token scoped to `origin`, or `nil` when unset.
+    func bearerToken(forOrigin origin: String) throws -> String?
 
-    /// Saves or clears the optional bearer token. Whitespace-only or `nil` clears it.
-    func saveBearerToken(_ token: String?) throws
+    /// Saves or clears the optional bearer token scoped to `origin`.
+    /// Whitespace-only or `nil` removes the credential for `origin`.
+    func saveBearerToken(_ token: String?, forOrigin origin: String) throws
 
     /// Returns the stored RFC 8291 P-256 key material, or `nil` if not generated yet.
     func encryptionKeyMaterial() throws -> PushRelayEncryptionKeyMaterial?
@@ -54,7 +59,7 @@ public protocol PushRelaySecretStore: Sendable {
 /// Keychain-backed `PushRelaySecretStore` using `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`
 /// so secrets never sync via iCloud Keychain.
 public final class PushRelayKeychainSecretStore: PushRelaySecretStore, @unchecked Sendable {
-    private static let bearerAccountKey = "push-relay-bearer-token"
+    private static let bearerAccountPrefix = "push-relay-bearer:"
     private static let encryptionKeyAccountKey = "push-relay-rfc8291-key"
 
     private let service: String
@@ -64,19 +69,24 @@ public final class PushRelayKeychainSecretStore: PushRelaySecretStore, @unchecke
         self.service = service ?? "\(Bundle.main.bundleIdentifier ?? "eu.brevmail.brev").pushRelay"
     }
 
-    public func bearerToken() throws -> String? {
-        guard let data = try readData(account: Self.bearerAccountKey) else { return nil }
+    public func bearerToken(forOrigin origin: String) throws -> String? {
+        let normalizedOrigin = try Self.normalizeOrigin(origin)
+        guard let data = try readData(account: Self.bearerAccountPrefix + normalizedOrigin) else {
+            return nil
+        }
         let value = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
     }
 
-    public func saveBearerToken(_ token: String?) throws {
+    public func saveBearerToken(_ token: String?, forOrigin origin: String) throws {
+        let normalizedOrigin = try Self.normalizeOrigin(origin)
+        let accountKey = Self.bearerAccountPrefix + normalizedOrigin
         let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmed.isEmpty else {
-            try deleteItem(account: Self.bearerAccountKey)
+            try deleteItem(account: accountKey)
             return
         }
-        try writeData(Data(trimmed.utf8), account: Self.bearerAccountKey)
+        try writeData(Data(trimmed.utf8), account: accountKey)
     }
 
     public func encryptionKeyMaterial() throws -> PushRelayEncryptionKeyMaterial? {
@@ -97,8 +107,21 @@ public final class PushRelayKeychainSecretStore: PushRelaySecretStore, @unchecke
     }
 
     public func clearAll() throws {
-        try deleteItem(account: Self.bearerAccountKey)
-        try deleteItem(account: Self.encryptionKeyAccountKey)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw PushRelaySecretStoreError.keychain(status: status)
+        }
+    }
+
+    private static func normalizeOrigin(_ origin: String) throws -> String {
+        guard let normalized = try? PushRelayEndpointValidator.originKey(from: origin) else {
+            throw PushRelaySecretStoreError.invalidOrigin
+        }
+        return normalized
     }
 
     private func baseQuery(account: String) -> [String: Any] {
@@ -159,27 +182,44 @@ public final class PushRelayKeychainSecretStore: PushRelaySecretStore, @unchecke
 /// Thread-safe in-memory `PushRelaySecretStore` for unit and snapshot tests.
 public final class InMemoryPushRelaySecretStore: PushRelaySecretStore, @unchecked Sendable {
     private let lock = NSLock()
-    private var storedBearer: String?
+    private var storedBearersByOrigin: [String: String]
     private var storedKeyMaterial: PushRelayEncryptionKeyMaterial?
 
-    /// Creates an in-memory secret store with optional pre-populated values.
+    /// Creates an in-memory secret store with optional pre-populated origin-scoped bearer tokens.
     public init(
-        bearerToken: String? = nil,
+        bearerTokensByOrigin: [String: String] = [:],
         encryptionKeyMaterial: PushRelayEncryptionKeyMaterial? = nil
     ) {
-        let trimmed = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines)
-        storedBearer = trimmed?.isEmpty == false ? trimmed : nil
+        var normalized: [String: String] = [:]
+        for (origin, token) in bearerTokensByOrigin {
+            let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty,
+               let key = try? PushRelayEndpointValidator.originKey(from: origin) {
+                normalized[key] = trimmed
+            }
+        }
+        storedBearersByOrigin = normalized
         storedKeyMaterial = encryptionKeyMaterial
     }
 
-    public func bearerToken() throws -> String? {
-        lock.withLock { storedBearer }
+    public func bearerToken(forOrigin origin: String) throws -> String? {
+        guard let key = try? PushRelayEndpointValidator.originKey(from: origin) else {
+            throw PushRelaySecretStoreError.invalidOrigin
+        }
+        return lock.withLock { storedBearersByOrigin[key] }
     }
 
-    public func saveBearerToken(_ token: String?) throws {
+    public func saveBearerToken(_ token: String?, forOrigin origin: String) throws {
+        guard let key = try? PushRelayEndpointValidator.originKey(from: origin) else {
+            throw PushRelaySecretStoreError.invalidOrigin
+        }
         let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
         lock.withLock {
-            storedBearer = trimmed?.isEmpty == false ? trimmed : nil
+            if let trimmed, !trimmed.isEmpty {
+                storedBearersByOrigin[key] = trimmed
+            } else {
+                storedBearersByOrigin.removeValue(forKey: key)
+            }
         }
     }
 
@@ -200,7 +240,7 @@ public final class InMemoryPushRelaySecretStore: PushRelaySecretStore, @unchecke
 
     public func clearAll() throws {
         lock.withLock {
-            storedBearer = nil
+            storedBearersByOrigin.removeAll()
             storedKeyMaterial = nil
         }
     }

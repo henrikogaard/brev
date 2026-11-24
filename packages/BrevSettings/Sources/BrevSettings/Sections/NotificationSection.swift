@@ -42,6 +42,7 @@ struct NotificationSection: View {
     /// pending work and dismisses any visible panel (ADR-0088 §5).
     private let onSignInCodeConsentChanged: (BrevAccount.ID) -> Void
     private let authorizationStatusProvider: () async -> BrevSettingsNotificationAuthStatus
+    private let showPushRelaySection: Bool
 
     /// - Parameter authorizationStatus: Reads the system permission; tests inject a fixed status
     ///   because the notification center is unavailable in a test host.
@@ -53,13 +54,15 @@ struct NotificationSection: View {
         authorizationStatus: @escaping () async -> BrevSettingsNotificationAuthStatus = {
             let systemSettings = await UNUserNotificationCenter.current().notificationSettings()
             return BrevSettingsNotificationAuthStatus.map(systemSettings.authorizationStatus)
-        }
+        },
+        showPushRelaySection: Bool = true
     ) {
         self.settingsStore = settingsStore
         self.accounts = accounts
         self.signInAssessmentAvailable = signInAssessmentAvailable
         self.onSignInCodeConsentChanged = onSignInCodeConsentChanged
         authorizationStatusProvider = authorizationStatus
+        self.showPushRelaySection = showPushRelaySection
         _settings = State(initialValue: settingsStore.notificationSettings())
     }
 
@@ -81,10 +84,12 @@ struct NotificationSection: View {
                     isAvailable: signInAssessmentAvailable,
                     onChange: onSignInCodeConsentChanged
                 )
-                PushRelaySettingsGroup(
-                    settingsStore: settingsStore,
-                    accounts: accounts
-                )
+                if showPushRelaySection {
+                    PushRelaySettingsGroup(
+                        settingsStore: settingsStore,
+                        accounts: accounts
+                    )
+                }
             }
         }
         .task { await refreshAuthorizationStatus() }

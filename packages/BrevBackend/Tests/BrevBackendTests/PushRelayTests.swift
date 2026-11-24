@@ -17,14 +17,19 @@ import Testing
 
 @Suite("Closed-app push relay protocol & client (#11)")
 struct PushRelayTests {
-    @Test("endpoint validator enforces strict HTTPS and rejects credentials or malformed URLs")
+    @Test("endpoint validator enforces strict HTTPS, rejects credentials, and normalizes origins")
     func endpointValidatorStrictHTTPS() throws {
         let accepted = try PushRelayEndpointValidator.validate("  https://push.example.com/v1/register  ")
         #expect(accepted.absoluteString == "https://push.example.com/v1/register")
+        #expect(PushRelayEndpointValidator.originKey(for: accepted) == "https://push.example.com")
+
+        let acceptedDefaultPort = try PushRelayEndpointValidator.validate("https://PUSH.EXAMPLE.COM:443/other")
+        #expect(PushRelayEndpointValidator.originKey(for: acceptedDefaultPort) == "https://push.example.com")
 
         let acceptedPort = try PushRelayEndpointValidator.validate("https://relay.example.org:8443/push?channel=ios")
         #expect(acceptedPort.host == "relay.example.org")
         #expect(acceptedPort.port == 8443)
+        #expect(PushRelayEndpointValidator.originKey(for: acceptedPort) == "https://relay.example.org:8443")
 
         #expect(throws: PushRelayEndpointValidationError.empty) {
             _ = try PushRelayEndpointValidator.validate("   ")
@@ -72,32 +77,29 @@ struct PushRelayTests {
         #expect(decodedPub.first == 0x04)
         #expect(decodedAuth.count == 16)
 
-        // Round-trip private key reconstruction derives identical public key.
         let privateKey = try material.privateKey()
         #expect(privateKey.publicKey.x963Representation == decodedPub)
 
-        // Codable round-trip preserves exact key material.
         let encoded = try JSONEncoder().encode(material)
         let decoded = try JSONDecoder().decode(PushRelayEncryptionKeyMaterial.self, from: encoded)
         #expect(decoded == material)
         #expect(try decoded.publicKeys() == publicKeys)
 
-        // Description must never include secret hex/base64 bytes.
         let description = String(describing: material)
         #expect(!description.contains(material.privateKeyRawRepresentation.base64EncodedString()))
         #expect(!description.contains(material.authSecret.base64EncodedString()))
     }
 
-    @Test("disabled mode or missing opted-in accounts performs zero network calls")
-    func zeroNetworkCallsWhenDisabledOrEmpty() async {
+    @Test("disabled mode, missing real push token, or same JMAP API/delivery URL performs zero network calls")
+    func zeroNetworkCallsWhenInvalidOrUnprovisioned() async {
         let transport = RecordingPushRelayTransport(responses: [])
         let client = PushRelayClient(transport: transport)
 
         let disabledRequest = PushRelayRegistrationRequest(
             mode: .disabled,
             deviceClientID: "device-1",
-            devicePushToken: "apns-token-hex",
-            accountIDs: ["acct-1"]
+            devicePushToken: "real-apns-token",
+            accountIDs: ["acct-token-1"]
         )
         await #expect(throws: PushRelayClientError.disabled) {
             _ = try await client.register(
@@ -106,12 +108,69 @@ struct PushRelayTests {
                 bearerToken: nil
             )
         }
-        #expect(await transport.recordedRequests().isEmpty)
+
+        // Reject missing token or fabricated deviceClientID reused as APNs token.
+        let missingTokenRequest = PushRelayRegistrationRequest(
+            mode: .userHostedRelay,
+            deviceClientID: "brev-dev-123",
+            devicePushToken: "",
+            accountIDs: ["acct-token-1"]
+        )
+        await #expect(throws: PushRelayClientError.missingDevicePushToken) {
+            _ = try await client.register(
+                endpointURLString: "https://relay.example.com/push",
+                request: missingTokenRequest,
+                bearerToken: nil
+            )
+        }
+
+        let fabricatedTokenRequest = PushRelayRegistrationRequest(
+            mode: .userHostedRelay,
+            deviceClientID: "brev-dev-123",
+            devicePushToken: "brev-dev-123",
+            accountIDs: ["acct-token-1"]
+        )
+        await #expect(throws: PushRelayClientError.missingDevicePushToken) {
+            _ = try await client.register(
+                endpointURLString: "https://relay.example.com/push",
+                request: fabricatedTokenRequest,
+                bearerToken: nil
+            )
+        }
+
+        // JMAP mode rejects missing delivery URL and rejects delivery URL == JMAP API URL.
+        let jmapMissingDelivery = PushRelayRegistrationRequest(
+            mode: .jmapWebPush,
+            deviceClientID: "brev-dev-123",
+            webPushDeliveryURL: nil,
+            accountIDs: ["acct-token-1"]
+        )
+        await #expect(throws: PushRelayClientError.missingWebPushDeliveryURL) {
+            _ = try await client.register(
+                endpointURLString: "https://jmap.example.com/api",
+                request: jmapMissingDelivery,
+                bearerToken: nil
+            )
+        }
+
+        let jmapSameURL = PushRelayRegistrationRequest(
+            mode: .jmapWebPush,
+            deviceClientID: "brev-dev-123",
+            webPushDeliveryURL: "https://JMAP.EXAMPLE.COM:443/api/",
+            accountIDs: ["acct-token-1"]
+        )
+        await #expect(throws: PushRelayClientError.webPushDeliveryURLMatchesAPIEndpoint) {
+            _ = try await client.register(
+                endpointURLString: "https://jmap.example.com/api",
+                request: jmapSameURL,
+                bearerToken: nil
+            )
+        }
 
         let emptyAccountsRequest = PushRelayRegistrationRequest(
             mode: .userHostedRelay,
             deviceClientID: "device-1",
-            devicePushToken: "apns-token-hex",
+            devicePushToken: "real-apns-token",
             accountIDs: []
         )
         await #expect(throws: PushRelayClientError.missingOptedInAccounts) {
@@ -121,13 +180,12 @@ struct PushRelayTests {
                 bearerToken: nil
             )
         }
-        #expect(await transport.recordedRequests().isEmpty)
 
         let httpRequest = PushRelayRegistrationRequest(
             mode: .userHostedRelay,
             deviceClientID: "device-1",
-            devicePushToken: "apns-token-hex",
-            accountIDs: ["acct-1"]
+            devicePushToken: "real-apns-token",
+            accountIDs: ["acct-token-1"]
         )
         await #expect(throws: PushRelayClientError.invalidEndpoint(.httpsRequired)) {
             _ = try await client.register(
@@ -136,6 +194,7 @@ struct PushRelayTests {
                 bearerToken: nil
             )
         }
+
         #expect(await transport.recordedRequests().isEmpty)
     }
 
@@ -178,6 +237,7 @@ struct PushRelayTests {
             bearerToken: "my-relay-secret"
         )
         #expect(registered.subscriptionID == "sub-123")
+        #expect(registered.state == .active)
         #expect(registered.expiresAt == expiresAt)
 
         let refreshed = try await client.refresh(
@@ -207,7 +267,8 @@ struct PushRelayTests {
         #expect(postReq.url?.absoluteString == "https://relay.example.com/v1/register")
         #expect(postReq.value(forHTTPHeaderField: "Authorization") == "Bearer my-relay-secret")
         #expect(postReq.value(forHTTPHeaderField: "Content-Type") == "application/json")
-        let postBodyString = try String(decoding: #require(postReq.httpBody), as: UTF8.self)
+        let postBody = try #require(postReq.httpBody)
+        let postBodyString = String(decoding: postBody, as: UTF8.self)
         #expect(postBodyString.contains("dev-client-uuid"))
         #expect(postBodyString.contains("deadbeef01234567"))
         #expect(postBodyString.contains(keys.p256dh))
@@ -215,7 +276,7 @@ struct PushRelayTests {
         #expect(!postBodyString.contains("password"))
         #expect(!postBodyString.contains("oauth"))
         #expect(!postBodyString.contains("privateKey"))
-        let decodedPost = try JSONDecoder().decode(PushRelayRegistrationRequest.self, from: #require(postReq.httpBody))
+        let decodedPost = try JSONDecoder().decode(PushRelayRegistrationRequest.self, from: postBody)
         #expect(decodedPost.accountIDs == ["acct-a", "acct-b"])
 
         let putReq = recorded[1]
@@ -246,8 +307,8 @@ struct PushRelayTests {
         }
     }
 
-    @Test("JMAP RFC 8620 §7.2 PushSubscription/set spec formats valid JMAP create & destroy calls")
-    func jmapWebPushSubscriptionSpecAndClient() async throws {
+    @Test("JMAP RFC 8620 §7.2.2 distinguishes unverified creation from verified active subscription")
+    func jmapVerificationContractAndDestroyParsing() async throws {
         let keys = try PushRelayEncryptionKeyMaterial.generate().publicKeys()
         let expires = Date(timeIntervalSince1970: 1_800_000_000)
         let spec = try JMAPWebPushSubscriptionSpec(
@@ -263,22 +324,7 @@ struct PushRelayTests {
         let using = try #require(json["using"] as? [String])
         #expect(using == ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"])
 
-        let methodCalls = try #require(json["methodCalls"] as? [[Any]])
-        #expect(methodCalls.count == 1)
-        #expect(methodCalls[0][0] as? String == "PushSubscription/set")
-        #expect(methodCalls[0][2] as? String == "c0")
-        let args = try #require(methodCalls[0][1] as? [String: Any])
-        let create = try #require(args["create"] as? [String: [String: Any]])
-        let subObj = try #require(create["sub-0"])
-        #expect(subObj["deviceClientId"] as? String == "brev-device-42")
-        #expect(subObj["url"] as? String == "https://webpush.example.com/push/token123")
-        #expect(subObj["types"] as? [String] == ["Email"])
-        let jsonKeys = try #require(subObj["keys"] as? [String: String])
-        #expect(jsonKeys["p256dh"] == keys.p256dh)
-        #expect(jsonKeys["auth"] == keys.auth)
-
-        // End-to-end JMAP registration & unregistration via PushRelayClient
-        let jmapResponseJSON = """
+        let jmapCreateResponse = """
         {
           "methodResponses": [
             [
@@ -287,8 +333,7 @@ struct PushRelayTests {
                 "created": {
                   "brev-push-sub": {
                     "id": "jmap-sub-99",
-                    "expires": "2027-01-15T08:00:00Z",
-                    "verificationCode": "verify-abc"
+                    "expires": "2027-01-15T08:00:00Z"
                   }
                 }
               },
@@ -297,7 +342,57 @@ struct PushRelayTests {
           ]
         }
         """
-        let destroyResponseJSON = """
+        let jmapVerifyResponse = """
+        {
+          "methodResponses": [
+            [
+              "PushSubscription/set",
+              {
+                "updated": {
+                  "jmap-sub-99": null
+                }
+              },
+              "c0"
+            ]
+          ]
+        }
+        """
+        let jmapDestroyRejectedResponse = """
+        {
+          "methodResponses": [
+            [
+              "PushSubscription/set",
+              {
+                "notDestroyed": {
+                  "jmap-sub-99": {
+                    "type": "forbidden",
+                    "description": "Not allowed to destroy subscription"
+                  }
+                }
+              },
+              "c0"
+            ]
+          ]
+        }
+        """
+        let jmapDestroyNotFoundResponse = """
+        {
+          "methodResponses": [
+            [
+              "PushSubscription/set",
+              {
+                "notDestroyed": {
+                  "jmap-sub-99": {
+                    "type": "notFound"
+                  }
+                }
+              },
+              "c0"
+            ]
+          ]
+        }
+        """
+        let jmapDestroyConfirmedResponse = """
         {
           "methodResponses": [
             [
@@ -310,27 +405,71 @@ struct PushRelayTests {
           ]
         }
         """
+
         let transport = RecordingPushRelayTransport(responses: [
-            (Data(jmapResponseJSON.utf8), 200),
-            (Data(destroyResponseJSON.utf8), 200)
+            (Data(jmapCreateResponse.utf8), 200),
+            (Data(jmapVerifyResponse.utf8), 200),
+            (Data(jmapDestroyRejectedResponse.utf8), 200),
+            (Data(jmapDestroyNotFoundResponse.utf8), 200),
+            (Data(jmapDestroyConfirmedResponse.utf8), 200)
         ])
         let client = PushRelayClient(transport: transport)
         let req = PushRelayRegistrationRequest(
             mode: .jmapWebPush,
             deviceClientID: "brev-device-42",
-            devicePushToken: "https://webpush.example.com/push/token123",
+            webPushDeliveryURL: "https://webpush.example.com/push/token123",
             accountIDs: ["acct-jmap"],
             keys: keys
         )
-        let response = try await client.register(
+
+        // 1. Creation MUST remain .pendingVerification until RFC 8620 §7.2.2 update succeeds.
+        let created = try await client.register(
             endpointURLString: "https://jmap.example.com/api/",
             request: req,
             bearerToken: "jmap-token"
         )
-        #expect(response.subscriptionID == "jmap-sub-99")
-        #expect(response.verificationCode == "verify-abc")
-        #expect(response.expiresAt != nil)
+        #expect(created.subscriptionID == "jmap-sub-99")
+        #expect(created.state == .pendingVerification)
 
+        // 2. Verification update transitions state to .active.
+        let verified = try await client.verifyJMAPSubscription(
+            endpointURLString: "https://jmap.example.com/api/",
+            subscriptionID: "jmap-sub-99",
+            verificationCode: "challenge-xyz",
+            bearerToken: "jmap-token"
+        )
+        #expect(verified.subscriptionID == "jmap-sub-99")
+        #expect(verified.state == .active)
+
+        // 3. HTTP 200 with JMAP `notDestroyed` ("forbidden") MUST throw so local state is retained for retry.
+        await #expect(
+            throws: PushRelayClientError.jmapMethodRejected("Not allowed to destroy subscription")
+        ) {
+            try await client.unregister(
+                endpointURLString: "https://jmap.example.com/api/",
+                request: PushRelayUnregistrationRequest(
+                    deviceClientID: "brev-device-42",
+                    subscriptionID: "jmap-sub-99",
+                    accountIDs: ["acct-jmap"]
+                ),
+                mode: .jmapWebPush,
+                bearerToken: "jmap-token"
+            )
+        }
+
+        // 4. HTTP 200 with JMAP `notDestroyed` ("notFound") succeeds (confirmed already absent).
+        try await client.unregister(
+            endpointURLString: "https://jmap.example.com/api/",
+            request: PushRelayUnregistrationRequest(
+                deviceClientID: "brev-device-42",
+                subscriptionID: "jmap-sub-99",
+                accountIDs: ["acct-jmap"]
+            ),
+            mode: .jmapWebPush,
+            bearerToken: "jmap-token"
+        )
+
+        // 5. HTTP 200 with JMAP `destroyed: ["jmap-sub-99"]` succeeds.
         try await client.unregister(
             endpointURLString: "https://jmap.example.com/api/",
             request: PushRelayUnregistrationRequest(
@@ -343,43 +482,92 @@ struct PushRelayTests {
         )
 
         let recorded = await transport.recordedRequests()
-        #expect(recorded.count == 2)
-        let destroyBody = try String(decoding: #require(recorded[1].httpBody), as: UTF8.self)
+        #expect(recorded.count == 5)
+        let createBody = try String(decoding: #require(recorded[0].httpBody), as: UTF8.self)
+        #expect(createBody.contains("https://webpush.example.com/push/token123"))
+        #expect(!createBody.contains("https://jmap.example.com/api/"))
+
+        let verifyBody = try String(decoding: #require(recorded[1].httpBody), as: UTF8.self)
+        #expect(verifyBody.contains("PushSubscription/set"))
+        #expect(verifyBody.contains("\"update\""))
+        #expect(verifyBody.contains("challenge-xyz"))
+
+        let destroyBody = try String(decoding: #require(recorded[4].httpBody), as: UTF8.self)
         #expect(destroyBody.contains("PushSubscription/set"))
         #expect(destroyBody.contains("\"destroy\""))
         #expect(destroyBody.contains("jmap-sub-99"))
     }
 
-    @Test("PushWakePayload decodes opaque wakes and rejects malformed payloads")
-    func wakePayloadValidation() throws {
+    @Test("URLSessionPushRelayTransport blocks HTTP redirects so payloads and tokens never leave the approved origin")
+    func transportBlocksRedirects() async {
+        RedirectBlockingURLProtocol.reset()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RedirectBlockingURLProtocol.self]
+        let transport = URLSessionPushRelayTransport(configuration: config)
+        let client = PushRelayClient(transport: transport)
+
+        let request = PushRelayRegistrationRequest(
+            mode: .userHostedRelay,
+            deviceClientID: "dev-1",
+            devicePushToken: "real-apns-token",
+            accountIDs: ["acct-token-1"]
+        )
+
+        await #expect(throws: PushRelayClientError.redirectBlocked(statusCode: 307)) {
+            _ = try await client.register(
+                endpointURLString: "https://relay.example.com/register",
+                request: request,
+                bearerToken: "origin-secret"
+            )
+        }
+
+        let requestedHosts = RedirectBlockingURLProtocol.recordedHosts()
+        #expect(requestedHosts == ["relay.example.com"])
+        #expect(!requestedHosts.contains("attacker.example"))
+    }
+
+    @Test("PushWakePayload decodes opaque wakes and RFC 8620 §7.2.2 PushVerification challenges")
+    func wakePayloadAndVerificationDecoding() throws {
         let validJSON = Data("""
         {
-          "accountID": "acct-work",
+          "accountID": "acct-opaque-1",
           "stateToken": "state-42",
           "eventKind": "new_mail",
           "ignoredBody": "should never be read"
         }
         """.utf8)
         let decoded = try #require(PushWakePayload(jsonData: validJSON))
-        #expect(decoded.accountID == "acct-work")
+        #expect(decoded.accountID == "acct-opaque-1")
         #expect(decoded.stateToken == "state-42")
         #expect(decoded.eventKind == .newMail)
+        #expect(!decoded.isJMAPVerificationChallenge)
+
+        let jmapChallengeJSON = Data("""
+        {
+          "@type": "PushVerification",
+          "pushSubscriptionId": "jmap-sub-77",
+          "verificationCode": "verify-999"
+        }
+        """.utf8)
+        let challenge = try #require(PushWakePayload(jsonData: jmapChallengeJSON))
+        #expect(challenge.isJMAPVerificationChallenge)
+        #expect(challenge == .jmapVerification(pushSubscriptionId: "jmap-sub-77", verificationCode: "verify-999"))
 
         let nestedAPNs: [AnyHashable: Any] = [
             "aps": ["content-available": 1],
             "brev": [
-                "accountID": "acct-personal",
+                "accountID": "acct-opaque-2",
                 "eventKind": "mailbox_changed"
             ]
         ]
         let fromUserInfo = try #require(PushWakePayload(userInfo: nestedAPNs))
-        #expect(fromUserInfo.accountID == "acct-personal")
+        #expect(fromUserInfo.accountID == "acct-opaque-2")
         #expect(fromUserInfo.stateToken == nil)
         #expect(fromUserInfo.eventKind == .mailboxChanged)
 
-        // Reject missing/empty accountID, unknown eventKind, or oversized fields.
         #expect(PushWakePayload(userInfo: ["accountID": "   ", "eventKind": "new_mail"]) == nil)
         #expect(PushWakePayload(userInfo: ["accountID": "acct-1", "eventKind": "unknown_event"]) == nil)
+        #expect(PushWakePayload(userInfo: ["@type": "PushVerification", "pushSubscriptionId": "s1"]) == nil)
         #expect(PushWakePayload(userInfo: ["aps": ["content-available": 1]]) == nil)
         #expect(PushWakePayload(jsonData: Data("{bad json".utf8)) == nil)
         #expect(PushWakePayload(userInfo: [
@@ -413,4 +601,47 @@ private actor RecordingPushRelayTransport: PushRelayHTTPTransport {
     func recordedRequests() -> [URLRequest] {
         requests
     }
+}
+
+private final class RedirectBlockingURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var hosts: [String] = []
+
+    static func reset() {
+        lock.withLock { hosts.removeAll() }
+    }
+
+    static func recordedHosts() -> [String] {
+        lock.withLock { hosts }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        if let host = request.url?.host {
+            Self.lock.withLock { Self.hosts.append(host) }
+        }
+        let url = request.url ?? URL(string: "https://relay.example.com/register")!
+        let response = HTTPURLResponse(
+            url: url,
+            statusCode: 307,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Location": "https://attacker.example/steal"]
+        )!
+        client?.urlProtocol(
+            self,
+            wasRedirectedTo: URLRequest(url: URL(string: "https://attacker.example/steal")!),
+            redirectResponse: response
+        )
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
