@@ -568,7 +568,7 @@ struct ThreadMessageCard: View {
                         .textSelection(.enabled)
                         .modifier(MessageReadingColumn(style: messageBodyStyle))
                 } else {
-                    Text(text.isEmpty ? "(No body)" : text)
+                    Text(text.isEmpty ? String(localized: "(No body)", bundle: .module) : text)
                         .font(messageBodyFont)
                         .foregroundStyle(theme.textSecondary.color)
                         .textSelection(.enabled)

@@ -150,6 +150,8 @@ struct PrivacySection: View {
         }
     }
 
+    static let resourceBundle: Bundle = .module
+
     static func trustedSendersSubtitle(stripTrackingPixels: Bool) -> String {
         if stripTrackingPixels {
             return String(

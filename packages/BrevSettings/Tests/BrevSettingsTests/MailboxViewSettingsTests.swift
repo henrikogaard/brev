@@ -143,8 +143,17 @@ struct MailboxViewSettingsTests {
         let onText = PrivacySection.trustedSendersSubtitle(stripTrackingPixels: true)
         let offText = PrivacySection.trustedSendersSubtitle(stripTrackingPixels: false)
 
-        #expect(!onText.isEmpty)
-        #expect(!offText.isEmpty)
+        let expectedOn = String(
+            localized: "Automatically load remote images from your Contacts and people you have emailed. Known tracking pixels remain blocked.",
+            bundle: PrivacySection.resourceBundle
+        )
+        let expectedOff = String(
+            localized: "Automatically load remote images from your Contacts and people you have emailed. Tracking-pixel removal is currently off.",
+            bundle: PrivacySection.resourceBundle
+        )
+
+        #expect(onText == expectedOn)
+        #expect(offText == expectedOff)
         #expect(onText != offText)
 
         // Verify both English source keys and Norwegian catalog values stay distinct and accurate.
