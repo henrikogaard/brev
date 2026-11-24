@@ -544,6 +544,9 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     if header.references == nil, let storedHeader {
                         header.references = storedHeader.references
                     }
+                    if header.internalDate == nil, let storedHeader {
+                        header.internalDate = storedHeader.internalDate
+                    }
                     let previousMessageID = previous?.messageID
                     let data: Data
                     do {

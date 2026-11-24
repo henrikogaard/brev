@@ -7955,13 +7955,24 @@
         }
       }
     },
-    "Shows a one-time code or sign-in link on screen the moment it arrives. Brev verifies the receiving server's Authentication-Results (DMARC plus aligned SPF or DKIM matching From) before reading the message body over the account's own connection, and drops messages that fail or lack authentication headers. Codes may appear over other apps; nothing is stored, logged, or synced.": {
+    "Shows a one-time code or sign-in link on screen the moment it arrives. For eligible new messages Brev reads the message body over the account's own connection, and codes may appear over other apps. Nothing is stored, logged, or synced.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Viser en engangskode eller innloggingslenke på skjermen idet den kommer. Brev kontrollerer mottakerserverens Authentication-Results (DMARC samt samsvarende SPF eller DKIM mot From) før meldingsteksten leses over kontoens egen tilkobling, og ignorerer meldinger som feiler eller mangler autentiseringstopptekster. Koder kan vises over andre apper; ingenting lagres, logges eller synkroniseres."
+            "value": "Viser en engangskode eller innloggingslenke på skjermen i det den kommer. For aktuelle nye meldinger leser Brev meldingsteksten over kontoens egen tilkobling, og koder kan vises over andre apper. Ingenting lagres, logges eller synkroniseres."
+          }
+        }
+      }
+    },
+    "Brev verifies the receiving server's Authentication-Results (DMARC plus aligned SPF or DKIM matching From) before reading the message body, and drops messages that fail or lack authentication headers.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kontrollerer mottakerserverens Authentication-Results (DMARC samt samsvarende SPF eller DKIM mot From) før meldingsteksten leses, og ignorerer meldinger som feiler eller mangler autentiseringstopptekster."
           }
         }
       }

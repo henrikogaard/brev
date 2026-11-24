@@ -48,6 +48,8 @@ struct SignInCodeArrivalControllerTests {
         var subscriptionStarts: Int { bodyReadLock.withLock { recordedSubscriptionStarts } }
         private var recordedSubscriptionStops = 0
         var subscriptionStops: Int { bodyReadLock.withLock { recordedSubscriptionStops } }
+        private var recordedInboxFocusCount = 0
+        var inboxFocusCount: Int { bodyReadLock.withLock { recordedInboxFocusCount } }
         /// Lets a test flip consent while the assessment is in flight.
         var onAssess: (@Sendable () -> Void)?
         var onHeaders: (@Sendable () -> Void)?
@@ -55,6 +57,10 @@ struct SignInCodeArrivalControllerTests {
         func signInTrustAssessment(for messageID: String) async -> SignInTrustAssessment {
             onAssess?()
             return assessments[messageID] ?? .unavailable(.noTrustedHeader)
+        }
+
+        func focusInboxForBackgroundSubscription() async {
+            bodyReadLock.withLock { recordedInboxFocusCount += 1 }
         }
 
         func connect() async throws {}
@@ -286,23 +292,25 @@ struct SignInCodeArrivalControllerTests {
         #expect(Mirror(reflecting: presentation).children.isEmpty)
     }
 
-    @Test("generic IMAP account extracts verified sign-in code on fresh arrival and drops unverified messages without body read")
+    @Test(
+        "generic IMAP account extracts verified sign-in code via subscribeToChanges and drops unverified messages without body read"
+    )
     func genericIMAPEndToEndVerification() async throws {
         let now = Date()
         let account = BrevAccount(
-            id: BrevAccount.imapSMTPAccountID(forEmailAddress: "alex@fastmail.example"),
+            id: BrevAccount.imapSMTPAccountID(forEmailAddress: "alex@fastmail.com"),
             displayName: "Fastmail",
-            emailAddress: "alex@fastmail.example"
+            emailAddress: "alex@fastmail.com"
         )
         let config = IMAPAccountConfiguration(
             accountID: account.id,
             emailAddress: account.emailAddress,
             displayName: account.displayName,
             incoming: MailServerSettings(
-                kind: .imap, host: "imap.fastmail.example", port: 993, tlsMode: .implicit, authentication: .password
+                kind: .imap, host: "imap.fastmail.com", port: 993, tlsMode: .implicit, authentication: .password
             ),
             outgoing: MailServerSettings(
-                kind: .smtp, host: "smtp.fastmail.example", port: 465, tlsMode: .implicit, authentication: .password
+                kind: .smtp, host: "smtp.fastmail.com", port: 465, tlsMode: .implicit, authentication: .password
             ),
             credentialID: account.id
         )
@@ -333,9 +341,19 @@ struct SignInCodeArrivalControllerTests {
             Authentication-Results: attacker.example; dmarc=pass header.from=bank.example; dkim=pass header.d=bank.example\r
             From: Bank Login <alerts@bank.example>\r
             \r
+            """,
+            13: """
+            Authentication-Results: mx2.messagingengine.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r
+            From: Bank Login <alerts@bank.example>\r
+            \r
+            """,
+            14: """
+            Authentication-Results: attacker.example; dmarc=pass header.from=bank.example; dkim=pass header.d=bank.example\r
+            From: Bank Login <alerts@bank.example>\r
+            \r
             """
         ]
-        func listing(_ uid: Int, date: Date) -> IMAPMessageListing {
+        func listing(_ uid: Int, internalDate: Date) -> IMAPMessageListing {
             IMAPMessageListing(
                 uid: uid,
                 messageID: "<m-\(uid)@bank.example>",
@@ -344,14 +362,16 @@ struct SignInCodeArrivalControllerTests {
                 to: [Correspondent(email: account.emailAddress)],
                 cc: [],
                 bcc: [],
-                date: date,
+                date: internalDate,
+                internalDate: internalDate,
                 isRead: false,
                 isFlagged: false,
                 isAnswered: false
             )
         }
-        stateBox.setListings([listing(10, date: now.addingTimeInterval(-3600))])
+        stateBox.setListings([listing(10, internalDate: now.addingTimeInterval(-3600))])
 
+        let expectedCode = Self.code
         let backend = IMAPSMTPBackend(
             account: account,
             configuration: config,
@@ -364,7 +384,7 @@ struct SignInCodeArrivalControllerTests {
             },
             fetchMessageBody: { _, _, _, uid in
                 stateBox.recordBodyRead(uid)
-                return MessageBody(messageID: "INBOX:\(uid)", plainText: "Your verification code is \(Self.code)")
+                return MessageBody(messageID: "INBOX:\(uid)", plainText: "Your verification code is \(expectedCode)")
             },
             fetchMessagePart: { _, _, _, uid, _, _ in
                 Data((headersByUID[uid] ?? "").utf8)
@@ -376,26 +396,61 @@ struct SignInCodeArrivalControllerTests {
         let box = ConsentBox()
         let presenter = SpyPresenter()
         let controller = SignInCodeArrivalController(settings: { box.settings }, presenter: presenter)
-        try await backend.connect()
-        try await backend.refresh(folder: Folder(id: "INBOX", name: "Inbox", role: .inbox))
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
 
-        // Off by default: no body read and no presentation before explicit opt-in.
-        stateBox.setListings([listing(11, date: now), listing(12, date: now), listing(10, date: now.addingTimeInterval(-3600))])
-        try await backend.refresh(folder: Folder(id: "INBOX", name: "Inbox", role: .inbox))
-        controller.handle(.messagesAdded(folderID: "INBOX", messageIDs: ["INBOX:11", "INBOX:12"]), from: backend)
+        try await backend.connect()
+        try await backend.refresh(folder: inbox)
+
+        // Subscribe to real MailEvents emitted by IMAPSMTPBackend.subscribeToChanges().
+        var receivedAddedBatches: [[String]] = []
+        let subscriptionTask = Task { @MainActor in
+            for await event in backend.subscribeToChanges() {
+                if case .messagesAdded(_, let ids) = event {
+                    receivedAddedBatches.append(ids)
+                    controller.handle(event, from: backend)
+                }
+            }
+        }
+        await Task.yield()
+
+        // Off by default: real refresh emits .messagesAdded, but no body read or presentation occurs.
+        stateBox.setListings([
+            listing(11, internalDate: now),
+            listing(12, internalDate: now),
+            listing(10, internalDate: now.addingTimeInterval(-3600))
+        ])
+        try await backend.refresh(folder: inbox)
+        for _ in 0 ..< 50 where receivedAddedBatches.count < 1 {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
         await controller.settle()
+        #expect(receivedAddedBatches.count == 1)
         #expect(presenter.presented.isEmpty)
         #expect(stateBox.reads().isEmpty)
 
-        // Opt in for this generic IMAP account: verified UID 11 presents; forged UID 12 never reads body.
+        // Opt in for this generic IMAP account: verified UID 13 presents via subscribeToChanges;
+        // forged foreign authserv-id UID 14 fails closed and never reads its body.
         box.mutate { $0.setAccountOverride(accountID: account.id, codesEnabled: true, linksEnabled: false) }
-        controller.handle(.messagesAdded(folderID: "INBOX", messageIDs: ["INBOX:11", "INBOX:12"]), from: backend)
+        stateBox.setListings([
+            listing(13, internalDate: now),
+            listing(14, internalDate: now),
+            listing(11, internalDate: now),
+            listing(12, internalDate: now),
+            listing(10, internalDate: now.addingTimeInterval(-3600))
+        ])
+        try await backend.refresh(folder: inbox)
+        for _ in 0 ..< 50 where receivedAddedBatches.count < 2 {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
         await controller.settle()
+        subscriptionTask.cancel()
+        await subscriptionTask.value
+
         #expect(presenter.presented.count == 1)
-        #expect(presenter.presented.first?.messageID == "INBOX:11")
+        #expect(presenter.presented.first?.messageID == "INBOX:13")
         #expect(presenter.presented.first?.content == .code(Self.code))
         #expect(presenter.presented.first?.sender == "Bank Login")
-        #expect(stateBox.reads() == [11])
+        #expect(stateBox.reads() == [13])
     }
 
     #if os(macOS)
@@ -450,13 +505,17 @@ struct SignInCodeArrivalControllerTests {
         await Task.yield()
         #expect(backend.subscriptionStarts == 0)
 
-        // Only when windowless + background mail on + account opted-in + trusted capability does one stream start.
+        // Only when windowless + background mail on + account opted-in + trusted capability does one stream start,
+        // and it refocuses the background subscription on Inbox.
         session.syncSignInCodeArrivalSubscriptions(
             notificationSettings: backgroundOn,
             signInCodeSettings: consentOn
         )
-        await Task.yield()
+        for _ in 0 ..< 20 where backend.subscriptionStarts == 0 {
+            await Task.yield()
+        }
         #expect(backend.subscriptionStarts == 1)
+        #expect(backend.inboxFocusCount == 1)
 
         // Re-syncing for the same backend does not spawn a duplicate stream.
         session.syncSignInCodeArrivalSubscriptions(

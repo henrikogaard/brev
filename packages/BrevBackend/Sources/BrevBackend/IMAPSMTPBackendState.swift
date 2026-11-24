@@ -342,6 +342,16 @@ actor IMAPSMTPBackendState {
         idleFolderBroadcaster.emit(folderID)
     }
 
+    /// Clears explicit UI folder selection so background IDLE watches Inbox
+    /// instead of remaining stuck on a previously viewed folder such as Sent.
+    func resetActiveMessageFolderToInbox() {
+        let inboxID = folders.first(where: { $0.role == .inbox })?.id
+        activeIdleFolderID = nil
+        if let inboxID {
+            idleFolderBroadcaster.emit(inboxID)
+        }
+    }
+
     nonisolated func eventStream() -> AsyncStream<MailEvent> {
         eventBroadcaster.stream()
     }

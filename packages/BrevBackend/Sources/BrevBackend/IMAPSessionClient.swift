@@ -538,6 +538,9 @@ public struct IMAPMessageListing: Sendable, Hashable {
     public let cc: [Correspondent]
     public let bcc: [Correspondent]
     public let date: Date
+    /// Server-recorded receive timestamp from IMAP `INTERNALDATE`, when returned.
+    /// Kept separate from `date` (the sender's RFC 5322 `Date:` header used for display).
+    public let internalDate: Date?
     public let isRead: Bool
     public let isFlagged: Bool
     public let isAnswered: Bool
@@ -559,6 +562,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
         cc: [Correspondent],
         bcc: [Correspondent],
         date: Date,
+        internalDate: Date? = nil,
         isRead: Bool,
         isFlagged: Bool,
         isAnswered: Bool,
@@ -576,6 +580,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
         self.cc = cc
         self.bcc = bcc
         self.date = date
+        self.internalDate = internalDate
         self.isRead = isRead
         self.isFlagged = isFlagged
         self.isAnswered = isAnswered
@@ -605,6 +610,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
             cc: envelope.cc,
             bcc: envelope.bcc,
             date: envelope.date,
+            internalDate: parseInternalDate(in: line),
             isRead: flags.contains("seen"),
             isFlagged: flags.contains("flagged"),
             isAnswered: flags.contains("answered"),
@@ -1005,6 +1011,51 @@ public struct IMAPMessageListing: Sendable, Hashable {
                 return nil
             }
         }
+    }
+
+    private static func parseInternalDate(in line: String) -> Date? {
+        var index = line.startIndex
+        var isInsideQuotedString = false
+        var isEscaped = false
+        while index < line.endIndex {
+            let character = line[index]
+            if isInsideQuotedString {
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == "\"" {
+                    isInsideQuotedString = false
+                }
+                line.formIndex(after: &index)
+                continue
+            }
+            if character == "\"" {
+                isInsideQuotedString = true
+                line.formIndex(after: &index)
+                continue
+            }
+            if isAttributeBoundary(before: index, in: line),
+               let range = line[index...].range(
+                   of: "INTERNALDATE",
+                   options: [.anchored, .caseInsensitive]
+               ) {
+                var valueIndex = range.upperBound
+                guard valueIndex < line.endIndex, line[valueIndex].isWhitespace else {
+                    line.formIndex(after: &index)
+                    continue
+                }
+                while valueIndex < line.endIndex, line[valueIndex].isWhitespace {
+                    line.formIndex(after: &valueIndex)
+                }
+                guard valueIndex < line.endIndex else { return nil }
+                var parser = IMAPSExpressionParser(String(line[valueIndex...]))
+                guard let value = parser.parseValue()?.stringValue else { return nil }
+                return IMAPDateParser.internalDate(from: value)
+            }
+            line.formIndex(after: &index)
+        }
+        return nil
     }
 
     private static func parseFlags(in line: String) -> Set<String>? {
@@ -3233,7 +3284,7 @@ public actor IMAPSessionClient {
             tag: nextTag(&tagCounter),
             commandName: "UID FETCH",
             command: "UID FETCH \(uids.map(String.init).joined(separator: ",")) "
-                + "(FLAGS ENVELOPE\(labelAttribute)\(snippetAttribute) "
+                + "(FLAGS INTERNALDATE ENVELOPE\(labelAttribute)\(snippetAttribute) "
                 + "BODY.PEEK[HEADER.FIELDS (REFERENCES)])"
         )
         return fetchResponses
@@ -3780,6 +3831,23 @@ enum IMAPDateParser {
     // safe for concurrent reads on the modern 64-bit platforms Brev supports.
     private static let formatterLock = NSLock()
     private nonisolated(unsafe) static var formatterCache: [String: DateFormatter] = [:]
+
+    private static let internalDateFormats = [
+        "d-MMM-yyyy HH:mm:ss Z",
+        "d-MMM-yyyy HH:mm:ss zzz"
+    ]
+
+    static func internalDate(from value: String?) -> Date? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        for format in internalDateFormats {
+            if let date = formatter(for: format).date(from: trimmed) {
+                return date
+            }
+        }
+        return nil
+    }
 
     static func date(from value: String?) -> Date? {
         guard let value else { return nil }

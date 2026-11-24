@@ -12,6 +12,99 @@
 
 import Foundation
 
+/// Trusted receiving-server `authserv-id` boundary derived from an account's
+/// configured IMAP host (#5).
+///
+/// Accounts whose IMAP host cannot establish a non-local receiver provenance
+/// (empty, IP literal, loopback/`localhost`, or `.local`/`.internal` host)
+/// produce `nil` so sign-in trust assessment fails closed rather than trusting
+/// arbitrary sender-supplied `Authentication-Results` headers.
+public struct IMAPSignInReceiverProvenance: Sendable, Equatable {
+    /// Lowercased domain suffixes accepted for the receiving server's `authserv-id`
+    /// and internal receiving `Received: ... by <host>` hops.
+    public let trustedDomains: Set<String>
+
+    /// Known provider boundaries where the IMAP hostname domain differs from the
+    /// receiving MX's `Authentication-Results` `authserv-id` domain.
+    private static let providerTrustGroups: [Set<String>] = [
+        ["fastmail.com", "fastmail.fm", "messagingengine.com"],
+        ["icloud.com", "me.com", "mac.com", "apple.com"],
+        ["gmail.com", "googlemail.com", "google.com"],
+        ["outlook.com", "office365.com", "hotmail.com", "live.com", "microsoft.com", "protection.outlook.com"],
+        ["migadu.com"],
+        ["mailbox.org"],
+        ["yahoo.com", "yahoodns.net", "aol.com"],
+        ["posteo.de", "posteo.net"],
+        ["runbox.com"],
+        ["zoho.com", "zoho.eu", "zohomail.com", "zohomail.eu"],
+        ["gmx.net", "gmx.de", "gmx.com", "web.de", "ionos.com", "ionos.de", "1and1.com"],
+        ["purelymail.com"],
+        ["hey.com"],
+        ["one.com"]
+    ]
+
+    private static let disallowedLocalSuffixes: Set<String> = [
+        "localhost", "local", "internal", "home.arpa", "lan", "localdomain"
+    ]
+
+    /// Derives receiver provenance from a configured IMAP hostname.
+    /// Returns `nil` when the host is empty, an IP literal, loopback, or local-only.
+    public init?(incomingHost: String) {
+        guard let normalized = AuthenticationResultsParser.normalizeDomain(incomingHost),
+              !Self.isNonPublicHost(normalized),
+              let orgDomain = AuthenticationResultsParser.organizationalDomain(of: normalized)
+        else { return nil }
+
+        var domains: Set<String> = [normalized, orgDomain]
+        for group in Self.providerTrustGroups {
+            if group.contains(where: { normalized == $0 || normalized.hasSuffix(".\($0)") }) {
+                domains.formUnion(group)
+            }
+        }
+        trustedDomains = domains
+    }
+
+    /// Creates a receiver provenance from explicit normalized trust domains.
+    /// Returns `nil` when no valid non-local domains are supplied.
+    public init?(trustedDomains: Set<String>) {
+        var normalized: Set<String> = []
+        for raw in trustedDomains {
+            guard let domain = AuthenticationResultsParser.normalizeDomain(raw),
+                  !Self.isNonPublicHost(domain),
+                  AuthenticationResultsParser.organizationalDomain(of: domain) != nil
+            else { continue }
+            normalized.insert(domain)
+        }
+        guard !normalized.isEmpty else { return nil }
+        self.trustedDomains = normalized
+    }
+
+    /// Returns `true` when `authservID` belongs to this account's trusted receiving boundary.
+    public func matches(authservID: String) -> Bool {
+        guard let candidate = AuthenticationResultsParser.normalizeDomain(authservID),
+              !Self.isNonPublicHost(candidate)
+        else { return false }
+        return trustedDomains.contains { trusted in
+            candidate == trusted || candidate.hasSuffix(".\(trusted)")
+        }
+    }
+
+    private static func isNonPublicHost(_ normalizedHost: String) -> Bool {
+        if normalizedHost.contains(":") { return true }
+        let labels = normalizedHost.split(separator: ".").map(String.init)
+        guard labels.count >= 2 else { return true }
+        // Reject IPv4 literals (for example 127.0.0.1 or 10.0.0.1).
+        if labels.count == 4, labels.allSatisfy({ Int($0) != nil }) {
+            return true
+        }
+        for suffix in disallowedLocalSuffixes
+            where normalizedHost == suffix || normalizedHost.hasSuffix(".\(suffix)") {
+            return true
+        }
+        return false
+    }
+}
+
 /// One parsed RFC 8601 `resinfo` method result (for example `dkim=pass header.d=example.com`).
 public struct AuthenticationResultsMethodResult: Sendable, Equatable {
     /// Lowercased authentication method name (for example `dmarc`, `dkim`, `spf`).
@@ -207,6 +300,26 @@ public enum AuthenticationResultsParser {
         return authOrg == fromOrg
     }
 
+    /// Extracts the receiving hostname (`by <host>`) from an RFC 5322 `Received` header value.
+    /// Returns `nil` when malformed or absent.
+    static func receivedByHost(from headerValue: String) -> String? {
+        guard let tokens = tokenize(unfold(headerValue)) else { return nil }
+        let prefixTokens = tokens.prefix { $0 != .semicolon }
+        var index = prefixTokens.startIndex
+        while index < prefixTokens.endIndex {
+            if case .word(let keyword) = prefixTokens[index],
+               keyword.caseInsensitiveCompare("by") == .orderedSame {
+                let next = prefixTokens.index(after: index)
+                guard next < prefixTokens.endIndex,
+                      let hostToken = tokenString(prefixTokens[next])
+                else { return nil }
+                return normalizeDomain(hostToken)
+            }
+            index = prefixTokens.index(after: index)
+        }
+        return nil
+    }
+
     /// Normalizes a domain or `local@domain` property value to a lowercased domain name.
     static func extractDomain(fromPropertyValue value: String, allowsLocalPart: Bool) -> String? {
         let trimmed = value
@@ -350,9 +463,11 @@ public enum AuthenticationResultsParser {
 
     private static func parseAuthservHeader(_ tokens: [LexToken]) -> (String, Int?)? {
         guard !tokens.isEmpty, tokens.count <= 2 else { return nil }
-        guard case .word(let rawHost) = tokens[0],
+        // RFC 8601 §2.2 permits authserv-id as either a token or a quoted-string.
+        guard let rawHost = tokenString(tokens[0])?.trimmingCharacters(in: .whitespaces),
               !rawHost.isEmpty,
-              !rawHost.contains("=")
+              !rawHost.contains("="),
+              !rawHost.contains(where: \.isWhitespace)
         else { return nil }
         var version: Int?
         if tokens.count == 2 {
@@ -555,7 +670,7 @@ public enum AuthenticationResultsParser {
         return domain
     }
 
-    private static func organizationalDomain(of normalizedDomain: String) -> String? {
+    static func organizationalDomain(of normalizedDomain: String) -> String? {
         let labels = normalizedDomain.split(separator: ".").map(String.init)
         guard labels.count >= 2 else { return nil }
         let lastTwo = labels.suffix(2).joined(separator: ".")
@@ -569,37 +684,70 @@ public enum AuthenticationResultsParser {
 
 /// Evaluates raw RFC 5322 headers for generic IMAP sign-in code verification (#5).
 ///
-/// Inspects only the top-most `Authentication-Results` header prepended by the
-/// receiving server so attacker-injected lower headers cannot supply or override
-/// authentication passes. Requires:
-/// 1. Single valid RFC 5322 `From` header with one mailbox domain.
-/// 2. Exactly one `dmarc=pass` result whose `header.from` matches `From` exactly.
-/// 3. At least one aligned `dkim=pass` (`header.d` / `header.i`) or aligned `spf=pass`
+/// Inspects only the top-most `Authentication-Results` header at the receiving
+/// server's trust boundary (`receiverProvenance`), ensuring no external
+/// `Received:` hop precedes it and rejecting forged/foreign `authserv-id`
+/// values. Requires:
+/// 1. Top-most `Authentication-Results` matches `receiverProvenance` with no
+///    external `Received:` hop above it and no conflicting lower header from the
+///    same receiving boundary.
+/// 2. Single valid RFC 5322 `From` header with one mailbox domain.
+/// 3. Exactly one `dmarc=pass` result whose `header.from` matches `From` exactly.
+/// 4. At least one aligned `dkim=pass` (`header.d` / `header.i`) or aligned `spf=pass`
 ///    (`smtp.mailfrom` / `smtp.helo`) in the same top-most header.
 public enum AuthenticationResultsSignInTrustAssessor {
-    /// Evaluates sign-in trust from a raw RFC 5322 header block or message source.
-    public static func assess(rawHeaders: String) -> SignInTrustAssessment {
-        assess(headers: AuthenticationResultsParser.parseRawHeaderFields(rawHeaders))
+    /// Evaluates sign-in trust from a raw RFC 5322 header block or message source
+    /// against the account's established `receiverProvenance`.
+    public static func assess(
+        rawHeaders: String,
+        receiverProvenance: IMAPSignInReceiverProvenance
+    ) -> SignInTrustAssessment {
+        assess(
+            headers: AuthenticationResultsParser.parseRawHeaderFields(rawHeaders),
+            receiverProvenance: receiverProvenance
+        )
     }
 
-    /// Evaluates sign-in trust from top-to-bottom RFC 5322 header fields.
-    public static func assess(headers: [(name: String, value: String)]) -> SignInTrustAssessment {
-        let authHeaders = headers.filter {
+    /// Evaluates sign-in trust from top-to-bottom RFC 5322 header fields
+    /// against the account's established `receiverProvenance`.
+    public static func assess(
+        headers: [(name: String, value: String)],
+        receiverProvenance: IMAPSignInReceiverProvenance
+    ) -> SignInTrustAssessment {
+        guard let topmostIndex = headers.firstIndex(where: {
             $0.name.caseInsensitiveCompare("Authentication-Results") == .orderedSame
-        }
-        guard let topmostRaw = authHeaders.first?.value else {
+        }) else {
             return .unavailable(.noTrustedHeader)
         }
-        guard let topmost = AuthenticationResultsParser.parseHeader(topmostRaw) else {
-            return .unavailable(.malformedHeader)
+
+        // Only trust an Authentication-Results header at the top receiving
+        // boundary: any external Received hop above it means the header was
+        // preserved from an earlier hop or injected before receipt.
+        for preceding in headers[..<topmostIndex]
+            where preceding.name.caseInsensitiveCompare("Received") == .orderedSame {
+            guard let byHost = AuthenticationResultsParser.receivedByHost(from: preceding.value),
+                  receiverProvenance.matches(authservID: byHost)
+            else {
+                return .unavailable(.noTrustedHeader)
+            }
         }
 
-        // Reject conflicting lower headers claiming the same receiving authserv-id.
-        for lowerRaw in authHeaders.dropFirst().map(\.value) {
+        guard let topmost = AuthenticationResultsParser.parseHeader(headers[topmostIndex].value) else {
+            return .unavailable(.malformedHeader)
+        }
+        guard receiverProvenance.matches(authservID: topmost.authservID) else {
+            return .unavailable(.noTrustedHeader)
+        }
+
+        // Reject conflicting lower headers claiming the same receiving trust boundary.
+        let lowerAuthHeaders = headers[headers.index(after: topmostIndex)...].filter {
+            $0.name.caseInsensitiveCompare("Authentication-Results") == .orderedSame
+        }
+        for lowerRaw in lowerAuthHeaders.map(\.value) {
             guard let lower = AuthenticationResultsParser.parseHeader(lowerRaw) else {
                 continue
             }
-            if lower.authservID == topmost.authservID,
+            if lower.authservID == topmost.authservID || receiverProvenance.matches(authservID: lower.authservID),
                lower.results.contains(where: { $0.method == "dmarc" }) {
                 return .unavailable(.conflictingTrustedHeaders)
             }

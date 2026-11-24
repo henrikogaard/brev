@@ -283,6 +283,9 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
     public let subject: String
     public let snippet: String
     public let date: Date
+    /// Server-recorded delivery timestamp (for example IMAP `INTERNALDATE`),
+    /// distinct from the sender-controlled RFC 5322 `Date:` header used for display.
+    public var internalDate: Date?
     public var isRead: Bool
     public var isFlagged: Bool
     public var isAnswered: Bool
@@ -340,6 +343,7 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
         subject: String,
         snippet: String,
         date: Date,
+        internalDate: Date? = nil,
         isRead: Bool = false,
         isFlagged: Bool = false,
         isAnswered: Bool = false,
@@ -366,6 +370,7 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
         self.subject = subject
         self.snippet = snippet
         self.date = date
+        self.internalDate = internalDate
         self.isRead = isRead
         self.isFlagged = isFlagged
         self.isAnswered = isAnswered
@@ -389,6 +394,7 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
         case subject
         case snippet
         case date
+        case internalDate
         case isRead
         case isFlagged
         case isAnswered
@@ -414,6 +420,7 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
         subject = try container.decode(String.self, forKey: .subject)
         snippet = try container.decode(String.self, forKey: .snippet)
         date = try container.decode(Date.self, forKey: .date)
+        internalDate = try container.decodeIfPresent(Date.self, forKey: .internalDate)
         isRead = try container.decode(Bool.self, forKey: .isRead)
         isFlagged = try container.decode(Bool.self, forKey: .isFlagged)
         isAnswered = try container.decode(Bool.self, forKey: .isAnswered)
@@ -441,6 +448,7 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
         try container.encode(subject, forKey: .subject)
         try container.encode(snippet, forKey: .snippet)
         try container.encode(date, forKey: .date)
+        try container.encodeIfPresent(internalDate, forKey: .internalDate)
         try container.encode(isRead, forKey: .isRead)
         try container.encode(isFlagged, forKey: .isFlagged)
         try container.encode(isAnswered, forKey: .isAnswered)

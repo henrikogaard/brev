@@ -67,12 +67,18 @@ public protocol SignInTrustAssessing: Sendable {
     /// restart, preserving Inbox, freshness window, and authentication alignment checks while
     /// avoiding treating arbitrary reconnect backfill as fresh.
     func signInTrustAssessmentForDeliveredNotification(for messageID: String) async -> SignInTrustAssessment
+
+    /// Directs background change subscriptions back to Inbox when no mailbox window owns
+    /// active folder selection (for example after closing the last window while viewing Sent).
+    func focusInboxForBackgroundSubscription() async
 }
 
 public extension SignInTrustAssessing {
     func signInTrustAssessmentForDeliveredNotification(for messageID: String) async -> SignInTrustAssessment {
         await signInTrustAssessment(for: messageID)
     }
+
+    func focusInboxForBackgroundSubscription() async {}
 }
 
 /// Bounded in-memory registry of freshly delivered message IDs observed during

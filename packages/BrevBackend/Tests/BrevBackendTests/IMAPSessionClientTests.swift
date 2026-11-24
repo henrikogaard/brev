@@ -419,7 +419,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH ALL",
-            "A0004 UID FETCH 42,43 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 42,43 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         let messages = page.messages
         #expect(page.uidValidity == 987_654_321)
@@ -719,7 +719,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH ALL",
-            "A0004 UID FETCH 42 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 42 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(page.messages.map(\.uid) == [42])
         #expect(page.messages.first?.subject == "Mixed search")
@@ -750,7 +750,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH ALL",
-            "A0004 UID FETCH 41 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 41 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(page.messages.map(\.uid) == [41])
         #expect(page.nextPageToken == nil)
@@ -797,9 +797,9 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH SUBJECT \"receipt\"",
-            "A0004 UID FETCH 20 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 20 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
             "A0005 UID SEARCH SUBJECT \"receipt\"",
-            "A0006 UID FETCH 10 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0006 UID FETCH 10 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
     }
 
@@ -834,7 +834,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH TEXT \"receipt\" FROM \"github.com\" SEEN SUBJECT \"CI\"",
-            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 91 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(messages.map(\.uid) == [91])
         #expect(messages.first?.subject == "CI receipt")
@@ -868,7 +868,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH TEXT \"quarterly\" TEXT \"budget\"",
-            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 91 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(messages.map(\.uid) == [91])
     }
@@ -928,7 +928,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"Sent\" (CONDSTORE)",
             "A0003 UID SEARCH OR OR OR OR OR HEADER \"Message-ID\" \"a@example.org\" HEADER \"In-Reply-To\" \"a@example.org\" HEADER \"References\" \"a@example.org\" HEADER \"Message-ID\" \"root@example.org\" HEADER \"In-Reply-To\" \"root@example.org\" HEADER \"References\" \"root@example.org\"",
-            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 91 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(page.messages.map(\.uid) == [91])
         #expect(page.messages.first?.inReplyTo == "<a@example.org>")
@@ -989,7 +989,7 @@ struct IMAPSessionClientTests {
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH CHARSET UTF-8 TEXT {5}",
             "",
-            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 91 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(await transport.sentData == [Data("Møte".utf8)])
         #expect(messages.map(\.uid) == [91])
@@ -1027,7 +1027,7 @@ struct IMAPSessionClientTests {
             "A0003 UID SEARCH CHARSET UTF-8 TEXT {5}",
             " TEXT {11}",
             "",
-            "A0004 UID FETCH 92 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 92 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(await transport.sentData == [
             Data("Møte".utf8),
@@ -2241,7 +2241,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH TEXT \"receipt\"",
-            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 91 (FLAGS INTERNALDATE ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
     }
 

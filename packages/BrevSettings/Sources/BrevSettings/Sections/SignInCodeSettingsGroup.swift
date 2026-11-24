@@ -28,6 +28,9 @@ struct SignInCodeSettingsGroup: View {
     /// Whether the account's backend advertises
     /// `.trustedSignInAssessment`.
     let isAvailable: (BrevAccount.ID) -> Bool
+    /// Whether to display inline `Authentication-Results` verification guidance
+    /// on eligible account cards even before a toggle is enabled.
+    let showsVerificationGuidance: Bool
     /// Called after a consent change so the arrival controller can cancel
     /// pending work for the account.
     var onChange: (BrevAccount.ID) -> Void = { _ in }
@@ -38,10 +41,12 @@ struct SignInCodeSettingsGroup: View {
         accounts: [BrevAccount],
         settingsStore: SettingsPersistenceStore,
         isAvailable: @escaping (BrevAccount.ID) -> Bool,
+        showsVerificationGuidance: Bool = false,
         onChange: @escaping (BrevAccount.ID) -> Void = { _ in }
     ) {
         self.accounts = accounts
         self.isAvailable = isAvailable
+        self.showsVerificationGuidance = showsVerificationGuidance
         self.onChange = onChange
         defaults = settingsStore.defaults
         _settings = State(initialValue: SignInCodeSettings.load(from: settingsStore.defaults))
@@ -51,7 +56,7 @@ struct SignInCodeSettingsGroup: View {
         SettingsGroup(
             title: String(localized: "Sign-in codes and links", bundle: .module),
             subtitle: String(
-                localized: "Shows a one-time code or sign-in link on screen the moment it arrives. Brev verifies the receiving server's Authentication-Results (DMARC plus aligned SPF or DKIM matching From) before reading the message body over the account's own connection, and drops messages that fail or lack authentication headers. Codes may appear over other apps; nothing is stored, logged, or synced.",
+                localized: "Shows a one-time code or sign-in link on screen the moment it arrives. For eligible new messages Brev reads the message body over the account's own connection, and codes may appear over other apps. Nothing is stored, logged, or synced.",
                 bundle: .module
             ),
             symbolName: "key.viewfinder"
@@ -95,6 +100,17 @@ struct SignInCodeSettingsGroup: View {
                     subtitle: String(localized: "Open a sign-in link after seeing its real destination.", bundle: .module),
                     isOn: binding(account.id, codes: false)
                 )
+                let current = settings.accountOverride(for: account.id)
+                if showsVerificationGuidance || current.codesEnabled || current.linksEnabled {
+                    SettingsInfoCallout(
+                        symbolName: "checkmark.shield",
+                        message: String(
+                            localized: "Brev verifies the receiving server's Authentication-Results (DMARC plus aligned SPF or DKIM matching From) before reading the message body, and drops messages that fail or lack authentication headers.",
+                            bundle: .module
+                        ),
+                        tone: .info
+                    )
+                }
             } else {
                 SettingsInfoCallout(
                     symbolName: "lock.shield",

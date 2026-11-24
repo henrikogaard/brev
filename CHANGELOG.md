@@ -6,15 +6,17 @@ All notable changes to Brev are documented here.
 
 - Generic IMAP sign-in code & link detection (#5): added an RFC 8601
   `Authentication-Results` parser and domain-alignment verifier
-  (`AuthenticationResultsParser` / `AuthenticationResultsSignInTrustAssessor`)
-  in `BrevBackend` and wired `IMAPSMTPBackend` (`SignInTrustAssessing`,
-  `.trustedSignInAssessment`) so opted-in generic IMAP accounts (Fastmail,
-  iCloud IMAP, Proton Bridge, custom domains) verify the top-most
-  server-prepended `Authentication-Results` header (`dmarc=pass` matching a
-  single `From` domain plus aligned `dkim=pass` or `spf=pass`) via header-only
-  `BODY.PEEK[HEADER]` before reading a fresh Inbox message body. Per-account
-  opt-in remains off by default, and Settings explains the verification rule in
-  English and Norwegian.
+  (`AuthenticationResultsParser`, `IMAPSignInReceiverProvenance`,
+  `AuthenticationResultsSignInTrustAssessor`) in `BrevBackend` and wired
+  `IMAPSMTPBackend` (`SignInTrustAssessing`, `.trustedSignInAssessment`) so
+  opted-in generic IMAP accounts with established non-local receiving-server
+  provenance verify the top-most server-prepended `Authentication-Results`
+  header (`dmarc=pass` matching a single `From` domain plus aligned `dkim=pass`
+  or `spf=pass`, with no external `Received` hop above it) via header-only
+  `BODY.PEEK[HEADER]` (never falling back to full `BODY.PEEK[]`) within the
+  10-minute server `INTERNALDATE` freshness window before reading a fresh Inbox
+  message body. Per-account opt-in remains off by default, and Settings
+  explains the verification rule in English and Norwegian.
 
 - Closed-app push options with zero Brev proxy (#11): added opt-in, device-local
   **Settings → Notifications → Closed-App Push (Self-Hosted)** (off by default,

@@ -14,16 +14,140 @@
 import Foundation
 import Testing
 
-/// Unit tests for RFC 8601 `Authentication-Results` parsing and domain-aligned
-/// sign-in trust verification for generic IMAP accounts (#5).
+/// Unit tests for RFC 8601 `Authentication-Results` parsing, receiver provenance
+/// checks, and domain-aligned sign-in trust verification for generic IMAP accounts (#5).
 @Suite("RFC 8601 Authentication-Results parser and verifier")
 struct AuthenticationResultsParserTests {
+    private static let fastmailProvenance = IMAPSignInReceiverProvenance(incomingHost: "imap.fastmail.com")!
+    private static let icloudProvenance = IMAPSignInReceiverProvenance(incomingHost: "imap.mail.me.com")!
+    private static let customProvenance = IMAPSignInReceiverProvenance(incomingHost: "imap.customdomain.org")!
+    private static let exampleNetProvenance = IMAPSignInReceiverProvenance(incomingHost: "imap.example.net")!
+
+    // MARK: - Receiver provenance derivation & Codex/Devin security regressions
+
+    @Test("derives trusted receiver boundaries for major providers and custom domains while rejecting local hosts")
+    func receiverProvenanceBoundaries() {
+        #expect(IMAPSignInReceiverProvenance(incomingHost: "") == nil)
+        #expect(IMAPSignInReceiverProvenance(incomingHost: "localhost") == nil)
+        #expect(IMAPSignInReceiverProvenance(incomingHost: "127.0.0.1") == nil)
+        #expect(IMAPSignInReceiverProvenance(incomingHost: "::1") == nil)
+        #expect(IMAPSignInReceiverProvenance(incomingHost: "mail.local") == nil)
+        #expect(IMAPSignInReceiverProvenance(incomingHost: "bridge.internal") == nil)
+
+        #expect(Self.fastmailProvenance.matches(authservID: "mx2.messagingengine.com"))
+        #expect(Self.fastmailProvenance.matches(authservID: "mx.fastmail.com"))
+        #expect(!Self.fastmailProvenance.matches(authservID: "attacker.example"))
+
+        #expect(Self.icloudProvenance.matches(authservID: "b.mail.icloud.com"))
+        #expect(Self.icloudProvenance.matches(authservID: "mx.me.com"))
+        #expect(!Self.icloudProvenance.matches(authservID: "attacker.example"))
+
+        let outlook = IMAPSignInReceiverProvenance(incomingHost: "outlook.office365.com")
+        #expect(outlook?.matches(authservID: "nam11.protection.outlook.com") == true)
+        #expect(outlook?.matches(authservID: "attacker.example") == false)
+
+        #expect(Self.customProvenance.matches(authservID: "mx.customdomain.org"))
+        #expect(Self.customProvenance.matches(authservID: "customdomain.org"))
+        #expect(!Self.customProvenance.matches(authservID: "attacker.example"))
+    }
+
+    @Test("rejects attacker-forged Authentication-Results against Fastmail and custom IMAP hosts")
+    func rejectsForgedForeignAuthservID() {
+        let forged = """
+        Authentication-Results: attacker.example; dmarc=pass header.from=bank.example; dkim=pass header.d=bank.example\r
+        From: alerts@bank.example\r
+        \r
+        Your code is 482913
+        """
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: forged,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .unavailable(.noTrustedHeader)
+        )
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: forged,
+                receiverProvenance: Self.customProvenance
+            ) == .unavailable(.noTrustedHeader)
+        )
+    }
+
+    @Test("rejects Authentication-Results placed below an external Received hop while allowing internal receiving hops")
+    func receivedHopBoundaryCheck() {
+        let belowExternalHop = """
+        Received: from mail.sender.example by external.relay.net with ESMTPS id abc; Tue, 24 Nov 2026 14:00:00 +0000\r
+        Authentication-Results: mx2.messagingengine.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r
+        From: alerts@bank.example\r
+        """
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: belowExternalHop,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .unavailable(.noTrustedHeader)
+        )
+
+        let belowInternalHop = """
+        Received: from mx2.messagingengine.com by mailstore1.fastmail.com with LMTP; Tue, 24 Nov 2026 14:00:00 +0000\r
+        Authentication-Results: mx2.messagingengine.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r
+        From: alerts@bank.example\r
+        """
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: belowInternalHop,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .pass(fromDomain: "bank.example")
+        )
+    }
+
+    @Test("supports RFC 8601 quoted-string authserv-id tokens while rejecting malformed or untrusted quoted hosts")
+    func quotedAuthservID() {
+        let quotedValid = """
+        Authentication-Results: "mx2.messagingengine.com" 1;
+            dkim=pass header.d=bank.example;
+            dmarc=pass header.from=bank.example
+        From: alerts@bank.example
+        """
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: quotedValid,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .pass(fromDomain: "bank.example")
+        )
+
+        let quotedForeign = """
+        Authentication-Results: "attacker.example";
+            dkim=pass header.d=bank.example;
+            dmarc=pass header.from=bank.example
+        From: alerts@bank.example
+        """
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: quotedForeign,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .unavailable(.noTrustedHeader)
+        )
+
+        let quotedMalformed = """
+        Authentication-Results: "bad host";
+            dkim=pass header.d=bank.example;
+            dmarc=pass header.from=bank.example
+        From: alerts@bank.example
+        """
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: quotedMalformed,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .unavailable(.malformedHeader)
+        )
+    }
+
     // MARK: - Valid passing headers
 
     @Test("passes with dmarc=pass and aligned dkim=pass (Fastmail-style folded header with comments)")
     func foldedFastmailHeaderPasses() {
         let rawHeaders = """
-        Delivered-To: user@fastmail.example\r
+        Delivered-To: user@fastmail.com\r
         Authentication-Results: mx2.messagingengine.com (Fastmail);\r
             dkim=pass (2048-bit rsa key; sha256) header.d=bank.example header.i=@bank.example header.b="AbCd;Ef12==";\r
             dmarc=pass (p=reject, d=none) policy.published-domain-policy=reject header.from=bank.example;\r
@@ -33,7 +157,10 @@ struct AuthenticationResultsParserTests {
         \r
         Your code is 123456
         """
-        let assessment = AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders)
+        let assessment = AuthenticationResultsSignInTrustAssessor.assess(
+            rawHeaders: rawHeaders,
+            receiverProvenance: Self.fastmailProvenance
+        )
         #expect(assessment == .pass(fromDomain: "bank.example"))
     }
 
@@ -48,22 +175,28 @@ struct AuthenticationResultsParserTests {
         \r
         Body
         """
-        let assessment = AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders)
+        let assessment = AuthenticationResultsSignInTrustAssessor.assess(
+            rawHeaders: rawHeaders,
+            receiverProvenance: Self.icloudProvenance
+        )
         #expect(assessment == .pass(fromDomain: "bank.example"))
     }
 
     @Test("passes with relaxed subdomain alignment for dkim header.d and parent/sibling domains")
     func relaxedSubdomainAlignment() {
-        // From subdomain, DKIM signed by organizational parent domain
         let childFrom = """
-        Authentication-Results: mx.proton.example 1;
+        Authentication-Results: mx.customdomain.org 1;
             dkim=pass header.d=bank.example;
             dmarc=pass header.from=auth.bank.example
         From: Bank Auth <codes@auth.bank.example>
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: childFrom) == .pass(fromDomain: "auth.bank.example"))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: childFrom,
+                receiverProvenance: Self.customProvenance
+            ) == .pass(fromDomain: "auth.bank.example")
+        )
 
-        // Sibling subdomains under same organizational domain (e.g. accounts.google.com + bounces.google.com)
         let siblingSPF = """
         Authentication-Results: b.mail.icloud.com;
             spf=pass smtp.mailfrom=3abc@gaia.bounces.bank.example;
@@ -71,11 +204,12 @@ struct AuthenticationResultsParserTests {
         From: Bank Accounts <no-reply@accounts.bank.example>
         """
         #expect(
-            AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: siblingSPF)
-                == .pass(fromDomain: "accounts.bank.example")
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: siblingSPF,
+                receiverProvenance: Self.icloudProvenance
+            ) == .pass(fromDomain: "accounts.bank.example")
         )
 
-        // Multi-label public suffix: subdomains of bank.co.uk align with bank.co.uk
         let multiLabelTLD = """
         Authentication-Results: mx.example.net;
             dkim=pass header.d=mail.bank.co.uk;
@@ -83,44 +217,61 @@ struct AuthenticationResultsParserTests {
         From: Bank UK <no-reply@alerts.bank.co.uk>
         """
         #expect(
-            AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: multiLabelTLD)
-                == .pass(fromDomain: "alerts.bank.co.uk")
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: multiLabelTLD,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .pass(fromDomain: "alerts.bank.co.uk")
         )
     }
 
     @Test("passes with dkim header.i fallback when header.d is omitted")
     func dkimHeaderIFallback() {
         let rawHeaders = """
-        Authentication-Results: mx.custom.example;
+        Authentication-Results: mx.customdomain.org;
             dkim=pass header.i=@bank.example;
             dmarc=pass header.from=bank.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders) == .pass(fromDomain: "bank.example"))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: rawHeaders,
+                receiverProvenance: Self.customProvenance
+            ) == .pass(fromDomain: "bank.example")
+        )
     }
 
     @Test("passes when one of multiple dkim signatures is aligned and passes")
     func multipleDKIMSignaturesOneAligned() {
         let rawHeaders = """
-        Authentication-Results: mx.fastmail.example;
+        Authentication-Results: mx.fastmail.com;
             dkim=pass header.d=sendgrid.net;
             dkim=fail header.d=oldkey.bank.example;
             dkim=pass header.d=bank.example;
             dmarc=pass header.from=bank.example
         From: Bank <no-reply@bank.example>
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders) == .pass(fromDomain: "bank.example"))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: rawHeaders,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .pass(fromDomain: "bank.example")
+        )
     }
 
     @Test("passes with spf smtp.helo fallback when smtp.mailfrom is omitted")
     func spfHeloFallback() {
         let rawHeaders = """
-        Authentication-Results: mx.custom.example;
+        Authentication-Results: mx.customdomain.org;
             spf=pass smtp.helo=mail.bank.example;
             dmarc=pass header.from=bank.example
         From: Bank <no-reply@bank.example>
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders) == .pass(fromDomain: "bank.example"))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: rawHeaders,
+                receiverProvenance: Self.customProvenance
+            ) == .pass(fromDomain: "bank.example")
+        )
     }
 
     @Test("handles nested comments, quoted strings, method versions, CFWS around equals, and case insensitivity")
@@ -131,17 +282,27 @@ struct AuthenticationResultsParserTests {
             DMARC = Pass header.from = "Bank.Example"
         fRoM: "alerts@evil.example" (Bank Team) <no-reply@BANK.example>
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders) == .pass(fromDomain: "bank.example"))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: rawHeaders,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .pass(fromDomain: "bank.example")
+        )
     }
 
     @Test("ignores attacker-injected lower Authentication-Results with different authserv-id when top passes")
     func lowerDifferentAuthservIgnoredWhenTopPasses() {
         let rawHeaders = """
-        Authentication-Results: mx.fastmail.example; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example
+        Authentication-Results: mx.fastmail.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example
         Authentication-Results: attacker.example; dmarc=pass header.from=evil.example; dkim=pass header.d=evil.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders) == .pass(fromDomain: "bank.example"))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: rawHeaders,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .pass(fromDomain: "bank.example")
+        )
     }
 
     // MARK: - Spoofing, smuggling, and failure edge cases
@@ -149,43 +310,57 @@ struct AuthenticationResultsParserTests {
     @Test("attacker-injected lower Authentication-Results cannot override a failing top-most header")
     func injectedLowerHeaderCannotOverrideFailingTop() {
         let rawHeaders = """
-        Authentication-Results: mx.fastmail.example; dmarc=fail header.from=bank.example; dkim=fail; spf=fail
+        Authentication-Results: mx.fastmail.com; dmarc=fail header.from=bank.example; dkim=fail; spf=fail
         Authentication-Results: attacker.example; dmarc=pass header.from=bank.example; dkim=pass header.d=bank.example; spf=pass smtp.mailfrom=bank.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders) == .unavailable(.dmarcNotPass))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: rawHeaders,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .unavailable(.dmarcNotPass)
+        )
     }
 
     @Test("attacker-injected lower Authentication-Results cannot supply missing dmarc or dkim/spf")
     func injectedLowerHeaderCannotSupplyMissingPass() {
         let missingDMARCInTop = """
-        Authentication-Results: mx.fastmail.example; spf=pass smtp.mailfrom=bank.example
+        Authentication-Results: mx.fastmail.com; spf=pass smtp.mailfrom=bank.example
         Authentication-Results: attacker.example; dmarc=pass header.from=bank.example; dkim=pass header.d=bank.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: missingDMARCInTop) == .unavailable(.missingDMARC))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: missingDMARCInTop,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .unavailable(.missingDMARC)
+        )
 
         let missingMechanismInTop = """
-        Authentication-Results: mx.fastmail.example; dmarc=pass header.from=bank.example
+        Authentication-Results: mx.fastmail.com; dmarc=pass header.from=bank.example
         Authentication-Results: attacker.example; dkim=pass header.d=bank.example; spf=pass smtp.mailfrom=bank.example
         From: alerts@bank.example
         """
         #expect(
-            AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: missingMechanismInTop)
-                == .unavailable(.missingAlignedMechanism)
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: missingMechanismInTop,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .unavailable(.missingAlignedMechanism)
         )
     }
 
-    @Test("conflicting lower Authentication-Results with the same authserv-id fails closed")
+    @Test("conflicting lower Authentication-Results with the same trust boundary fails closed")
     func conflictingSameAuthservIDFailsClosed() {
         let rawHeaders = """
-        Authentication-Results: mx.fastmail.example; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example
-        Authentication-Results: mx.fastmail.example; dmarc=pass header.from=forged.example
+        Authentication-Results: mx2.messagingengine.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example
+        Authentication-Results: mx1.fastmail.com; dmarc=pass header.from=forged.example
         From: alerts@bank.example
         """
         #expect(
-            AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders)
-                == .unavailable(.conflictingTrustedHeaders)
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: rawHeaders,
+                receiverProvenance: Self.fastmailProvenance
+            ) == .unavailable(.conflictingTrustedHeaders)
         )
     }
 
@@ -198,7 +373,12 @@ struct AuthenticationResultsParserTests {
             dmarc=pass header.from=bank.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: bothFail) == .unavailable(.missingAlignedMechanism))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: bothFail,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.missingAlignedMechanism)
+        )
 
         let bothUnaligned = """
         Authentication-Results: mx.example.net;
@@ -208,11 +388,12 @@ struct AuthenticationResultsParserTests {
         From: alerts@bank.example
         """
         #expect(
-            AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: bothUnaligned)
-                == .unavailable(.missingAlignedMechanism)
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: bothUnaligned,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.missingAlignedMechanism)
         )
 
-        // Multi-label public suffix attack: evil.co.uk must NEVER align with bank.co.uk
         let publicSuffixAttack = """
         Authentication-Results: mx.example.net;
             dkim=pass header.d=evil.co.uk;
@@ -221,8 +402,10 @@ struct AuthenticationResultsParserTests {
         From: alerts@bank.co.uk
         """
         #expect(
-            AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: publicSuffixAttack)
-                == .unavailable(.missingAlignedMechanism)
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: publicSuffixAttack,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.missingAlignedMechanism)
         )
     }
 
@@ -234,7 +417,12 @@ struct AuthenticationResultsParserTests {
         Authentication-Results: mx.example.net; dkim=pass header.d=bank.example; dmarc=\(result) header.from=bank.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders) == .unavailable(.dmarcNotPass))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: rawHeaders,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.dmarcNotPass)
+        )
     }
 
     @Test("rejects comment or quoted-string smuggling of dmarc=pass")
@@ -243,13 +431,23 @@ struct AuthenticationResultsParserTests {
         Authentication-Results: mx.example.net; dkim=pass (fake; dmarc=pass header.from=bank.example) header.d=bank.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: commentSmuggled) == .unavailable(.missingDMARC))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: commentSmuggled,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.missingDMARC)
+        )
 
         let quoteSmuggled = """
         Authentication-Results: mx.example.net; dkim=pass reason="; dmarc=pass header.from=bank.example" header.d=bank.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: quoteSmuggled) == .unavailable(.missingDMARC))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: quoteSmuggled,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.missingDMARC)
+        )
     }
 
     @Test("rejects header injection in message body after blank line")
@@ -261,7 +459,12 @@ struct AuthenticationResultsParserTests {
         Authentication-Results: mx.example.net; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r
         Your code is 999999
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawMessage) == .unavailable(.noTrustedHeader))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: rawMessage,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.noTrustedHeader)
+        )
     }
 
     @Test("rejects misaligned header.from, missing From, multiple From headers, and multiple From addresses")
@@ -270,52 +473,89 @@ struct AuthenticationResultsParserTests {
         Authentication-Results: mx.example.net; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example
         From: alerts@other.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: mismatched) == .unavailable(.fromMismatch))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: mismatched,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.fromMismatch)
+        )
 
         let subdomainMismatch = """
         Authentication-Results: mx.example.net; dkim=pass header.d=mail.bank.example; dmarc=pass header.from=mail.bank.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: subdomainMismatch) == .unavailable(.fromMismatch))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: subdomainMismatch,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.fromMismatch)
+        )
 
         let missingFrom = """
         Authentication-Results: mx.example.net; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example
         Subject: No From
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: missingFrom) == .unavailable(.malformedFrom))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: missingFrom,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.malformedFrom)
+        )
 
         let twoFromHeaders = """
         Authentication-Results: mx.example.net; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example
         From: alerts@bank.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: twoFromHeaders) == .unavailable(.malformedFrom))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: twoFromHeaders,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.malformedFrom)
+        )
 
         let multipleAddresses = """
         Authentication-Results: mx.example.net; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example
         From: a@bank.example, b@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: multipleAddresses) == .unavailable(.malformedFrom))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: multipleAddresses,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.malformedFrom)
+        )
 
         let twoAngleAddrs = """
         Authentication-Results: mx.example.net; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example
         From: <a@bank.example> <b@bank.example>
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: twoAngleAddrs) == .unavailable(.malformedFrom))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: twoAngleAddrs,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.malformedFrom)
+        )
     }
 
     @Test("rejects missing, duplicate, and malformed Authentication-Results headers")
     func malformedAndDuplicateHeaders() {
         #expect(
-            AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: "From: alerts@bank.example\r\n")
-                == .unavailable(.noTrustedHeader)
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: "From: alerts@bank.example\r\n",
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.noTrustedHeader)
         )
 
         let duplicateDMARC = """
         Authentication-Results: mx.example.net; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example; dmarc=fail header.from=bank.example
         From: alerts@bank.example
         """
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: duplicateDMARC) == .unavailable(.duplicateDMARC))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: duplicateDMARC,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.duplicateDMARC)
+        )
 
         for badValue in [
             "",
@@ -328,7 +568,10 @@ struct AuthenticationResultsParserTests {
         ] {
             let raw = "Authentication-Results: \(badValue)\r\nFrom: alerts@bank.example\r\n"
             #expect(
-                AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: raw) == .unavailable(.malformedHeader),
+                AuthenticationResultsSignInTrustAssessor.assess(
+                    rawHeaders: raw,
+                    receiverProvenance: Self.exampleNetProvenance
+                ) == .unavailable(.malformedHeader),
                 "Expected malformedHeader for \(badValue)"
             )
         }
@@ -337,6 +580,11 @@ struct AuthenticationResultsParserTests {
     @Test("no-result Authentication-Results: mx.example.net; none fails cleanly")
     func noResultHeader() {
         let raw = "Authentication-Results: mx.example.net; none\r\nFrom: alerts@bank.example\r\n"
-        #expect(AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: raw) == .unavailable(.missingDMARC))
+        #expect(
+            AuthenticationResultsSignInTrustAssessor.assess(
+                rawHeaders: raw,
+                receiverProvenance: Self.exampleNetProvenance
+            ) == .unavailable(.missingDMARC)
+        )
     }
 }
