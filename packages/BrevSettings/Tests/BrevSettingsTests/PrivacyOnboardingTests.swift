@@ -397,4 +397,292 @@ struct PrivacyOnboardingTests {
             $0.section == .privacy && $0.title == "Review Privacy & Convenience Choices…"
         })
     }
+
+    @Test("external per-account AI override blocks granting global AI consent under on-device prompt")
+    func externalAccountOverrideBlocksGlobalAIConsent() throws {
+        let (defaults, suite) = try makeDefaults("external-override-block")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let cloud = try #require(AIProviderConfiguration(
+            id: AIProviderID("cloud-openai"),
+            kind: .openAICompatible,
+            displayName: "OpenAI",
+            endpointURL: URL(string: "https://api.openai.com/v1"),
+            modelID: "gpt-4.1-mini",
+            isEnabled: true,
+            isDefault: false,
+            assignedAccountID: "acct-work"
+        ))
+        try store.saveAIProviderConfigurations([cloud])
+        var assignments = AIProviderAccountAssignments()
+        assignments.assign(providerID: cloud.id, toAccountID: "acct-work")
+        try store.saveAIProviderAssignments(assignments)
+        AIWriterSettings(isEnabled: false, consentGiven: false, proactiveOnDeviceTriageEnabled: false).save(to: defaults)
+
+        #expect(PrivacyOnboardingChoices.blocksOnDeviceAIOptInDueToExternalAccountRoutes(in: store))
+
+        let initial = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        var draft = initial
+        draft.onDeviceAIEnabled = true
+        draft.proactiveOnDeviceTriageEnabled = true
+
+        let result = draft.apply(
+            to: store,
+            relativeTo: initial,
+            appleIntelligenceAvailability: .available
+        )
+
+        #expect(!result.aiConfigurationChanged)
+        #expect(!store.aiWriterSettings().isEnabled)
+        #expect(!store.aiWriterSettings().consentGiven)
+        #expect(!store.aiWriterSettings().proactiveOnDeviceTriageEnabled)
+        #expect(try store.aiProviderConfigurations() == [cloud])
+    }
+
+    @Test("opting out of Apple Intelligence restores previously displaced default AI provider")
+    func optingOutRestoresDisplacedDefaultProvider() throws {
+        let (defaults, suite) = try makeDefaults("restore-displaced-default")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let ollama = try #require(AIProviderConfiguration(
+            id: AIProviderID("local-ollama"),
+            kind: .ollamaLocal,
+            displayName: "Ollama",
+            endpointURL: URL(string: "http://localhost:11434/v1"),
+            modelID: "llama3.2",
+            isEnabled: true,
+            isDefault: true,
+            assignedAccountID: nil
+        ))
+        try store.saveAIProviderConfigurations([ollama])
+        AIWriterSettings(isEnabled: true, consentGiven: true, proactiveOnDeviceTriageEnabled: false).save(to: defaults)
+
+        let beforeEnable = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        #expect(!beforeEnable.onDeviceAIEnabled)
+
+        var enableDraft = beforeEnable
+        enableDraft.onDeviceAIEnabled = true
+        enableDraft.apply(to: store, relativeTo: beforeEnable, appleIntelligenceAvailability: .available)
+
+        let configsAfterEnable = try store.aiProviderConfigurations()
+        #expect(configsAfterEnable.first { $0.kind == .appleIntelligence }?.isDefault == true)
+        #expect(configsAfterEnable.first { $0.id == ollama.id }?.isDefault == false)
+
+        let beforeDisable = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        #expect(beforeDisable.onDeviceAIEnabled)
+
+        var disableDraft = beforeDisable
+        disableDraft.onDeviceAIEnabled = false
+        disableDraft.apply(to: store, relativeTo: beforeDisable, appleIntelligenceAvailability: .available)
+
+        let configsAfterDisable = try store.aiProviderConfigurations()
+        #expect(configsAfterDisable.first { $0.kind == .appleIntelligence }?.isEnabled == false)
+        #expect(configsAfterDisable.first { $0.kind == .appleIntelligence }?.isDefault == false)
+        #expect(configsAfterDisable.first { $0.id == ollama.id }?.isDefault == true)
+        #expect(store.aiWriterSettings().isAvailable)
+    }
+
+    @Test("opting out does not overwrite a newer explicit default chosen outside the walkthrough")
+    func optingOutRespectsNewerExplicitDefault() throws {
+        let (defaults, suite) = try makeDefaults("newer-explicit-default")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let ollama = try #require(AIProviderConfiguration(
+            id: AIProviderID("local-ollama"),
+            kind: .ollamaLocal,
+            displayName: "Ollama",
+            endpointURL: URL(string: "http://localhost:11434/v1"),
+            modelID: "llama3.2",
+            isEnabled: true,
+            isDefault: true,
+            assignedAccountID: nil
+        ))
+        let custom = try #require(AIProviderConfiguration(
+            id: AIProviderID("custom-ai"),
+            kind: .customOpenAICompatible,
+            displayName: "Custom",
+            endpointURL: URL(string: "https://llm.example.test/v1"),
+            modelID: "model-x",
+            isEnabled: true,
+            isDefault: false,
+            assignedAccountID: nil
+        ))
+        try store.saveAIProviderConfigurations([ollama, custom])
+        AIWriterSettings(isEnabled: true, consentGiven: true, proactiveOnDeviceTriageEnabled: false).save(to: defaults)
+
+        let beforeEnable = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        var enableDraft = beforeEnable
+        enableDraft.onDeviceAIEnabled = true
+        enableDraft.apply(to: store, relativeTo: beforeEnable, appleIntelligenceAvailability: .available)
+
+        // User later switches default in AI Settings to `custom`, while assigning Apple Intelligence to one account.
+        var updatedConfigs = try store.aiProviderConfigurations().map { config in
+            var copy = config
+            copy.isDefault = (config.id == custom.id)
+            return copy
+        }
+        try store.saveAIProviderConfigurations(updatedConfigs)
+        var assignments = AIProviderAccountAssignments()
+        assignments.assign(providerID: AppleIntelligenceAIBackend.providerID, toAccountID: "acct-personal")
+        try store.saveAIProviderAssignments(assignments)
+
+        let beforeDisable = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        #expect(beforeDisable.onDeviceAIEnabled)
+
+        var disableDraft = beforeDisable
+        disableDraft.onDeviceAIEnabled = false
+        disableDraft.apply(to: store, relativeTo: beforeDisable, appleIntelligenceAvailability: .available)
+
+        updatedConfigs = try store.aiProviderConfigurations()
+        #expect(updatedConfigs.first { $0.id == custom.id }?.isDefault == true)
+        #expect(updatedConfigs.first { $0.id == ollama.id }?.isDefault == false)
+        #expect(updatedConfigs.first { $0.kind == .appleIntelligence }?.isEnabled == false)
+    }
+
+    @Test("account-assigned non-default Apple Intelligence loads as enabled and disables without touching other routes")
+    func accountAssignedAppleIntelligenceLoadsAndDisablesCleanly() throws {
+        let (defaults, suite) = try makeDefaults("account-assigned-apple-ai")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let ollama = try #require(AIProviderConfiguration(
+            id: AIProviderID("local-ollama"),
+            kind: .ollamaLocal,
+            displayName: "Ollama",
+            endpointURL: URL(string: "http://localhost:11434/v1"),
+            modelID: "llama3.2",
+            isEnabled: true,
+            isDefault: true,
+            assignedAccountID: nil
+        ))
+        let apple = AIProviderConfiguration.appleIntelligence(
+            isEnabled: true,
+            isDefault: false,
+            assignedAccountID: "acct-personal"
+        )
+        try store.saveAIProviderConfigurations([ollama, apple])
+        var assignments = AIProviderAccountAssignments()
+        assignments.assign(providerID: apple.id, toAccountID: "acct-personal")
+        try store.saveAIProviderAssignments(assignments)
+        AIWriterSettings(isEnabled: true, consentGiven: true, proactiveOnDeviceTriageEnabled: true).save(to: defaults)
+
+        let loaded = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        #expect(loaded.onDeviceAIEnabled)
+        #expect(loaded.proactiveOnDeviceTriageEnabled)
+
+        var disableDraft = loaded
+        disableDraft.onDeviceAIEnabled = false
+        let result = disableDraft.apply(to: store, relativeTo: loaded, appleIntelligenceAvailability: .available)
+
+        #expect(result.aiConfigurationChanged)
+        let configs = try store.aiProviderConfigurations()
+        #expect(configs.first { $0.kind == .appleIntelligence }?.isEnabled == false)
+        #expect(configs.first { $0.id == ollama.id }?.isDefault == true)
+        #expect(configs.first { $0.id == ollama.id }?.isEnabled == true)
+        #expect(store.aiWriterSettings().isAvailable)
+        #expect(!store.aiWriterSettings().proactiveOnDeviceTriageEnabled)
+    }
+
+    @Test("trusted-sender toggle respects rich HTML renderer gate and accurate tracking-pixel copy")
+    func trustedSenderRespectsRichHTMLAndTrackingPixelState() throws {
+        let (defaults, suite) = try makeDefaults("trusted-sender-gates")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+        var mailbox = MailboxViewSettings.defaults
+        mailbox.useRichRenderer = false
+        mailbox.allowRemoteContentForTrustedSenders = false
+        mailbox.save(to: defaults)
+
+        let initial = PrivacyOnboardingChoices.load(from: store, appleIntelligenceAvailability: .available)
+        var draft = initial
+        draft.allowRemoteContentForTrustedSenders = true
+        draft.apply(to: store, relativeTo: initial, appleIntelligenceAvailability: .available)
+
+        // With rich HTML rendering off, trusted-sender remote images stays untouched and rich HTML stays off.
+        #expect(!store.mailboxViewSettings().useRichRenderer)
+        #expect(!store.mailboxViewSettings().allowRemoteContentForTrustedSenders)
+
+        let plainTextSubtitle = PrivacyOnboardingCopy.trustedSendersSubtitle(
+            useRichRenderer: false,
+            stripTrackingPixels: true
+        )
+        #expect(plainTextSubtitle.contains("rich HTML reader"))
+
+        let strippedSubtitle = PrivacyOnboardingCopy.trustedSendersSubtitle(
+            useRichRenderer: true,
+            stripTrackingPixels: true
+        )
+        #expect(strippedSubtitle.contains("tracking-pixel removal stays on"))
+
+        let unstrippedSubtitle = PrivacyOnboardingCopy.trustedSendersSubtitle(
+            useRichRenderer: true,
+            stripTrackingPixels: false
+        )
+        #expect(!unstrippedSubtitle.contains("tracking-pixel removal stays on"))
+        #expect(unstrippedSubtitle.contains("Tracking-pixel removal is currently off"))
+    }
+
+    @Test("presentation policy blocks onboarding during active sign-in/restore and after failed restore of saved accounts")
+    func presentationPolicySignInAndRestoreFailureGuards() {
+        // Transient restore failure when saved accounts exist in AccountStore is NOT a fresh install.
+        #expect(!PrivacyOnboardingPresentationPolicy.didStartWithoutAccounts(
+            storedAccountBackendIdentifiers: ["imap"],
+            visibleBackendIdentifiers: [],
+            demoBackendIdentifier: "demo",
+            accountRestoreErrorCount: 0,
+            canRetrySessionRestore: true
+        ))
+        #expect(!PrivacyOnboardingPresentationPolicy.didStartWithoutAccounts(
+            storedAccountBackendIdentifiers: [],
+            visibleBackendIdentifiers: [],
+            demoBackendIdentifier: "demo",
+            accountRestoreErrorCount: 1,
+            canRetrySessionRestore: false
+        ))
+        // Demo-only records or zero saved accounts with zero restore errors IS a fresh install.
+        #expect(PrivacyOnboardingPresentationPolicy.didStartWithoutAccounts(
+            storedAccountBackendIdentifiers: ["demo"],
+            visibleBackendIdentifiers: [],
+            demoBackendIdentifier: "demo",
+            accountRestoreErrorCount: 0,
+            canRetrySessionRestore: false
+        ))
+        #expect(PrivacyOnboardingPresentationPolicy.didStartWithoutAccounts(
+            storedAccountBackendIdentifiers: [],
+            visibleBackendIdentifiers: [],
+            demoBackendIdentifier: "demo",
+            accountRestoreErrorCount: 0,
+            canRetrySessionRestore: false
+        ))
+
+        // In-flight sign-in must defer onboarding until `finishSignIn` settles `pendingInitialMailboxSelectionAccountID`.
+        #expect(!PrivacyOnboardingPresentationPolicy.shouldPresentAfterFirstAccountSetup(
+            hasCompletedOnboarding: false,
+            isSuppressedByEnvironment: false,
+            isDemoSession: false,
+            didStartWithoutAccounts: true,
+            hasVisibleRealAccount: true,
+            isSigningIn: true,
+            isRestoringSession: false,
+            hasPendingInitialMailboxSelection: false,
+            hasOtherModalPresented: false,
+            hasExistingCustomizedSettings: false
+        ))
+        #expect(!PrivacyOnboardingPresentationPolicy.shouldPresentAfterFirstAccountSetup(
+            hasCompletedOnboarding: false,
+            isSuppressedByEnvironment: false,
+            isDemoSession: false,
+            didStartWithoutAccounts: true,
+            hasVisibleRealAccount: true,
+            isSigningIn: false,
+            isRestoringSession: true,
+            hasPendingInitialMailboxSelection: false,
+            hasOtherModalPresented: false,
+            hasExistingCustomizedSettings: false
+        ))
+    }
 }

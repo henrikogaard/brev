@@ -26,6 +26,9 @@ public struct PrivacyOnboardingSheet: View {
     private let initialChoices: PrivacyOnboardingChoices
     private let settingsStore: SettingsPersistenceStore
     private let appleIntelligenceAvailability: AppleIntelligenceAvailability
+    private let isRichHTMLRendererEnabled: Bool
+    private let stripTrackingPixelsEnabled: Bool
+    private let isOnDeviceAIBlockedByExternalRoutes: Bool
     private let onAIProviderConfigurationChanged: () async -> Void
     private let onAvatarPreferencesChanged: @Sendable (AvatarPreferences) async -> Void
     private let onDismiss: () -> Void
@@ -55,6 +58,11 @@ public struct PrivacyOnboardingSheet: View {
         self.onAIProviderConfigurationChanged = onAIProviderConfigurationChanged
         self.onAvatarPreferencesChanged = onAvatarPreferencesChanged
         self.onDismiss = onDismiss
+        let mailboxView = settingsStore.mailboxViewSettings()
+        isRichHTMLRendererEnabled = mailboxView.useRichRenderer
+        stripTrackingPixelsEnabled = mailboxView.stripTrackingPixels
+        isOnDeviceAIBlockedByExternalRoutes =
+            PrivacyOnboardingChoices.blocksOnDeviceAIOptInDueToExternalAccountRoutes(in: settingsStore)
         let loaded = PrivacyOnboardingChoices.load(
             from: settingsStore,
             appleIntelligenceAvailability: appleIntelligenceAvailability
@@ -273,13 +281,24 @@ public struct PrivacyOnboardingSheet: View {
         ) {
             PrivacyOnboardingToggleRow(
                 title: String(localized: "Load remote images for trusted senders", bundle: .module),
-                subtitle: String(
-                    localized: "Loads remote images automatically only for Contacts and senders you have replied to. Unknown senders stay blocked and tracking-pixel removal stays on.",
-                    bundle: .module
+                subtitle: PrivacyOnboardingCopy.trustedSendersSubtitle(
+                    useRichRenderer: isRichHTMLRendererEnabled,
+                    stripTrackingPixels: stripTrackingPixelsEnabled
                 ),
-                isOn: $choices.allowRemoteContentForTrustedSenders
+                isOn: trustedSendersBinding,
+                isEnabled: isRichHTMLRendererEnabled
             )
         }
+    }
+
+    private var trustedSendersBinding: Binding<Bool> {
+        Binding(
+            get: { isRichHTMLRendererEnabled && choices.allowRemoteContentForTrustedSenders },
+            set: { newValue in
+                guard isRichHTMLRendererEnabled else { return }
+                choices.allowRemoteContentForTrustedSenders = newValue
+            }
+        )
     }
 
     private var iCloudSyncCard: some View {
@@ -332,6 +351,10 @@ public struct PrivacyOnboardingSheet: View {
         }
     }
 
+    private var canToggleOnDeviceAI: Bool {
+        appleIntelligenceAvailability.isSelectable && !isOnDeviceAIBlockedByExternalRoutes
+    }
+
     private var onDeviceAICard: some View {
         PrivacyOnboardingCard(
             symbolName: "cpu",
@@ -343,7 +366,7 @@ public struct PrivacyOnboardingSheet: View {
                 title: String(localized: "Enable on-device Apple Intelligence", bundle: .module),
                 subtitle: onDeviceAISubtitle,
                 isOn: onDeviceAIBinding,
-                isEnabled: appleIntelligenceAvailability.isSelectable
+                isEnabled: canToggleOnDeviceAI
             )
 
             Divider()
@@ -356,7 +379,7 @@ public struct PrivacyOnboardingSheet: View {
                     bundle: .module
                 ),
                 isOn: proactiveTriageBinding,
-                isEnabled: appleIntelligenceAvailability.isSelectable && choices.onDeviceAIEnabled
+                isEnabled: canToggleOnDeviceAI && choices.onDeviceAIEnabled
             )
         }
     }
@@ -364,6 +387,9 @@ public struct PrivacyOnboardingSheet: View {
     private var onDeviceAISubtitle: String {
         guard appleIntelligenceAvailability.isSelectable else {
             return appleIntelligenceAvailability.settingsStatusMessage
+        }
+        if isOnDeviceAIBlockedByExternalRoutes {
+            return PrivacyOnboardingCopy.externalAccountAIRouteBlockedMessage
         }
         return String(
             localized: "Runs AI Writer, thread summaries, and mailbox Assistant locally (\(OnDeviceAIPlatformLabel.transparencyLabel)) with zero network calls and no API key. Cloud and custom providers are never configured here.",
@@ -373,9 +399,9 @@ public struct PrivacyOnboardingSheet: View {
 
     private var onDeviceAIBinding: Binding<Bool> {
         Binding(
-            get: { appleIntelligenceAvailability.isSelectable && choices.onDeviceAIEnabled },
+            get: { canToggleOnDeviceAI && choices.onDeviceAIEnabled },
             set: { newValue in
-                guard appleIntelligenceAvailability.isSelectable || !newValue else { return }
+                guard canToggleOnDeviceAI || !newValue else { return }
                 choices.onDeviceAIEnabled = newValue
                 if !newValue {
                     choices.proactiveOnDeviceTriageEnabled = false
@@ -387,12 +413,12 @@ public struct PrivacyOnboardingSheet: View {
     private var proactiveTriageBinding: Binding<Bool> {
         Binding(
             get: {
-                appleIntelligenceAvailability.isSelectable
+                canToggleOnDeviceAI
                     && choices.onDeviceAIEnabled
                     && choices.proactiveOnDeviceTriageEnabled
             },
             set: { newValue in
-                guard (appleIntelligenceAvailability.isSelectable && choices.onDeviceAIEnabled) || !newValue else {
+                guard (canToggleOnDeviceAI && choices.onDeviceAIEnabled) || !newValue else {
                     return
                 }
                 choices.proactiveOnDeviceTriageEnabled = newValue

@@ -273,9 +273,14 @@ struct BrevApp: App {
                 consumeIntentHandoff()
                 await session.ensureAccountsRestored()
                 sessionRestoreAttempted = true
-                didStartWithoutAccounts = !session.visibleBackends.contains {
-                    $0.account.backendIdentifier != BrevAccount.demoBackendIdentifier
-                }
+                let storedAccountBackendIdentifiers = await (session.accountStore.accounts).map(\.backendIdentifier)
+                didStartWithoutAccounts = PrivacyOnboardingPresentationPolicy.didStartWithoutAccounts(
+                    storedAccountBackendIdentifiers: storedAccountBackendIdentifiers,
+                    visibleBackendIdentifiers: session.visibleBackends.map(\.account.backendIdentifier),
+                    demoBackendIdentifier: BrevAccount.demoBackendIdentifier,
+                    accountRestoreErrorCount: session.accountRestoreErrors.count,
+                    canRetrySessionRestore: session.canRetrySessionRestore
+                )
                 session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
                 session.startReconnectMutationReplay(monitor: networkMonitor)
                 session.openMainWindowForPanelReply = {
@@ -311,6 +316,12 @@ struct BrevApp: App {
                 presentPrivacyOnboardingIfNeeded()
             }
             .onChange(of: session.pendingInitialMailboxSelectionAccountID) { _, _ in
+                presentPrivacyOnboardingIfNeeded()
+            }
+            .onChange(of: session.isSigningIn) { _, _ in
+                presentPrivacyOnboardingIfNeeded()
+            }
+            .onChange(of: session.isRestoringSession) { _, _ in
                 presentPrivacyOnboardingIfNeeded()
             }
             .onChange(of: isShowingAddAccountSheet) { _, isPresented in
@@ -587,6 +598,8 @@ struct BrevApp: App {
             isDemoSession: isDemoSession,
             didStartWithoutAccounts: didStartWithoutAccounts,
             hasVisibleRealAccount: hasRealAccount,
+            isSigningIn: session.isSigningIn,
+            isRestoringSession: session.isRestoringSession,
             hasPendingInitialMailboxSelection: session.pendingInitialMailboxSelectionAccountID != nil,
             hasOtherModalPresented: isShowingAddAccountSheet
                 || showRestoreErrorAlert

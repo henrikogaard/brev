@@ -1,5 +1,19 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #356 round-1 review fixes (Upgrade #9)
+
+- Goal: address all 8 round-1 Codex + Devin review threads on PR #356 (`feature/onboarding-privacy-choices`) in one commit.
+- Changes:
+  - `AIProviderAccountRouting.swift`: exposed `AIProviderAccountAssignments.assignedProviderIDs` so settings can inspect active per-account AI routes.
+  - `PrivacyOnboardingSettings.swift` & `PrivacyOnboardingSheet.swift`:
+    - Fail-closed guard (`blocksOnDeviceAIOptInDueToExternalAccountRoutes`) disabling on-device AI opt-in with localized guidance whenever AI Writer is disabled and an external per-account AI override exists (prevents granting global AI consent that would activate a cloud route under an on-device prompt).
+    - Preserved displaced default AI provider ID + prior AI availability in device-local keys so opting back out of Apple Intelligence restores the prior default when no newer explicit default superseded it and never silently activates a previously disabled external provider.
+    - Updated `load(...)` to detect active account-assigned (non-default) Apple Intelligence overrides and disable Apple Intelligence cleanly without touching unrelated defaults/assignments.
+    - Mirrored `PrivacySection`'s `useRichRenderer` gate on the trusted-sender remote images toggle (leaving persisted opt-in unchanged when plain-text mode is active) and added accurate localized warning copy in `PrivacyOnboardingCopy.trustedSendersSubtitle(useRichRenderer:stripTrackingPixels:)` when `stripTrackingPixels` is off.
+    - Hardened `PrivacyOnboardingPresentationPolicy` with `didStartWithoutAccounts(...)` (checking persisted `AccountStore` accounts + restore error/retry state) and `isSigningIn`/`isRestoringSession` guards wired into both macOS and iOS `BrevApp.swift`.
+  - Added `en`/`nb` translations for the 3 new strings in `Localizable.xcstrings` and 6 new regression unit tests in `PrivacyOnboardingTests.swift`.
+- Verification: local `swift test --package-path packages/BrevAI`, `.xcstrings` JSON + `nb` coverage, `scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`, and privacy-audit regex verification; remote `macmini-devbox` `BrevSettingsTests/PrivacyOnboardingTests` (15 tests), `PrivacyOnboardingSnapshotTests`, and `BrevIOS` simulator build, followed by `/tmp/brev-wave4a` cleanup.
+
 ## 2026-11-24 — Agent — Upgrade #9: Onboarding privacy & convenience choices (`feature/onboarding-privacy-choices`)
 
 - Goal: implement an optional, plain-language Privacy & Convenience Choices walkthrough presented once after first-run account setup and re-openable anytime from Settings → Privacy, keeping every opt-in setting strictly `false` by default and preserving all `privacy-audit.sh` invariants.

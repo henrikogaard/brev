@@ -14995,6 +14995,39 @@
           }
         }
       }
+    },
+    "Requires the rich HTML reader in Settings → Reading → Mailbox View before remote images can load automatically.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krever rik HTML-leser i Innstillinger → Lesing → Postkassevisning før eksterne bilder kan lastes automatisk."
+          }
+        }
+      }
+    },
+    "Loads remote images automatically only for Contacts and senders you have replied to. Tracking-pixel removal is currently off in Settings → Privacy, so trusted senders may load tracking images.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster eksterne bilder automatisk kun for kontakter og avsendere du har svart. Fjerning av sporingspiksler er for øyeblikket av i Innstillinger → Personvern, så betrodde avsendere kan laste sporingsbilder."
+          }
+        }
+      }
+    },
+    "An external AI provider is assigned to an account. Review per-account routing in Settings → Writing → AI Writer before turning AI on.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En ekstern AI-leverandør er tilordnet en konto. Gjennomgå ruting per konto i Innstillinger → Skriving → AI-skrivehjelp før du slår på AI."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

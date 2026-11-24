@@ -430,9 +430,14 @@ struct BrevApp: App {
                 applyIOSAppIcon(appIconVariant)
                 await session.ensureAccountsRestored()
                 sessionRestoreAttempted = true
-                didStartWithoutAccounts = !session.visibleBackends.contains {
-                    $0.account.backendIdentifier != BrevAccount.demoBackendIdentifier
-                }
+                let storedAccountBackendIdentifiers = await (session.accountStore.accounts).map(\.backendIdentifier)
+                didStartWithoutAccounts = PrivacyOnboardingPresentationPolicy.didStartWithoutAccounts(
+                    storedAccountBackendIdentifiers: storedAccountBackendIdentifiers,
+                    visibleBackendIdentifiers: session.visibleBackends.map(\.account.backendIdentifier),
+                    demoBackendIdentifier: BrevAccount.demoBackendIdentifier,
+                    accountRestoreErrorCount: session.accountRestoreErrors.count,
+                    canRetrySessionRestore: session.canRetrySessionRestore
+                )
                 session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
                 session.attachNetworkMonitor(networkMonitor)
                 BrevIOSAppDelegate.currentBackends = session.visibleBackends
@@ -462,6 +467,12 @@ struct BrevApp: App {
                 presentPrivacyOnboardingIfNeeded(hasReaderCommandHandoff: readerCommandHandoff != nil)
             }
             .onChange(of: session.pendingInitialMailboxSelectionAccountID) { _, _ in
+                presentPrivacyOnboardingIfNeeded(hasReaderCommandHandoff: readerCommandHandoff != nil)
+            }
+            .onChange(of: session.isSigningIn) { _, _ in
+                presentPrivacyOnboardingIfNeeded(hasReaderCommandHandoff: readerCommandHandoff != nil)
+            }
+            .onChange(of: session.isRestoringSession) { _, _ in
                 presentPrivacyOnboardingIfNeeded(hasReaderCommandHandoff: readerCommandHandoff != nil)
             }
             .onChange(of: isShowingAddAccountSheet) { _, isPresented in
@@ -647,6 +658,8 @@ struct BrevApp: App {
             isDemoSession: isDemoSession,
             didStartWithoutAccounts: didStartWithoutAccounts,
             hasVisibleRealAccount: hasRealAccount,
+            isSigningIn: session.isSigningIn,
+            isRestoringSession: session.isRestoringSession,
             hasPendingInitialMailboxSelection: session.pendingInitialMailboxSelectionAccountID != nil,
             hasOtherModalPresented: isShowingAddAccountSheet
                 || showSettings

@@ -24,6 +24,13 @@ public struct PrivacyOnboardingSettings: Equatable, Sendable {
     public enum Key {
         /// Whether this device has completed or dismissed the first-run walkthrough.
         public static let hasCompletedOnboarding = "onboarding.privacyChoices.completed"
+        /// Device-local record of a default AI provider displaced when enabling Apple Intelligence
+        /// from the walkthrough so opting back out can restore it cleanly.
+        static let displacedDefaultAIProviderID = "onboarding.privacyChoices.displacedDefaultAIProviderID"
+        /// Device-local record of whether AI Writer was already available before the walkthrough
+        /// enabled Apple Intelligence, preventing opt-out from leaving an unconsented provider active.
+        static let aiWriterWasAvailableBeforeOnDeviceOptIn =
+            "onboarding.privacyChoices.aiWriterWasAvailableBeforeOnDeviceOptIn"
     }
 
     /// `true` once the user has finished, kept defaults, or dismissed the first-run walkthrough.
@@ -58,11 +65,47 @@ public enum PrivacyOnboardingMode: Equatable, Sendable {
     case reviewFromSettings
 }
 
+/// Plain-language localized copy helpers for the Privacy & Convenience Choices walkthrough.
+public enum PrivacyOnboardingCopy {
+    /// Accurate explanation for the trusted-sender remote images toggle given the active
+    /// rich-HTML reader and tracking-pixel stripping settings.
+    public static func trustedSendersSubtitle(
+        useRichRenderer: Bool,
+        stripTrackingPixels: Bool
+    ) -> String {
+        guard useRichRenderer else {
+            return String(
+                localized: "Requires the rich HTML reader in Settings → Reading → Mailbox View before remote images can load automatically.",
+                bundle: .module
+            )
+        }
+        if stripTrackingPixels {
+            return String(
+                localized: "Loads remote images automatically only for Contacts and senders you have replied to. Unknown senders stay blocked and tracking-pixel removal stays on.",
+                bundle: .module
+            )
+        }
+        return String(
+            localized: "Loads remote images automatically only for Contacts and senders you have replied to. Tracking-pixel removal is currently off in Settings → Privacy, so trusted senders may load tracking images.",
+            bundle: .module
+        )
+    }
+
+    /// Explanation shown when turning on global AI consent from the walkthrough is blocked
+    /// because an external per-account AI override is configured while AI Writer is disabled.
+    public static let externalAccountAIRouteBlockedMessage = String(
+        localized: "An external AI provider is assigned to an account. Review per-account routing in Settings → Writing → AI Writer before turning AI on.",
+        bundle: .module
+    )
+}
+
 /// Editable opt-in convenience choices presented by the Privacy & Convenience walkthrough.
 ///
 /// Every convenience starts strictly `false` by default to preserve Brev's
 /// zero-network-by-default privacy invariant.
 public struct PrivacyOnboardingChoices: Equatable, Sendable {
+    private static let legacyBuiltInExternalProviderID = AIProviderID("euria")
+
     /// Domain-only sender avatars (`AvatarPrivacySettings.useBIMI` + `useFavicon`).
     public var useDomainAvatars: Bool
     /// Gravatar sender lookup (`AvatarPrivacySettings.useGravatar`, sends SHA-256 email hash).
@@ -125,8 +168,16 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
         let backgroundIndexing = settingsStore.backgroundIndexingSettings()
         let aiWriter = settingsStore.aiWriterSettings()
         let aiConfigs = (try? settingsStore.aiProviderConfigurations()) ?? []
-        let hasActiveAppleIntelligence = aiConfigs.contains {
-            $0.kind == .appleIntelligence && $0.isEnabled && $0.isDefault
+        let aiAssignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
+        let assignedProviderIDs = aiAssignments.assignedProviderIDs
+        let hasActiveAppleIntelligence = aiConfigs.contains { config in
+            guard config.kind == .appleIntelligence,
+                  config.isEnabled,
+                  config.validationIssues.isEmpty
+            else { return false }
+            return config.isDefault
+                || config.assignedAccountID != nil
+                || assignedProviderIDs.contains(config.id)
         }
         let onDeviceAIActive = appleIntelligenceAvailability.isSelectable
             && aiWriter.isAvailable
@@ -142,6 +193,31 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
             onDeviceAIEnabled: onDeviceAIActive,
             proactiveOnDeviceTriageEnabled: onDeviceAIActive && aiWriter.proactiveOnDeviceTriageEnabled
         )
+    }
+
+    /// Returns `true` when turning on global AI consent from the walkthrough would immediately
+    /// activate an external/non-on-device per-account AI override without separate endpoint consent.
+    ///
+    /// Fails closed so a zero-network on-device prompt can never silently grant consent for a
+    /// previously configured cloud or BYOK per-account route.
+    public static func blocksOnDeviceAIOptInDueToExternalAccountRoutes(
+        in settingsStore: SettingsPersistenceStore = .standard
+    ) -> Bool {
+        guard !settingsStore.aiWriterSettings().isAvailable else { return false }
+        let configs = (try? settingsStore.aiProviderConfigurations()) ?? []
+        let assignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
+        let assignedIDs = assignments.assignedProviderIDs
+
+        if assignedIDs.contains(legacyBuiltInExternalProviderID) {
+            return true
+        }
+        return configs.contains { config in
+            guard !config.kind.isOnDevice,
+                  config.isEnabled,
+                  config.validationIssues.isEmpty
+            else { return false }
+            return config.assignedAccountID != nil || assignedIDs.contains(config.id)
+        }
     }
 
     /// Result describing which subsystems changed when applying walkthrough choices.
@@ -189,8 +265,11 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
 
         if allowRemoteContentForTrustedSenders != initial.allowRemoteContentForTrustedSenders {
             var mailboxView = settingsStore.mailboxViewSettings()
-            mailboxView.allowRemoteContentForTrustedSenders = allowRemoteContentForTrustedSenders
-            settingsStore.save(mailboxView)
+            // Never persist or silently enable remote images when the rich HTML reader is off.
+            if mailboxView.useRichRenderer {
+                mailboxView.allowRemoteContentForTrustedSenders = allowRemoteContentForTrustedSenders
+                settingsStore.save(mailboxView)
+            }
         }
 
         if iCloudPreferenceSyncEnabled != initial.iCloudPreferenceSyncEnabled {
@@ -264,7 +343,10 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
         relativeTo initial: PrivacyOnboardingChoices,
         appleIntelligenceAvailability: AppleIntelligenceAvailability
     ) -> Bool {
-        let effectiveOnDeviceAI = appleIntelligenceAvailability.isSelectable && onDeviceAIEnabled
+        let isBlockedByExternalRoutes = Self.blocksOnDeviceAIOptInDueToExternalAccountRoutes(in: settingsStore)
+        let effectiveOnDeviceAI = appleIntelligenceAvailability.isSelectable
+            && onDeviceAIEnabled
+            && (!isBlockedByExternalRoutes || initial.onDeviceAIEnabled)
         let effectiveProactive = effectiveOnDeviceAI && proactiveOnDeviceTriageEnabled
         let initialProactive = initial.onDeviceAIEnabled && initial.proactiveOnDeviceTriageEnabled
 
@@ -276,9 +358,27 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
 
         var aiWriter = settingsStore.aiWriterSettings()
         var configs = (try? settingsStore.aiProviderConfigurations()) ?? []
+        let defaults = settingsStore.defaults
 
         if effectiveOnDeviceAI != initial.onDeviceAIEnabled {
             if effectiveOnDeviceAI {
+                let wasAlreadyAvailable = aiWriter.isAvailable
+                defaults.set(
+                    wasAlreadyAvailable,
+                    forKey: PrivacyOnboardingSettings.Key.aiWriterWasAvailableBeforeOnDeviceOptIn
+                )
+
+                if let displacedDefault = configs.first(where: {
+                    $0.kind != .appleIntelligence && $0.isDefault && $0.isEnabled && $0.validationIssues.isEmpty
+                }) {
+                    defaults.set(
+                        displacedDefault.id.rawValue,
+                        forKey: PrivacyOnboardingSettings.Key.displacedDefaultAIProviderID
+                    )
+                } else {
+                    defaults.removeObject(forKey: PrivacyOnboardingSettings.Key.displacedDefaultAIProviderID)
+                }
+
                 let existing = configs.first { $0.id == AppleIntelligenceAIBackend.providerID }
                 let appleConfig = AIProviderConfiguration.appleIntelligence(
                     isEnabled: true,
@@ -302,15 +402,47 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
                     guard existingConfig.kind == .appleIntelligence else { return existingConfig }
                     var updated = existingConfig
                     updated.isEnabled = false
+                    updated.isDefault = false
                     return updated
                 }
+
+                let hasExplicitOtherDefault = configs.contains {
+                    $0.kind != .appleIntelligence && $0.isDefault && $0.isEnabled && $0.validationIssues.isEmpty
+                }
+                if !hasExplicitOtherDefault,
+                   let displacedRawID = defaults.string(
+                       forKey: PrivacyOnboardingSettings.Key.displacedDefaultAIProviderID
+                   ) {
+                    let displacedID = AIProviderID(displacedRawID)
+                    if let index = configs.firstIndex(where: {
+                        $0.id == displacedID && $0.isEnabled && $0.validationIssues.isEmpty
+                    }) {
+                        configs[index].isDefault = true
+                    }
+                }
+                defaults.removeObject(forKey: PrivacyOnboardingSettings.Key.displacedDefaultAIProviderID)
                 try? settingsStore.saveAIProviderConfigurations(configs)
 
-                let hasOtherEnabledProvider = configs.contains {
-                    $0.kind != .appleIntelligence && $0.isEnabled && $0.validationIssues.isEmpty
+                let assignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
+                let assignedIDs = assignments.assignedProviderIDs
+                let hasOtherUsableRoute = configs.contains { config in
+                    guard config.kind != .appleIntelligence,
+                          config.isEnabled,
+                          config.validationIssues.isEmpty
+                    else { return false }
+                    return config.isDefault
+                        || config.assignedAccountID != nil
+                        || assignedIDs.contains(config.id)
                 }
+                let hadPriorAIWriterConsent = defaults.object(
+                    forKey: PrivacyOnboardingSettings.Key.aiWriterWasAvailableBeforeOnDeviceOptIn
+                ) as? Bool ?? true
+                defaults.removeObject(
+                    forKey: PrivacyOnboardingSettings.Key.aiWriterWasAvailableBeforeOnDeviceOptIn
+                )
+
                 aiWriter.proactiveOnDeviceTriageEnabled = false
-                if !hasOtherEnabledProvider {
+                if !hasOtherUsableRoute || !hadPriorAIWriterConsent {
                     aiWriter.setAvailable(false)
                 }
                 settingsStore.save(aiWriter)
@@ -353,14 +485,42 @@ public enum PrivacyOnboardingPresentationPolicy {
         return false
     }
 
+    /// Returns `true` only when the app launched with zero persisted or restored real accounts
+    /// and no restore failure awaiting retry.
+    ///
+    /// Checking the persisted account store as well as restore-error/retry state ensures a
+    /// transient restore failure followed by a retry from `LoginView` never treats an existing
+    /// user as a brand-new installation.
+    public static func didStartWithoutAccounts(
+        storedAccountBackendIdentifiers: [String],
+        visibleBackendIdentifiers: [String],
+        demoBackendIdentifier: String,
+        accountRestoreErrorCount: Int,
+        canRetrySessionRestore: Bool
+    ) -> Bool {
+        let hasStoredRealAccount = storedAccountBackendIdentifiers.contains {
+            $0 != demoBackendIdentifier
+        }
+        let hasVisibleRealAccount = visibleBackendIdentifiers.contains {
+            $0 != demoBackendIdentifier
+        }
+        return !hasStoredRealAccount
+            && !hasVisibleRealAccount
+            && accountRestoreErrorCount == 0
+            && !canRetrySessionRestore
+    }
+
     /// Returns `true` only when a brand-new user finishes adding their first real account
-    /// and no suppression, demo session, prior completion, or competing modal is active.
+    /// and no suppression, demo session, in-flight sign-in/restore, prior completion, or
+    /// competing modal is active.
     public static func shouldPresentAfterFirstAccountSetup(
         hasCompletedOnboarding: Bool,
         isSuppressedByEnvironment: Bool,
         isDemoSession: Bool,
         didStartWithoutAccounts: Bool,
         hasVisibleRealAccount: Bool,
+        isSigningIn: Bool = false,
+        isRestoringSession: Bool = false,
         hasPendingInitialMailboxSelection: Bool,
         hasOtherModalPresented: Bool,
         hasExistingCustomizedSettings: Bool
@@ -370,6 +530,8 @@ public enum PrivacyOnboardingPresentationPolicy {
               !isDemoSession,
               didStartWithoutAccounts,
               hasVisibleRealAccount,
+              !isSigningIn,
+              !isRestoringSession,
               !hasPendingInitialMailboxSelection,
               !hasOtherModalPresented,
               !hasExistingCustomizedSettings
