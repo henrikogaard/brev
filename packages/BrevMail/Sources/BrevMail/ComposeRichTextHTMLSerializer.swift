@@ -218,7 +218,16 @@ enum ComposeRichTextHTMLSerializer {
         in attributedString: NSAttributedString
     ) -> String {
         let nsString = attributedString.string as NSString
-        let lines: [String] = paragraphs.map { para in
+        var output = ""
+        var currentCodeLines: [String] = []
+
+        func flushCodeLines() {
+            guard !currentCodeLines.isEmpty else { return }
+            output += "<pre><code>\(currentCodeLines.joined(separator: "\n"))</code></pre>"
+            currentCodeLines.removeAll(keepingCapacity: true)
+        }
+
+        for para in paragraphs {
             var effective = para.range
             if effective.length > 0 {
                 let lastChar = nsString.substring(with: NSRange(location: effective.upperBound - 1, length: 1))
@@ -226,10 +235,60 @@ enum ComposeRichTextHTMLSerializer {
                     effective = NSRange(location: effective.location, length: effective.length - 1)
                 }
             }
-            guard effective.length > 0 else { return "" }
-            return escapedHTMLText(nsString.substring(with: effective))
+            guard effective.length > 0 else {
+                currentCodeLines.append("")
+                continue
+            }
+
+            // Never drop an inline image attachment or emit raw `\u{FFFC}` inside
+            // `<pre><code>`: break out any inline image runs cleanly.
+            var hasInlineImage = false
+            attributedString.enumerateAttribute(
+                ComposeInlineImageAttribute.contentID,
+                in: effective,
+                options: []
+            ) { value, _, stop in
+                if value != nil {
+                    hasInlineImage = true
+                    stop.pointee = true
+                }
+            }
+
+            if !hasInlineImage {
+                currentCodeLines.append(escapedHTMLText(nsString.substring(with: effective)))
+                continue
+            }
+
+            var lineSegment = ""
+            attributedString.enumerateAttributes(in: effective, options: []) { attrs, runRange, _ in
+                if let contentID = attrs[ComposeInlineImageAttribute.contentID] as? String {
+                    if !lineSegment.isEmpty {
+                        currentCodeLines.append(lineSegment)
+                        lineSegment = ""
+                    }
+                    flushCodeLines()
+                    let altSuffix: String
+                    if let alt = attrs[ComposeInlineImageAttribute.alt] as? String, !alt.isEmpty {
+                        altSuffix = " alt=\"\(escapedAttribute(alt))\""
+                    } else {
+                        altSuffix = ""
+                    }
+                    output += "<img src=\"cid:\(escapedAttribute(contentID))\"\(altSuffix)>"
+                } else {
+                    let raw = nsString.substring(with: runRange)
+                        .replacingOccurrences(of: "\u{FFFC}", with: "")
+                    if !raw.isEmpty {
+                        lineSegment += escapedHTMLText(raw)
+                    }
+                }
+            }
+            if !lineSegment.isEmpty {
+                currentCodeLines.append(lineSegment)
+            }
         }
-        return "<pre><code>\(lines.joined(separator: "\n"))</code></pre>"
+
+        flushCodeLines()
+        return output
     }
 
     private static func serializeTable(
@@ -239,39 +298,51 @@ enum ComposeRichTextHTMLSerializer {
         struct CellEntry {
             let row: Int
             let column: Int
-            let isHeader: Bool
-            let html: String
+            var isHeader: Bool
+            var lines: [String]
+
+            var html: String {
+                lines.joined(separator: "<br>")
+            }
         }
 
-        var rowsByIndex: [Int: [CellEntry]] = [:]
+        // Coalesce multiple paragraphs sharing the same `(row, column)` into a
+        // single cell joined with `<br>` instead of emitting duplicate columns.
+        var cellsByRowAndCol: [Int: [Int: CellEntry]] = [:]
+        var maxColumnIndex = -1
         for para in paragraphs {
             guard let meta = para.tableCell else { continue }
-            let cellHTML = runHTML(
+            let lineHTML = runHTML(
                 for: para.range,
                 in: attributedString,
                 suppressBaseBold: meta.isHeader
             )
-            let entry = CellEntry(
-                row: meta.row,
-                column: meta.column,
-                isHeader: meta.isHeader,
-                html: cellHTML
-            )
-            rowsByIndex[meta.row, default: []].append(entry)
+            maxColumnIndex = max(maxColumnIndex, meta.column)
+            if var existing = cellsByRowAndCol[meta.row]?[meta.column] {
+                existing.lines.append(lineHTML)
+                existing.isHeader = existing.isHeader || meta.isHeader
+                cellsByRowAndCol[meta.row]?[meta.column] = existing
+            } else {
+                cellsByRowAndCol[meta.row, default: [:]][meta.column] = CellEntry(
+                    row: meta.row,
+                    column: meta.column,
+                    isHeader: meta.isHeader,
+                    lines: [lineHTML]
+                )
+            }
         }
 
-        let sortedRowKeys = rowsByIndex.keys.sorted()
-        let orderedRows: [[CellEntry]] = sortedRowKeys.map { key in
-            (rowsByIndex[key] ?? []).sorted { $0.column < $1.column }
-        }
-        let maxCols = orderedRows.map(\.count).max() ?? 0
+        let maxCols = maxColumnIndex + 1
         guard maxCols > 0 else { return "" }
+        let sortedRowKeys = cellsByRowAndCol.keys.sorted()
+        let orderedRows: [[Int: CellEntry]] = sortedRowKeys.compactMap { cellsByRowAndCol[$0] }
 
-        var headerRows: [[CellEntry]] = []
-        var bodyRows: [[CellEntry]] = []
+        var headerRows: [[Int: CellEntry]] = []
+        var bodyRows: [[Int: CellEntry]] = []
         var stillInHeader = true
         for row in orderedRows {
-            if stillInHeader, !row.isEmpty, row.allSatisfy(\.isHeader) {
+            let entries = row.values
+            if stillInHeader, !entries.isEmpty, entries.allSatisfy(\.isHeader) {
                 headerRows.append(row)
             } else {
                 stillInHeader = false
@@ -285,7 +356,7 @@ enum ComposeRichTextHTMLSerializer {
             for row in headerRows {
                 out += "<tr>"
                 for col in 0 ..< maxCols {
-                    let content = col < row.count ? row[col].html : ""
+                    let content = row[col]?.html ?? ""
                     out += "<th>\(content)</th>"
                 }
                 out += "</tr>"
@@ -297,9 +368,9 @@ enum ComposeRichTextHTMLSerializer {
             for row in bodyRows {
                 out += "<tr>"
                 for col in 0 ..< maxCols {
-                    if col < row.count {
-                        let tag = row[col].isHeader ? "th" : "td"
-                        out += "<\(tag)>\(row[col].html)</\(tag)>"
+                    if let cell = row[col] {
+                        let tag = cell.isHeader ? "th" : "td"
+                        out += "<\(tag)>\(cell.html)</\(tag)>"
                     } else {
                         out += "<td></td>"
                     }

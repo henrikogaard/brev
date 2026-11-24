@@ -198,5 +198,97 @@ struct ComposeViewMacOSSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    /// Rich HTML compose v2 visual coverage: heading, inline formatting,
+    /// rounded code-block backdrop (`drawCodeBlockBackgrounds`), native
+    /// `NSTextTable`, and an inline `cid:` PNG attachment in light and dark modes.
+    @Test("rich compose editor renders headings, code blocks, native tables, and inline images", arguments: ["light", "dark"])
+    func richComposeElements(mode: String) throws {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let appearance: ComposeBodyAppearance = mode == "dark" ? .dark : .light
+        let badgePNG = try #require(Self.makeSnapshotBadgePNG(theme: theme))
+        let inlineAttachment = MIMEMessageAttachment(
+            id: "snap-inline-1",
+            filename: "badge.png",
+            mimeType: "image/png",
+            data: badgePNG,
+            isInline: true,
+            contentID: "snap-badge@brev.inline"
+        )
+        let richHTML = """
+        <h1>Launch Readiness</h1>\
+        <p>Check <strong>inline formatting</strong>, <code>swift test</code>, and <s>legacy flow</s>.</p>\
+        <pre><code>let status = "ready"\nprint("Brev compose v2")</code></pre>\
+        <table><thead><tr><th>Area</th><th>Owner</th></tr></thead>\
+        <tbody><tr><td>Tables &amp; Code</td><td>Henrik</td></tr>\
+        <tr><td>Inline Images</td><td>Ada</td></tr></tbody></table>\
+        <p><img src="cid:snap-badge@brev.inline" alt="Badge"></p>
+        """
+        let style = ComposeRichHTMLAttributedBuilder.Style.default(
+            fontFamily: .system,
+            textSize: .medium,
+            theme: appearance.editorTheme,
+            maxImageWidth: 640
+        )
+        let attributed = try #require(ComposeRichHTMLAttributedBuilder.attributedString(
+            from: richHTML,
+            inlineAttachments: ["snap-badge@brev.inline": inlineAttachment],
+            style: style,
+            strict: true
+        ))
+        let view = ComposeBodyEditor(
+            text: .constant(attributed.string),
+            richHTML: .constant(richHTML),
+            selection: .constant(nil),
+            insertionPoint: .constant(nil),
+            bodyFormat: .richTextHTML,
+            appearance: appearance,
+            textCheckingConfiguration: ComposeTextCheckingPolicy.configuration(isEnabled: false),
+            restoredAttributedText: attributed
+        )
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .frame(width: 700, height: 520, alignment: .topLeading)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 700, height: 520)
+        host.view.needsLayout = true
+        host.view.layoutSubtreeIfNeeded()
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 700, height: 520)),
+            named: "rich-compose-elements-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    private static func makeSnapshotBadgePNG(theme: BrevTheme) -> Data? {
+        let size = NSSize(width: 120, height: 36)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        let rect = NSRect(origin: .zero, size: size)
+        NSColor(theme.accent.color).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+            .foregroundColor: NSColor(theme.bgPrimary.color)
+        ]
+        let label = NSString(string: "Inline PNG")
+        let labelSize = label.size(withAttributes: attrs)
+        label.draw(
+            at: NSPoint(x: (size.width - labelSize.width) / 2, y: (size.height - labelSize.height) / 2),
+            withAttributes: attrs
+        )
+        image.unlockFocus()
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff) else {
+            return nil
+        }
+        return bitmap.representation(using: .png, properties: [:])
+    }
 }
 #endif

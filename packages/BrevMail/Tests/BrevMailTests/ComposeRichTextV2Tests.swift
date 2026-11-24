@@ -296,6 +296,262 @@ struct ComposeRichTextV2Tests {
         #expect(harness.registry.staged.isEmpty)
     }
 
+    // MARK: - Round-1 Regression Coverage
+
+    @Test("multiline table cells coalesce paragraphs by (row, col) with <br> and round-trip cleanly")
+    func multilineTableCellsRoundTrip() async throws {
+        let html = """
+        <table><thead><tr><th>Item</th><th>Notes</th></tr></thead>\
+        <tbody><tr><td>Line 1<br>Line 2</td><td>Single</td></tr></tbody></table>
+        """
+        let restored = try await ComposeDraftBodyRestoration.prepare(
+            draft: Draft(id: "multiline-table", htmlBody: html),
+            format: .richTextHTML
+        )
+        #expect(ComposeRichTextHTMLSerializer.html(from: restored.attributedText) == html)
+
+        // Programmatically append a second paragraph carrying the same (tableID, row, col)
+        // to simulate pressing Return inside a table cell.
+        let combined = NSMutableAttributedString()
+        let meta = ComposeTableCellMetadata(tableID: "t1", row: 0, column: 0, isHeader: false)
+        let metaRight = ComposeTableCellMetadata(tableID: "t1", row: 0, column: 1, isHeader: false)
+        combined.append(NSAttributedString(string: "First\n", attributes: [ComposeRichTextAttribute.tableCell: meta]))
+        combined.append(NSAttributedString(string: "Second\n", attributes: [ComposeRichTextAttribute.tableCell: meta]))
+        combined.append(NSAttributedString(string: "Right", attributes: [ComposeRichTextAttribute.tableCell: metaRight]))
+        #expect(
+            ComposeRichTextHTMLSerializer.html(from: combined)
+                == "<table><tbody><tr><td>First<br>Second</td><td>Right</td></tr></tbody></table>"
+        )
+    }
+
+    @Test("inserting a table or pasting block HTML mid-paragraph splices cleanly while inline paste stays inline")
+    func midParagraphBlockSpliceAndInlinePaste() throws {
+        // 1. Insert table midway through "Hello world"
+        let tableHarness = EditorHarness(text: "Hello world")
+        let tableEditor = try tableHarness.mount()
+        tableEditor.setSelectedRange(NSRange(location: 6, length: 0))
+        try tableHarness.perform(.insertTable, in: tableEditor)
+        let tableHTML = try #require(tableHarness.html)
+        #expect(tableHTML.hasPrefix("Hello <table>"))
+        #expect(tableHTML.hasSuffix("</table>world"))
+
+        // 2. Paste <pre><code> midway through "Hello world"
+        let codeHarness = EditorHarness(text: "Hello world")
+        let codeEditor = try codeHarness.mount()
+        codeEditor.setSelectedRange(NSRange(location: 6, length: 0))
+        #expect(codeEditor.brevInsertSanitizedHTML("<pre><code>let x = 1</code></pre>"))
+        codeHarness.flush.performFlush()
+        let codeHTML = try #require(codeHarness.html)
+        #expect(codeHTML == "Hello <pre><code>let x = 1</code></pre>world")
+
+        // 3. Paste <h1> midway through "Hello world"
+        let headingHarness = EditorHarness(text: "Hello world")
+        let headingEditor = try headingHarness.mount()
+        headingEditor.setSelectedRange(NSRange(location: 6, length: 0))
+        #expect(headingEditor.brevInsertSanitizedHTML("<h1>Banner</h1>"))
+        headingHarness.flush.performFlush()
+        let headingHTML = try #require(headingHarness.html)
+        #expect(headingHTML == "Hello <h1>Banner</h1>world")
+
+        // 4. Paste inline <strong> midway through "Hello world" stays inline
+        let inlineHarness = EditorHarness(text: "Hello world")
+        let inlineEditor = try inlineHarness.mount()
+        inlineEditor.setSelectedRange(NSRange(location: 6, length: 0))
+        #expect(inlineEditor.brevInsertSanitizedHTML("<strong>bold </strong>"))
+        inlineHarness.flush.performFlush()
+        #expect(inlineHarness.html == "Hello <strong>bold </strong>world")
+    }
+
+    @Test("locked reply quote blocks rich formatting commands and block insertions")
+    func lockedReplyQuoteBlocksRichCommands() throws {
+        let body = "Reply line\n\nOn Mon, Ada wrote:\n> Quoted original"
+        let harness = EditorHarness(text: body)
+        harness.quoteProtection = ComposeQuoteProtection(marker: "On Mon, Ada wrote:", edge: .bottom)
+        let editor = try harness.mount()
+        let quoteRange = (editor.string as NSString).range(of: "Quoted original")
+        let beforeQuote = try #require(editor.textStorage?.attributedSubstring(from: quoteRange))
+
+        // Select inside the protected quote and try every rich command.
+        editor.setSelectedRange(quoteRange)
+        for command: ComposeRichTextCommand in [
+            .strikethrough, .heading1, .inlineCode, .codeBlock, .insertTable, .bulletedList
+        ] {
+            try harness.perform(command, in: editor)
+        }
+        #expect(!editor.brevInsertSanitizedHTML("<p>Injected</p>"))
+        #expect(!editor.brevInsertImagePayload(data: Self.minimalPNG, mimeType: "image/png"))
+
+        // Select All (overlapping editable + protected quote) is also refused.
+        editor.setSelectedRange(NSRange(location: 0, length: (editor.string as NSString).length))
+        for command: ComposeRichTextCommand in [
+            .strikethrough, .heading2, .inlineCode, .codeBlock, .insertTable, .numberedList
+        ] {
+            try harness.perform(command, in: editor)
+        }
+
+        #expect(editor.string == body)
+        let afterQuote = try #require(editor.textStorage?.attributedSubstring(from: quoteRange))
+        #expect(afterQuote.isEqual(to: beforeQuote))
+        #expect(harness.registry.staged.isEmpty)
+    }
+
+    @Test("deleting an inline image across autosave remains recoverable on Undo while active drafts drop it")
+    func undoableInlineImageAcrossAutosave() throws {
+        let registry = ComposeInlineImageRegistry()
+        let cid = "undo-photo@brev.inline"
+        let sourceID = MailSourceID(accountID: "acct-1", mailboxID: "default")
+        let stagedImage = try #require(registry.stage(
+            data: Self.minimalPNG,
+            mimeType: "image/png",
+            makeID: { cid }
+        ))
+        let stagedAttachments: [String: ComposeStagedInlineAttachment] = [
+            cid: ComposeStagedInlineAttachment(attachmentID: "att-1", sourceID: sourceID)
+        ]
+
+        // 1. User deletes the image from the editor, then autosave runs with reconcileRegistry: false.
+        let deletedBodyHTML = "<p>No image right now</p>"
+        let imagesOnAutosave = ComposeDraftBuilder.inlineAttachments(
+            fromRegistry: registry,
+            draftID: "draft-1",
+            bodyHTML: deletedBodyHTML,
+            reconcileRegistry: false
+        )
+        #expect(imagesOnAutosave.isEmpty)
+        #expect(registry.staged == [stagedImage])
+        let activeAfterDelete = ComposeInlineImageRegistry.contentIDs(inHTML: deletedBodyHTML)
+        #expect(
+            ComposeAttachmentUploadState.inlineAttachmentIDs(
+                from: stagedAttachments,
+                for: sourceID,
+                activeContentIDs: activeAfterDelete
+            ).isEmpty
+        )
+
+        // 2. User presses Undo -> cid returns in bodyHTML -> next save/send recovers the image & attachment ID!
+        let restoredBodyHTML = "<p>Back again <img src=\"cid:\(cid)\"></p>"
+        let imagesAfterUndo = ComposeDraftBuilder.inlineAttachments(
+            fromRegistry: registry,
+            draftID: "draft-1",
+            bodyHTML: restoredBodyHTML,
+            reconcileRegistry: false
+        )
+        #expect(imagesAfterUndo.count == 1)
+        #expect(imagesAfterUndo[0].contentID == cid)
+        let activeAfterUndo = ComposeInlineImageRegistry.contentIDs(inHTML: restoredBodyHTML)
+        #expect(
+            ComposeAttachmentUploadState.inlineAttachmentIDs(
+                from: stagedAttachments,
+                for: sourceID,
+                activeContentIDs: activeAfterUndo
+            ) == ["att-1"]
+        )
+
+        // 3. Aggregate 25 MiB cap counts active images only, evicting unreferenced undo images only if needed.
+        let capRegistry = ComposeInlineImageRegistry()
+        let tenMB = Data(count: ComposeInlineImagePolicy.maxBytes)
+        #expect(capRegistry.stage(data: tenMB, mimeType: "image/png", activeContentIDs: [], makeID: { "a@brev.inline" }) != nil)
+        #expect(capRegistry.stage(
+            data: tenMB,
+            mimeType: "image/png",
+            activeContentIDs: ["a@brev.inline"],
+            makeID: { "b@brev.inline" }
+        ) != nil)
+        // Pretend "a@brev.inline" was deleted from the editor (only "b@brev.inline" is active).
+        #expect(capRegistry.stage(
+            data: tenMB,
+            mimeType: "image/png",
+            activeContentIDs: ["b@brev.inline"],
+            makeID: { "c@brev.inline" }
+        ) != nil)
+        #expect(Set(capRegistry.staged.map(\.contentID)) == ["b@brev.inline", "c@brev.inline"])
+    }
+
+    @Test("trailing empty lines in <pre><code> blocks round-trip losslessly")
+    func codeBlockTrailingEmptyLinesRoundTrip() async throws {
+        for html in [
+            "<pre><code>print(1)\n</code></pre>",
+            "<pre><code>print(1)\n\n</code></pre>",
+            "<pre><code>&amp;#60; Caf&eacute; &Aring;lesund</code></pre>"
+        ] {
+            let restored = try await ComposeDraftBodyRestoration.prepare(
+                draft: Draft(id: "code-trailing", htmlBody: html),
+                format: .richTextHTML
+            )
+            let roundTripped = ComposeRichTextHTMLSerializer.html(from: restored.attributedText)
+            if html.contains("&amp;#60;") {
+                #expect(restored.attributedText.string == "&#60; Café Ålesund")
+                #expect(roundTripped == "<pre><code>&amp;#60; Café Ålesund</code></pre>")
+            } else {
+                #expect(roundTripped == html)
+            }
+        }
+    }
+
+    @Test("toggling Code Block on an inline-image paragraph preserves the image and serializer never emits U+FFFC")
+    func codeBlockPreservesInlineImages() throws {
+        let harness = EditorHarness(text: "")
+        let editor = try harness.mount()
+        #expect(editor.brevInsertImagePayload(data: Self.minimalPNG, mimeType: "image/png"))
+        harness.flush.performFlush()
+        let beforeHTML = try #require(harness.html)
+        #expect(beforeHTML.contains("<img src=\"cid:"))
+
+        editor.setSelectedRange(NSRange(location: 0, length: (editor.string as NSString).length))
+        try harness.perform(.codeBlock, in: editor)
+        #expect(harness.html == beforeHTML)
+        #expect(harness.html?.contains("\u{FFFC}") == false)
+
+        // Serializer defense-in-depth: even if an attributed string carries both codeBlockID
+        // and an inline image attachment, the serializer breaks out the <img> and never emits U+FFFC.
+        let attachment = NSTextAttachment()
+        let mixed = NSMutableAttributedString(string: "let x = 1\n", attributes: [
+            ComposeRichTextAttribute.codeBlockID: "cb-1"
+        ])
+        let img = NSMutableAttributedString(attachment: attachment)
+        img.addAttributes([
+            ComposeInlineImageAttribute.contentID: "safe@brev.inline",
+            ComposeRichTextAttribute.codeBlockID: "cb-1"
+        ], range: NSRange(location: 0, length: img.length))
+        mixed.append(img)
+        let serialized = ComposeRichTextHTMLSerializer.html(from: mixed)
+        #expect(serialized.contains("<pre><code>let x = 1</code></pre>"))
+        #expect(serialized.contains("<img src=\"cid:safe@brev.inline\">"))
+        #expect(!serialized.contains("\u{FFFC}"))
+    }
+
+    @Test("caret on trailing empty line updates typingAttributes for Heading and Code Block without mutating previous line")
+    func caretOnTrailingEmptyLineTargetsNewLine() throws {
+        // Heading on trailing empty line
+        let headingHarness = EditorHarness(text: "Hello\n")
+        let headingEditor = try headingHarness.mount()
+        headingEditor.setSelectedRange(NSRange(location: 6, length: 0))
+        try headingHarness.perform(.heading1, in: headingEditor)
+        #expect(headingEditor.typingAttributes[ComposeRichTextAttribute.headingLevel] as? Int == 1)
+        #expect(headingHarness.html?.contains("<h1>Hello</h1>") == false)
+        headingEditor.insertText("Title", replacementRange: headingEditor.selectedRange())
+        headingHarness.flush.performFlush()
+        #expect(headingHarness.html == "Hello<h1>Title</h1>")
+
+        // Code block on trailing empty line
+        let codeHarness = EditorHarness(text: "Hello\n")
+        let codeEditor = try codeHarness.mount()
+        codeEditor.setSelectedRange(NSRange(location: 6, length: 0))
+        try codeHarness.perform(.codeBlock, in: codeEditor)
+        #expect(codeEditor.typingAttributes[ComposeRichTextAttribute.codeBlockID] != nil)
+        #expect(codeHarness.html?.contains("<pre><code>Hello") == false)
+        codeEditor.insertText("let y = 2", replacementRange: codeEditor.selectedRange())
+        codeHarness.flush.performFlush()
+        #expect(codeHarness.html == "Hello<pre><code>let y = 2</code></pre>")
+
+        // Caret at end of non-empty final line without trailing newline still toggles that line
+        let sameLineHarness = EditorHarness(text: "Hello")
+        let sameLineEditor = try sameLineHarness.mount()
+        sameLineEditor.setSelectedRange(NSRange(location: 5, length: 0))
+        try sameLineHarness.perform(.heading2, in: sameLineEditor)
+        #expect(sameLineHarness.html == "<h2>Hello</h2>")
+    }
+
     // MARK: - Helper Harness
 
     @MainActor
@@ -305,6 +561,7 @@ struct ComposeRichTextV2Tests {
         var selection: ComposeBodyTextSelection?
         var insertion: ComposeBodyInsertionPoint?
         var rejectedMessage: String?
+        var quoteProtection: ComposeQuoteProtection?
         let registry = ComposeInlineImageRegistry()
         let flush = ComposeHTMLPublicationFlushBox()
         let targetBox = ComposeMacRichTextTargetBox()
@@ -326,6 +583,7 @@ struct ComposeRichTextV2Tests {
                 textCheckingConfiguration: ComposeTextCheckingPolicy.configuration(isEnabled: false),
                 inlineImageRegistry: registry,
                 onInlineImageRejected: { [weak self] message in self?.rejectedMessage = message },
+                quoteProtection: quoteProtection,
                 macRichTextTargetBox: targetBox
             ))
             host.frame = CGRect(x: 0, y: 0, width: 640, height: 480)

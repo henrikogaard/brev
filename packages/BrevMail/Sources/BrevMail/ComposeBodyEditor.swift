@@ -871,6 +871,53 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
 
         // MARK: - Emphasis
 
+        private func allowsEdit(in range: NSRange, storage: NSTextStorage) -> Bool {
+            ComposeQuoteEditGuard.allows(
+                changeRange: range,
+                in: storage.mutableString,
+                protection: quoteProtection
+            )
+        }
+
+        private func activeInlineContentIDs(in storage: NSTextStorage) -> Set<String> {
+            var ids = Set<String>()
+            let fullRange = NSRange(location: 0, length: storage.length)
+            guard fullRange.length > 0 else { return ids }
+            storage.enumerateAttribute(
+                ComposeInlineImageAttribute.contentID,
+                in: fullRange,
+                options: []
+            ) { value, _, _ in
+                if let cid = value as? String, !cid.isEmpty {
+                    ids.insert(cid)
+                }
+            }
+            return ids
+        }
+
+        private func paragraphContainsInlineImage(_ range: NSRange, in storage: NSTextStorage) -> Bool {
+            guard range.length > 0, NSMaxRange(range) <= storage.length else { return false }
+            var found = false
+            storage.enumerateAttribute(
+                ComposeInlineImageAttribute.contentID,
+                in: range,
+                options: []
+            ) { value, _, stop in
+                if value is String {
+                    found = true
+                    stop.pointee = true
+                }
+            }
+            if found { return true }
+            storage.enumerateAttribute(.attachment, in: range, options: []) { value, _, stop in
+                if value != nil {
+                    found = true
+                    stop.pointee = true
+                }
+            }
+            return found
+        }
+
         /// Toggles `trait` over the selection, or for the next typed text when
         /// nothing is selected. AppKit's text view has no bold/italic action of
         /// its own without a Font menu, so the Format menu needs this.
@@ -883,6 +930,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
                 return ComposeEditorTypography.font(font, emphasis: emphasis) ?? font
             }
             let range = textView.selectedRange()
+            guard allowsEdit(in: range, storage: storage) else { return }
             guard range.length > 0 else {
                 let font = textView.typingAttributes[.font] as? NSFont ?? fallback
                 textView.typingAttributes[.font] = toggled(font, add: !font.fontDescriptor.symbolicTraits.contains(trait))
@@ -927,6 +975,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
             let base = textView.lastAppearanceFont ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
             let selected = textView.selectedRange()
             let range = selected.length > 0 ? selected : editableRange(in: storage)
+            guard allowsEdit(in: selected, storage: storage),
+                  allowsEdit(in: range, storage: storage) else { return }
             textView.typingAttributes[.font] = base
             textView.typingAttributes[.underlineStyle] = nil
             textView.typingAttributes[.strikethroughStyle] = nil
@@ -980,6 +1030,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         private func toggleStrikethrough() {
             guard let textView, textView.isRichText, let storage = textView.textStorage else { return }
             let range = textView.selectedRange()
+            guard allowsEdit(in: range, storage: storage) else { return }
             guard range.length > 0 else {
                 if ComposeRichTextHTMLSerializer.isStrikethrough(textView.typingAttributes) {
                     textView.typingAttributes.removeValue(forKey: .strikethroughStyle)
@@ -1012,6 +1063,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
             let mono = ComposeEditorTypography.monospacedNSFont(textSize: textSize)
             let bg = NSColor(appearance.editorTheme.bgSecondary.color)
             let range = textView.selectedRange()
+            guard allowsEdit(in: range, storage: storage) else { return }
             guard range.length > 0 else {
                 let isCurrentlyCode = (textView.typingAttributes[ComposeRichTextAttribute.inlineCode] as? Bool) == true
                 if isCurrentlyCode {
@@ -1050,6 +1102,12 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         private func selectedParagraphRanges(in storage: NSTextStorage, selectedRange: NSRange) -> [NSRange] {
             let nsString = storage.string as NSString
             guard nsString.length > 0 else { return [] }
+            if ComposeRichHTMLAttributedBuilder.isCaretAtTrailingEmptyParagraph(
+                selectedRange: selectedRange,
+                in: nsString
+            ) {
+                return []
+            }
             var ranges: [NSRange] = []
             var pos = min(selectedRange.location, nsString.length - 1)
             let end = selectedRange.length == 0
@@ -1072,6 +1130,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
                   let storage = textView.textStorage else { return }
             let base = textView.lastAppearanceFont ?? ComposeEditorTypography.nsFont(family: fontFamily, textSize: textSize)
             let selected = textView.selectedRange()
+            guard allowsEdit(in: selected, storage: storage) else { return }
             let paragraphs = selectedParagraphRanges(in: storage, selectedRange: selected)
             guard !paragraphs.isEmpty else {
                 let isSame = (textView.typingAttributes[ComposeRichTextAttribute.headingLevel] as? Int) == level
@@ -1094,7 +1153,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
                     == level
             }
             let unionRange = paragraphs.reduce(paragraphs[0]) { NSUnionRange($0, $1) }
-            guard textView.shouldChangeText(in: unionRange, replacementString: nil) else { return }
+            guard allowsEdit(in: unionRange, storage: storage),
+                  textView.shouldChangeText(in: unionRange, replacementString: nil) else { return }
             storage.beginEditing()
             for paraRange in paragraphs {
                 if allMatch {
@@ -1125,6 +1185,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
             let base = textView.lastAppearanceFont ?? ComposeEditorTypography.nsFont(family: fontFamily, textSize: textSize)
             let mono = ComposeEditorTypography.monospacedNSFont(textSize: textSize)
             let selected = textView.selectedRange()
+            guard allowsEdit(in: selected, storage: storage) else { return }
             let paragraphs = selectedParagraphRanges(in: storage, selectedRange: selected)
             guard !paragraphs.isEmpty else {
                 if textView.typingAttributes[ComposeRichTextAttribute.codeBlockID] != nil {
@@ -1139,15 +1200,19 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
                 return
             }
 
-            let allCodeBlocks = paragraphs.allSatisfy { range in
+            let eligibleParagraphs = paragraphs.filter { !paragraphContainsInlineImage($0, in: storage) }
+            guard !eligibleParagraphs.isEmpty else { return }
+
+            let allCodeBlocks = eligibleParagraphs.allSatisfy { range in
                 storage.attribute(ComposeRichTextAttribute.codeBlockID, at: range.location, effectiveRange: nil) != nil
             }
-            let unionRange = paragraphs.reduce(paragraphs[0]) { NSUnionRange($0, $1) }
-            guard textView.shouldChangeText(in: unionRange, replacementString: nil) else { return }
+            let unionRange = eligibleParagraphs.reduce(eligibleParagraphs[0]) { NSUnionRange($0, $1) }
+            guard allowsEdit(in: unionRange, storage: storage),
+                  textView.shouldChangeText(in: unionRange, replacementString: nil) else { return }
             let blockID = UUID().uuidString
             let codeStyle = ComposeRichHTMLAttributedBuilder.makeCodeBlockParagraphStyle()
             storage.beginEditing()
-            for paraRange in paragraphs {
+            for paraRange in eligibleParagraphs {
                 if allCodeBlocks {
                     storage.removeAttribute(ComposeRichTextAttribute.codeBlockID, range: paraRange)
                     storage.addAttribute(.font, value: base, range: paraRange)
@@ -1181,33 +1246,20 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         func insertTable(headers: [String], rows: [[String]]) {
             guard let textView, textView.isRichText, let storage = textView.textStorage else { return }
             let selected = textView.selectedRange()
-            guard textView.shouldChangeText(in: selected, replacementString: nil) else { return }
+            guard allowsEdit(in: selected, storage: storage) else { return }
             let style = currentBuilderStyle(for: textView)
             let tableAttr = ComposeRichHTMLAttributedBuilder.makeTableAttributedString(
                 headers: headers,
                 rows: rows,
                 style: style
             )
-            let insertion = NSMutableAttributedString()
-            if selected.location > 0 {
-                let prev = (storage.string as NSString).substring(with: NSRange(location: selected.location - 1, length: 1))
-                if prev != "\n" {
-                    insertion.append(NSAttributedString(string: "\n", attributes: [
-                        .font: style.baseFont,
-                        .foregroundColor: style.textColor
-                    ]))
-                }
-            }
-            insertion.append(tableAttr)
-            if NSMaxRange(selected) < storage.length {
-                let next = (storage.string as NSString).substring(with: NSRange(location: NSMaxRange(selected), length: 1))
-                if next != "\n" {
-                    insertion.append(NSAttributedString(string: "\n", attributes: [
-                        .font: style.baseFont,
-                        .foregroundColor: style.textColor
-                    ]))
-                }
-            }
+            let insertion = ComposeRichHTMLAttributedBuilder.splicedInsertion(
+                tableAttr,
+                into: storage,
+                at: selected,
+                style: style
+            )
+            guard textView.shouldChangeText(in: selected, replacementString: insertion.string) else { return }
             storage.beginEditing()
             storage.replaceCharacters(in: selected, with: insertion)
             storage.endEditing()
@@ -1220,6 +1272,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         @discardableResult
         func brevInsertSanitizedHTML(_ rawHTML: String) -> Bool {
             guard let textView, textView.isRichText, let storage = textView.textStorage else { return false }
+            let selected = textView.selectedRange()
+            guard allowsEdit(in: selected, storage: storage) else { return false }
             let allowedCIDs = Set((inlineImageRegistry?.staged ?? []).map(\.contentID))
             guard let sanitized = ComposeHTMLPasteSanitizer.sanitize(rawHTML, allowedCIDs: allowedCIDs) else {
                 return false
@@ -1249,14 +1303,19 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
             ) else {
                 return false
             }
-            let selected = textView.selectedRange()
-            guard textView.shouldChangeText(in: selected, replacementString: attributed.string) else {
+            let insertion = ComposeRichHTMLAttributedBuilder.splicedInsertion(
+                attributed,
+                into: storage,
+                at: selected,
+                style: style
+            )
+            guard textView.shouldChangeText(in: selected, replacementString: insertion.string) else {
                 return false
             }
             storage.beginEditing()
-            storage.replaceCharacters(in: selected, with: attributed)
+            storage.replaceCharacters(in: selected, with: insertion)
             storage.endEditing()
-            textView.setSelectedRange(NSRange(location: selected.location + attributed.length, length: 0))
+            textView.setSelectedRange(NSRange(location: selected.location + insertion.length, length: 0))
             textView.didChangeText()
             textView.needsDisplay = true
             return true
@@ -1297,6 +1356,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         func toggleList(_ markerFormat: NSTextList.MarkerFormat) {
             guard let textView, let textStorage = textView.textStorage else { return }
             let selectedRange = textView.selectedRange()
+            guard allowsEdit(in: selectedRange, storage: textStorage) else { return }
 
             // Collect all paragraph ranges that overlap the selection.
             let nsString = textStorage.string as NSString
@@ -1312,6 +1372,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
                 if pos > end { break }
             }
             guard !paragraphRanges.isEmpty else { return }
+            let unionRange = paragraphRanges.reduce(paragraphRanges[0]) { NSUnionRange($0, $1) }
+            guard allowsEdit(in: unionRange, storage: textStorage) else { return }
 
             // Determine whether all paragraphs already carry this marker (toggle off).
             let allHaveList = paragraphRanges.allSatisfy { range -> Bool in
@@ -1399,6 +1461,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         func applyLink(url: URL, displayText: String) {
             guard let textView, let textStorage = textView.textStorage else { return }
             let selectedRange = textView.selectedRange()
+            guard allowsEdit(in: selectedRange, storage: textStorage) else { return }
 
             // Resolve the text to use as the link label.
             let labelText: String
@@ -1441,7 +1504,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         func removeLink() {
             guard let textView, let textStorage = textView.textStorage else { return }
             let selectedRange = textView.selectedRange()
-            guard selectedRange.length > 0 else { return }
+            guard selectedRange.length > 0,
+                  allowsEdit(in: selectedRange, storage: textStorage) else { return }
 
             textStorage.beginEditing()
             textStorage.removeAttribute(.link, range: selectedRange)
@@ -1488,22 +1552,33 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         /// if validation (type / size) rejected it.
         @discardableResult
         func insertInlineImage(data: Data, mimeType: String) -> Bool {
-            guard let textView, textView.isRichText, let registry = inlineImageRegistry else { return false }
+            guard let textView,
+                  textView.isRichText,
+                  let textStorage = textView.textStorage,
+                  let registry = inlineImageRegistry else { return false }
+
+            let insertionRange = textView.selectedRange()
+            guard allowsEdit(in: insertionRange, storage: textStorage) else { return false }
 
             let normalizedMIME = mimeType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             guard !data.isEmpty, ComposeInlineImagePolicy.allowedMIMETypes.contains(normalizedMIME) else {
                 onInlineImageRejected?(ComposeInlineImagePolicy.unsupportedFormatMessage)
                 return false
             }
+            let activeCIDs = activeInlineContentIDs(in: textStorage)
             guard data.count <= ComposeInlineImagePolicy.maxBytes,
-                  registry.totalBytes + data.count <= ComposeInlineImagePolicy.maxTotalBytes else {
+                  registry.activeTotalBytes(keepingContentIDs: activeCIDs) + data.count
+                  <= ComposeInlineImagePolicy.maxTotalBytes else {
                 onInlineImageRejected?(ComposeInlineImagePolicy.sizeLimitExceededMessage)
                 return false
             }
 
-            guard let staged = registry.stage(data: data, mimeType: normalizedMIME, makeID: {
-                UUID().uuidString + "@brev.inline"
-            }) else {
+            guard let staged = registry.stage(
+                data: data,
+                mimeType: normalizedMIME,
+                activeContentIDs: activeCIDs,
+                makeID: { UUID().uuidString + "@brev.inline" }
+            ) else {
                 onInlineImageRejected?(ComposeInlineImagePolicy.sizeLimitExceededMessage)
                 return false
             }
@@ -1534,8 +1609,6 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
                 range: attachmentRange
             )
 
-            guard let textStorage = textView.textStorage else { return false }
-            let insertionRange = textView.selectedRange()
             guard textView.shouldChangeText(in: insertionRange, replacementString: attachmentString.string) else {
                 return false
             }
@@ -1903,10 +1976,93 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             toggleUnderlineStyle()
         }
 
+        private func allowsEdit(in range: NSRange, storage: NSTextStorage) -> Bool {
+            ComposeQuoteEditGuard.allows(
+                changeRange: range,
+                in: storage.mutableString,
+                protection: quoteProtection
+            )
+        }
+
+        private func editableRange(in storage: NSTextStorage) -> NSRange {
+            let all = NSRange(location: 0, length: storage.length)
+            guard let quoteProtection,
+                  let quote = ComposeQuoteEditGuard.protectedRange(in: storage.mutableString, protection: quoteProtection),
+                  quote.length > 0 else { return all }
+            switch quoteProtection.edge {
+            case .bottom: return NSRange(location: 0, length: quote.location)
+            case .top: return NSRange(location: NSMaxRange(quote), length: storage.length - NSMaxRange(quote))
+            }
+        }
+
+        private func activeInlineContentIDs(in storage: NSTextStorage) -> Set<String> {
+            var ids = Set<String>()
+            let fullRange = NSRange(location: 0, length: storage.length)
+            guard fullRange.length > 0 else { return ids }
+            storage.enumerateAttribute(
+                ComposeInlineImageAttribute.contentID,
+                in: fullRange,
+                options: []
+            ) { value, _, _ in
+                if let cid = value as? String, !cid.isEmpty {
+                    ids.insert(cid)
+                }
+            }
+            return ids
+        }
+
+        private func paragraphContainsInlineImage(_ range: NSRange, in storage: NSTextStorage) -> Bool {
+            guard range.length > 0, NSMaxRange(range) <= storage.length else { return false }
+            var found = false
+            storage.enumerateAttribute(
+                ComposeInlineImageAttribute.contentID,
+                in: range,
+                options: []
+            ) { value, _, stop in
+                if value is String {
+                    found = true
+                    stop.pointee = true
+                }
+            }
+            if found { return true }
+            storage.enumerateAttribute(.attachment, in: range, options: []) { value, _, stop in
+                if value != nil {
+                    found = true
+                    stop.pointee = true
+                }
+            }
+            return found
+        }
+
+        private func selectedParagraphRanges(in storage: NSTextStorage, selectedRange: NSRange) -> [NSRange] {
+            let nsString = storage.string as NSString
+            guard nsString.length > 0 else { return [] }
+            if ComposeRichHTMLAttributedBuilder.isCaretAtTrailingEmptyParagraph(
+                selectedRange: selectedRange,
+                in: nsString
+            ) {
+                return []
+            }
+            var ranges: [NSRange] = []
+            var pos = min(selectedRange.location, nsString.length - 1)
+            let end = selectedRange.length == 0
+                ? pos
+                : min(max(selectedRange.upperBound - 1, pos), nsString.length - 1)
+            while pos <= end {
+                let paraRange = nsString.paragraphRange(for: NSRange(location: pos, length: 0))
+                ranges.append(paraRange)
+                let next = paraRange.upperBound
+                if next <= pos || next >= nsString.length { break }
+                pos = next
+            }
+            return ranges
+        }
+
         func toggleStrikethrough() {
             guard let textView else { return }
             let textStorage = textView.textStorage
             let selectedRange = textView.selectedRange
+            guard allowsEdit(in: selectedRange, storage: textStorage) else { return }
             if selectedRange.length == 0 {
                 var typing = textView.typingAttributes
                 if ComposeRichTextHTMLSerializer.isStrikethrough(typing) {
@@ -1936,37 +2092,31 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         func toggleHeading(_ level: Int) {
             guard (1 ... 3).contains(level), let textView else { return }
             let textStorage = textView.textStorage
+            let selected = textView.selectedRange
+            guard allowsEdit(in: selected, storage: textStorage) else { return }
             let baseFont = ComposeEditorTypography.uiFont(
                 family: fontFamily,
                 textSize: textSize,
                 compatibleWith: textView.traitCollection
             )
-            let nsString = textStorage.string as NSString
-            guard nsString.length > 0 else {
+            let paragraphs = selectedParagraphRanges(in: textStorage, selectedRange: selected)
+            guard !paragraphs.isEmpty else {
                 var typing = textView.typingAttributes
                 if (typing[ComposeRichTextAttribute.headingLevel] as? Int) == level {
                     typing.removeValue(forKey: ComposeRichTextAttribute.headingLevel)
                     typing[.font] = baseFont
                 } else {
                     typing[ComposeRichTextAttribute.headingLevel] = level
-                    typing[.font] = baseFont.withSize(baseFont.pointSize * ComposeEditorTypography.headingScale(for: level))
-                        .brevToggling(.traitBold)
+                    let scaled = baseFont.withSize(baseFont.pointSize * ComposeEditorTypography.headingScale(for: level))
+                    typing[.font] = scaled.fontDescriptor.withSymbolicTraits(.traitBold).map {
+                        UIFont(descriptor: $0, size: scaled.pointSize)
+                    } ?? scaled
                 }
                 textView.typingAttributes = typing
                 return
             }
-            let selected = textView.selectedRange
-            var paragraphs: [NSRange] = []
-            var pos = min(selected.location, nsString.length - 1)
-            let end = selected.length == 0 ? pos : min(max(selected.upperBound - 1, pos), nsString.length - 1)
-            while pos <= end {
-                let paraRange = nsString.paragraphRange(for: NSRange(location: pos, length: 0))
-                paragraphs.append(paraRange)
-                let next = paraRange.upperBound
-                if next <= pos || next >= nsString.length { break }
-                pos = next
-            }
-            guard !paragraphs.isEmpty else { return }
+            let unionRange = paragraphs.reduce(paragraphs[0]) { NSUnionRange($0, $1) }
+            guard allowsEdit(in: unionRange, storage: textStorage) else { return }
             let allMatch = paragraphs.allSatisfy { range in
                 (textStorage.attribute(ComposeRichTextAttribute.headingLevel, at: range.location, effectiveRange: nil) as? Int)
                     == level
@@ -1995,6 +2145,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         func toggleInlineCode() {
             guard let textView else { return }
             let textStorage = textView.textStorage
+            let range = textView.selectedRange
+            guard allowsEdit(in: range, storage: textStorage) else { return }
             let baseFont = ComposeEditorTypography.uiFont(
                 family: fontFamily,
                 textSize: textSize,
@@ -2005,7 +2157,6 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 compatibleWith: textView.traitCollection
             )
             let bg = UIColor(appearance.editorTheme.bgSecondary.color)
-            let range = textView.selectedRange
             if range.length == 0 {
                 var typing = textView.typingAttributes
                 if (typing[ComposeRichTextAttribute.inlineCode] as? Bool) == true {
@@ -2043,6 +2194,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         func toggleCodeBlock() {
             guard let textView else { return }
             let textStorage = textView.textStorage
+            let selected = textView.selectedRange
+            guard allowsEdit(in: selected, storage: textStorage) else { return }
             let baseFont = ComposeEditorTypography.uiFont(
                 family: fontFamily,
                 textSize: textSize,
@@ -2053,8 +2206,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 compatibleWith: textView.traitCollection
             )
             let bg = UIColor(appearance.editorTheme.bgSecondary.color)
-            let nsString = textStorage.string as NSString
-            guard nsString.length > 0 else {
+            let paragraphs = selectedParagraphRanges(in: textStorage, selectedRange: selected)
+            guard !paragraphs.isEmpty else {
                 var typing = textView.typingAttributes
                 if typing[ComposeRichTextAttribute.codeBlockID] != nil {
                     typing.removeValue(forKey: ComposeRichTextAttribute.codeBlockID)
@@ -2069,25 +2222,17 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 textView.typingAttributes = typing
                 return
             }
-            let selected = textView.selectedRange
-            var paragraphs: [NSRange] = []
-            var pos = min(selected.location, nsString.length - 1)
-            let end = selected.length == 0 ? pos : min(max(selected.upperBound - 1, pos), nsString.length - 1)
-            while pos <= end {
-                let paraRange = nsString.paragraphRange(for: NSRange(location: pos, length: 0))
-                paragraphs.append(paraRange)
-                let next = paraRange.upperBound
-                if next <= pos || next >= nsString.length { break }
-                pos = next
-            }
-            guard !paragraphs.isEmpty else { return }
-            let allBlocks = paragraphs.allSatisfy { range in
+            let eligibleParagraphs = paragraphs.filter { !paragraphContainsInlineImage($0, in: textStorage) }
+            guard !eligibleParagraphs.isEmpty else { return }
+            let unionRange = eligibleParagraphs.reduce(eligibleParagraphs[0]) { NSUnionRange($0, $1) }
+            guard allowsEdit(in: unionRange, storage: textStorage) else { return }
+            let allBlocks = eligibleParagraphs.allSatisfy { range in
                 textStorage.attribute(ComposeRichTextAttribute.codeBlockID, at: range.location, effectiveRange: nil) != nil
             }
             let blockID = UUID().uuidString
             let codeStyle = ComposeRichHTMLAttributedBuilder.makeCodeBlockParagraphStyle()
             textStorage.beginEditing()
-            for paraRange in paragraphs {
+            for paraRange in eligibleParagraphs {
                 if allBlocks {
                     textStorage.removeAttribute(ComposeRichTextAttribute.codeBlockID, range: paraRange)
                     textStorage.removeAttribute(.backgroundColor, range: paraRange)
@@ -2110,6 +2255,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
 
         func insertTable() {
             guard isRichText, let textView else { return }
+            let selected = textView.selectedRange
+            guard allowsEdit(in: selected, storage: textView.textStorage) else { return }
             let style = ComposeRichHTMLAttributedBuilder.Style.default(
                 fontFamily: fontFamily,
                 textSize: textSize,
@@ -2126,11 +2273,16 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 ]],
                 style: style
             )
-            let selected = textView.selectedRange
+            let insertion = ComposeRichHTMLAttributedBuilder.splicedInsertion(
+                tableAttr,
+                into: textView.textStorage,
+                at: selected,
+                style: style
+            )
             textView.textStorage.beginEditing()
-            textView.textStorage.replaceCharacters(in: selected, with: tableAttr)
+            textView.textStorage.replaceCharacters(in: selected, with: insertion)
             textView.textStorage.endEditing()
-            textView.selectedRange = NSRange(location: selected.location + tableAttr.length, length: 0)
+            textView.selectedRange = NSRange(location: selected.location + insertion.length, length: 0)
             text = textView.text
             publishRichHTML(from: textView)
             updateSelection(from: textView)
@@ -2139,10 +2291,28 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         @discardableResult
         func insertSanitizedHTML(_ rawHTML: String) -> Bool {
             guard isRichText, let textView else { return false }
+            let selected = textView.selectedRange
+            guard allowsEdit(in: selected, storage: textView.textStorage) else { return false }
             let allowedCIDs = Set((inlineImageRegistry?.staged ?? []).map(\.contentID))
             guard let sanitized = ComposeHTMLPasteSanitizer.sanitize(rawHTML, allowedCIDs: allowedCIDs) else {
                 return false
             }
+            let inlineLookup: [String: MIMEMessageAttachment] = Dictionary(
+                (inlineImageRegistry?.staged ?? []).map { image in
+                    (
+                        ComposeInlineImageData.normalizedContentID(image.contentID),
+                        MIMEMessageAttachment(
+                            id: image.contentID,
+                            filename: image.filename,
+                            mimeType: image.mimeType,
+                            data: image.data,
+                            isInline: true,
+                            contentID: image.contentID
+                        )
+                    )
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
             let style = ComposeRichHTMLAttributedBuilder.Style.default(
                 fontFamily: fontFamily,
                 textSize: textSize,
@@ -2150,24 +2320,22 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             )
             guard let attributed = ComposeRichHTMLAttributedBuilder.attributedString(
                 from: sanitized,
-                inlineAttachments: [:],
+                inlineAttachments: inlineLookup,
                 style: style,
                 strict: false
             ) else {
                 return false
             }
-            let selected = textView.selectedRange
-            guard ComposeQuoteEditGuard.allows(
-                changeRange: selected,
-                in: textView.textStorage.mutableString,
-                protection: quoteProtection
-            ) else {
-                return false
-            }
+            let insertion = ComposeRichHTMLAttributedBuilder.splicedInsertion(
+                attributed,
+                into: textView.textStorage,
+                at: selected,
+                style: style
+            )
             textView.textStorage.beginEditing()
-            textView.textStorage.replaceCharacters(in: selected, with: attributed)
+            textView.textStorage.replaceCharacters(in: selected, with: insertion)
             textView.textStorage.endEditing()
-            textView.selectedRange = NSRange(location: selected.location + attributed.length, length: 0)
+            textView.selectedRange = NSRange(location: selected.location + insertion.length, length: 0)
             text = textView.text
             publishRichHTML(from: textView)
             updateSelection(from: textView)
@@ -2184,6 +2352,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             guard let textView else { return }
             let textStorage = textView.textStorage
             let selectedRange = textView.selectedRange
+            guard allowsEdit(in: selectedRange, storage: textStorage) else { return }
             if selectedRange.length == 0 {
                 var typing = textView.typingAttributes
                 if typing[.underlineStyle] != nil {
@@ -2214,16 +2383,17 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             updateSelection(from: textView)
         }
 
-        /// Resets the selection (or the whole body when nothing is selected)
+        /// Resets the selection (or the editable body when nothing is selected)
         /// to plain body text: default font, no underline, no link, no list
         /// indentation. Mirrors macOS Edit > Format > Clear Formatting.
         private func clearRichFormatting() {
             guard let textView else { return }
             let textStorage = textView.textStorage
-            let range = textView.selectedRange.length > 0
-                ? textView.selectedRange
-                : NSRange(location: 0, length: textStorage.length)
-            guard range.length > 0 else { return }
+            let selected = textView.selectedRange
+            let range = selected.length > 0 ? selected : editableRange(in: textStorage)
+            guard allowsEdit(in: selected, storage: textStorage),
+                  allowsEdit(in: range, storage: textStorage),
+                  range.length > 0 else { return }
             textStorage.beginEditing()
             textStorage.addAttribute(.font, value: UIFont.preferredFont(forTextStyle: .body), range: range)
             textStorage.removeAttribute(.underlineStyle, range: range)
@@ -2281,6 +2451,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             guard let textView else { return }
             let textStorage = textView.textStorage
             let selectedRange = textView.selectedRange
+            guard allowsEdit(in: selectedRange, storage: textStorage) else { return }
             let labelText: String
             if !displayText.isEmpty {
                 labelText = displayText
@@ -2319,7 +2490,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             guard let textView else { return }
             let textStorage = textView.textStorage
             let selectedRange = textView.selectedRange
-            guard selectedRange.length > 0 else { return }
+            guard selectedRange.length > 0,
+                  allowsEdit(in: selectedRange, storage: textStorage) else { return }
             textStorage.beginEditing()
             textStorage.removeAttribute(.link, range: selectedRange)
             textStorage.endEditing()
@@ -2335,20 +2507,27 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                   let registry = inlineImageRegistry else {
                 return false
             }
+            let insertionRange = textView.selectedRange
+            guard allowsEdit(in: insertionRange, storage: textView.textStorage) else { return false }
             let normalizedMIME = mimeType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             guard !data.isEmpty, ComposeInlineImagePolicy.allowedMIMETypes.contains(normalizedMIME) else {
                 onInlineImageRejected?(ComposeInlineImagePolicy.unsupportedFormatMessage)
                 return false
             }
+            let activeCIDs = activeInlineContentIDs(in: textView.textStorage)
             guard data.count <= ComposeInlineImagePolicy.maxBytes,
-                  registry.totalBytes + data.count <= ComposeInlineImagePolicy.maxTotalBytes else {
+                  registry.activeTotalBytes(keepingContentIDs: activeCIDs) + data.count
+                  <= ComposeInlineImagePolicy.maxTotalBytes else {
                 onInlineImageRejected?(ComposeInlineImagePolicy.sizeLimitExceededMessage)
                 return false
             }
             guard let image = UIImage(data: data),
-                  let staged = registry.stage(data: data, mimeType: normalizedMIME, makeID: {
-                      UUID().uuidString + "@brev.inline"
-                  }) else {
+                  let staged = registry.stage(
+                      data: data,
+                      mimeType: normalizedMIME,
+                      activeContentIDs: activeCIDs,
+                      makeID: { UUID().uuidString + "@brev.inline" }
+                  ) else {
                 onInlineImageRejected?(ComposeInlineImagePolicy.unsupportedFormatMessage)
                 return false
             }
@@ -2379,7 +2558,6 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 range: NSRange(location: 0, length: attachmentString.length)
             )
 
-            let insertionRange = textView.selectedRange
             textView.textStorage.beginEditing()
             textView.textStorage.replaceCharacters(in: insertionRange, with: attachmentString)
             textView.textStorage.endEditing()
@@ -2400,6 +2578,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             guard let textView else { return }
             let textStorage = textView.textStorage
             let selectedRange = textView.selectedRange
+            guard allowsEdit(in: selectedRange, storage: textStorage) else { return }
             if selectedRange.length == 0 {
                 var typing = textView.typingAttributes
                 let current = (typing[.font] as? UIFont)
@@ -2429,6 +2608,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             guard let textView else { return }
             let textStorage = textView.textStorage
             let selectedRange = textView.selectedRange
+            guard allowsEdit(in: selectedRange, storage: textStorage) else { return }
             let nsString = textStorage.string as NSString
             var paragraphRanges: [NSRange] = []
             var pos = selectedRange.location
@@ -2442,6 +2622,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 if pos > end { break }
             }
             guard !paragraphRanges.isEmpty else { return }
+            let unionRange = paragraphRanges.reduce(paragraphRanges[0]) { NSUnionRange($0, $1) }
+            guard allowsEdit(in: unionRange, storage: textStorage) else { return }
 
             let allHaveList = paragraphRanges.allSatisfy { range -> Bool in
                 guard range.length > 0 else { return false }

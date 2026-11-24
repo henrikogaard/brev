@@ -972,11 +972,22 @@ enum ComposeHTMLPasteSanitizer {
     }
 
     private static func stripTrailingBreaks(_ html: String) -> String {
-        var value = html.trimmingCharacters(in: .whitespacesAndNewlines)
-        while value.hasSuffix("<br>") {
-            value = String(value.dropLast(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+        var start = html.startIndex
+        var end = html.endIndex
+        while start < end, html[start].isWhitespace {
+            start = html.index(after: start)
         }
-        return value
+        while start < end {
+            while start < end, html[html.index(before: end)].isWhitespace {
+                end = html.index(before: end)
+            }
+            if html[start ..< end].hasSuffix("<br>") {
+                end = html.index(end, offsetBy: -4)
+            } else {
+                break
+            }
+        }
+        return String(html[start ..< end])
     }
 
     private static func cleanupOutput(_ html: String) -> String {
@@ -1021,39 +1032,153 @@ enum ComposeHTMLPasteSanitizer {
             .replacingOccurrences(of: "'", with: "&#39;")
     }
 
+    /// Single-pass O(n) HTML5 entity decoder covering named entities (Latin-1,
+    /// Scandinavian/European diacritics, punctuation, currency, arrows, Greek,
+    /// and math symbols) plus decimal (`&#…;`) and hexadecimal (`&#x…;`) numeric
+    /// references. Never re-scans decoded output, so `&amp;#60;` decodes to
+    /// literal `&#60;` rather than `<`.
     static func decodeHTMLEntities(_ value: String) -> String {
-        var result = value
-            .replacingOccurrences(of: "&nbsp;", with: " ")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-            .replacingOccurrences(of: "&apos;", with: "'")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&amp;", with: "&")
-        result = replaceNumericEntities(in: result, pattern: #"&#x([0-9A-Fa-f]{1,6});"#, radix: 16)
-        result = replaceNumericEntities(in: result, pattern: #"&#([0-9]{1,7});"#, radix: 10)
-        return result
-    }
-
-    private static func replaceNumericEntities(in text: String, pattern: String, radix: Int) -> String {
-        guard text.contains("&#"), let regex = try? NSRegularExpression(pattern: pattern) else {
-            return text
-        }
+        guard value.contains("&") else { return value }
         var output = ""
-        var cursor = text.startIndex
-        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-            guard let whole = Range(match.range, in: text),
-                  let digits = Range(match.range(at: 1), in: text),
-                  let value = UInt32(text[digits], radix: radix),
-                  let scalar = Unicode.Scalar(value) else {
-                continue
+        output.reserveCapacity(value.count)
+        var cursor = value.startIndex
+        let end = value.endIndex
+
+        while cursor < end {
+            guard let amp = value[cursor ..< end].firstIndex(of: "&") else {
+                output.append(contentsOf: value[cursor ..< end])
+                break
             }
-            output += text[cursor ..< whole.lowerBound]
-            output.unicodeScalars.append(scalar)
-            cursor = whole.upperBound
+            if cursor < amp {
+                output.append(contentsOf: value[cursor ..< amp])
+            }
+            let afterAmp = value.index(after: amp)
+            guard afterAmp < end else {
+                output.append("&")
+                break
+            }
+            // Scan at most 32 characters ahead for the terminating `;`.
+            var scan = afterAmp
+            var steps = 0
+            var semicolon: String.Index?
+            while scan < end, steps < 32 {
+                let ch = value[scan]
+                if ch == ";" {
+                    semicolon = scan
+                    break
+                }
+                if ch == "&" || ch.isWhitespace || ch == "<" {
+                    break
+                }
+                scan = value.index(after: scan)
+                steps += 1
+            }
+            if let semi = semicolon,
+               let decoded = decodeSingleEntity(value[afterAmp ..< semi]) {
+                output.append(decoded)
+                cursor = value.index(after: semi)
+            } else {
+                output.append("&")
+                cursor = afterAmp
+            }
         }
-        guard cursor > text.startIndex else { return text }
-        output += text[cursor...]
         return output
     }
+
+    private static func decodeSingleEntity(_ token: Substring) -> String? {
+        guard !token.isEmpty else { return nil }
+        if token.first == "#" {
+            let digits = token.dropFirst()
+            guard !digits.isEmpty else { return nil }
+            let scalarValue: UInt32?
+            if digits.first == "x" || digits.first == "X" {
+                let hex = digits.dropFirst()
+                guard !hex.isEmpty, hex.count <= 6 else { return nil }
+                scalarValue = UInt32(hex, radix: 16)
+            } else {
+                guard digits.count <= 7 else { return nil }
+                scalarValue = UInt32(digits, radix: 10)
+            }
+            guard let code = scalarValue, code > 0, let scalar = Unicode.Scalar(code) else {
+                return nil
+            }
+            return String(scalar)
+        }
+        return namedEntities[String(token)]
+    }
+
+    private static let namedEntities: [String: String] = [
+        // Core XML/HTML
+        "amp": "&", "AMP": "&", "lt": "<", "LT": "<", "gt": ">", "GT": ">",
+        "quot": "\"", "QUOT": "\"", "apos": "'", "nbsp": " ", "NonBreakingSpace": " ",
+        // Latin-1 symbols & punctuation
+        "iexcl": "\u{00A1}", "cent": "\u{00A2}", "pound": "\u{00A3}", "curren": "\u{00A4}",
+        "yen": "\u{00A5}", "brvbar": "\u{00A6}", "sect": "\u{00A7}", "uml": "\u{00A8}",
+        "copy": "\u{00A9}", "COPY": "\u{00A9}", "ordf": "\u{00AA}", "laquo": "\u{00AB}",
+        "not": "\u{00AC}", "shy": "\u{00AD}", "reg": "\u{00AE}", "REG": "\u{00AE}",
+        "macr": "\u{00AF}", "deg": "\u{00B0}", "plusmn": "\u{00B1}", "sup2": "\u{00B2}",
+        "sup3": "\u{00B3}", "acute": "\u{00B4}", "micro": "\u{00B5}", "para": "\u{00B6}",
+        "middot": "\u{00B7}", "cedil": "\u{00B8}", "sup1": "\u{00B9}", "ordm": "\u{00BA}",
+        "raquo": "\u{00BB}", "frac14": "\u{00BC}", "frac12": "\u{00BD}", "frac34": "\u{00BE}",
+        "iquest": "\u{00BF}", "times": "\u{00D7}", "divide": "\u{00F7}",
+        // Latin-1 uppercase & lowercase letters (including Scandinavian Å/Ø/Æ)
+        "Agrave": "\u{00C0}", "Aacute": "\u{00C1}", "Acirc": "\u{00C2}", "Atilde": "\u{00C3}",
+        "Auml": "\u{00C4}", "Aring": "\u{00C5}", "AElig": "\u{00C6}", "Ccedil": "\u{00C7}",
+        "Egrave": "\u{00C8}", "Eacute": "\u{00C9}", "Ecirc": "\u{00CA}", "Euml": "\u{00CB}",
+        "Igrave": "\u{00CC}", "Iacute": "\u{00CD}", "Icirc": "\u{00CE}", "Iuml": "\u{00CF}",
+        "ETH": "\u{00D0}", "Ntilde": "\u{00D1}", "Ograve": "\u{00D2}", "Oacute": "\u{00D3}",
+        "Ocirc": "\u{00D4}", "Otilde": "\u{00D5}", "Ouml": "\u{00D6}", "Oslash": "\u{00D8}",
+        "Ugrave": "\u{00D9}", "Uacute": "\u{00DA}", "Ucirc": "\u{00DB}", "Uuml": "\u{00DC}",
+        "Yacute": "\u{00DD}", "THORN": "\u{00DE}", "szlig": "\u{00DF}",
+        "agrave": "\u{00E0}", "aacute": "\u{00E1}", "acirc": "\u{00E2}", "atilde": "\u{00E3}",
+        "auml": "\u{00E4}", "aring": "\u{00E5}", "aelig": "\u{00E6}", "ccedil": "\u{00E7}",
+        "egrave": "\u{00E8}", "eacute": "\u{00E9}", "ecirc": "\u{00EA}", "euml": "\u{00EB}",
+        "igrave": "\u{00EC}", "iacute": "\u{00ED}", "icirc": "\u{00EE}", "iuml": "\u{00EF}",
+        "eth": "\u{00F0}", "ntilde": "\u{00F1}", "ograve": "\u{00F2}", "oacute": "\u{00F3}",
+        "ocirc": "\u{00F4}", "otilde": "\u{00F5}", "ouml": "\u{00F6}", "oslash": "\u{00F8}",
+        "ugrave": "\u{00F9}", "uacute": "\u{00FA}", "ucirc": "\u{00FB}", "uuml": "\u{00FC}",
+        "yacute": "\u{00FD}", "thorn": "\u{00FE}", "yuml": "\u{00FF}",
+        // Latin Extended-A & typographic punctuation
+        "OElig": "\u{0152}", "oelig": "\u{0153}", "Scaron": "\u{0160}", "scaron": "\u{0161}",
+        "Yuml": "\u{0178}", "fnof": "\u{0192}", "circ": "\u{02C6}", "tilde": "\u{02DC}",
+        "ensp": "\u{2002}", "emsp": "\u{2003}", "thinsp": "\u{2009}", "zwnj": "\u{200C}",
+        "zwj": "\u{200D}", "lrm": "\u{200E}", "rlm": "\u{200F}",
+        "ndash": "\u{2013}", "mdash": "\u{2014}", "lsquo": "\u{2018}", "rsquo": "\u{2019}",
+        "sbquo": "\u{201A}", "ldquo": "\u{201C}", "rdquo": "\u{201D}", "bdquo": "\u{201E}",
+        "dagger": "\u{2020}", "Dagger": "\u{2021}", "bull": "\u{2022}", "hellip": "\u{2026}",
+        "permil": "\u{2030}", "prime": "\u{2032}", "Prime": "\u{2033}", "lsaquo": "\u{2039}",
+        "rsaquo": "\u{203A}", "oline": "\u{203E}", "frasl": "\u{2044}",
+        "euro": "\u{20AC}", "trade": "\u{2122}", "TRADE": "\u{2122}",
+        // Arrows
+        "larr": "\u{2190}", "uarr": "\u{2191}", "rarr": "\u{2192}", "darr": "\u{2193}",
+        "harr": "\u{2194}", "crarr": "\u{21B5}", "lArr": "\u{21D0}", "uArr": "\u{21D1}",
+        "rArr": "\u{21D2}", "dArr": "\u{21D3}", "hArr": "\u{21D4}",
+        // Common Greek letters
+        "Alpha": "\u{0391}", "Beta": "\u{0392}", "Gamma": "\u{0393}", "Delta": "\u{0394}",
+        "Epsilon": "\u{0395}", "Zeta": "\u{0396}", "Eta": "\u{0397}", "Theta": "\u{0398}",
+        "Iota": "\u{0399}", "Kappa": "\u{039A}", "Lambda": "\u{039B}", "Mu": "\u{039C}",
+        "Nu": "\u{039D}", "Xi": "\u{039E}", "Omicron": "\u{039F}", "Pi": "\u{03A0}",
+        "Rho": "\u{03A1}", "Sigma": "\u{03A3}", "Tau": "\u{03A4}", "Upsilon": "\u{03A5}",
+        "Phi": "\u{03A6}", "Chi": "\u{03A7}", "Psi": "\u{03A8}", "Omega": "\u{03A9}",
+        "alpha": "\u{03B1}", "beta": "\u{03B2}", "gamma": "\u{03B3}", "delta": "\u{03B4}",
+        "epsilon": "\u{03B5}", "zeta": "\u{03B6}", "eta": "\u{03B7}", "theta": "\u{03B8}",
+        "iota": "\u{03B9}", "kappa": "\u{03BA}", "lambda": "\u{03BB}", "mu": "\u{03BC}",
+        "nu": "\u{03BD}", "xi": "\u{03BE}", "omicron": "\u{03BF}", "pi": "\u{03C0}",
+        "rho": "\u{03C1}", "sigmaf": "\u{03C2}", "sigma": "\u{03C3}", "tau": "\u{03C4}",
+        "upsilon": "\u{03C5}", "phi": "\u{03C6}", "chi": "\u{03C7}", "psi": "\u{03C8}",
+        "omega": "\u{03C9}",
+        // Common mathematical & misc symbols
+        "forall": "\u{2200}", "part": "\u{2202}", "exist": "\u{2203}", "empty": "\u{2205}",
+        "nabla": "\u{2207}", "isin": "\u{2208}", "notin": "\u{2209}", "ni": "\u{220B}",
+        "prod": "\u{220F}", "sum": "\u{2211}", "minus": "\u{2212}", "lowast": "\u{2217}",
+        "radic": "\u{221A}", "prop": "\u{221D}", "infin": "\u{221E}", "ang": "\u{2220}",
+        "and": "\u{2227}", "or": "\u{2228}", "cap": "\u{2229}", "cup": "\u{222A}",
+        "int": "\u{222B}", "there4": "\u{2234}", "sim": "\u{223C}", "cong": "\u{2245}",
+        "asymp": "\u{2248}", "ne": "\u{2260}", "equiv": "\u{2261}", "le": "\u{2264}",
+        "ge": "\u{2265}", "sub": "\u{2282}", "sup": "\u{2283}", "nsub": "\u{2284}",
+        "sube": "\u{2286}", "supe": "\u{2287}", "oplus": "\u{2295}", "otimes": "\u{2297}",
+        "perp": "\u{22A5}", "sdot": "\u{22C5}", "loz": "\u{25CA}", "spades": "\u{2660}",
+        "clubs": "\u{2663}", "hearts": "\u{2665}", "diams": "\u{2666}", "check": "\u{2713}",
+        "cross": "\u{2717}", "star": "\u{2606}"
+    ]
 }

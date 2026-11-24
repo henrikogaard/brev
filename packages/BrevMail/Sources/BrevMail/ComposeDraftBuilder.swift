@@ -266,26 +266,28 @@ enum ComposeDraftBuilder {
         return body + separator + signatureBlock
     }
 
-    /// Reconciles the inline-image registry against the HTML body and returns
-    /// the images that are still referenced.
-    ///
-    /// Call this before staging inline images with the backend. Images whose
-    /// `cid:` references were deleted from the body are pruned from the registry
-    /// so they are not sent.
+    /// Returns the inline images still referenced by `bodyHTML`.
     ///
     /// - Parameters:
     ///   - registry: The per-compose registry that owns staged inline images.
     ///   - draftID: The draft ID (informational; not used to mutate the draft here).
     ///   - bodyHTML: The current serialised HTML body of the compose.
-    /// - Returns: The inline images that remain in the registry after reconcile.
+    ///   - reconcileRegistry: When `true` (default), prunes unreferenced images from
+    ///     `registry`. Pass `false` during live save/autosave so Undo can still
+    ///     restore a recently deleted inline image without losing its bytes.
+    /// - Returns: The inline images referenced by `bodyHTML`.
     static func inlineAttachments(
         fromRegistry registry: ComposeInlineImageRegistry,
         draftID: String,
-        bodyHTML: String
+        bodyHTML: String,
+        reconcileRegistry: Bool = true
     ) -> [ComposeInlineImage] {
         let referencedCIDs = ComposeInlineImageRegistry.contentIDs(inHTML: bodyHTML)
-        registry.reconcile(keepingContentIDs: referencedCIDs)
-        return registry.staged
+        if reconcileRegistry {
+            registry.reconcile(keepingContentIDs: referencedCIDs)
+            return registry.staged
+        }
+        return registry.referencedImages(keepingContentIDs: referencedCIDs)
     }
 
     static func canSave(
@@ -634,14 +636,7 @@ enum ComposeHTMLBodyPolicy {
     }
 
     private static func decodeHTMLEntities(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "&nbsp;", with: " ")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-            .replacingOccurrences(of: "&apos;", with: "'")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&amp;", with: "&")
+        ComposeHTMLPasteSanitizer.decodeHTMLEntities(value)
     }
 }
 

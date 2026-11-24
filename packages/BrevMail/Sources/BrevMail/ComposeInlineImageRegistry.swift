@@ -65,21 +65,43 @@ final class ComposeInlineImageRegistry {
         staged.reduce(0) { $0 + $1.data.count }
     }
 
+    /// Total byte count across staged inline images whose Content-IDs are active
+    /// in `keepingContentIDs`.
+    func activeTotalBytes(keepingContentIDs: Set<String>) -> Int {
+        referencedImages(keepingContentIDs: keepingContentIDs)
+            .reduce(0) { $0 + $1.data.count }
+    }
+
     /// Stages an image for composition if it passes validation.
     /// - Parameters:
     ///   - data: The image data.
     ///   - mimeType: The MIME type of the image.
+    ///   - activeContentIDs: Optional set of Content-IDs still referenced in the
+    ///     body. When provided, aggregate byte caps are checked against active
+    ///     images only (pruning unreferenced undo-retained entries only if needed
+    ///     to stay within `maxTotalBytes`).
     ///   - makeID: A closure that generates a Content-ID for the image.
     /// - Returns: The staged image, or nil if the MIME type is not allowed, empty, or exceeds byte caps.
-    func stage(data: Data, mimeType: String, makeID: () -> String) -> ComposeInlineImage? {
+    func stage(
+        data: Data,
+        mimeType: String,
+        activeContentIDs: Set<String>? = nil,
+        makeID: () -> String
+    ) -> ComposeInlineImage? {
         let normalizedMIME = mimeType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !data.isEmpty,
               ComposeInlineImagePolicy.allowedMIMETypes.contains(normalizedMIME) else {
             return nil
         }
-        guard data.count <= ComposeInlineImagePolicy.maxBytes,
-              totalBytes + data.count <= ComposeInlineImagePolicy.maxTotalBytes else {
+        guard data.count <= ComposeInlineImagePolicy.maxBytes else {
             return nil
+        }
+        let currentBytes = activeContentIDs.map { activeTotalBytes(keepingContentIDs: $0) } ?? totalBytes
+        guard currentBytes + data.count <= ComposeInlineImagePolicy.maxTotalBytes else {
+            return nil
+        }
+        if let activeContentIDs, totalBytes + data.count > ComposeInlineImagePolicy.maxTotalBytes {
+            reconcile(keepingContentIDs: activeContentIDs)
         }
         let contentID = makeID()
         let image = ComposeInlineImage(
@@ -90,6 +112,15 @@ final class ComposeInlineImageRegistry {
         )
         staged.append(image)
         return image
+    }
+
+    /// Returns staged inline images whose Content-IDs appear in `keepingContentIDs`
+    /// without mutating `staged` (allowing Undo to restore recently deleted images).
+    func referencedImages(keepingContentIDs: Set<String>) -> [ComposeInlineImage] {
+        let normalizedKeeping = Set(keepingContentIDs.map(ComposeInlineImageData.normalizedContentID))
+        return staged.filter {
+            normalizedKeeping.contains(ComposeInlineImageData.normalizedContentID($0.contentID))
+        }
     }
 
     /// Restores previously persisted inline images from a reopened draft without

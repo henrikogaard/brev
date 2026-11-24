@@ -86,10 +86,18 @@ enum ComposeAttachmentUploadState {
 
     static func inlineAttachmentIDs(
         from staged: [String: ComposeStagedInlineAttachment],
-        for sourceID: MailSourceID
+        for sourceID: MailSourceID,
+        activeContentIDs: Set<String>? = nil
     ) -> [String] {
-        staged
-            .filter { $0.value.sourceID == sourceID }
+        let normalizedActive = activeContentIDs.map {
+            Set($0.map(ComposeInlineImageData.normalizedContentID))
+        }
+        return staged
+            .filter { key, value in
+                guard value.sourceID == sourceID else { return false }
+                guard let normalizedActive else { return true }
+                return normalizedActive.contains(ComposeInlineImageData.normalizedContentID(key))
+            }
             .sorted { $0.key < $1.key }
             .map(\.value.attachmentID)
     }

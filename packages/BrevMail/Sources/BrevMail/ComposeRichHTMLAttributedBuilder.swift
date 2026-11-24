@@ -169,6 +169,95 @@ enum ComposeRichHTMLAttributedBuilder {
         return output
     }
 
+    /// Splices `inserted` into `storage` at `selectedRange`, adding leading and/or
+    /// trailing paragraph boundaries whenever `inserted` starts or ends with a
+    /// block construct (table, code block, heading, list, or blockquote) that would
+    /// otherwise collide with adjacent non-empty text in the same paragraph.
+    static func splicedInsertion(
+        _ inserted: NSAttributedString,
+        into storage: NSAttributedString,
+        at selectedRange: NSRange,
+        style: Style
+    ) -> NSAttributedString {
+        guard inserted.length > 0 else { return inserted }
+        let storageNS = storage.string as NSString
+        let insertedNS = inserted.string as NSString
+
+        let startsWithBlock = isBlockParagraph(at: 0, in: inserted)
+        let lastCharIndex = max(inserted.length - 1, 0)
+        let endsWithBlock = isBlockParagraph(at: lastCharIndex, in: inserted)
+
+        let needsLeadingNewline: Bool
+        if startsWithBlock, selectedRange.location > 0, selectedRange.location <= storageNS.length {
+            needsLeadingNewline = storageNS.character(at: selectedRange.location - 1) != 0x0A
+        } else {
+            needsLeadingNewline = false
+        }
+
+        let afterIndex = NSMaxRange(selectedRange)
+        let needsTrailingNewline: Bool
+        if endsWithBlock, afterIndex < storageNS.length {
+            let alreadyTerminated = insertedNS.character(at: lastCharIndex) == 0x0A
+            let nextIsNewline = storageNS.character(at: afterIndex) == 0x0A
+            needsTrailingNewline = !alreadyTerminated && !nextIsNewline
+        } else {
+            needsTrailingNewline = false
+        }
+
+        guard needsLeadingNewline || needsTrailingNewline else {
+            return inserted
+        }
+
+        let result = NSMutableAttributedString()
+        if needsLeadingNewline {
+            result.append(NSAttributedString(string: "\n", attributes: [
+                .font: style.baseFont,
+                .foregroundColor: style.textColor
+            ]))
+        }
+        result.append(inserted)
+        if needsTrailingNewline {
+            // Carry the block's trailing attributes onto its paragraph terminator
+            // so the block paragraph ends cleanly and following text stays plain.
+            let trailingAttrs = inserted.attributes(at: lastCharIndex, effectiveRange: nil)
+            result.append(NSAttributedString(string: "\n", attributes: trailingAttrs))
+        }
+        return result
+    }
+
+    /// True when the caret sits at the start of a new empty trailing paragraph
+    /// (e.g. immediately after pressing Return at the end of the body).
+    static func isCaretAtTrailingEmptyParagraph(
+        selectedRange: NSRange,
+        in nsString: NSString
+    ) -> Bool {
+        selectedRange.length == 0
+            && selectedRange.location == nsString.length
+            && (nsString.length == 0 || nsString.character(at: nsString.length - 1) == 0x0A)
+    }
+
+    private static func isBlockParagraph(at location: Int, in attributed: NSAttributedString) -> Bool {
+        guard location >= 0, location < attributed.length else { return false }
+        let attrs = attributed.attributes(at: location, effectiveRange: nil)
+        if attrs[ComposeRichTextAttribute.tableCell] != nil
+            || attrs[ComposeRichTextAttribute.codeBlockID] != nil
+            || attrs[ComposeRichTextAttribute.headingLevel] != nil {
+            return true
+        }
+        if let paraStyle = attrs[.paragraphStyle] as? NSParagraphStyle {
+            if !paraStyle.textLists.isEmpty { return true }
+            #if os(macOS)
+            if paraStyle.textBlocks.contains(where: { $0 is NSTextTableBlock }) {
+                return true
+            }
+            #endif
+        }
+        let nsString = attributed.string as NSString
+        let paraRange = nsString.paragraphRange(for: NSRange(location: location, length: 0))
+        let paraText = nsString.substring(with: paraRange)
+        return paraText == ">" || paraText.hasPrefix("> ") || paraText.hasPrefix(">\n")
+    }
+
     /// Builds a semantic table `NSAttributedString` ready for direct insertion
     /// into the compose editor.
     static func makeTableAttributedString(
@@ -1037,7 +1126,10 @@ enum ComposeRichHTMLAttributedBuilder {
         let lines = rawCode.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         for (index, line) in lines.enumerated() {
             let isLast = index == lines.count - 1
-            let suffix = (!isLast || hasTrailingSibling || (isLast && line.isEmpty && lines.count == 1)) ? "\n" : ""
+            // Any empty line (including trailing empty lines such as
+            // `<pre><code>print(1)\n</code></pre>`) needs a `\n` carrier so it
+            // stays an explicit code-block paragraph across Save/reopen.
+            let suffix = (!isLast || hasTrailingSibling || line.isEmpty) ? "\n" : ""
             output.append(NSAttributedString(string: line + suffix, attributes: attrs))
         }
         return true
@@ -1142,9 +1234,6 @@ enum ComposeRichHTMLAttributedBuilder {
                     cellState.isBold = true
                 }
                 for cellChild in cell.node.children {
-                    if cellChild.tag == "br" && strict {
-                        return false
-                    }
                     guard emitInlineNode(
                         cellChild,
                         state: cellState,
@@ -1157,7 +1246,8 @@ enum ComposeRichHTMLAttributedBuilder {
                     }
                 }
                 let isEmptyCell = output.length == start
-                let needsNewline = !isLastCell || hasTrailingSibling || isEmptyCell
+                let endsWithTrailingBreak = !isEmptyCell && output.string.hasSuffix("\n")
+                let needsNewline = !isLastCell || hasTrailingSibling || isEmptyCell || endsWithTrailingBreak
                 if needsNewline {
                     appendInlineText("\n", state: cellState, to: output, style: style)
                 }

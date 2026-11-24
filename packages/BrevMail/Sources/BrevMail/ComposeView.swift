@@ -773,6 +773,8 @@ public struct ComposeView: View {
                 invalidateComposeOperation()
                 pendingUndoSendTask?.cancel()
                 recipientLookupTask?.cancel()
+                inlineImageRegistry.reconcile(keepingContentIDs: [])
+                stagedInlineAttachments = [:]
             }
             .onChange(of: autoSaveFingerprint) {
                 scheduleAutoSaveAfterInactivity()
@@ -3664,6 +3666,22 @@ public struct ComposeView: View {
         )
     }
 
+    private var fullInlineCIDSourceHTML: String {
+        let editableHTML = composeBodyFormat == .richTextHTML ? (bodyHTML ?? bodyText) : bodyText
+        if let preservedQuote = restoredBody?.preservedQuotedHTML {
+            return editableHTML + preservedQuote
+        }
+        return editableHTML
+    }
+
+    private var activeInlineContentIDs: Set<String> {
+        ComposeInlineImageRegistry.contentIDs(inHTML: fullInlineCIDSourceHTML)
+    }
+
+    private var activeInlineImages: [ComposeInlineImage] {
+        inlineImageRegistry.referencedImages(keepingContentIDs: activeInlineContentIDs)
+    }
+
     private var canSave: Bool {
         ComposeDraftBuilder.canSave(
             to: resolvedToRecipients,
@@ -3673,7 +3691,7 @@ public struct ComposeView: View {
             bodyText: bodyTextExcludingManagedSignature,
             hasAttachments: !pendingAttachments.isEmpty,
             hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil,
-            hasInlineImages: !inlineImageRegistry.staged.isEmpty
+            hasInlineImages: !activeInlineImages.isEmpty
         ) && !ComposeQuotedBodyUpgradePolicy.blocksSending(
             isUpgradePending: isQuotedBodyUpgradePending
         )
@@ -4038,7 +4056,7 @@ public struct ComposeView: View {
             bodyText: bodyTextExcludingManagedSignature,
             hasAttachments: !pendingAttachments.isEmpty,
             hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil,
-            hasInlineImages: !inlineImageRegistry.staged.isEmpty
+            hasInlineImages: !activeInlineImages.isEmpty
         ) else { return }
         let request = startComposeOperation(kind: .autoSaveDraft)
         defer { finishComposeOperation(request) }
@@ -4077,24 +4095,23 @@ public struct ComposeView: View {
         return saved
     }
 
-    /// Reconciles the inline-image registry against the serialised HTML body,
-    /// then stages any images whose Content-IDs are absent from
-    /// `stagedInlineAttachments` with the backend.
+    /// Stages any currently referenced inline images whose Content-IDs are absent
+    /// from `stagedInlineAttachments` with the backend.
+    ///
+    /// Keeps unreferenced entries in `inlineImageRegistry` and
+    /// `stagedInlineAttachments` for the lifetime of the compose session so Undo
+    /// after an autosave still has the image bytes and attachment ID available;
+    /// outgoing drafts only include `activeInlineContentIDs`.
     private func stageInlineImages() async throws {
         if restorationBlocksWork {
             throw MailBackendError
                 .backendSpecific(message: draftRestorationError ?? ComposeDraftRestoration.recoveryUnavailableMessage)
         }
-        let editableHTML = composeBodyFormat == .richTextHTML ? (bodyHTML ?? bodyText) : bodyText
-        let fullCIDSourceHTML = if let preservedQuote = restoredBody?.preservedQuotedHTML {
-            editableHTML + preservedQuote
-        } else {
-            editableHTML
-        }
         let images = ComposeDraftBuilder.inlineAttachments(
             fromRegistry: inlineImageRegistry,
             draftID: draftID,
-            bodyHTML: fullCIDSourceHTML
+            bodyHTML: fullInlineCIDSourceHTML,
+            reconcileRegistry: false
         )
         var remaining = ComposeAttachmentImport.maxAttachmentByteCount
         let sizes = pendingAttachments.map { ($0.filename, $0.data.count) } + images.map { ($0.filename, $0.data.count) }
@@ -4140,9 +4157,6 @@ public struct ComposeView: View {
                 sourceID: stagingSourceID
             )
         }
-        // Remove any IDs whose images were reconciled away.
-        let stagedCIDs = Set(inlineImageRegistry.staged.map(\.contentID))
-        stagedInlineAttachments = stagedInlineAttachments.filter { stagedCIDs.contains($0.key) }
     }
 
     private func persistDraft(for request: ComposeOperationRequest) async throws -> Draft {
@@ -4205,7 +4219,8 @@ public struct ComposeView: View {
     private var currentInlineAttachmentIDs: [String] {
         ComposeAttachmentUploadState.inlineAttachmentIDs(
             from: stagedInlineAttachments,
-            for: activeComposeSourceID
+            for: activeComposeSourceID,
+            activeContentIDs: activeInlineContentIDs
         )
     }
 
@@ -4292,7 +4307,7 @@ public struct ComposeView: View {
             bodyText: bodyTextExcludingManagedSignature,
             bodyHTML: composeBodyFormat == .richTextHTML ? bodyHTML : nil,
             attachmentIDs: pendingAttachments.map(\.id),
-            inlineImageCIDs: inlineImageRegistry.staged.map(\.contentID),
+            inlineImageCIDs: activeInlineImages.map(\.contentID),
             requestReadReceipt: requestReadReceipt,
             remindIfNoReply: remindIfNoReply
         )

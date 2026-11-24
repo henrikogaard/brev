@@ -138,4 +138,32 @@ struct ComposeHTMLPasteSanitizerTests {
         let oversized = String(repeating: "a", count: ComposeHTMLPasteSanitizer.maxInputBytes + 1)
         #expect(ComposeHTMLPasteSanitizer.sanitize(oversized) == nil)
     }
+
+    @Test("decodes HTML5 named entities single-pass without double-decoding escaped numeric entities")
+    func singlePassHTMLEntityDecoding() throws {
+        let html = "<p>Caf&eacute; &mdash; &copy; &Aring;lesund &amp;#60; &#60;tag&#62;</p>"
+        let clean = try #require(ComposeHTMLPasteSanitizer.sanitize(html))
+        #expect(clean == "<p>Café — © Ålesund &amp;#60; &lt;tag&gt;</p>")
+
+        // Verify direct single-pass decoding invariants.
+        #expect(ComposeHTMLPasteSanitizer.decodeHTMLEntities("&amp;#60;") == "&#60;")
+        #expect(ComposeHTMLPasteSanitizer.decodeHTMLEntities("&#60;") == "<")
+        #expect(ComposeHTMLPasteSanitizer.decodeHTMLEntities("&amp;lt;") == "&lt;")
+        #expect(ComposeHTMLPasteSanitizer.decodeHTMLEntities("Caf&eacute; &mdash; &copy; &Aring;lesund") == "Café — © Ålesund")
+    }
+
+    @Test("trims large trailing break runs inside table cells and list items in linear time")
+    func stripsLongTrailingBreakRuns() throws {
+        let breaks = String(repeating: "<br>", count: 2000)
+        let tableHTML = "<table><tbody><tr><td>Hello\(breaks)</td></tr></tbody></table>"
+        #expect(
+            try #require(ComposeHTMLPasteSanitizer.sanitize(tableHTML))
+                == "<table><tbody><tr><td>Hello</td></tr></tbody></table>"
+        )
+        let listHTML = "<ul><li>Item\(breaks)</li></ul>"
+        #expect(
+            try #require(ComposeHTMLPasteSanitizer.sanitize(listHTML))
+                == "<ul><li>Item</li></ul>"
+        )
+    }
 }
