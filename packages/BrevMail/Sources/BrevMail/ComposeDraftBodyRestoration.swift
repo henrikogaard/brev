@@ -153,21 +153,23 @@ enum ComposeDraftBodyRestoration {
             outerWrapperOpenHTML = ""
             outerWrapperCloseHTML = ""
             inheritedDirection = nil
-        } else if let split = ComposeDraftQuoteSplitter.split(html) {
+        } else if let matched = ComposeDraftQuoteSplitter.candidateSplits(html).lazy.compactMap({ split
+                -> (ImportableBody, ComposeDraftQuoteSplitter.SplitResult)? in
             let trimmedPrefix = split.editablePrefixHTML.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmedPrefix.isEmpty {
-                importable = ImportableBody(html: "", listLines: [:])
-            } else {
-                guard let prefixImportable = importableBody(from: split.editablePrefixHTML) else {
-                    throw MailBackendError.backendSpecific(message: unsupportedMessage)
-                }
-                importable = prefixImportable
+                return (ImportableBody(html: "", listLines: [:]), split)
             }
-            preservedQuotedHTML = split.preservedQuotedHTML
-            quoteSeparatorHTML = split.quoteSeparatorHTML
-            outerWrapperOpenHTML = split.outerWrapperOpenHTML
-            outerWrapperCloseHTML = split.outerWrapperCloseHTML
-            inheritedDirection = split.inheritedDirection
+            guard let prefixImportable = importableBody(from: split.editablePrefixHTML) else {
+                return nil
+            }
+            return (prefixImportable, split)
+        }).first {
+            importable = matched.0
+            preservedQuotedHTML = matched.1.preservedQuotedHTML
+            quoteSeparatorHTML = matched.1.quoteSeparatorHTML
+            outerWrapperOpenHTML = matched.1.outerWrapperOpenHTML
+            outerWrapperCloseHTML = matched.1.outerWrapperCloseHTML
+            inheritedDirection = matched.1.inheritedDirection
         } else {
             throw MailBackendError.backendSpecific(message: unsupportedMessage)
         }

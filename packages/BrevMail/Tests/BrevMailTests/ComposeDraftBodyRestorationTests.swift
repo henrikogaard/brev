@@ -456,6 +456,20 @@ struct ComposeDraftBodyRestorationTests {
 
         #expect(ranked.attributedText.string.contains("Thoughts?"))
         #expect(ranked.preservedQuotedHTML == providerQuoteTail)
+
+        // When a later provider-marked prelude leaves an earlier styled attribution
+        // in the editable prefix, fall back to the earlier styled-attribution split
+        // so both quotes stay byte-for-byte intact and the reply reopens editable.
+        let styledThenProviderTail =
+            "<div style=\"color:gray\">On Monday, Ada wrote:</div><blockquote>First note</blockquote>"
+                + "<div class=\"gmail_attr\">On Sunday, Bob wrote:</div><blockquote>Older note</blockquote>"
+        let styledThenProviderHTML = "Reply<br>\(styledThenProviderTail)"
+        let fallbackRestored = try await prepare(styledThenProviderHTML, format: .richTextHTML)
+
+        #expect(fallbackRestored.attributedText.string == "Reply")
+        #expect(fallbackRestored.originalHTML == styledThenProviderHTML)
+        #expect(fallbackRestored.preservedQuotedHTML == styledThenProviderTail)
+        #expect(fallbackRestored.quoteSeparatorHTML == "<br>")
     }
 
     private func prepare(

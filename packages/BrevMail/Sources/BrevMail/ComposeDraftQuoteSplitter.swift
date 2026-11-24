@@ -126,10 +126,18 @@ enum ComposeDraftQuoteSplitter {
         "p", "pre", "section", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul"
     ]
 
-    /// Attempts to split `html` at the first balanced complex/explicit quoted-thread boundary.
+    /// Attempts to split `html` at the preferred balanced quoted-thread boundary.
     static func split(_ html: String) -> SplitResult? {
-        guard !html.isEmpty else { return nil }
-        return split(
+        candidateSplits(html).first
+    }
+
+    /// Returns ordered candidate splits for `html`, ranking complex/explicit quote
+    /// containers and provider-marked preludes ahead of inferred plain-text
+    /// attributions so callers can fall back if a later boundary leaves
+    /// non-importable markup (such as a styled attribution) in the prefix.
+    static func candidateSplits(_ html: String) -> [SplitResult] {
+        guard !html.isEmpty else { return [] }
+        return candidateSplits(
             in: html,
             sliceRange: html.startIndex ..< html.endIndex,
             allowUnwrapDepth: 2,
@@ -137,23 +145,18 @@ enum ComposeDraftQuoteSplitter {
         )
     }
 
-    private static func split(
+    private static func candidateSplits(
         in html: String,
         sliceRange: Range<String.Index>,
         allowUnwrapDepth: Int,
         wrapper: WrapperContext
-    ) -> SplitResult? {
+    ) -> [SplitResult] {
         guard let nodes = parseTopLevelNodes(in: html, sliceRange: sliceRange) else {
-            return nil
+            return []
         }
-        // Prefer a complex/styled/nested blockquote or explicit webmail quote
-        // container so user-typed flat `<blockquote>...</blockquote>` lines above a
-        // preserved thread remain editable on reopen. Fall back to a plain blockquote
-        // only when it is immediately preceded by an explicit prelude or standalone
-        // attribution block (e.g. a styled `<div style="...">On Mon, Ada wrote:</div>`).
-        let quoteNodeIndex = nodes.firstIndex(where: { isComplexOrExplicitQuoteContainer($0, in: html) })
-            ?? fallbackAttributedBlockquoteIndex(in: nodes, html: html)
-        guard let quoteNodeIndex else {
+
+        let candidateIndices = orderedQuoteNodeIndices(in: nodes, html: html)
+        guard !candidateIndices.isEmpty else {
             if allowUnwrapDepth > 0, let unwrapped = singlePlainWrapper(in: nodes, html: html) {
                 var nextWrapper = wrapper
                 nextWrapper.openHTML += String(unwrapped.open.rawTag)
@@ -161,16 +164,38 @@ enum ComposeDraftQuoteSplitter {
                 if let dir = unwrapped.direction {
                     nextWrapper.inheritedDirection = dir
                 }
-                return split(
+                return candidateSplits(
                     in: html,
                     sliceRange: unwrapped.innerRange,
                     allowUnwrapDepth: allowUnwrapDepth - 1,
                     wrapper: nextWrapper
                 )
             }
-            return nil
+            return []
         }
 
+        var results: [SplitResult] = []
+        for quoteNodeIndex in candidateIndices {
+            if let result = buildSplitResult(
+                quoteNodeIndex: quoteNodeIndex,
+                in: html,
+                nodes: nodes,
+                sliceRange: sliceRange,
+                wrapper: wrapper
+            ), !results.contains(result) {
+                results.append(result)
+            }
+        }
+        return results
+    }
+
+    private static func buildSplitResult(
+        quoteNodeIndex: Int,
+        in html: String,
+        nodes: [TopLevelNode],
+        sliceRange: Range<String.Index>,
+        wrapper: WrapperContext
+    ) -> SplitResult? {
         let quoteNode = nodes[quoteNodeIndex]
         let isBlockquoteBoundary = isBlockquoteElement(quoteNode)
         let isOutlookBoundary = isOutlookQuoteElement(quoteNode)
@@ -661,16 +686,27 @@ enum ComposeDraftQuoteSplitter {
         return false
     }
 
-    /// Fallback boundary for a canonical plain `<blockquote>...</blockquote>` that
-    /// is immediately preceded by an explicit quote prelude or standalone attribution
-    /// element (for example, a styled `<div style="...">On Mon, Ada wrote:</div>`
-    /// that prevented flat import). Explicit provider-marked preludes rank ahead of
-    /// inferred plain-text attributions.
-    private static func fallbackAttributedBlockquoteIndex(
+    /// Orders candidate quote-node indices by preference:
+    /// 1. First complex/styled/nested blockquote or explicit webmail container.
+    /// 2. Plain blockquotes preceded by explicit provider-marked preludes.
+    /// 3. Plain blockquotes preceded by standalone inferred/styled attributions.
+    private static func orderedQuoteNodeIndices(
         in nodes: [TopLevelNode],
         html: String
-    ) -> Int? {
-        var firstInferredAttributionIndex: Int?
+    ) -> [Int] {
+        var ordered: [Int] = []
+        func appendUnique(_ index: Int) {
+            if !ordered.contains(index) {
+                ordered.append(index)
+            }
+        }
+
+        if let firstComplex = nodes.firstIndex(where: { isComplexOrExplicitQuoteContainer($0, in: html) }) {
+            appendUnique(firstComplex)
+        }
+
+        var providerPreluded: [Int] = []
+        var inferredAttributed: [Int] = []
         for index in nodes.indices {
             guard isBlockquoteElement(nodes[index]) else { continue }
             var scan = index - 1
@@ -680,14 +716,18 @@ enum ComposeDraftQuoteSplitter {
             guard scan >= 0 else { continue }
             let preceding = nodes[scan]
             if isExplicitQuotePrelude(preceding, isOutlookBoundary: false) {
-                return index
-            }
-            if firstInferredAttributionIndex == nil,
-               isStandaloneAttributionElement(preceding, in: html) {
-                firstInferredAttributionIndex = index
+                providerPreluded.append(index)
+            } else if isStandaloneAttributionElement(preceding, in: html) {
+                inferredAttributed.append(index)
             }
         }
-        return firstInferredAttributionIndex
+        for index in providerPreluded {
+            appendUnique(index)
+        }
+        for index in inferredAttributed {
+            appendUnique(index)
+        }
+        return ordered
     }
 
     /// Matches the exact flat `<blockquote>...</blockquote>` form that

@@ -8251,3 +8251,12 @@ buttons, and package-aware localization.
   - Updated `ComposeDraftQuoteSplitter.fallbackAttributedBlockquoteIndex` to rank explicit provider-marked preludes (`.gmail_attr`, `.moz-cite-prefix`, `#appendonsend`, etc.) strictly ahead of inferred plain-text attributions.
   - Added `attributionWordBoundaryAndProviderPreludePrecedence` regression test in `ComposeDraftBodyRestorationTests.swift`.
 - **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `xcodebuild -scheme BrevMail -destination 'platform=macOS,arch=arm64' -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevMailTests/ComposeViewMacOSSnapshotTests test` (4 tests / 8 cases passed on final source), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check`.
+
+## 2026-11-24 — Agent — PR #350 review round 4 (Issue #278)
+
+- **Goal:** Handle the remaining edge case where a preferred later provider-marked prelude leaves an earlier styled attribution inside `editablePrefixHTML`.
+- **Changes:**
+  - Added `ComposeDraftQuoteSplitter.candidateSplits(_:)` returning ordered candidate splits (complex/explicit containers first, then provider-marked attributed plain blockquotes, then earlier inferred/styled-attribution plain blockquotes).
+  - Updated `ComposeDraftBodyRestoration.prepare(draft:format:)` to select the first candidate whose `editablePrefixHTML` passes `importableBody(from:)`.
+  - Added regression coverage in `ComposeDraftBodyRestorationTests.swift` for `Reply<br><div style="color:gray">On Monday, Ada wrote:</div><blockquote>First note</blockquote><div class="gmail_attr">On Sunday, Bob wrote:</div><blockquote>Older note</blockquote>`.
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check`.
