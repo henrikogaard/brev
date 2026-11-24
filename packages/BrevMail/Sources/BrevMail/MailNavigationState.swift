@@ -655,9 +655,11 @@ public final class MailNavigationState {
         expandsSelectedMessage: Bool = true
     ) {
         restoredSelectionHeader = nil
-        if isCrossAccountSearchListActive,
-           browsingFolderID == nil,
-           searchOriginSourceFolderID == nil {
+        if browsingFolderID == nil,
+           searchOriginSourceFolderID == nil,
+           !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           isCrossAccountSearchListActive
+           || selectedSourceFolderID != SourceFolderID(sourceID: sourceID, folderID: header.folderID) {
             searchOriginSourceFolderID = selectedSourceFolderID
         }
         selectedCollectionFolderID = browsingFolderID

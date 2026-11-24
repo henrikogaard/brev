@@ -5164,8 +5164,7 @@ public struct BrevMailRootView: View {
         sourceID: MailSourceID?,
         currentID: Folder.ID?
     ) {
-        guard !navigation.isUnifiedInboxSelected, !navigation.isSmartViewSelected,
-              !navigation.isAllAttachmentsSelected, !navigation.isAssistantSelected,
+        guard navigation.browsingFolderID == nil,
               MailCrossAccountSearchPolicy.shouldSyncSelectedFolder(
                   isCrossAccountSearchActive: isCrossAccountFolderSearchActive,
                   searchOriginSourceFolderID: navigation.searchOriginSourceFolderID
@@ -5183,8 +5182,7 @@ public struct BrevMailRootView: View {
     }
 
     private func syncSelectedFolderForCurrentSource() {
-        guard !navigation.isUnifiedInboxSelected, !navigation.isSmartViewSelected,
-              !navigation.isAllAttachmentsSelected, !navigation.isAssistantSelected,
+        guard navigation.browsingFolderID == nil,
               MailCrossAccountSearchPolicy.shouldSyncSelectedFolder(
                   isCrossAccountSearchActive: isCrossAccountFolderSearchActive,
                   searchOriginSourceFolderID: navigation.searchOriginSourceFolderID

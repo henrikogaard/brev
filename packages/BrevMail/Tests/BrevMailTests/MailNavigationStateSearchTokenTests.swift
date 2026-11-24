@@ -138,9 +138,61 @@ struct MailNavigationStateSearchTokenTests {
             isCrossAccountSearchActive: false,
             searchOriginSourceFolderID: state.searchOriginSourceFolderID
         ))
-        // After leaving cross-account search, visible-folder sync falls back if the origin folder was hidden/deleted.
+        // After leaving cross-account search, visible-folder sync falls back if the origin folder was hidden/deleted,
+        // while switching to virtual destinations (Saved Search, Subscriptions) keeps browsingFolderID non-nil so sync skips
+        // them.
         let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
         #expect(FolderSelectionPolicy.selectedFolderID(afterLoading: [inbox], currentID: state.selectedFolderID) == "inbox")
+        state.selectSavedSearch(id: "vip-pdf")
+        #expect(state.browsingFolderID != nil)
+        state.selectSubscriptionsSmartView()
+        #expect(state.browsingFolderID != nil)
+    }
+
+    @Test("single-mailbox undo from another folder preserves search origin without hijacking J/K")
+    func singleMailboxUndoFromDifferentFolderPreservesSearchOrigin() {
+        let sourceA = MailSourceID(accountID: "acct-a", mailboxID: "primary")
+        let state = MailNavigationState()
+        state.selectFolder("inbox", in: sourceA)
+        state.searchText = "invoice in Sent"
+        state.isCrossAccountSearchListActive = false
+
+        let sentFirst = MessageHeader(
+            id: "sent-1",
+            threadID: "t-1",
+            folderID: "sent",
+            from: Correspondent(email: "me@example.org"),
+            to: [],
+            subject: "Invoice 1",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 300)
+        )
+        let sentSecond = MessageHeader(
+            id: "sent-2",
+            threadID: "t-2",
+            folderID: "sent",
+            from: Correspondent(email: "me@example.org"),
+            to: [],
+            subject: "Invoice 2",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 200)
+        )
+        state.restoreMovedSelection(sentFirst, in: sourceA, headers: [sentFirst, sentSecond])
+        #expect(state.selectedFolderID == "sent")
+        #expect(state.searchOriginSourceFolderID == SourceFolderID(sourceID: sourceA, folderID: "inbox"))
+        #if os(macOS)
+        #expect(MailSingleKeyShortcut.next.performInReader(
+            navigation: state,
+            header: sentFirst,
+            sourceID: sourceA,
+            perform: { _, _ in false }
+        ))
+        #expect(state.selectedMessageID == "sent-2")
+        #endif
+        state.clearSearch()
+        #expect(state.selectedSourceID == sourceA)
+        #expect(state.selectedFolderID == "inbox")
+        #expect(state.searchOriginSourceFolderID == nil)
     }
 
     @Test("field scope persists across mailbox scope switches and resets on clear or folder change")
