@@ -471,6 +471,30 @@ struct ComposeDraftBodyRestorationTests {
         #expect(fallbackRestored.preservedQuotedHTML == styledThenProviderTail)
         #expect(fallbackRestored.quoteSeparatorHTML == "<br>")
 
+        // An intervening quote preceded by a standalone plain-text attribution node
+        // is still part of the pure quote chain and falls back cleanly.
+        let plainTextAttributedChainTail =
+            "<div style=\"color:gray\">On Monday, Ada wrote:</div><blockquote>First note</blockquote>"
+                + "On Tuesday, Bea wrote:<br><blockquote>Middle note</blockquote>"
+                + "<div class=\"gmail_attr\">On Sunday, Bob wrote:</div><blockquote>Older note</blockquote>"
+        let plainTextAttributedChainHTML = "Reply<br>\(plainTextAttributedChainTail)"
+        let chainRestored = try await prepare(plainTextAttributedChainHTML, format: .richTextHTML)
+
+        #expect(chainRestored.attributedText.string == "Reply")
+        #expect(chainRestored.originalHTML == plainTextAttributedChainHTML)
+        #expect(chainRestored.preservedQuotedHTML == plainTextAttributedChainTail)
+        #expect(chainRestored.quoteSeparatorHTML == "<br>")
+
+        // A text node containing reply text before an attribution line is not a
+        // standalone attribution and must fail closed instead of locking the reply.
+        let replyBeforePlainAttributionHTML =
+            "<div style=\"color:gray\">On Monday, Ada wrote:</div><blockquote>First note</blockquote>"
+                + "Thoughts?\nOn Tuesday, Bea wrote:<br><blockquote>Middle note</blockquote>"
+                + "<div class=\"gmail_attr\">On Sunday, Bob wrote:</div><blockquote>Older note</blockquote>"
+        await #expect(throws: (any Error).self) {
+            _ = try await prepare(replyBeforePlainAttributionHTML, format: .richTextHTML)
+        }
+
         // However, if standalone styled reply content sits between the earlier inline
         // quote and the later `.gmail_attr` boundary, fail closed rather than locking
         // the user's reply paragraph into read-only quoted history.

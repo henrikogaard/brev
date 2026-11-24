@@ -251,11 +251,33 @@ enum ComposeDraftQuoteSplitter {
                 || isComplexOrExplicitQuoteContainer(node, in: html)
                 || isExplicitQuotePrelude(node, isOutlookBoundary: false)
                 || isStandaloneAttributionElement(node, in: html)
+                || isStandaloneAttributionText(
+                    at: idx,
+                    in: nodes,
+                    limit: preferredStartIndex,
+                    html: html
+                )
             if !isQuoteOrAttribution {
                 return false
             }
         }
         return true
+    }
+
+    private static func isStandaloneAttributionText(
+        at index: Int,
+        in nodes: [TopLevelNode],
+        limit: Int,
+        html: String
+    ) -> Bool {
+        guard case .text(let range) = nodes[index] else { return false }
+        let plain = ComposeQuoteTextPolicy.htmlToPlainText(String(html[range]))
+        guard looksLikeStandaloneAttributionHeader(plain) else { return false }
+        var nextIndex = index + 1
+        while nextIndex < limit, isInsignificantSeparator(nodes[nextIndex], in: html) {
+            nextIndex += 1
+        }
+        return nextIndex < limit && isBlockquoteElement(nodes[nextIndex])
     }
 
     private static func computeSplitRanges(

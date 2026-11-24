@@ -8270,3 +8270,11 @@ buttons, and package-aware localization.
   - Updated `ComposeDraftBodyRestoration.prepare(draft:format:)` to call `ComposeDraftQuoteSplitter.firstSplit(in:matchPrefix:)`.
   - Added paired fail-closed regression coverage in `ComposeDraftBodyRestorationTests.swift` alongside the existing dual-quote styled-attribution + `.gmail_attr` test.
 - **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
+## 2026-11-24 — Agent — PR #350 review round 6 (Issue #278)
+
+- **Goal:** Address round-6 Devin Review edge case (`PRRT_kwDOUHC-Ds67b1d3`) on `cdd185a4`: accept standalone plain-text attribution nodes immediately preceding a blockquote in `ComposeDraftQuoteSplitter.isPureQuoteChain`.
+- **Changes:**
+  - Added `isStandaloneAttributionText(at:in:limit:html:)` to `ComposeDraftQuoteSplitter` and wired it into `isPureQuoteChain(between:and:in:html:)` so an intervening text node immediately preceding a `<blockquote>` (through `<br>`/whitespace separators) is accepted when the entire trimmed text node matches `looksLikeStandaloneAttributionHeader`, while text nodes containing reply text before an attribution continue to fail closed.
+  - Added regression coverage in `ComposeDraftBodyRestorationTests.swift` for both an intervening plain-text attributed quote (`On Tuesday, Bea wrote:<br><blockquote>Middle note</blockquote>`) and a reply-plus-attribution text node (`Thoughts?\nOn Tuesday, Bea wrote:<br><blockquote>Middle note</blockquote>`).
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
