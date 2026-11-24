@@ -88,11 +88,10 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
     }
 
     func signingMaterial(forSenderEmail email: String) async -> SMIMESigningMaterial? {
-        let target = normalize(email)
-        let record = settingsProvider().records.first { record in
-            isEligible(record, capability: .signing, target: target)
-        }
-        guard let record, let material = try? await materialStore.material(for: record.id) else {
+        let records = settingsProvider().records
+        guard let record = resolveRecord(in: records, capability: .signing, email: email),
+              let material = try? await materialStore.material(for: record.id)
+        else {
             return nil
         }
         let passphrase = await resolvedPassphrase(for: record.id)
@@ -103,16 +102,16 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
         let records = settingsProvider().records
         var result: [String: SecCertificate] = [:]
         for email in emails {
-            let target = normalize(email)
-            let record = records.first { record in
-                isEligible(record, capability: .encryption, target: target)
-            }
-            guard let record, let material = try? await materialStore.material(for: record.id) else {
+            let exactTarget = normalizePreservingLocalPart(email)
+            guard !exactTarget.isEmpty,
+                  let record = resolveRecord(in: records, capability: .encryption, email: email),
+                  let material = try? await materialStore.material(for: record.id)
+            else {
                 continue
             }
             let passphrase = await resolvedPassphrase(for: record.id)
             if let cert = Self.certificate(fromMaterial: material, passphrase: passphrase) {
-                result[target] = cert
+                result[exactTarget] = cert
             }
         }
         return result
@@ -127,23 +126,49 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
 
     private enum Capability { case signing, encryption }
 
-    /// Broken out of the `first(where:)` predicates because the combined boolean
-    /// expression exceeded the Swift type-checker's time budget inline.
-    private func isEligible(
-        _ record: SecurityKeyMaterialSettings.Record,
+    /// Resolves an eligible trusted S/MIME record for `email`: prefers an exact
+    /// local-part-case-preserving match (`normalizedSMTPRecipientKey`), and falls
+    /// back to case-insensitive local-part matching ONLY when all matching
+    /// records belong to a single unambiguous address variant (rejecting
+    /// ambiguous case-variant collisions rather than encrypting for the wrong key).
+    private func resolveRecord(
+        in records: [SecurityKeyMaterialSettings.Record],
         capability: Capability,
-        target: String
+        email: String
+    ) -> SecurityKeyMaterialSettings.Record? {
+        let exactTarget = normalizePreservingLocalPart(email)
+        guard !exactTarget.isEmpty else { return nil }
+        let eligible = records.filter { hasEligibility($0, capability: capability) }
+        if let exactMatch = eligible.first(where: {
+            normalizePreservingLocalPart($0.emailAddress ?? "") == exactTarget
+        }) {
+            return exactMatch
+        }
+        let foldedTarget = exactTarget.lowercased()
+        let foldedMatches = eligible.filter {
+            normalizePreservingLocalPart($0.emailAddress ?? "").lowercased() == foldedTarget
+        }
+        let distinctVariants = Set(foldedMatches.map { normalizePreservingLocalPart($0.emailAddress ?? "") })
+        guard distinctVariants.count == 1 else {
+            return nil
+        }
+        return foldedMatches.first
+    }
+
+    private func hasEligibility(
+        _ record: SecurityKeyMaterialSettings.Record,
+        capability: Capability
     ) -> Bool {
         guard record.family == .smime, record.trust == .trusted else { return false }
         switch capability {
-        case .signing where !(record.canSign && record.hasPrivateMaterial): return false
-        case .encryption where !record.canEncrypt: return false
-        default: break
+        case .signing:
+            return record.canSign && record.hasPrivateMaterial
+        case .encryption:
+            return record.canEncrypt
         }
-        return normalize(record.emailAddress ?? "") == target
     }
 
-    private func normalize(_ value: String) -> String {
+    private func normalizePreservingLocalPart(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let address: String
         if let start = trimmed.lastIndex(of: "<"),
@@ -152,7 +177,7 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
         } else {
             address = trimmed
         }
-        return address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return SentMessageLedger.normalizedSMTPRecipientKey(address)
     }
 
     /// Imports a PKCS#12 blob in isolation (via an ephemeral macOS keychain so

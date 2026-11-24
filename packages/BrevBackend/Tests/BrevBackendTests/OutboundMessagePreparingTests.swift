@@ -612,14 +612,53 @@ struct OutboundPreparationSendTests {
             ["bob@example.org"],
         ])
 
-        // Draft-level completion prunes intermediate per-recipient entries from SentMessageLedger
-        // so completed drafts consume only 1 slot of the ledger cap.
+        // Draft-level completion prunes intermediate per-recipient entries from the
+        // separate in-flight ledger store so completed drafts consume only 1 slot.
         let storedLedger = try #require(defaults.data(forKey: "sentMessageLedger.\(Fixtures.account.id)"))
         let entries = try JSONDecoder().decode([String].self, from: storedLedger)
         #expect(entries.contains("draft-bcc-remove-last"))
-        #expect(!entries.contains(where: { $0.hasPrefix("draft-bcc-remove-last#fp:") }))
         #expect(entries.contains("draft-bcc-read-receipt"))
-        #expect(!entries.contains(where: { $0.hasPrefix("draft-bcc-read-receipt#fp:") }))
+        #expect(defaults.data(forKey: "sentMessageLedger.inFlight.\(Fixtures.account.id)") == nil)
+    }
+
+    @Test("in-flight per-recipient entries stay isolated from the completed-draft eviction cap")
+    func inFlightRecipientsDoNotEvictCompletedDrafts() throws {
+        let suiteName = "brev.ledger.cap.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let ledger = SentMessageLedger(defaults: defaults, maxEntries: 3)
+
+        ledger.record(draftID: "completed-1", accountID: Fixtures.account.id)
+        ledger.record(draftID: "completed-2", accountID: Fixtures.account.id)
+        ledger.record(draftID: "completed-3", accountID: Fixtures.account.id)
+
+        // Recording 20 in-flight recipients for a partial send must NOT evict any completed draft.
+        let twentyRecipients = (1 ... 20).map { "rcpt\($0)@example.org" }
+        ledger.recordRecipients(
+            twentyRecipients,
+            draftID: "in-flight-20",
+            contentFingerprint: "fp-20",
+            accountID: Fixtures.account.id
+        )
+
+        #expect(ledger.contains(draftID: "completed-1", accountID: Fixtures.account.id))
+        #expect(ledger.contains(draftID: "completed-2", accountID: Fixtures.account.id))
+        #expect(ledger.contains(draftID: "completed-3", accountID: Fixtures.account.id))
+        #expect(ledger.containsRecipient(
+            draftID: "in-flight-20",
+            contentFingerprint: "fp-20",
+            recipientEmail: "rcpt20@example.org",
+            accountID: Fixtures.account.id
+        ))
+
+        // Completing the draft prunes its in-flight entries.
+        ledger.record(draftID: "in-flight-20", accountID: Fixtures.account.id)
+        #expect(!ledger.containsRecipient(
+            draftID: "in-flight-20",
+            contentFingerprint: "fp-20",
+            recipientEmail: "rcpt20@example.org",
+            accountID: Fixtures.account.id
+        ))
     }
 
     @Test("fallback Sent copy failure aborts before sending pending Bcc or marking draft complete")

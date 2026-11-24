@@ -784,8 +784,14 @@ public final class SentMessageLedger: @unchecked Sendable {
         self.maxEntries = maxEntries
     }
 
+    private static let maxInFlightDrafts = 100
+
     private static func userDefaultsKey(for accountID: BrevAccount.ID) -> String {
         "sentMessageLedger.\(accountID)"
+    }
+
+    private static func inFlightUserDefaultsKey(for accountID: BrevAccount.ID) -> String {
+        "sentMessageLedger.inFlight.\(accountID)"
     }
 
     func contains(draftID: String, accountID: BrevAccount.ID) -> Bool {
@@ -798,28 +804,31 @@ public final class SentMessageLedger: @unchecked Sendable {
         recipientEmail: String,
         accountID: BrevAccount.ID
     ) -> Bool {
-        contains(
-            draftID: Self.recipientLedgerID(
-                draftID: draftID,
-                contentFingerprint: contentFingerprint,
-                recipientEmail: recipientEmail
-            ),
-            accountID: accountID
+        let entry = Self.inFlightRecipientEntry(
+            contentFingerprint: contentFingerprint,
+            recipientEmail: recipientEmail
         )
+        return lock.withLock {
+            loadInFlight(accountID: accountID)[draftID]?.contains(entry) == true
+        }
     }
 
     func record(draftID: String, accountID: BrevAccount.ID) {
         lock.withLock {
             var ids = load(accountID: accountID)
-            let recipientPrefix = Self.recipientLedgerPrefix(draftID: draftID)
-            // Prune intermediate per-recipient entries once the draft completes
-            // so a completed send consumes only 1 slot of `maxEntries`.
-            ids.removeAll { $0 == draftID || $0.hasPrefix(recipientPrefix) }
+            ids.removeAll { $0 == draftID }
             ids.append(draftID)
             if ids.count > maxEntries {
                 ids.removeFirst(ids.count - maxEntries)
             }
             persist(ids, accountID: accountID)
+
+            // Prune this draft's intermediate in-flight per-recipient entries
+            // now that draft-level completion is recorded.
+            var inFlight = loadInFlight(accountID: accountID)
+            if inFlight.removeValue(forKey: draftID) != nil {
+                persistInFlight(inFlight, accountID: accountID)
+            }
         }
     }
 
@@ -831,27 +840,32 @@ public final class SentMessageLedger: @unchecked Sendable {
     ) {
         guard !recipientEmails.isEmpty else { return }
         lock.withLock {
-            var ids = load(accountID: accountID)
+            var inFlight = loadInFlight(accountID: accountID)
+            var entries = inFlight[draftID] ?? []
             for email in recipientEmails {
-                let entryID = Self.recipientLedgerID(
-                    draftID: draftID,
+                let entry = Self.inFlightRecipientEntry(
                     contentFingerprint: contentFingerprint,
                     recipientEmail: email
                 )
-                ids.removeAll { $0 == entryID }
-                ids.append(entryID)
+                if !entries.contains(entry) {
+                    entries.append(entry)
+                }
             }
-            if ids.count > maxEntries {
-                ids.removeFirst(ids.count - maxEntries)
+            inFlight[draftID] = entries
+            if inFlight.count > Self.maxInFlightDrafts {
+                let excess = inFlight.count - Self.maxInFlightDrafts
+                for key in inFlight.keys.sorted().prefix(excess) where key != draftID {
+                    inFlight.removeValue(forKey: key)
+                }
             }
-            persist(ids, accountID: accountID)
+            persistInFlight(inFlight, accountID: accountID)
         }
     }
 
     /// Normalizes an SMTP recipient address for envelope deduplication and
     /// per-recipient delivery tracking: trims whitespace and lowercases ONLY
     /// the domain, preserving RFC 5321 local-part case.
-    static func normalizedSMTPRecipientKey(_ email: String) -> String {
+    public static func normalizedSMTPRecipientKey(_ email: String) -> String {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let atIndex = trimmed.lastIndex(of: "@") else {
             return trimmed
@@ -861,16 +875,11 @@ public final class SentMessageLedger: @unchecked Sendable {
         return "\(localPart)@\(domain)"
     }
 
-    private static func recipientLedgerPrefix(draftID: String) -> String {
-        "\(draftID)#fp:"
-    }
-
-    private static func recipientLedgerID(
-        draftID: String,
+    private static func inFlightRecipientEntry(
         contentFingerprint: String,
         recipientEmail: String
     ) -> String {
-        "\(draftID)#fp:\(contentFingerprint)#rcpt:\(normalizedSMTPRecipientKey(recipientEmail))"
+        "\(contentFingerprint)#rcpt:\(normalizedSMTPRecipientKey(recipientEmail))"
     }
 
     /// Removes an account's ledger from the standard store without a live
@@ -878,6 +887,7 @@ public final class SentMessageLedger: @unchecked Sendable {
     /// orphaned key behind.
     static func purge(accountID: BrevAccount.ID) {
         UserDefaults.standard.removeObject(forKey: userDefaultsKey(for: accountID))
+        UserDefaults.standard.removeObject(forKey: inFlightUserDefaultsKey(for: accountID))
     }
 
     private func load(accountID: BrevAccount.ID) -> [String] {
@@ -892,6 +902,22 @@ public final class SentMessageLedger: @unchecked Sendable {
         if ids.isEmpty {
             defaults.removeObject(forKey: key)
         } else if let data = try? JSONEncoder().encode(ids) {
+            defaults.set(data, forKey: key)
+        }
+    }
+
+    private func loadInFlight(accountID: BrevAccount.ID) -> [String: [String]] {
+        guard let data = defaults.data(forKey: Self.inFlightUserDefaultsKey(for: accountID)) else {
+            return [:]
+        }
+        return (try? JSONDecoder().decode([String: [String]].self, from: data)) ?? [:]
+    }
+
+    private func persistInFlight(_ inFlight: [String: [String]], accountID: BrevAccount.ID) {
+        let key = Self.inFlightUserDefaultsKey(for: accountID)
+        if inFlight.isEmpty {
+            defaults.removeObject(forKey: key)
+        } else if let data = try? JSONEncoder().encode(inFlight) {
             defaults.set(data, forKey: key)
         }
     }

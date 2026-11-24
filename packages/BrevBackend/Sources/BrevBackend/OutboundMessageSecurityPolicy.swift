@@ -167,6 +167,6 @@ private enum OutboundAddressNormalizer {
         } else {
             address = trimmed
         }
-        return address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return SentMessageLedger.normalizedSMTPRecipientKey(address)
     }
 }
