@@ -733,16 +733,14 @@ actor InMemorySyncStore: SyncStoreProtocol {
         accountID: String
     ) -> Set<MessageHeader.ID> {
         let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tokens = Self.searchTokens(for: text)
-        guard !tokens.isEmpty else { return [] }
-        let normalizedTokens = tokens.map(Self.normalizedSearchText)
+        let terms = Self.searchTerms(for: text)
+        guard !terms.isEmpty else { return [] }
         let prefix = "\(accountID)|"
         var result = Set<MessageHeader.ID>()
         for (key, rows) in attachmentTexts where key.hasPrefix(prefix) {
             let messageID = String(key.dropFirst(prefix.count))
             let matched = rows.contains { row in
-                let haystack = Self.normalizedSearchText(row.name + " " + row.text)
-                return normalizedTokens.allSatisfy { haystack.contains($0) }
+                Self.haystackMatches(Self.normalizedSearchText(row.name + " " + row.text), terms: terms)
             }
             if matched { result.insert(messageID) }
         }
@@ -755,9 +753,8 @@ actor InMemorySyncStore: SyncStoreProtocol {
         messageIDs: [MessageHeader.ID]
     ) -> [MessageHeader.ID: String] {
         let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tokens = Self.searchTokens(for: text)
-        guard !tokens.isEmpty else { return [:] }
-        let normalizedTokens = tokens.map(Self.normalizedSearchText)
+        let terms = Self.searchTerms(for: text)
+        guard !terms.isEmpty else { return [:] }
         var bodyTextByID: [MessageHeader.ID: String] = [:]
         for (key, data) in bodies where key.hasPrefix("\(accountID)|") {
             guard recovery[key]?.sourceConfirmed != false else { continue }
@@ -777,8 +774,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
             }
             let matchingNames = rows
                 .filter { row in
-                    let haystack = Self.normalizedSearchText(row.name + " " + row.text)
-                    return normalizedTokens.allSatisfy { haystack.contains($0) }
+                    Self.haystackMatches(Self.normalizedSearchText(row.name + " " + row.text), terms: terms)
                 }
                 .map(\.name)
             if let name = matchingNames.min(by: {
@@ -829,12 +825,77 @@ actor InMemorySyncStore: SyncStoreProtocol {
         if query.matches(header) { return true }
         let searchableText = normalizedSearchText(searchableText(for: header, bodyText: bodyText))
         let normalizedText = normalizedSearchText(text)
-        if searchableText.contains(normalizedText) {
+        if !text.contains("\""), searchableText.contains(normalizedText) {
             return true
         }
-        let tokens = searchTokens(for: text)
-        return !tokens.isEmpty && tokens.allSatisfy {
-            searchableText.contains(normalizedSearchText($0))
+        let terms = searchTerms(for: text)
+        return haystackMatches(searchableText, terms: terms)
+    }
+
+    private enum SearchTerm {
+        case phrase([String])
+        case token(String)
+    }
+
+    private static func searchTerms(for text: String) -> [SearchTerm] {
+        var terms: [SearchTerm] = []
+        var inQuotes = false
+        var current = ""
+
+        func flushUnquoted(_ segment: String) {
+            for token in searchTokens(for: segment) {
+                terms.append(.token(token))
+            }
+        }
+
+        for char in text {
+            if char == "\"" {
+                if inQuotes {
+                    let phraseTokens = searchTokens(for: current)
+                    if !phraseTokens.isEmpty {
+                        terms.append(.phrase(phraseTokens))
+                    }
+                    current = ""
+                    inQuotes = false
+                } else {
+                    flushUnquoted(current)
+                    current = ""
+                    inQuotes = true
+                }
+            } else {
+                current.append(char)
+            }
+        }
+        flushUnquoted(current)
+        return terms
+    }
+
+    private static func haystackMatches(_ normalizedHaystack: String, terms: [SearchTerm]) -> Bool {
+        guard !terms.isEmpty else { return false }
+        var cachedTokens: [String]?
+        return terms.allSatisfy { term in
+            switch term {
+            case .token(let rawToken):
+                return normalizedHaystack.contains(normalizedSearchText(rawToken))
+            case .phrase(let rawTokens):
+                let needle = rawTokens.flatMap { searchTokens(for: normalizedSearchText($0)) }
+                guard !needle.isEmpty else { return false }
+                let haystackTokens: [String]
+                if let existing = cachedTokens {
+                    haystackTokens = existing
+                } else {
+                    let computed = searchTokens(for: normalizedHaystack)
+                    cachedTokens = computed
+                    haystackTokens = computed
+                }
+                guard needle.count <= haystackTokens.count else { return false }
+                for start in 0 ... (haystackTokens.count - needle.count) {
+                    if Array(haystackTokens[start ..< (start + needle.count)]) == needle {
+                        return true
+                    }
+                }
+                return false
+            }
         }
     }
 

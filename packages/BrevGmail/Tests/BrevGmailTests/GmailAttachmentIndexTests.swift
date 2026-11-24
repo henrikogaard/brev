@@ -222,6 +222,36 @@ struct GmailAttachmentIndexTests {
                 ]
             )
         )
+        let quotedPhraseAdjacentMessage = GmailMessage(
+            id: "msg-quoted-adjacent",
+            threadID: "t-q-adj",
+            labelIDs: ["INBOX"],
+            snippet: "Quarterly numbers",
+            internalDate: "1750000001500",
+            payload: GmailMessagePart(
+                partID: "",
+                mimeType: "text/plain",
+                headers: [
+                    GmailMessageHeader(name: "From", value: "Bob <bob@example.org>"),
+                    GmailMessageHeader(name: "Subject", value: "Quarterly pack")
+                ]
+            )
+        )
+        let quotedPhraseSplitMessage = GmailMessage(
+            id: "msg-quoted-split",
+            threadID: "t-q-split",
+            labelIDs: ["INBOX"],
+            snippet: "Quarterly draft",
+            internalDate: "1750000001400",
+            payload: GmailMessagePart(
+                partID: "",
+                mimeType: "text/plain",
+                headers: [
+                    GmailMessageHeader(name: "From", value: "Bob <bob@example.org>"),
+                    GmailMessageHeader(name: "Subject", value: "Draft pack")
+                ]
+            )
+        )
         let trashedAttachmentMessage = GmailMessage(
             id: "msg-trashed-att",
             threadID: "t-trash",
@@ -246,13 +276,21 @@ struct GmailAttachmentIndexTests {
                 historyID: "1"
             ),
             labels: labels,
-            messages: [onlineMessage, localOnlyAttachmentMessage, trashedAttachmentMessage]
+            messages: [
+                onlineMessage,
+                localOnlyAttachmentMessage,
+                quotedPhraseAdjacentMessage,
+                quotedPhraseSplitMessage,
+                trashedAttachmentMessage
+            ]
         ))
 
-        for (id, folder) in [
-            ("msg-online", "INBOX"),
-            ("msg-local-att", "INBOX"),
-            ("msg-trashed-att", "Label_Work")
+        for (id, folder, text) in [
+            ("msg-online", "INBOX", "solstice-clause-88"),
+            ("msg-local-att", "INBOX", "solstice-clause-88"),
+            ("msg-trashed-att", "Label_Work", "solstice-clause-88"),
+            ("msg-quoted-adjacent", "INBOX", "Approved Q4 (final) budget"),
+            ("msg-quoted-split", "INBOX", "Approved Q4 report final")
         ] {
             try await index.indexAttachmentText(
                 accountID: Self.account.id,
@@ -260,7 +298,7 @@ struct GmailAttachmentIndexTests {
                 folderID: folder,
                 attachmentID: "att-\(id)",
                 name: "contract.pdf",
-                text: "solstice-clause-88"
+                text: text
             )
         }
 
@@ -288,16 +326,24 @@ struct GmailAttachmentIndexTests {
         ))
         #expect(workLabelHits.map(\.id) == ["msg-online", "msg-local-att"])
 
-        // Negation and Gmail operator queries skip local FTS merge so Gmail remains authoritative.
-        let negatedHits: [MessageHeader] = try await backend.search(SearchQuery(
-            text: "solstice-clause-88 -draft"
-        ))
-        #expect(negatedHits.map(\.id) == ["msg-online"])
+        // Quoted phrase containing parentheses merges the adjacent hit and excludes non-adjacent `Q4 report final`.
+        await index.resetRecordedQueries()
+        let quotedHits: [MessageHeader] = try await backend.search(SearchQuery(text: #""Q4 (final)""#))
+        #expect(quotedHits.map(\.id) == ["msg-online", "msg-quoted-adjacent"])
+        #expect(await index.recordedQueryTexts().contains(#""Q4 (final)""#))
 
-        let operatorHits: [MessageHeader] = try await backend.search(SearchQuery(
-            text: "solstice-clause-88 from:alice@example.org"
-        ))
-        #expect(operatorHits.map(\.id) == ["msg-online"])
+        // Negation, inline operators, unquoted grouping, and unbalanced quotes must NOT invoke local FTS merge.
+        for blockedText in [
+            "solstice-clause-88 -draft",
+            "solstice-clause-88 from:alice@example.org",
+            "(solstice-clause-88 OR other)",
+            #""Q4 (final)"#
+        ] {
+            await index.resetRecordedQueries()
+            let hits: [MessageHeader] = try await backend.search(SearchQuery(text: blockedText))
+            #expect(hits.map(\.id) == ["msg-online"])
+            #expect(await index.recordedQueryTexts().isEmpty)
+        }
 
         // Metadata filter excludes local attachment hit when sender does not match.
         let aliceOnly: [MessageHeader] = try await backend.search(SearchQuery(
@@ -464,9 +510,15 @@ private actor ThrowingTransport: GmailAPITransporting {
     func listSendAs() async throws -> [GmailSendAs] { throw GmailAPIError.invalidRequest }
 }
 
-/// Minimal local-index stub supporting attachment FTS storage and lookup.
+/// Minimal local-index stub supporting attachment FTS storage, quoted-phrase
+/// adjacency, token-wise fallback matching, and call recording so tests prove
+/// operator/negation guards block local attachment lookup.
 private actor StubLocalSearchIndex: MailLocalSearchIndex {
     private var attachments: [String: [(attachmentID: String, text: String)]] = [:]
+    private var queryHistory: [String] = []
+
+    func recordedQueryTexts() -> [String] { queryHistory }
+    func resetRecordedQueries() { queryHistory.removeAll() }
 
     func cachedHeaders(
         for folder: Folder, account: BrevAccount, pageToken: String?
@@ -506,12 +558,44 @@ private actor StubLocalSearchIndex: MailLocalSearchIndex {
         for query: SearchQuery,
         account _: BrevAccount
     ) async -> Set<MessageHeader.ID> {
+        queryHistory.append(query.text)
+        let trimmed = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
         var hits = Set<MessageHeader.ID>()
         for (messageID, entries) in attachments {
-            if entries.contains(where: { query.matchesText($0.text) }) {
+            if entries.contains(where: { Self.matches(text: $0.text, queryText: trimmed) }) {
                 hits.insert(messageID)
             }
         }
         return hits
+    }
+
+    private static func matches(text: String, queryText: String) -> Bool {
+        let haystackTokens = text
+            .lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+        if queryText.hasPrefix("\""), queryText.hasSuffix("\""), queryText.count >= 2 {
+            let inner = String(queryText.dropFirst().dropLast())
+            let phraseTokens = inner
+                .lowercased()
+                .split { !$0.isLetter && !$0.isNumber }
+                .map(String.init)
+            guard !phraseTokens.isEmpty, phraseTokens.count <= haystackTokens.count else { return false }
+            for start in 0 ... (haystackTokens.count - phraseTokens.count) {
+                if Array(haystackTokens[start ..< (start + phraseTokens.count)]) == phraseTokens {
+                    return true
+                }
+            }
+            return false
+        }
+        // Intentionally permissive token-wise match: if an unguarded negation or
+        // operator query reached this stub, any positive token would falsely match.
+        let lowered = text.lowercased()
+        let positiveTokens = queryText
+            .split(whereSeparator: \.isWhitespace)
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "(){}\"")) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("-") && !$0.contains(":") && $0 != "OR" && $0 != "AND" && $0 != "NOT" }
+        guard !positiveTokens.isEmpty else { return false }
+        return positiveTokens.contains { lowered.contains($0.lowercased()) }
     }
 }

@@ -407,4 +407,59 @@ struct AttachmentSearchIndexTests {
         )
         #expect(matches == ["gmail-msg-1"])
     }
+
+    @Test("quoted phrases enforce adjacency in FTS and InMemorySyncStore while unquoted prefix search stays intact")
+    func quotedPhraseAdjacencyInSQLiteAndInMemoryStores() async throws {
+        let url = Self.databaseURL()
+        defer { Self.removeDatabase(at: url) }
+        let account = Self.account()
+        let sqlite = try SQLiteSyncStore(databaseURL: url)
+        try sqlite.ensureAccount(id: account.id)
+        let inMemory = InMemorySyncStore()
+        try await inMemory.ensureAccount(id: account.id)
+
+        let adjacentHeader = Self.header("INBOX:50", folder: "INBOX", subject: "Budget")
+        let nonAdjacentHeader = Self.header("INBOX:51", folder: "INBOX", subject: "Summary")
+        try sqlite.upsertHeaders([adjacentHeader, nonAdjacentHeader], accountID: account.id)
+        try await inMemory.upsertHeaders([adjacentHeader, nonAdjacentHeader], accountID: account.id)
+
+        for (id, text) in [
+            (adjacentHeader.id, "Approved Q4 (final) budget spreadsheet"),
+            (nonAdjacentHeader.id, "Approved Q4 report final draft")
+        ] {
+            try sqlite.indexAttachmentText(
+                accountID: account.id,
+                messageID: id,
+                folderID: "INBOX",
+                attachmentID: "att-\(id)",
+                name: "sheet.pdf",
+                text: text
+            )
+            try await inMemory.indexAttachmentText(
+                accountID: account.id,
+                messageID: id,
+                folderID: "INBOX",
+                attachmentID: "att-\(id)",
+                name: "sheet.pdf",
+                text: text
+            )
+        }
+
+        // Quoted phrase `"Q4 (final)"` matches adjacent tokens and excludes non-adjacent `Q4 report final`.
+        let quotedQuery = SearchQuery(text: #""Q4 (final)""#)
+        #expect(sqlite.matchingAttachmentMessageIDs(quotedQuery, accountID: account.id) == [adjacentHeader.id])
+        #expect(await inMemory.matchingAttachmentMessageIDs(quotedQuery, accountID: account.id) == [adjacentHeader.id])
+        #expect(sqlite.searchHeaders(quotedQuery, accountID: account.id, limit: 10).map(\.id) == [adjacentHeader.id])
+
+        // Unquoted prefix search continues matching both rows.
+        let unquotedPrefixQuery = SearchQuery(text: "Q4 fin")
+        #expect(sqlite.matchingAttachmentMessageIDs(unquotedPrefixQuery, accountID: account.id) == [
+            adjacentHeader.id,
+            nonAdjacentHeader.id
+        ])
+        #expect(await inMemory.matchingAttachmentMessageIDs(unquotedPrefixQuery, accountID: account.id) == [
+            adjacentHeader.id,
+            nonAdjacentHeader.id
+        ])
+    }
 }

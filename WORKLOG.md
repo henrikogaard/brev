@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #353 round-4 review fixes (Issue #7)
+
+- Goal: address both round-4 Devin Review items on PR #353 (`feature/background-recent-indexing`) in one surgical commit.
+- Changes:
+  - Quote-aware `GmailAPIBackend.isPlainPositiveSearchText(_:)`: parse balanced double-quoted phrases so parentheses/operators inside quotes (e.g. `"Q4 (final)"`) remain eligible for local attachment merge while unquoted grouping (`(foo OR bar)`), negations (`-draft`), inline operators (`from:`), and unbalanced quotes skip local merge.
+  - Quoted phrase adjacency in `SQLiteSyncStore` and `InMemorySyncStore`: emit FTS5 phrase clauses (`"token1 token2"`) and enforce contiguous token adjacency for quoted phrases while keeping unquoted prefix search (`token*`) unchanged.
+  - Strengthened `StubLocalSearchIndex` in `GmailAttachmentIndexTests` with token-wise permissive matching and query call recording to prove blocked operator/negation/grouping queries never invoke `matchingAttachmentMessageIDs`, plus quoted `"Q4 (final)"` vs `Q4 report final` tests in both `BrevSyncEngine` and `BrevGmail`.
+- Verification: `swift test --package-path packages/BrevSyncEngine --filter AttachmentSearchIndexTests`, `swift test --package-path packages/BrevGmail --filter GmailAttachmentIndexTests`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
 ## 2026-11-24 — Agent — PR #353 round-3 review fixes (Issue #7)
 
 - Goal: address all 4 round-3 Devin Review findings on PR #353 (`feature/background-recent-indexing`) in one commit.

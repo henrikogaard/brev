@@ -1061,24 +1061,56 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     }
 
     /// Returns `true` only when free-text search terms contain plain positive keywords
-    /// (no negations like `-draft`, Gmail boolean/grouping syntax like `OR`/`{}`/`()`,
-    /// or inline Gmail operators like `from:`/`subject:`/`has:`/`label:` that local FTS
-    /// cannot faithfully enforce against server semantics).
+    /// or balanced quoted phrases (no negations like `-draft`, Gmail boolean/grouping
+    /// syntax like `OR`/`{}`/`()`, or inline Gmail operators like `from:`/`subject:`/`has:`/`label:`
+    /// outside double quotes, and no unbalanced quotes).
     private static func isPlainPositiveSearchText(_ text: String) -> Bool {
-        if text.contains(where: { $0 == "(" || $0 == ")" || $0 == "{" || $0 == "}" }) {
-            return false
-        }
-        let tokens = text.split(whereSeparator: \.isWhitespace)
-        guard !tokens.isEmpty else { return false }
-        for rawToken in tokens {
-            let token = String(rawToken)
-            if token.hasPrefix("-") { return false }
-            if token == "OR" || token == "AND" || token == "NOT" { return false }
-            if token.range(of: #"^[A-Za-z][A-Za-z0-9_-]*:"#, options: .regularExpression) != nil {
+        var inQuotes = false
+        var currentUnquoted = ""
+        var currentQuoted = ""
+        var hasContent = false
+
+        func isValidUnquotedSegment(_ segment: String) -> Bool {
+            if segment.contains(where: { $0 == "(" || $0 == ")" || $0 == "{" || $0 == "}" }) {
                 return false
             }
+            for rawToken in segment.split(whereSeparator: \.isWhitespace) {
+                let token = String(rawToken)
+                if token.hasPrefix("-") { return false }
+                if token == "OR" || token == "AND" || token == "NOT" { return false }
+                if token.range(of: #"^[A-Za-z][A-Za-z0-9_-]*:"#, options: .regularExpression) != nil {
+                    return false
+                }
+                hasContent = true
+            }
+            return true
         }
-        return true
+
+        for char in text {
+            if char == "\"" {
+                if inQuotes {
+                    if !currentQuoted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        hasContent = true
+                    }
+                    currentQuoted = ""
+                    inQuotes = false
+                } else {
+                    if currentUnquoted.hasSuffix("-") || currentUnquoted.hasSuffix(":") {
+                        return false
+                    }
+                    guard isValidUnquotedSegment(currentUnquoted) else { return false }
+                    currentUnquoted = ""
+                    inQuotes = true
+                }
+            } else if inQuotes {
+                currentQuoted.append(char)
+            } else {
+                currentUnquoted.append(char)
+            }
+        }
+        guard !inQuotes else { return false }
+        guard isValidUnquotedSegment(currentUnquoted) else { return false }
+        return hasContent
     }
 
     private func checkSearch(_ generation: UUID) throws {
@@ -1108,7 +1140,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     ) async throws -> [MessageHeader] {
         let trimmedText = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachmentHitIDs: Set<MessageHeader.ID>
-        if !trimmedText.isEmpty, let localSearchIndex {
+        if !trimmedText.isEmpty, Self.isPlainPositiveSearchText(trimmedText), let localSearchIndex {
             attachmentHitIDs = await localSearchIndex.matchingAttachmentMessageIDs(
                 for: query,
                 account: account
