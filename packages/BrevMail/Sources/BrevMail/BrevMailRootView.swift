@@ -3238,7 +3238,7 @@ public struct BrevMailRootView: View {
         if isSearchFieldToggledOpen {
             MessageListSearchField(
                 text: $navigation.searchText,
-                prompt: String(localized: "Search messages", bundle: .module),
+                prompt: String(localized: "Search, like “from Maya last week”", bundle: .module),
                 focusRequestID: navigation.searchFocusRequestID,
                 onEndEditing: { isSearchFieldToggledOpen = false }
             )

@@ -1,5 +1,11 @@
 # Worklog
 
+## 2026-11-22 — Agent — #296 bilingual sender and date chips
+
+- Extended the existing search planner and iOS tokens with sender names and Norwegian date, read, flag and attachment phrases. The toolbar and iOS search field now give an example in the user's language.
+- Tests cover parsing, chip removal, token round trips, Norwegian copy and expected mock mailbox results. The planner regression failed before implementation. The Linux harness exercises the production predicates; native UI, full MockBackend and snapshot verification require macOS CI and QA.
+- Attachment file types, folder phrases and default cross-account scope remain separate work on #296. No change to the search execution policy or network access.
+
 ## 2026-11-23 — Agent — PR #329 (#301 rebase and macOS snapshots)
 
 - Goal: rebase PR #329 onto `origin/main`, prevent headline truncation in narrow readers, and record the missing macOS 26 snapshots for `SenderWarningBanner` (look-alike collapsed/expanded and DMARC failure expanded, light/dark).
@@ -8096,3 +8102,9 @@ buttons, and package-aware localization.
 - Goal: rebase `feature/no-reply-follow-ups` onto `origin/main` (`a1a8be0f`), record macOS 26+ snapshots for the Waiting smart view, follow-up row indicator, and compose reminder toggle, register the suite in `.github/workflows/build.yml`, and verify locally on macOS.
 - Changes: rebased onto `origin/main` (preserving both `subscriptions` and `waiting` smart views); added `WaitingAndFollowUpSnapshotTests.swift` + light/dark PNG baselines; registered `WaitingAndFollowUpSnapshotTests` in `.github/workflows/build.yml`.
 - Verification: `swift test --package-path packages/BrevMail --filter 'WaitingAndFollowUpSnapshotTests|NoReplyFollowUp|ComposeDraftPreservationTests|ComposeDraftRestorationTests|ComposeOperationResponsePolicyTests|BrevLocalNotificationCenterTests|UnifiedInboxPaginationTests'`, `swift test --package-path packages/BrevSettings --filter SmartViewDisplayTests`, visually inspected PNGs, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check origin/main`.
+
+## 2026-11-23 — Agent — PR #330 / Issue #296 (rebase + macOS snapshots)
+
+- Goal: rebase `feature/bilingual-search-chips` onto `origin/main` (`a1a8be0f`), record macOS 26+ snapshots for the localized search prompt and removable English/Norwegian chips, register the suite in `.github/workflows/build.yml`, and verify locally on macOS.
+- Changes: rebased onto `origin/main`; added `BilingualSearchChipsSnapshotTests.swift` + light/dark PNG baselines; registered `BilingualSearchChipsSnapshotTests` in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'BilingualSearchChipsSnapshotTests|NaturalLanguageSearchPlannerTests|MailSearchTokensTests|MailboxSearchScopeTests'` (22 tests in 4 suites passed), visually inspected both PNGs, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check`.

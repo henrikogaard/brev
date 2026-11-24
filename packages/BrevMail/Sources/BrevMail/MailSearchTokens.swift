@@ -54,8 +54,34 @@ enum MailSearchDatePreset: String, CaseIterable, Hashable, Sendable {
     }
 
     init?(phrase: String) {
-        guard let preset = Self.allCases.first(where: { $0.phrase == phrase.lowercased() }) else { return nil }
+        guard let preset = Self.allCases.first(where: { $0.phrases.contains(phrase.lowercased()) }) else { return nil }
         self = preset
+    }
+
+    /// Accepted query syntax, independent of the system language.
+    var phrases: [String] {
+        switch self {
+        case .today: [phrase, "i dag"]
+        case .yesterday: [phrase, "i går"]
+        case .lastWeek: [phrase, "forrige uke", "sist uke"]
+        case .thisMonth: [phrase, "denne måneden"]
+        case .lastMonth: [phrase, "forrige måned"]
+        }
+    }
+
+    func interval(at date: Date, calendar: Calendar) -> DateInterval? {
+        let component: Calendar.Component
+        let offset: Int
+        switch self {
+        case .today: (component, offset) = (.day, 0)
+        case .yesterday: (component, offset) = (.day, -1)
+        case .lastWeek: (component, offset) = (.weekOfYear, -1)
+        case .thisMonth: (component, offset) = (.month, 0)
+        case .lastMonth: (component, offset) = (.month, -1)
+        }
+        guard let current = calendar.dateInterval(of: component, for: date),
+              let start = calendar.date(byAdding: component, value: offset, to: current.start) else { return nil }
+        return calendar.dateInterval(of: component, for: start)
     }
 
     var title: String {
@@ -126,7 +152,8 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
     fileprivate var queryPhrase: String? {
         switch self {
         case .field: nil
-        case .sender(let email, _): "from \(email)"
+        case .sender(let email, _):
+            email.contains(where: \.isWhitespace) ? "from \"\(email)\"" : "from \(email)"
         case .unread: "unread"
         case .flagged: "flagged"
         case .hasAttachment: "has attachments"

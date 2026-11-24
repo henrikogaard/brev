@@ -65,7 +65,7 @@ private struct MailListSearchModifier: ViewModifier {
                 tokens: $navigation.searchTokens,
                 isPresented: $isPresented,
                 placement: placement,
-                prompt: Text("Search messages", bundle: .module)
+                prompt: Text("Search, like “from Maya last week”", bundle: .module)
             ) { token in
                 Label(token.title, systemImage: token.symbolName)
             }

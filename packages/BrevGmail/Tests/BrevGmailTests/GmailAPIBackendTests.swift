@@ -761,6 +761,30 @@ struct GmailAPIBackendTests {
         #expect(await transport.lastQuery() == "status:open from:alice@example.com has:attachment is:unread")
     }
 
+    @Test("quotes multiword sender names in Gmail server search queries")
+    func searchesQuotesMultiwordSenderNames() async throws {
+        let message = Self.message(id: "message-4", threadID: "thread-4", labels: ["INBOX"])
+        let transport = StubGmailTransport(
+            labels: [GmailLabel(id: "INBOX", name: "Inbox", type: "system")],
+            pages: [GmailMessagePage(messages: [GmailMessageReference(id: "message-4")])],
+            messages: [message]
+        )
+        let backend = GmailAPIBackend(
+            account: Self.account,
+            transport: transport,
+            store: InMemoryGmailAccountStore()
+        )
+        let mailBackend: any MailBackend = backend
+        try await mailBackend.connect()
+
+        _ = try await mailBackend.search(SearchQuery(
+            text: "invoice",
+            from: "Maya Patel"
+        ))
+
+        #expect(await transport.lastQuery() == #"invoice from:"Maya Patel""#)
+    }
+
     @Test("paginates server search and scopes native folders")
     func paginatesAndScopesSearch() async throws {
         let first = Self.message(id: "message-page-1", threadID: "thread-1", labels: ["INBOX"])
