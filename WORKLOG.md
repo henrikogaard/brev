@@ -8260,3 +8260,13 @@ buttons, and package-aware localization.
   - Updated `ComposeDraftBodyRestoration.prepare(draft:format:)` to select the first candidate whose `editablePrefixHTML` passes `importableBody(from:)`.
   - Added regression coverage in `ComposeDraftBodyRestorationTests.swift` for `Reply<br><div style="color:gray">On Monday, Ada wrote:</div><blockquote>First note</blockquote><div class="gmail_attr">On Sunday, Bob wrote:</div><blockquote>Older note</blockquote>`.
 - **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check`.
+
+## 2026-11-24 — Agent — PR #350 review round 5 (Issue #278)
+
+- **Goal:** Address round-5 Devin Review findings on `f3f52359`: prevent fallback quote splitting from locking standalone styled reply paragraphs and evaluate candidate split boundaries lazily without eager full-draft `String` copies.
+- **Changes:**
+  - Replaced eager `ComposeDraftQuoteSplitter.candidateSplits(_:)` with lazy `firstSplit(in:matchPrefix:)` backed by lightweight index-range computation (`SplitRanges` / `computeSplitRanges`), only materializing `quoteSeparatorHTML` and `preservedQuotedHTML` once a candidate prefix passes.
+  - Added `isPureQuoteChain(between:and:in:html:)` in `ComposeDraftQuoteSplitter` so falling back from a preferred later provider boundary to an earlier attributed blockquote is only allowed when every intervening node is exclusively quote/attribution/separator markup (failing closed when standalone styled reply content such as `<div style="color:blue">Thoughts?</div>` sits in between).
+  - Updated `ComposeDraftBodyRestoration.prepare(draft:format:)` to call `ComposeDraftQuoteSplitter.firstSplit(in:matchPrefix:)`.
+  - Added paired fail-closed regression coverage in `ComposeDraftBodyRestorationTests.swift` alongside the existing dual-quote styled-attribution + `.gmail_attr` test.
+- **Verification:** `swift test --package-path packages/BrevMail --filter 'Compose' --skip 'SnapshotTests'` (478 tests in 79 suites passed), `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.

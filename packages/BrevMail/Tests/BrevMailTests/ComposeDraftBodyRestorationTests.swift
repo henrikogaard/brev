@@ -470,6 +470,17 @@ struct ComposeDraftBodyRestorationTests {
         #expect(fallbackRestored.originalHTML == styledThenProviderHTML)
         #expect(fallbackRestored.preservedQuotedHTML == styledThenProviderTail)
         #expect(fallbackRestored.quoteSeparatorHTML == "<br>")
+
+        // However, if standalone styled reply content sits between the earlier inline
+        // quote and the later `.gmail_attr` boundary, fail closed rather than locking
+        // the user's reply paragraph into read-only quoted history.
+        let styledReplyBetweenQuotesHTML =
+            "<div style=\"color:gray\">On Sunday, Bob wrote:</div><blockquote>inline excerpt</blockquote>"
+                + "<div style=\"color:blue\">Thoughts?</div>"
+                + "<div class=\"gmail_attr\">On Monday, Ada wrote:</div><blockquote>quoted thread</blockquote>"
+        await #expect(throws: (any Error).self) {
+            _ = try await prepare(styledReplyBetweenQuotesHTML, format: .richTextHTML)
+        }
     }
 
     private func prepare(

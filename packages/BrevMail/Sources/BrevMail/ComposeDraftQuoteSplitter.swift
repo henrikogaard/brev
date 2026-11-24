@@ -128,31 +128,42 @@ enum ComposeDraftQuoteSplitter {
 
     /// Attempts to split `html` at the preferred balanced quoted-thread boundary.
     static func split(_ html: String) -> SplitResult? {
-        candidateSplits(html).first
+        firstSplit(in: html) { _ in () }?.split
     }
 
-    /// Returns ordered candidate splits for `html`, ranking complex/explicit quote
-    /// containers and provider-marked preludes ahead of inferred plain-text
-    /// attributions so callers can fall back if a later boundary leaves
-    /// non-importable markup (such as a styled attribution) in the prefix.
-    static func candidateSplits(_ html: String) -> [SplitResult] {
-        guard !html.isEmpty else { return [] }
-        return candidateSplits(
+    /// Lazily evaluates ordered candidate quote boundaries without eagerly copying
+    /// the full draft for every candidate. Only materializes `preservedQuotedHTML`
+    /// once `matchPrefix` accepts a candidate's editable prefix.
+    static func firstSplit<Matched>(
+        in html: String,
+        matchPrefix: (String) -> Matched?
+    ) -> (split: SplitResult, matched: Matched)? {
+        guard !html.isEmpty else { return nil }
+        return firstSplit(
             in: html,
             sliceRange: html.startIndex ..< html.endIndex,
             allowUnwrapDepth: 2,
-            wrapper: WrapperContext()
+            wrapper: WrapperContext(),
+            matchPrefix: matchPrefix
         )
     }
 
-    private static func candidateSplits(
+    private struct SplitRanges {
+        let prefixRange: Range<String.Index>
+        let separatorRange: Range<String.Index>
+        let preservedRange: Range<String.Index>
+        let startNodeIndex: Int
+    }
+
+    private static func firstSplit<Matched>(
         in html: String,
         sliceRange: Range<String.Index>,
         allowUnwrapDepth: Int,
-        wrapper: WrapperContext
-    ) -> [SplitResult] {
+        wrapper: WrapperContext,
+        matchPrefix: (String) -> Matched?
+    ) -> (split: SplitResult, matched: Matched)? {
         guard let nodes = parseTopLevelNodes(in: html, sliceRange: sliceRange) else {
-            return []
+            return nil
         }
 
         let candidateIndices = orderedQuoteNodeIndices(in: nodes, html: html)
@@ -164,38 +175,95 @@ enum ComposeDraftQuoteSplitter {
                 if let dir = unwrapped.direction {
                     nextWrapper.inheritedDirection = dir
                 }
-                return candidateSplits(
+                return firstSplit(
                     in: html,
                     sliceRange: unwrapped.innerRange,
                     allowUnwrapDepth: allowUnwrapDepth - 1,
-                    wrapper: nextWrapper
+                    wrapper: nextWrapper,
+                    matchPrefix: matchPrefix
                 )
             }
-            return []
+            return nil
         }
 
-        var results: [SplitResult] = []
+        var seenPreservedStarts: Set<String.Index> = []
+        var preferredBoundary: (quoteNodeIndex: Int, startNodeIndex: Int)?
+
         for quoteNodeIndex in candidateIndices {
-            if let result = buildSplitResult(
+            guard let ranges = computeSplitRanges(
                 quoteNodeIndex: quoteNodeIndex,
                 in: html,
                 nodes: nodes,
-                sliceRange: sliceRange,
-                wrapper: wrapper
-            ), !results.contains(result) {
-                results.append(result)
+                sliceRange: sliceRange
+            ) else {
+                continue
             }
+            if preferredBoundary == nil {
+                preferredBoundary = (quoteNodeIndex, ranges.startNodeIndex)
+            } else if let preferred = preferredBoundary,
+                      quoteNodeIndex < preferred.quoteNodeIndex,
+                      !isPureQuoteChain(
+                          between: quoteNodeIndex,
+                          and: preferred.startNodeIndex,
+                          in: nodes,
+                          html: html
+                      ) {
+                // Never fall back across standalone reply content (such as a styled
+                // reply paragraph) — doing so would lock the user's reply as quoted history.
+                continue
+            }
+
+            guard seenPreservedStarts.insert(ranges.preservedRange.lowerBound).inserted else {
+                continue
+            }
+            let editablePrefixHTML = String(html[ranges.prefixRange])
+            guard let matched = matchPrefix(editablePrefixHTML) else {
+                continue
+            }
+            let result = SplitResult(
+                editablePrefixHTML: editablePrefixHTML,
+                quoteSeparatorHTML: String(html[ranges.separatorRange]),
+                preservedQuotedHTML: String(html[ranges.preservedRange]),
+                outerWrapperOpenHTML: wrapper.openHTML,
+                outerWrapperCloseHTML: wrapper.closeHTML,
+                inheritedDirection: wrapper.inheritedDirection
+            )
+            return (result, matched)
         }
-        return results
+        return nil
     }
 
-    private static func buildSplitResult(
+    /// True when every top-level node strictly between an earlier candidate quote
+    /// (`earlierQuoteIndex`) and a later preferred boundary's start (`preferredStartIndex`)
+    /// is exclusively quote/attribution/separator markup rather than standalone reply content.
+    private static func isPureQuoteChain(
+        between earlierQuoteIndex: Int,
+        and preferredStartIndex: Int,
+        in nodes: [TopLevelNode],
+        html: String
+    ) -> Bool {
+        let lower = earlierQuoteIndex + 1
+        guard lower < preferredStartIndex else { return true }
+        for idx in lower ..< preferredStartIndex {
+            let node = nodes[idx]
+            let isQuoteOrAttribution = isQuoteGapNode(node, in: html)
+                || isBlockquoteElement(node)
+                || isComplexOrExplicitQuoteContainer(node, in: html)
+                || isExplicitQuotePrelude(node, isOutlookBoundary: false)
+                || isStandaloneAttributionElement(node, in: html)
+            if !isQuoteOrAttribution {
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func computeSplitRanges(
         quoteNodeIndex: Int,
         in html: String,
         nodes: [TopLevelNode],
-        sliceRange: Range<String.Index>,
-        wrapper: WrapperContext
-    ) -> SplitResult? {
+        sliceRange: Range<String.Index>
+    ) -> SplitRanges? {
         let quoteNode = nodes[quoteNodeIndex]
         let isBlockquoteBoundary = isBlockquoteElement(quoteNode)
         let isOutlookBoundary = isOutlookQuoteElement(quoteNode)
@@ -240,16 +308,17 @@ enum ComposeDraftQuoteSplitter {
                 prefixEndNodeLimit = startNodeIndex
             } else {
                 // Prefix ends mid-text node right before the attribution line.
-                let prefixRaw = String(html[sliceRange.lowerBound ..< textSplitIndex])
-                let (prefixTrimmed, trailingWhitespace) = splittingTrailingNewlinesAndWhitespace(prefixRaw)
-                let preserved = String(html[quoteStart ..< sliceRange.upperBound])
-                return SplitResult(
-                    editablePrefixHTML: prefixTrimmed,
-                    quoteSeparatorHTML: trailingWhitespace,
-                    preservedQuotedHTML: preserved,
-                    outerWrapperOpenHTML: wrapper.openHTML,
-                    outerWrapperCloseHTML: wrapper.closeHTML,
-                    inheritedDirection: wrapper.inheritedDirection
+                let separatorStart = trailingWhitespaceStart(
+                    in: html,
+                    from: sliceRange.lowerBound,
+                    upTo: textSplitIndex
+                )
+                guard quoteStart < sliceRange.upperBound else { return nil }
+                return SplitRanges(
+                    prefixRange: sliceRange.lowerBound ..< separatorStart,
+                    separatorRange: separatorStart ..< quoteStart,
+                    preservedRange: quoteStart ..< sliceRange.upperBound,
+                    startNodeIndex: startNodeIndex
                 )
             }
         } else {
@@ -271,18 +340,12 @@ enum ComposeDraftQuoteSplitter {
             quoteStart
         }
 
-        let editablePrefixHTML = String(html[sliceRange.lowerBound ..< separatorStart])
-        let quoteSeparatorHTML = String(html[separatorStart ..< quoteStart])
-        let preservedQuotedHTML = String(html[quoteStart ..< sliceRange.upperBound])
-
-        guard !preservedQuotedHTML.isEmpty else { return nil }
-        return SplitResult(
-            editablePrefixHTML: editablePrefixHTML,
-            quoteSeparatorHTML: quoteSeparatorHTML,
-            preservedQuotedHTML: preservedQuotedHTML,
-            outerWrapperOpenHTML: wrapper.openHTML,
-            outerWrapperCloseHTML: wrapper.closeHTML,
-            inheritedDirection: wrapper.inheritedDirection
+        guard quoteStart < sliceRange.upperBound else { return nil }
+        return SplitRanges(
+            prefixRange: sliceRange.lowerBound ..< separatorStart,
+            separatorRange: separatorStart ..< quoteStart,
+            preservedRange: quoteStart ..< sliceRange.upperBound,
+            startNodeIndex: startNodeIndex
         )
     }
 
@@ -942,17 +1005,21 @@ enum ComposeDraftQuoteSplitter {
         return stripped.isEmpty
     }
 
-    private static func splittingTrailingNewlinesAndWhitespace(_ value: String) -> (String, String) {
-        var idx = value.endIndex
-        while idx > value.startIndex {
-            let prev = value.index(before: idx)
-            if value[prev].isWhitespace {
+    private static func trailingWhitespaceStart(
+        in html: String,
+        from lowerBound: String.Index,
+        upTo upperBound: String.Index
+    ) -> String.Index {
+        var idx = upperBound
+        while idx > lowerBound {
+            let prev = html.index(before: idx)
+            if html[prev].isWhitespace {
                 idx = prev
             } else {
                 break
             }
         }
-        return (String(value[..<idx]), String(value[idx...]))
+        return idx
     }
 
     /// Extracts an attribute value from a single opening HTML tag, respecting
