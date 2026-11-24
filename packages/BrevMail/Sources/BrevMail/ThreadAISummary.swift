@@ -293,6 +293,62 @@ struct ThreadAISummaryRequest: Equatable, Sendable {
     let messageIDs: [MessageHeader.ID]
 }
 
+/// Manages manual thread-summary UI state scoped to one conversation identity so
+/// switching conversations cancels in-flight work and never leaks a prior summary.
+struct ThreadAISummarySessionState: Equatable, Sendable {
+    var conversationIdentity: String
+    var activeRequest: ThreadAISummaryRequest?
+    var state: ThreadAISummaryState?
+
+    mutating func beginRequest(_ request: ThreadAISummaryRequest, providerLabel: String) {
+        activeRequest = request
+        state = .loading(providerLabel: providerLabel)
+    }
+
+    func isActive(_ request: ThreadAISummaryRequest) -> Bool {
+        activeRequest == request
+    }
+
+    mutating func finishRequest(_ request: ThreadAISummaryRequest, state newState: ThreadAISummaryState) {
+        guard activeRequest == request else { return }
+        state = newState
+        activeRequest = nil
+    }
+
+    mutating func cancelRequest(_ request: ThreadAISummaryRequest) {
+        guard activeRequest == request else { return }
+        state = nil
+        activeRequest = nil
+    }
+
+    mutating func cancelInFlightRequest() {
+        activeRequest = nil
+        if state?.isLoading == true {
+            state = nil
+        }
+    }
+
+    mutating func switchConversation(to newIdentity: String) -> Bool {
+        guard newIdentity != conversationIdentity else { return false }
+        conversationIdentity = newIdentity
+        activeRequest = nil
+        state = nil
+        return true
+    }
+
+    static func conversationIdentity(
+        sourceID: MailSourceID?,
+        accountID: BrevAccount.ID,
+        headers: [MessageHeader]
+    ) -> String {
+        let sourceKey = sourceID.map { "\($0.accountID):\($0.mailboxID)" } ?? accountID
+        if let threadID = headers.first?.threadID, !threadID.isEmpty {
+            return "\(sourceKey)|\(threadID)"
+        }
+        return "\(sourceKey)|\(headers.first?.id ?? "")"
+    }
+}
+
 enum ThreadAISummaryState: Equatable, Sendable {
     case loading(providerLabel: String)
     case success(ThreadAISummaryPresentation)

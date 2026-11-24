@@ -34,6 +34,17 @@
         }
       }
     },
+    "On-device summary": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sammendrag på enheten"
+          }
+        }
+      }
+    },
     "Archive bundle": {
       "extractionState": "manual",
       "localizations": {

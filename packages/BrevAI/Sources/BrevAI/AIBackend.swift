@@ -12,12 +12,17 @@
 
 import Foundation
 
-/// Protocol for AI writing assistance backends. v1 ships with
-/// `ProviderHostedAIBackend` only; v2 adds `BYOKBackend` for user-provided
-/// API keys. See ADR-0008.
+/// Protocol for AI writing assistance and local triage backends.
+/// See `docs/design/ai-and-agents.md`.
 ///
-/// Every invocation is user-initiated — AI never acts on content
-/// without explicit action (invariant 6, ADR-0028).
+/// Two-tier invocation policy:
+/// - Cloud, BYOK, provider-hosted, and localhost HTTP backends
+///   (`isOnDeviceZeroNetwork == false`) are always explicit user-invoked
+///   (button click or prompt send) and never run automatically in the background.
+/// - Zero-network on-device backends (`isOnDeviceZeroNetwork == true`, such as
+///   Apple Intelligence via `FoundationModels`) may also run opted-in proactive
+///   summaries and priority triage when `AIWriterSettings.proactiveOnDeviceTriageEnabled`
+///   is enabled, because no mail leaves the device.
 public protocol AIBackend: Sendable {
     /// Machine identifier for persistence.
     var identifier: String { get }
@@ -33,6 +38,14 @@ public protocol AIBackend: Sendable {
     /// on-device context windows (ADR-0094). `nil` uses each surface's
     /// standard cloud cap.
     var contextBudget: AIBackendContextBudget? { get }
+
+    /// Whether this backend executes strictly on-device with zero network egress.
+    ///
+    /// Only zero-network on-device backends (such as Apple Intelligence via
+    /// `FoundationModels` or future user-downloaded local weights) return `true`.
+    /// Cloud, BYOK, provider-hosted, and localhost HTTP endpoints return `false`
+    /// so proactive background triage fails closed to explicit manual clicks.
+    var isOnDeviceZeroNetwork: Bool { get }
 
     /// Generate a reply or draft from a conversation context with an
     /// optional instruction like "write a polite decline".
@@ -55,6 +68,11 @@ public extension AIBackend {
     /// Cloud and external OpenAI-compatible backends keep each surface's default cap.
     var contextBudget: AIBackendContextBudget? {
         nil
+    }
+
+    /// Backends default to non-zero-network so proactive background triage fails closed.
+    var isOnDeviceZeroNetwork: Bool {
+        false
     }
 }
 

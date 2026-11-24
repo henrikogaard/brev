@@ -177,6 +177,71 @@ struct ThreadAISummaryTests {
             .maxTotalContextBytes)
     }
 
+    @Test("switching conversations clears manual summary state and active request")
+    func switchingConversationsResetsManualSummaryState() {
+        let source = MailSourceID(accountID: "acct-1", mailboxID: "acct-1")
+        let threadA = [header(id: "m-a", sender: "a@example.com", subject: "A", snippet: "Hi", date: Date())]
+        let threadB = [MessageHeader(
+            id: "m-b",
+            threadID: "thread-b",
+            folderID: "inbox",
+            from: Correspondent(name: "B", email: "b@example.com"),
+            subject: "B",
+            snippet: "Hello",
+            date: Date(),
+            isRead: true
+        )]
+        let idA = ThreadAISummarySessionState.conversationIdentity(
+            sourceID: source,
+            accountID: "acct-1",
+            headers: threadA
+        )
+        let idB = ThreadAISummarySessionState.conversationIdentity(
+            sourceID: source,
+            accountID: "acct-1",
+            headers: threadB
+        )
+        #expect(idA != idB)
+
+        var session = ThreadAISummarySessionState(conversationIdentity: idA)
+        let requestA = ThreadAISummaryRequest(threadID: "thread-1", messageIDs: ["m-a"])
+        session.beginRequest(requestA, providerLabel: "On this Mac")
+        #expect(session.isActive(requestA))
+        #expect(session.state == .loading(providerLabel: "On this Mac"))
+
+        let presentationA = ThreadAISummaryPresentation.make(
+            responseText: "Summary:\n- Old conversation summary.",
+            providerLabel: "On this Mac",
+            wasTruncated: false
+        )
+        session.finishRequest(requestA, state: .success(presentationA))
+        #expect(session.activeRequest == nil)
+        #expect(session.state == .success(presentationA))
+
+        #expect(session.switchConversation(to: idA) == false)
+        #expect(session.state == .success(presentationA))
+
+        // Start a second request on A, then switch to B before it finishes.
+        session.beginRequest(requestA, providerLabel: "On this Mac")
+        #expect(session.switchConversation(to: idB) == true)
+        #expect(session.conversationIdentity == idB)
+        #expect(session.activeRequest == nil)
+        #expect(session.state == nil)
+
+        // Late completion or cancellation from conversation A cannot leak into conversation B.
+        session.finishRequest(requestA, state: .success(presentationA))
+        session.cancelRequest(requestA)
+        #expect(session.state == nil)
+        #expect(session.activeRequest == nil)
+
+        // Disappearing while loading clears active request and loading state cleanly.
+        let requestB = ThreadAISummaryRequest(threadID: "thread-b", messageIDs: ["m-b"])
+        session.beginRequest(requestB, providerLabel: "On this Mac")
+        session.cancelInFlightRequest()
+        #expect(session.activeRequest == nil)
+        #expect(session.state == nil)
+    }
+
     private func header(
         id: String,
         sender: String,

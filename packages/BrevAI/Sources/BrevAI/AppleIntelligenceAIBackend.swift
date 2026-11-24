@@ -227,6 +227,7 @@ public struct AppleIntelligenceAIBackend: AIBackend {
     public let displayName: String
     public let transparencyLabel: String
     public let contextBudget: AIBackendContextBudget?
+    public let isOnDeviceZeroNetwork = true
 
     private let effectiveBudget: AIBackendContextBudget
     private let availability: @Sendable () -> AppleIntelligenceAvailability

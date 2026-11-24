@@ -4,6 +4,17 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Proactive opt-in on-device AI summaries and priority triage: added
+  `AIBackend.isOnDeviceZeroNetwork` (enabled only for zero-network on-device
+  backends such as `AppleIntelligenceAIBackend`), the opt-in
+  **Automatic on-device summaries & priority** toggle in Settings → Writing →
+  AI Writer (off by default, disabled for cloud/BYOK providers), a bounded
+  cancellable in-memory `ProactiveOnDeviceTriageEngine` and
+  `OnDeviceThreadTriageStore` (cache-only input, Trash/Spam exclusion, sign-in
+  code redaction, fingerprint invalidation, immediate cache wipe on opt-out),
+  compact `Urgent` / `Needs reply` badges and `"On this Mac"` summary previews
+  in message list rows, and an automatic `"On this Mac"` summary card in the
+  thread conversation header alongside the manual `Summarize` action.
 - Lossless draft reopening for nested, styled, and webmail quoted HTML (#278):
   drafts containing nested `<blockquote>` threads, Apple Mail `<blockquote type="cite">`,
   Gmail `.gmail_quote`, Outlook `#divRplyFwdMsg`, or rich webmail tables inside

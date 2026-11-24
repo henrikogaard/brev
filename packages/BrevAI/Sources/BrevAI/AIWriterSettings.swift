@@ -21,23 +21,38 @@ public struct AIWriterSettings: Equatable, Sendable {
     public enum Key {
         public static let isEnabled = "ai.enabled"
         public static let consentGiven = "ai.consentGiven"
+        public static let proactiveOnDeviceTriageEnabled = "ai.proactiveOnDeviceTriageEnabled"
     }
 
     public var isEnabled: Bool
     public var consentGiven: Bool
+    /// Opt-in flag allowing automatic local thread summaries and priority triage
+    /// strictly when the active backend is zero-network on-device. Always defaults to `false`.
+    public var proactiveOnDeviceTriageEnabled: Bool
 
     public var isAvailable: Bool {
         isEnabled && consentGiven
     }
 
+    /// Whether the user has opted into both AI and proactive zero-network on-device triage.
+    public var isProactiveOnDeviceTriageAvailable: Bool {
+        isAvailable && proactiveOnDeviceTriageEnabled
+    }
+
     public static let defaults = AIWriterSettings(
         isEnabled: false,
-        consentGiven: false
+        consentGiven: false,
+        proactiveOnDeviceTriageEnabled: false
     )
 
-    public init(isEnabled: Bool, consentGiven: Bool) {
+    public init(
+        isEnabled: Bool,
+        consentGiven: Bool,
+        proactiveOnDeviceTriageEnabled: Bool = false
+    ) {
         self.isEnabled = isEnabled
         self.consentGiven = consentGiven
+        self.proactiveOnDeviceTriageEnabled = proactiveOnDeviceTriageEnabled
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> AIWriterSettings {
@@ -51,6 +66,11 @@ public struct AIWriterSettings: Equatable, Sendable {
                 for: Key.consentGiven,
                 defaultValue: Self.defaults.consentGiven,
                 defaults: defaults
+            ),
+            proactiveOnDeviceTriageEnabled: bool(
+                for: Key.proactiveOnDeviceTriageEnabled,
+                defaultValue: Self.defaults.proactiveOnDeviceTriageEnabled,
+                defaults: defaults
             )
         )
     }
@@ -58,6 +78,7 @@ public struct AIWriterSettings: Equatable, Sendable {
     public func save(to defaults: UserDefaults = .standard) {
         defaults.set(isEnabled, forKey: Key.isEnabled)
         defaults.set(consentGiven, forKey: Key.consentGiven)
+        defaults.set(proactiveOnDeviceTriageEnabled, forKey: Key.proactiveOnDeviceTriageEnabled)
     }
 
     public mutating func setAvailable(_ isAvailable: Bool) {
@@ -70,6 +91,7 @@ public struct AIWriterSettings: Equatable, Sendable {
     public mutating func resetConsent() {
         isEnabled = false
         consentGiven = false
+        proactiveOnDeviceTriageEnabled = false
     }
 
     private static func bool(

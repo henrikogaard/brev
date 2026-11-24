@@ -66,6 +66,8 @@ public struct ThreadConversationView: View {
     let dateTextProvider: ((MessageHeader) -> String)?
     let readerFooter: AnyView?
     private let aiBackend: (any AIBackend)?
+    private let triageStore: OnDeviceThreadTriageStore?
+    private let initialProactiveTriageInsight: ThreadTriageInsight?
     /// Shared-calendar RSVP reconciliation (#10); nil leaves the
     /// mail-only confirmation unchanged.
     let inviteReconciler: CalendarInviteReconciler?
@@ -84,10 +86,14 @@ public struct ThreadConversationView: View {
     @State private var exportShareURL: URL?
     #endif
     @State private var showAISummaryConsent = false
-    @State private var activeAISummaryRequest: ThreadAISummaryRequest?
-    @State private var aiSummaryState: ThreadAISummaryState?
+    @State private var aiSummarySession: ThreadAISummarySessionState
+    @State private var manualAISummaryTask: Task<Void, Never>?
+    @State private var loadedPlainTextByMessageID: [MessageHeader.ID: String] = [:]
+    @State private var cachedBodyRevision = 0
     @AppStorage(AIWriterSettings.Key.isEnabled) private var aiEnabled = false
     @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
+    @AppStorage(AIWriterSettings.Key.proactiveOnDeviceTriageEnabled)
+    private var proactiveOnDeviceTriageEnabled = false
     @AppStorage(MailboxViewPreferenceKey.threadMessageOrder)
     private var threadMessageOrderRaw = MailboxThreadOrder.oldestFirst.rawValue
     @AppStorage(LocalMessageWorkflowStateStorage.storageKey)
@@ -111,6 +117,8 @@ public struct ThreadConversationView: View {
         allFolders: [Folder] = [],
         canFileLocally: Bool = false,
         aiBackend: (any AIBackend)? = nil,
+        triageStore: OnDeviceThreadTriageStore? = nil,
+        initialProactiveTriageInsight: ThreadTriageInsight? = nil,
         preloadedBodies: [MessageHeader.ID: RenderedBody] = [:],
         showsAvatars: Bool = true,
         autoScrollsToExpandedMessage: Bool = true,
@@ -127,12 +135,23 @@ public struct ThreadConversationView: View {
         self.allFolders = allFolders
         self.canFileLocally = canFileLocally
         self.aiBackend = aiBackend
+        self.triageStore = triageStore
+        self.initialProactiveTriageInsight = initialProactiveTriageInsight
         self.preloadedBodies = preloadedBodies
         self.showsAvatars = showsAvatars
         self.autoScrollsToExpandedMessage = autoScrollsToExpandedMessage
         self.dateTextProvider = dateTextProvider
         self.inviteReconciler = inviteReconciler
         self.readerFooter = readerFooter
+        _aiSummarySession = State(
+            initialValue: ThreadAISummarySessionState(
+                conversationIdentity: ThreadAISummarySessionState.conversationIdentity(
+                    sourceID: sourceID,
+                    accountID: backend.account.id,
+                    headers: threadHeaders
+                )
+            )
+        )
     }
 
     // MARK: - Derived state
@@ -217,13 +236,17 @@ public struct ThreadConversationView: View {
                     RelatedConversationFootnote(horizontalPadding: BrevSpacing.md, bottomPadding: BrevSpacing.sm)
                     #endif
 
-                    if let aiSummaryState {
+                    if let aiSummaryState = aiSummarySession.state {
                         ThreadAISummaryPanel(
                             state: aiSummaryState,
                             onRetry: aiSummaryRetryAction
                         )
                         .padding(.horizontal, BrevSpacing.md)
                         .padding(.bottom, BrevSpacing.sm)
+                    } else if let proactiveInsight = activeProactiveTriageInsight {
+                        ProactiveThreadTriageCard(insight: proactiveInsight)
+                            .padding(.horizontal, BrevSpacing.md)
+                            .padding(.bottom, BrevSpacing.sm)
                     }
 
                     LazyVStack(spacing: 0) {
@@ -239,7 +262,14 @@ public struct ThreadConversationView: View {
                                 dateTextOverride: dateTextProvider?(header),
                                 initialRenderedBody: preloadedBodies[header.id],
                                 renderPool: renderPool,
-                                inviteReconciler: inviteReconciler
+                                inviteReconciler: inviteReconciler,
+                                onBodyLoaded: { messageID, rendered in
+                                    if let plain = rendered.plainText?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                       !plain.isEmpty {
+                                        loadedPlainTextByMessageID[messageID] = plain
+                                    }
+                                    cachedBodyRevision &+= 1
+                                }
                             ) {
                                 animate(.easeInOut(duration: 0.2)) {
                                     if expandedMessageIDs.contains(header.id) {
@@ -300,6 +330,19 @@ public struct ThreadConversationView: View {
                     }
                 }
                 // Re-initialise when the selected thread changes.
+                .onChange(of: conversationIdentity) { _, newIdentity in
+                    if aiSummarySession.switchConversation(to: newIdentity) {
+                        manualAISummaryTask?.cancel()
+                        manualAISummaryTask = nil
+                    }
+                    loadedPlainTextByMessageID.removeAll()
+                    cachedBodyRevision = 0
+                }
+                .onDisappear {
+                    manualAISummaryTask?.cancel()
+                    manualAISummaryTask = nil
+                    aiSummarySession.cancelInFlightRequest()
+                }
                 .onChange(of: threadHeaders.first?.threadID) { _, newThreadID in
                     guard newThreadID != nil else { return }
                     // Drop the previous thread's pooled renderers — their card
@@ -345,6 +388,15 @@ public struct ThreadConversationView: View {
                             proxy.scrollTo(expandedID, anchor: .top)
                         }
                     }
+                }
+                .onChange(of: aiEnabled) { _, newValue in
+                    if !newValue { triageStore?.clearAll() }
+                }
+                .onChange(of: proactiveOnDeviceTriageEnabled) { _, newValue in
+                    if !newValue { triageStore?.clearAll() }
+                }
+                .task(id: proactiveThreadTriageTaskID) {
+                    await refreshProactiveThreadTriageIfEligible()
                 }
                 .focusedSceneValue(\.mailPrintExportActions, printExportActions)
             #if os(iOS)
@@ -731,8 +783,7 @@ public struct ThreadConversationView: View {
             threadID: threadHeaders.last?.threadID,
             messageIDs: includedHeaders.map(\.id)
         )
-        activeAISummaryRequest = request
-        aiSummaryState = .loading(providerLabel: aiBackend.transparencyLabel)
+        aiSummarySession.beginRequest(request, providerLabel: aiBackend.transparencyLabel)
 
         do {
             var bodies: [MessageHeader.ID: MessageBody] = [:]
@@ -747,7 +798,7 @@ public struct ThreadConversationView: View {
                     listUnsubscribe: loaded.listUnsubscribe
                 )
             }
-            guard activeAISummaryRequest == request else {
+            guard aiSummarySession.isActive(request) else {
                 return
             }
             guard let context = ThreadAISummaryContextBuilder.context(
@@ -757,35 +808,37 @@ public struct ThreadConversationView: View {
                 maxCharacters: budget.maxTotalContextBytes,
                 maxUTF8Bytes: budget.maxTotalContextBytes
             ) else {
-                aiSummaryState = .failure(
-                    message: "Couldn't summarize this thread.",
-                    providerLabel: aiBackend.transparencyLabel
+                aiSummarySession.finishRequest(
+                    request,
+                    state: .failure(
+                        message: "Couldn't summarize this thread.",
+                        providerLabel: aiBackend.transparencyLabel
+                    )
                 )
-                activeAISummaryRequest = nil
                 return
             }
             let response = try await aiBackend.generateReply(
                 to: context.messages,
                 instruction: context.instruction
             )
-            guard activeAISummaryRequest == request else { return }
-            aiSummaryState = .success(ThreadAISummaryPresentation.make(
-                responseText: response.text,
-                providerLabel: aiBackend.transparencyLabel,
-                wasTruncated: context.wasTruncated
-            ))
-            activeAISummaryRequest = nil
-        } catch is CancellationError {
-            guard activeAISummaryRequest == request else { return }
-            aiSummaryState = nil
-            activeAISummaryRequest = nil
-        } catch {
-            guard activeAISummaryRequest == request else { return }
-            aiSummaryState = .failure(
-                message: ThreadAISummaryErrorPresentation.message(for: error),
-                providerLabel: aiBackend.transparencyLabel
+            aiSummarySession.finishRequest(
+                request,
+                state: .success(ThreadAISummaryPresentation.make(
+                    responseText: response.text,
+                    providerLabel: aiBackend.transparencyLabel,
+                    wasTruncated: context.wasTruncated
+                ))
             )
-            activeAISummaryRequest = nil
+        } catch is CancellationError {
+            aiSummarySession.cancelRequest(request)
+        } catch {
+            aiSummarySession.finishRequest(
+                request,
+                state: .failure(
+                    message: ThreadAISummaryErrorPresentation.message(for: error),
+                    providerLabel: aiBackend.transparencyLabel
+                )
+            )
         }
     }
 
@@ -961,7 +1014,7 @@ public struct ThreadConversationView: View {
             }
         } else if let aiBackend {
             Button {
-                Task { await summarizeThread(with: aiBackend) }
+                startManualThreadSummary(with: aiBackend)
             } label: {
                 Label(String(localized: "Summarize Thread", bundle: .module), systemImage: "wand.and.stars")
             }
@@ -971,10 +1024,7 @@ public struct ThreadConversationView: View {
     }
 
     private var aiSummaryMenuDisabled: Bool {
-        if case .loading = aiSummaryState {
-            return true
-        }
-        return false
+        aiSummarySession.state?.isLoading == true
     }
 
     private var shouldShowAISummaryMenu: Bool {
@@ -983,11 +1033,93 @@ public struct ThreadConversationView: View {
 
     private var aiSummaryAvailabilityState: ThreadAISummaryAvailabilityState {
         ThreadAISummaryAvailabilityState(
-            settings: AIWriterSettings(isEnabled: aiEnabled, consentGiven: aiConsentGiven),
+            settings: AIWriterSettings(
+                isEnabled: aiEnabled,
+                consentGiven: aiConsentGiven,
+                proactiveOnDeviceTriageEnabled: proactiveOnDeviceTriageEnabled
+            ),
             hasProviderBackend: aiBackend != nil,
             isBusy: isWorkBlocked,
-            hasActiveRequest: activeAISummaryRequest != nil,
+            hasActiveRequest: aiSummarySession.activeRequest != nil,
             messageCount: threadHeaders.count
+        )
+    }
+
+    private var conversationIdentity: String {
+        ThreadAISummarySessionState.conversationIdentity(
+            sourceID: sourceID,
+            accountID: backend.account.id,
+            headers: threadHeaders
+        )
+    }
+
+    private func startManualThreadSummary(with aiBackend: any AIBackend) {
+        manualAISummaryTask?.cancel()
+        manualAISummaryTask = Task {
+            await summarizeThread(with: aiBackend)
+        }
+    }
+
+    private var eligibleProactiveHeaders: [MessageHeader] {
+        OnDeviceThreadTriageStore.eligibleHeaders(
+            from: threadHeaders,
+            folder: nil,
+            allFolders: allFolders
+        )
+    }
+
+    private var proactiveTriageSettings: AIWriterSettings {
+        AIWriterSettings(
+            isEnabled: aiEnabled,
+            consentGiven: aiConsentGiven,
+            proactiveOnDeviceTriageEnabled: proactiveOnDeviceTriageEnabled
+        )
+    }
+
+    private var proactiveThreadTriageTaskID: String {
+        let fingerprint = OnDeviceThreadTriageStore.headerFingerprint(for: eligibleProactiveHeaders)
+        return "\(backend.account.id)|\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(aiBackend?.identifier ?? "")|\(fingerprint)|\(cachedBodyRevision)"
+    }
+
+    private var activeProactiveTriageInsight: ThreadTriageInsight? {
+        let eligible = eligibleProactiveHeaders
+        let ordered = OnDeviceThreadTriageStore.sortedChronologically(eligible)
+        guard proactiveTriageSettings.isProactiveOnDeviceTriageAvailable,
+              let aiBackend,
+              aiBackend.isOnDeviceZeroNetwork,
+              let latest = ordered.last
+        else { return nil }
+        if let initialProactiveTriageInsight {
+            return initialProactiveTriageInsight
+        }
+        guard let triageStore else { return nil }
+        let key = OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: latest)
+        let headerFP = OnDeviceThreadTriageStore.headerFingerprint(forOrderedHeaders: ordered)
+        return triageStore.cachedInsight(for: key, matchingHeaderFingerprint: headerFP)
+    }
+
+    private func refreshProactiveThreadTriageIfEligible() async {
+        guard initialProactiveTriageInsight == nil, let triageStore else { return }
+        let settings = proactiveTriageSettings
+        guard settings.isProactiveOnDeviceTriageAvailable else {
+            triageStore.clearAll()
+            return
+        }
+        guard let aiBackend, aiBackend.isOnDeviceZeroNetwork else { return }
+        var preloadedPlain = preloadedBodies.compactMapValues(\.plainText)
+        for (messageID, plain) in loadedPlainTextByMessageID {
+            preloadedPlain[messageID] = plain
+        }
+        _ = await triageStore.triageIfEligible(
+            accountID: backend.account.id,
+            headers: threadHeaders,
+            folder: nil,
+            allFolders: allFolders,
+            settings: settings,
+            backend: aiBackend,
+            cachedBodyProvider: backend.extensionService(CachedMessageBodyProviding.self),
+            preloadedPlainTextByID: preloadedPlain,
+            sourceID: sourceID
         )
     }
 
@@ -995,11 +1127,11 @@ public struct ThreadConversationView: View {
     /// failure is transient and the summary request can actually run again
     /// (provider present, consent/settings OK, no work or request in flight).
     private var aiSummaryRetryAction: (() -> Void)? {
-        guard case .failure = aiSummaryState,
+        guard case .failure = aiSummarySession.state,
               let aiBackend,
               ThreadAISummaryAvailability.disabledReason(in: aiSummaryAvailabilityState) == nil
         else { return nil }
-        return { Task { await summarizeThread(with: aiBackend) } }
+        return { startManualThreadSummary(with: aiBackend) }
     }
 
     // MARK: - Participant summary
@@ -1035,7 +1167,7 @@ public struct ThreadConversationView: View {
             if needsConsent {
                 showAISummaryConsent = true
             } else if let aiBackend {
-                Task { await summarizeThread(with: aiBackend) }
+                startManualThreadSummary(with: aiBackend)
             }
         } label: {
             Label(String(localized: "Summarize", bundle: .module), systemImage: "wand.and.stars")

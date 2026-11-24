@@ -166,6 +166,17 @@
         }
       }
     },
+    "Needs reply": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trenger svar"
+          }
+        }
+      }
+    },
     "Network error: %@": {
       "extractionState": "manual",
       "localizations": {
@@ -393,6 +404,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Slå på Apple Intelligence i Systeminnstillinger for å bruke AI på enheten."
+          }
+        }
+      }
+    },
+    "Urgent": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Haster"
           }
         }
       }
