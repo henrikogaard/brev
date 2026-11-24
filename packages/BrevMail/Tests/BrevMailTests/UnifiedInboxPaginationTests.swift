@@ -358,6 +358,38 @@ struct UnifiedInboxPaginationTests {
         ))
     }
 
+    @Test("Sent resolves separately per source; a source without Sent cannot return inbox matches")
+    func sentPhraseScopesToProviderFolderIDs() {
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let a = Self.section(account: "a", mailbox: "1", folders: [inbox, Folder(id: "SENT", name: "Sent mail", role: .sent)])
+        let b = Self.section(account: "b", mailbox: "1", folders: [inbox, Folder(id: "Utsendt", name: "Utsendt", role: .sent)])
+        let c = Self.section(account: "c", mailbox: "1", folders: [inbox])
+        for text in ["receipt in Sent", "receipt i Sendt"] {
+            let plans = UnifiedInboxSearchPolicy.searchPlans(
+                text: text,
+                from: [a, b, c],
+                execution: .cacheOnly,
+                capabilities: { _ in [] }
+            ).plans
+            #expect(plans.map(\.source.sourceID) == [a.id, b.id])
+            #expect(plans.map(\.query.folderID) == ["SENT", "Utsendt"])
+            #expect(plans.map(\.query.text) == ["receipt", "receipt"])
+        }
+    }
+
+    @Test("missing folder roles do not cause server-unavailable warnings")
+    func serverOnlyWarningCountsOnlyEligibleSources() {
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let sent = Folder(id: "sent", name: "Sent", role: .sent)
+        let eligible = Self.section(account: "work", mailbox: "1", folders: [inbox, sent])
+        let other = Self.section(account: "home", mailbox: "2", folders: [inbox])
+        for execution in [SearchExecution.cacheOnly, .cacheThenServer, .serverOnly] {
+            let result = UnifiedInboxSearchPolicy.searchPlans(text: "in Sent", from: [eligible, other],
+                                                              execution: execution, capabilities: { _ in [] })
+            #expect(result.unavailableServerCount == (execution == .serverOnly ? 1 : 0))
+        }
+    }
+
     @Test("auto search plans use local search for visible sources without server search")
     func autoSearchPlansUseLocalSearchForVisibleSourcesWithoutServerSearch() throws {
         let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
@@ -371,7 +403,7 @@ struct UnifiedInboxPaginationTests {
             capabilities: { sourceID in
                 sourceID == capable.id ? .serverSideSearch : []
             }
-        )
+        ).plans
 
         #expect(plans.map(\.source.sourceID) == [capable.id, unsupported.id])
         #expect(plans.map(\.query.execution) == [.cacheThenServer, .cacheOnly])
@@ -390,13 +422,13 @@ struct UnifiedInboxPaginationTests {
             capabilities: { sourceID in
                 sourceID == capable.id ? .serverSideSearch : []
             }
-        )
+        ).plans
         let cachePlans = UnifiedInboxSearchPolicy.searchPlans(
             text: "with attachments",
             from: [capable, unsupported],
             execution: .cacheOnly,
             capabilities: { _ in .serverSideSearch }
-        )
+        ).plans
 
         #expect(autoPlans.allSatisfy { $0.query.hasAttachments == true })
         #expect(
@@ -426,7 +458,7 @@ struct UnifiedInboxPaginationTests {
             capabilities: { sourceID in
                 sourceID == capable.id ? .serverSideSearch : []
             }
-        )
+        ).plans
 
         let plan = try #require(plans.first)
         #expect(plans.count == 1)

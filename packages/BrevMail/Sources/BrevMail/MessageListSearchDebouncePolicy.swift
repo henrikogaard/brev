@@ -144,7 +144,7 @@ struct MessageListSearchRequest: Equatable, Sendable {
 
 struct MessageListSearchPlan: Equatable, Sendable {
     let request: MessageListSearchRequest
-    let query: SearchQuery
+    let query: SearchQuery?
 }
 
 enum MessageListAttachmentSearchDisclosurePolicy {
@@ -171,7 +171,8 @@ enum MessageListSearchPlanPolicy {
         selectedFolderID: Folder.ID?,
         execution: SearchExecution,
         searchAllFolders: Bool,
-        searchScope: SearchScope
+        searchScope: SearchScope,
+        folders: [Folder] = []
     ) -> MessageListSearchPlan {
         let request = MessageListSearchRequest(
             query: text,
@@ -181,13 +182,13 @@ enum MessageListSearchPlanPolicy {
             folderID: selectedFolderID,
             execution: execution
         )
-        let query = MessageListSearchQueryPolicy.query(
+        let query = MessageListSearchQueryPolicy.plan(
             text: text,
             folderID: searchAllFolders ? nil : selectedFolderID,
             execution: execution,
             searchScope: searchScope
         )
-        return MessageListSearchPlan(request: request, query: query)
+        return MessageListSearchPlan(request: request, query: query.resolvedQuery(in: folders))
     }
 }
 

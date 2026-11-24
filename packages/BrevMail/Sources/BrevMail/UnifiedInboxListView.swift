@@ -813,7 +813,12 @@ struct UnifiedInboxListView: View {
         )
         let refinement = savedSearchQuery == nil ? nil : NaturalLanguageSearchPlanner.plan(
             for: navigation.searchText, execution: .cacheOnly, now: now, calendar: calendar
-        ).query
+        )
+        let folderIDs = refinement?.folderPhrase.map { phrase in
+            Dictionary(uniqueKeysWithValues: sourceSections.map { section in
+                (section.id, Set(section.folders.filter { $0.role == phrase.role }.map(\.id)))
+            })
+        }
         let filtered = categorized
             .filter { navigation.mailboxFilter.matches($0, now: now, calendar: calendar) }
             .filter { savedSearchQuery?.matches(
@@ -824,7 +829,14 @@ struct UnifiedInboxListView: View {
                 now: now,
                 calendar: calendar
             ) ?? true }
-            .filter { refinement?.matches($0.header) ?? true }
+            .filter { item in
+                if let folderIDs {
+                    let memberships = item.folderMembershipIDs ?? [item.folder.id]
+                    guard let requested = folderIDs[item.sourceID], !requested.isDisjoint(with: memberships)
+                    else { return false }
+                }
+                return refinement?.query.matches(item.header) ?? true
+            }
         let threadedSourceIDs = Set(sourceSections.compactMap { section in
             backend(for: section.id)?.groupsMessagesIntoThreads == true ? section.id : nil
         })
@@ -2788,7 +2800,7 @@ struct UnifiedInboxListView: View {
         let interval = MailUIPerformanceDiagnostics.beginInterval("Unified Inbox Search")
         defer { MailUIPerformanceDiagnostics.endInterval(interval) }
 
-        let searchPlans = UnifiedInboxSearchPolicy.searchPlans(
+        let (searchPlans, unavailableServerCount) = UnifiedInboxSearchPolicy.searchPlans(
             text: query,
             from: sourceSections,
             execution: navigation.searchExecution,
@@ -2890,10 +2902,10 @@ struct UnifiedInboxListView: View {
                 skippedSourceCount: skippedCount,
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
-        } else if skippedCount > 0 {
+        } else if unavailableServerCount > 0 {
             partialLoadErrorStatus = MessageListFooterStatus(
                 message: String(
-                    localized: "\(skippedCount) mailboxes skipped because server search is unavailable.",
+                    localized: "\(unavailableServerCount) mailboxes skipped because server search is unavailable.",
                     bundle: .module
                 ),
                 actionTitle: String(localized: "Refresh", bundle: .module)

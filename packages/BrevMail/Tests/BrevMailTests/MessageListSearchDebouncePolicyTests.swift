@@ -187,9 +187,25 @@ struct MessageListSearchDebouncePolicyTests {
             folderID: "inbox",
             execution: .cacheOnly
         ))
-        #expect(plan.query.text == "budget")
-        #expect(plan.query.folderID == "inbox")
-        #expect(plan.query.execution == .cacheOnly)
+        #expect(plan.query?.text == "budget")
+        #expect(plan.query?.folderID == "inbox")
+        #expect(plan.query?.execution == .cacheOnly)
+    }
+
+    @Test("folder phrase overrides the default folder but not the request owner")
+    func folderPhraseResolvesWithoutChangingResponseAnchor() throws {
+        let sent = Folder(id: "SENT", name: "Outgoing", role: .sent)
+        let source = MailSourceID(accountID: "work", mailboxID: "desk")
+        func makePlan(_ folders: [Folder]) -> MessageListSearchPlan {
+            MessageListSearchPlanPolicy.plan(text: "budget i sendt", sourceID: source, selectedFolderID: "inbox",
+                                             execution: .cacheOnly, searchAllFolders: false, searchScope: .all, folders: folders)
+        }
+        let plan = makePlan([sent])
+        #expect(plan.request.folderID == "inbox")
+        #expect(plan.request.sourceID == source)
+        #expect(plan.query?.folderID == sent.id)
+        #expect(plan.query?.text == "budget")
+        #expect(makePlan([]).query == nil)
     }
 
     @Test("all folders search plan keeps selected folder as response anchor and request scope")
@@ -212,10 +228,10 @@ struct MessageListSearchDebouncePolicyTests {
             folderID: "inbox",
             execution: .serverOnly
         ))
-        #expect(plan.query.text == "")
-        #expect(plan.query.subject == "quarterly budget")
-        #expect(plan.query.folderID == nil)
-        #expect(plan.query.execution == .serverOnly)
+        #expect(plan.query?.text == "")
+        #expect(plan.query?.subject == "quarterly budget")
+        #expect(plan.query?.folderID == nil)
+        #expect(plan.query?.execution == .serverOnly)
     }
 
     @Test("search can start when no search request is active")

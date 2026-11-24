@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-22 — Agent — #296 folder search chips
+
+- Recognize English and Norwegian phrases for Inbox, Sent, Drafts, Archive, Trash and Spam. Resolve the role within each source; skip sources missing the role and keep navigation anchored to the original list. Reuse the existing localized folder label.
+- Red: “receipt in Sent unread” kept “in Sent” as keywords and produced no folder chip. The focused Linux harness now covers chip removal, submission, result filtering, and two account-specific Sent IDs. No provider or storage changes.
+- Native app builds and the real MockBackend test need macOS CI. Verify saved-search label membership and the folder chip in both platform search fields; snapshot needs recording on macOS 26.
+- Review: searching Sent in a mailbox with no Sent folder showed a spurious server warning even in local mode. Count only in-scope mailboxes missing a requested server capability. Regression covers local, automatic and server-only searches.
+
 ## 2026-11-22 — Agent — #296 bilingual sender and date chips
 
 - Extended the existing search planner and iOS tokens with sender names and Norwegian date, read, flag and attachment phrases. The toolbar and iOS search field now give an example in the user's language.
@@ -8115,3 +8122,9 @@ buttons, and package-aware localization.
 - Changes: added `SignInCodeNotifications.swift` (`SignInCodeNotificationPolicy`, `SignInCodeNotificationScheduling`, `SignInCodeLinkConfirmation`, `SignInCodeNotificationPresenter`); added optional `folderID` and `receivedAt` on `SignInCodePresentation`; enabled `.messagesAdded` forwarding to `signInCodeArrivalController` on iOS in `BrevMailRootView.swift`; registered sign-in notification categories, scheduling conformance, and relaunch expired-notification pruning (`removeExpiredSignInNotifications(olderThan:)`) in `BrevLocalNotificationCenter.swift`; added cold-launch-buffered `onCopySignInCode` / `onOpenSignInLink` handlers in `BrevNotificationDelegate.swift` and `AppSession.swift`; wired iOS foreground host-confirmation alert, arrival controller, and `.active` expiry pruning in `apps/iOS/Sources/BrevApp.swift`; added Norwegian catalog entries; updated `ADRs/0088-sign-in-code-and-link-panel.md`, `ADRs/0006-telemetry-and-privacy.md`, `PRIVACY.md`, and `CHANGELOG.md`; added `SignInCodeNotificationTests.swift`.
 - Verification: `swift test --package-path packages/BrevMail --filter 'SignInCode|BrevLocalNotificationCenterTests|BrevNotificationDelegateTests'` (53 tests in 8 suites passed), `scripts/format.sh --lint`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, and `git diff --check origin/main` passed locally on macOS 27.2.1 / Xcode 27.2.
 - Skipped: local `scripts/privacy-audit.sh` (host lacks `rg`; enforced by hosted CI `repository-self-tests`), local `BrevIOS` build (delegated to CI `build (BrevIOS)`), and Gmail `.trustedSignInAssessment` enablement (still gated on live E1–E5 verification).
+
+## 2026-11-23 — Agent — PR #331 / Issue #296 (rebase + macOS snapshots)
+
+- Goal: rebase `feature/search-folder-phrases` onto `origin/main` (`a1a8be0f`), record macOS 26+ snapshots for English/Norwegian folder phrase chips, register the suite in `.github/workflows/build.yml`, and verify locally on macOS.
+- Changes: rebased onto `origin/main`; added `SearchFolderPhraseSnapshotTests.swift` + light/dark PNG baselines; registered `SearchFolderPhraseSnapshotTests` in `.github/workflows/build.yml`.
+- Verification: `swift test --package-path packages/BrevMail --filter 'SearchFolderPhraseSnapshotTests|NaturalLanguageSearchPlannerTests|MailSearchTokensTests|MailboxSearchScopeTests'` (21 tests in 4 suites passed), visually inspected both PNGs, `scripts/format.sh`, `scripts/lint.sh`, `scripts/check-adr-required.sh origin/main`, `git diff --check`.

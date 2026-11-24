@@ -103,6 +103,7 @@ enum MailSearchDatePreset: String, CaseIterable, Hashable, Sendable {
 enum MailSearchToken: Hashable, Identifiable, Sendable {
     case field(MailSearchTextField)
     case sender(email: String, name: String?)
+    case folder(SearchFolderPhrase)
     case unread
     case flagged
     case hasAttachment
@@ -112,6 +113,7 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
         switch self {
         case .field(let field): "field:\(field.rawValue)"
         case .sender(let email, _): "sender:\(email.lowercased())"
+        case .folder(let phrase): "folder:\(phrase.role.rawValue)"
         case .unread: "unread"
         case .flagged: "flagged"
         case .hasAttachment: "attachment"
@@ -124,6 +126,8 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
         switch self {
         case .field(let field):
             field.title
+        case .folder(let phrase):
+            phrase.title
         case .sender(let email, let name):
             String(format: String(localized: "From: %@", bundle: .module), name?.isEmpty == false ? name! : email)
         case .unread:
@@ -140,6 +144,7 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
     var symbolName: String {
         switch self {
         case .field(.from), .sender: "person"
+        case .folder: "folder"
         case .field(.subject): "text.alignleft"
         case .unread: "envelope.badge"
         case .flagged: "flag"
@@ -152,6 +157,7 @@ enum MailSearchToken: Hashable, Identifiable, Sendable {
     fileprivate var queryPhrase: String? {
         switch self {
         case .field: nil
+        case .folder(let phrase): phrase.text
         case .sender(let email, _):
             email.contains(where: \.isWhitespace) ? "from \"\(email)\"" : "from \(email)"
         case .unread: "unread"
@@ -210,6 +216,7 @@ enum MailSearchTokens {
         for chip in plan.chips {
             switch chip.kind {
             case .keyword, .subject: break
+            case .folder: if let phrase = plan.folderPhrase { tokens.append(.folder(phrase)) }
             case .sender: tokens.append(.sender(email: chip.value, name: nil))
             case .date: MailSearchDatePreset(phrase: chip.value).map { tokens.append(.date($0)) }
             case .unread: tokens.append(.unread)

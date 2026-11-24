@@ -18,6 +18,7 @@ struct NaturalLanguageSearchChip: Equatable, Identifiable, Sendable {
         case keyword
         case sender
         case subject
+        case folder
         case date
         case unread
         case attachment
@@ -36,6 +37,16 @@ struct NaturalLanguageSearchPlan: Equatable, Sendable {
     let query: SearchQuery
     let chips: [NaturalLanguageSearchChip]
     let requiresAI: Bool
+    let folderPhrase: SearchFolderPhrase?
+
+    /// A missing role cannot silently broaden a request to every folder.
+    func resolvedQuery(in folders: [Folder]) -> SearchQuery? {
+        guard let folderPhrase else { return query }
+        guard let folder = folders.first(where: { $0.role == folderPhrase.role }) else { return nil }
+        var resolved = query
+        resolved.folderID = folder.id
+        return resolved
+    }
 }
 
 enum NaturalLanguageSearchPlanner {
@@ -60,13 +71,17 @@ enum NaturalLanguageSearchPlanner {
         var workingText = originalText
         var query = SearchQuery(folderID: folderID, execution: execution)
         var parsedChips: [NaturalLanguageSearchChip] = []
-
-        // Extract quoted sender clauses first so date/filter keywords inside
-        // quotes (e.g. `from "USA TODAY"`) are preserved verbatim.
+        // Extract quoted sender clauses first so folder/date/filter keywords
+        // inside quotes (e.g. `from "USA TODAY"`) are preserved verbatim.
         var parsedSender: String?
         if let quotedSenderParse = quotedSender(in: workingText) {
             parsedSender = quotedSenderParse.value
             workingText = quotedSenderParse.remainingText
+        }
+
+        let folderPhrase = SearchFolderPhrase.extract(from: &workingText)
+        if let folderPhrase {
+            parsedChips.append(.init(kind: .folder, label: folderPhrase.title, value: folderPhrase.text))
         }
 
         if let dateParse = dateRange(in: workingText, now: now, calendar: calendar) {
@@ -132,7 +147,8 @@ enum NaturalLanguageSearchPlanner {
             originalText: originalText,
             query: query,
             chips: chips,
-            requiresAI: false
+            requiresAI: false,
+            folderPhrase: folderPhrase
         )
     }
 
@@ -444,7 +460,8 @@ enum MessageListSearchQueryPolicy {
             originalText: parsedPlan.originalText,
             query: query,
             chips: chips,
-            requiresAI: parsedPlan.requiresAI
+            requiresAI: parsedPlan.requiresAI,
+            folderPhrase: parsedPlan.folderPhrase
         )
     }
 
@@ -491,6 +508,8 @@ enum NaturalLanguageSearchChipEditing {
         from text: String
     ) -> String {
         switch chip.kind {
+        case .folder:
+            return removingFolderOutsideQuotedSender(matching: chip.value, from: text)
         case .keyword, .subject:
             return removingLiteral(chip.value, from: text)
         case .sender:
@@ -511,6 +530,39 @@ enum NaturalLanguageSearchChipEditing {
         }
     }
 
+    private static func removingFolderOutsideQuotedSender(matching expectedText: String, from text: String) -> String {
+        let normalizedExpected = cleaned(expectedText).lowercased()
+        let quotedSenderPattern = NaturalLanguageSearchPlanner.senderPrefix + #""[^"]+"(?=\s|$)"#
+        if let quotedExpr = try? NSRegularExpression(pattern: quotedSenderPattern, options: [.caseInsensitive]),
+           let match = quotedExpr.firstMatch(
+               in: text,
+               range: NSRange(text.startIndex ..< text.endIndex, in: text)
+           ),
+           let quotedRange = Range(match.range(at: 0), in: text) {
+            var prefix = String(text[..<quotedRange.lowerBound])
+            let preserved = String(text[quotedRange])
+            var suffix = String(text[quotedRange.upperBound...])
+            if let prefixPhrase = SearchFolderPhrase.extract(from: &prefix),
+               cleaned(prefixPhrase.text).lowercased() == normalizedExpected {
+                return [cleaned(prefix), preserved, cleaned(suffix)]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " ")
+            }
+            if let suffixPhrase = SearchFolderPhrase.extract(from: &suffix),
+               cleaned(suffixPhrase.text).lowercased() == normalizedExpected {
+                return [cleaned(prefix), preserved, cleaned(suffix)]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " ")
+            }
+            return text
+        }
+        var edited = text
+        guard let phrase = SearchFolderPhrase.extract(from: &edited),
+              cleaned(phrase.text).lowercased() == normalizedExpected
+        else { return text }
+        return cleaned(edited)
+    }
+
     private static func removingPatternOutsideQuotedSender(_ pattern: String, from text: String) -> String {
         let quotedSenderPattern = NaturalLanguageSearchPlanner.senderPrefix + #""[^"]+"(?=\s|$)"#
         guard let quotedExpr = try? NSRegularExpression(pattern: quotedSenderPattern, options: [.caseInsensitive]),
@@ -527,7 +579,9 @@ enum NaturalLanguageSearchChipEditing {
         let suffix = String(text[quotedRange.upperBound...])
         let editedPrefix = removingPattern(pattern, from: prefix)
         let editedSuffix = removingPattern(pattern, from: suffix)
-        return cleaned([editedPrefix, preserved, editedSuffix].filter { !$0.isEmpty }.joined(separator: " "))
+        return [editedPrefix, preserved, editedSuffix]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     private static func removingLiteral(_ literal: String, from text: String) -> String {
