@@ -336,6 +336,16 @@ struct NaturalLanguageSearchPlannerTests {
                 #"receipt from "News in Sent Weekly" in   Sent"#,
                 "News in Sent Weekly",
                 #"receipt from "News in Sent Weekly""#
+            ),
+            (
+                #"receipt from "Acme  Billing" in   Sent"#,
+                "Acme  Billing",
+                #"receipt from "Acme  Billing""#
+            ),
+            (
+                #"in   Sent from "Acme  Billing" receipt"#,
+                "Acme  Billing",
+                #"from "Acme  Billing" receipt"#
             )
         ]
         for testCase in cases {

@@ -544,11 +544,15 @@ enum NaturalLanguageSearchChipEditing {
             var suffix = String(text[quotedRange.upperBound...])
             if let prefixPhrase = SearchFolderPhrase.extract(from: &prefix),
                cleaned(prefixPhrase.text).lowercased() == normalizedExpected {
-                return cleaned([prefix, preserved, suffix].filter { !$0.isEmpty }.joined(separator: " "))
+                return [cleaned(prefix), preserved, cleaned(suffix)]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " ")
             }
             if let suffixPhrase = SearchFolderPhrase.extract(from: &suffix),
                cleaned(suffixPhrase.text).lowercased() == normalizedExpected {
-                return cleaned([prefix, preserved, suffix].filter { !$0.isEmpty }.joined(separator: " "))
+                return [cleaned(prefix), preserved, cleaned(suffix)]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " ")
             }
             return text
         }
@@ -575,7 +579,9 @@ enum NaturalLanguageSearchChipEditing {
         let suffix = String(text[quotedRange.upperBound...])
         let editedPrefix = removingPattern(pattern, from: prefix)
         let editedSuffix = removingPattern(pattern, from: suffix)
-        return cleaned([editedPrefix, preserved, editedSuffix].filter { !$0.isEmpty }.joined(separator: " "))
+        return [editedPrefix, preserved, editedSuffix]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     private static func removingLiteral(_ literal: String, from text: String) -> String {
