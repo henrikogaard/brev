@@ -647,16 +647,20 @@ struct ComposeDraftPreservationTests {
         #expect(try await backend.draft(for: original.remoteID ?? original.id) == original)
     }
 
-    // Nested blockquotes now reopen non-destructively in richText mode (#278) while
-    // plainText mode, malformed quotes, and unsupported editable-prefix markup fail closed.
+    // Nested blockquotes (#278) and semantic tables (#3) reopen non-destructively in richText
+    // mode while plainText mode, malformed quotes, styled/colspan tables, and unsupported
+    // editable-prefix markup fail closed.
     @Test("unsafe, lossy, inline and plain-mode formatted drafts fail closed", arguments: [
         ("<img src=\"https://example.invalid/image.png\">", "richText"),
         ("<img src=\"cid:local\">", "richText"),
         ("<style>body { background: url(https://example.invalid/bg) }</style>Text", "richText"),
-        ("<table><tr><td>Table</td></tr></table>", "richText"),
+        ("<table style=\"color:red\"><tr><td colspan=\"2\">Styled table</td></tr></table>", "richText"),
         ("<blockquote><blockquote>Nested quote</blockquote></blockquote>", "plainText"),
         ("<blockquote>Unclosed quote", "richText"),
-        ("<table><tr><td>Top</td></tr></table><blockquote type=\"cite\">Quoted</blockquote>", "richText"),
+        (
+            "<table style=\"background:#fff\"><tr><td>Top</td></tr></table><blockquote type=\"cite\">Quoted</blockquote>",
+            "richText"
+        ),
         ("<script>alert(1)</script>Top<blockquote type=\"cite\">Quoted</blockquote>", "richText"),
         ("<strong>Formatted</strong>", "plainText")
     ])

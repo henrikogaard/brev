@@ -18,6 +18,11 @@ protocol ComposeIOSRichTextTarget: AnyObject {
     func toggleBold()
     func toggleItalic()
     func toggleUnderline()
+    func toggleStrikethrough()
+    func toggleHeading(_ level: Int)
+    func toggleInlineCode()
+    func toggleCodeBlock()
+    func insertTable()
     func toggleBulletedList()
     func toggleNumberedList()
     func clearFormatting()
@@ -26,6 +31,8 @@ protocol ComposeIOSRichTextTarget: AnyObject {
     func removeLink()
     @discardableResult
     func insertInlineImage(data: Data, mimeType: String) -> Bool
+    @discardableResult
+    func insertSanitizedHTML(_ rawHTML: String) -> Bool
 }
 
 /// Holds a weak reference to the active iOS `UITextView` rich-text coordinator.

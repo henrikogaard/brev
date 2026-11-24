@@ -1,5 +1,24 @@
 # Worklog
 
+## 2026-11-24 — Agent — Roadmap #3 (Rich HTML compose beyond MVP)
+
+- Goal: implement rich HTML compose beyond MVP on `feature/rich-html-compose-v2` targeting `main` — inline `cid:` images (PNG/JPEG/GIF/WebP, byte caps, HTML preview rendering, lossless draft save/autosave/reopen, clean RFC 2387 `multipart/related` MIME), deterministic rich-HTML paste sanitization, and semantic HTML tables, `<pre><code>` code blocks, inline `<code>`, headings (`h1`–`h3`), and strikethrough (`<s>`) while preserving all PR #350 quoted-thread invariants.
+- Changes:
+  - `BrevBackend`: updated `MIMEMessageBuilder` (`IMAPOAuthConfiguration.swift`) to omit redundant empty `multipart/mixed` wrappers when `draft.attachmentIDs` only reference staged inline images and to normalize `Content-ID` angle brackets; implemented `stageInlineAttachment` and preserved `isInline`/`contentID` in `localDraftAttachments` in `MockBackend.swift`; expanded `MIMEInlineImageBuilderTests.swift`.
+  - `BrevMail` inline images: added WebP magic-byte detection (`RIFF....WEBP`), `org.webmproject.webp` pasteboard mapping, `ComposeInlineImageAttribute.alt`, `ComposeInlineImageData.normalizedContentID`, `image/webp` allowlist, 25 MiB aggregate cap (`maxTotalBytes`), empty-payload rejection, and `restore(_:)` in `ComposeInlineImageAttribute.swift` and `ComposeInlineImageRegistry.swift`; wired local in-memory `cid:` → `data:` rewriting into `ComposeHTMLPreviewSource.swift` and `ComposePreservedQuoteSection.swift` (zero external network fetches); enabled lossless `cid:` draft restoration in `ComposeDraftRestoration.swift`, `ComposeDraftBodyRestoration.swift`, and `ComposeView.swift` (seeding `inlineImageRegistry` and `stagedInlineAttachments`, preserving quote-tail CIDs across reconciliation, and keeping missing-payload and plain-text mode fail-closed).
+  - `BrevMail` rich-HTML paste & expanded formatting: added `ComposeRichTextAttribute.swift`, linear O(n) `ComposeHTMLPasteSanitizer.swift`, and zero-WebKit `ComposeRichHTMLAttributedBuilder.swift`; updated `ComposeRichTextHTMLSerializer.swift`, `ComposeEditorTypography.swift`, `ComposeDraftBuilder.swift`, `ComposeBodyEditor.swift` (macOS + iOS Format actions, native AppKit `NSTextTable`, code-block background drawing, WebP panel/paste/drop, sanitized HTML paste), `ComposeIOSRichTextTarget.swift`, `ComposeView.swift`, `MessageBodyStyle.swift`, and `HTMLBodyWebView.swift`; localized 14 new strings (`en` and `nb`) in `Localizable.xcstrings`.
+  - Docs & tests: updated `docs/design/compose-and-drafts.md` and `CHANGELOG.md`; added `ComposeHTMLPasteSanitizerTests.swift` and `ComposeRichTextV2Tests.swift`; updated `ComposeCopyLocalizationTests.swift`, `ComposeDraftRestorationTests.swift`, `ComposeDraftBodyRestorationTests.swift`, and `ComposeDraftPreservationTests.swift`.
+- Verification:
+  - `swift test --package-path packages/BrevBackend` (1,228 tests in 119 suites passed).
+  - `swift test --package-path packages/BrevGmail` (210 tests in 19 suites passed).
+  - `swift test --package-path packages/BrevMail --skip 'BrevMailTests\.ContactsAccessPolicyTests' --skip 'SnapshotTests'` (2,664 tests in 366 suites passed).
+  - `swift test --package-path packages/BrevMail --filter 'BrevMailTests\.ContactsAccessPolicyTests'` (7 tests in 1 suite passed).
+  - `scripts/format.sh`, `scripts/lint.sh`, `python3 -m json.tool` on `Localizable.xcstrings`, `git diff --check origin/main`, and Python verification of `scripts/privacy-audit.sh` invariants passed.
+- Skipped:
+  - Local macOS GUI snapshot tests (`xcodebuild ... SnapshotTests`) intentionally skipped on local Mac Studio per desktop-isolation requirement (no existing snapshot view layouts altered; CI `snapshot-macos`, `build (BrevMacOS)`, and `build (BrevIOS)` cover full platform builds and pixel comparisons).
+  - Native `scripts/privacy-audit.sh` shell invocation skipped locally because `rg` is absent in this environment (all invariants verified via Python; full script runs in CI).
+- Next handoff: PR opened from `feature/rich-html-compose-v2` targeting `main`; awaiting CI and review.
+
 ## 2026-11-24 — Agent — PR #353 CI flake fix (Issue #7)
 
 - Goal: fix the `BackgroundRecentIndexingCoordinatorTests` CI race (`multiBatchBacklogAndForegroundArrivalWake` failing with `.running(completed: 0, total: 1)` under parallel CI load) and commit locally without pushing.

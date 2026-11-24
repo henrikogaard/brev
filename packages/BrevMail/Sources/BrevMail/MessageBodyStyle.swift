@@ -167,6 +167,17 @@ struct MessageBodyStyle: Equatable, Sendable {
         pre,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;\
         white-space:pre-wrap;word-break:break-word;\
         background:\(codeBackgroundCSS)}\
+        pre{padding:10px 12px;border-radius:6px;border:1px solid \(borderColorCSS);\
+        margin:8px 0;overflow-x:auto}\
+        code{padding:1px 4px;border-radius:4px}\
+        pre code{padding:0;background:transparent;border:0}\
+        table{border-collapse:collapse;margin:8px 0;max-width:100%}\
+        th,td{border:1px solid \(borderColorCSS);padding:6px 10px;\
+        text-align:left;vertical-align:top}\
+        th{font-weight:600;background:\(metadataBackgroundCSS)}\
+        h1{font-size:1.5em;margin:.6em 0 .35em}\
+        h2{font-size:1.3em;margin:.55em 0 .3em}\
+        h3{font-size:1.15em;margin:.5em 0 .25em}\
         \(darkOverrides)
         """
     }

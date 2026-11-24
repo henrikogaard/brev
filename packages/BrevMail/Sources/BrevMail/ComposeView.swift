@@ -36,6 +36,7 @@ private struct ComposeAutoSaveFingerprint: Equatable {
     let bodyText: String
     let bodyHTML: String?
     let attachmentIDs: [UUID]
+    let inlineImageCIDs: [String]
     let requestReadReceipt: Bool
     let remindIfNoReply: Bool
 }
@@ -50,6 +51,13 @@ enum ComposeRichTextCommand: CaseIterable {
     case bold
     case italic
     case underline
+    case strikethrough
+    case heading1
+    case heading2
+    case heading3
+    case inlineCode
+    case codeBlock
+    case insertTable
     case insertLink
     case bulletedList
     case numberedList
@@ -63,7 +71,12 @@ enum ComposeRichTextCommand: CaseIterable {
     /// target — see `insertSelectedInlineImage`). Undo/redo come from the text
     /// view's own affordances.
     static var iosEssentials: [ComposeRichTextCommand] {
-        [.bold, .italic, .underline, .bulletedList, .numberedList, .insertLink, .clearFormatting, .insertImage]
+        [
+            .bold, .italic, .underline, .strikethrough,
+            .heading1, .heading2, .heading3,
+            .inlineCode, .codeBlock, .insertTable,
+            .bulletedList, .numberedList, .insertLink, .clearFormatting, .insertImage
+        ]
     }
 
     var label: String {
@@ -71,6 +84,13 @@ enum ComposeRichTextCommand: CaseIterable {
         case .bold: return String(localized: "Bold", bundle: .module)
         case .italic: return String(localized: "Italic", bundle: .module)
         case .underline: return String(localized: "Underline", bundle: .module)
+        case .strikethrough: return String(localized: "Strikethrough", bundle: .module)
+        case .heading1: return String(localized: "Heading 1", bundle: .module)
+        case .heading2: return String(localized: "Heading 2", bundle: .module)
+        case .heading3: return String(localized: "Heading 3", bundle: .module)
+        case .inlineCode: return String(localized: "Inline Code", bundle: .module)
+        case .codeBlock: return String(localized: "Code Block", bundle: .module)
+        case .insertTable: return String(localized: "Insert Table", bundle: .module)
         case .insertLink: return String(localized: "Insert Link", bundle: .module)
         case .bulletedList: return String(localized: "Bulleted List", bundle: .module)
         case .numberedList: return String(localized: "Numbered List", bundle: .module)
@@ -86,6 +106,13 @@ enum ComposeRichTextCommand: CaseIterable {
         case .bold: return "bold"
         case .italic: return "italic"
         case .underline: return "underline"
+        case .strikethrough: return "strikethrough"
+        case .heading1: return "textformat.size.larger"
+        case .heading2: return "textformat.size"
+        case .heading3: return "textformat.size.smaller"
+        case .inlineCode: return "chevron.left.forwardslash.chevron.right"
+        case .codeBlock: return "curlybraces"
+        case .insertTable: return "tablecells"
         case .insertLink: return "link"
         case .bulletedList: return "list.bullet"
         case .numberedList: return "list.number"
@@ -104,6 +131,13 @@ enum ComposeRichTextCommand: CaseIterable {
         case .bold: #selector(ComposeBodyEditorRichActions.brevToggleBold(_:))
         case .italic: #selector(ComposeBodyEditorRichActions.brevToggleItalic(_:))
         case .underline: #selector(NSTextView.underline(_:))
+        case .strikethrough: #selector(ComposeBodyEditorRichActions.brevToggleStrikethrough(_:))
+        case .heading1: #selector(ComposeBodyEditorRichActions.brevToggleHeading1(_:))
+        case .heading2: #selector(ComposeBodyEditorRichActions.brevToggleHeading2(_:))
+        case .heading3: #selector(ComposeBodyEditorRichActions.brevToggleHeading3(_:))
+        case .inlineCode: #selector(ComposeBodyEditorRichActions.brevToggleInlineCode(_:))
+        case .codeBlock: #selector(ComposeBodyEditorRichActions.brevToggleCodeBlock(_:))
+        case .insertTable: #selector(ComposeBodyEditorRichActions.brevInsertTable(_:))
         // Handled by the Coordinator in ComposeBodyEditor via ComposeBodyEditorRichActions.
         case .insertLink: #selector(ComposeBodyEditorRichActions.brevInsertLink(_:))
         case .bulletedList: #selector(ComposeBodyEditorRichActions.brevToggleBulletedList(_:))
@@ -128,6 +162,20 @@ enum ComposeRichTextCommand: CaseIterable {
             iosTarget?.toggleItalic()
         case .underline:
             iosTarget?.toggleUnderline()
+        case .strikethrough:
+            iosTarget?.toggleStrikethrough()
+        case .heading1:
+            iosTarget?.toggleHeading(1)
+        case .heading2:
+            iosTarget?.toggleHeading(2)
+        case .heading3:
+            iosTarget?.toggleHeading(3)
+        case .inlineCode:
+            iosTarget?.toggleInlineCode()
+        case .codeBlock:
+            iosTarget?.toggleCodeBlock()
+        case .insertTable:
+            iosTarget?.insertTable()
         case .bulletedList:
             iosTarget?.toggleBulletedList()
         case .numberedList:
@@ -2535,6 +2583,7 @@ public struct ComposeView: View {
                 preservedQuotedHTML: preservedQuotedHTML,
                 inheritedDirection: restoredBody.inheritedDirection,
                 leadingContextText: bodyText,
+                inlineImages: inlineImageRegistry.staged,
                 stripTrackingPixels: stripTrackingPixels,
                 fontFamily: composeFontFamily,
                 textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium,
@@ -2573,6 +2622,9 @@ public struct ComposeView: View {
             fontFamily: composeFontFamily,
             textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium,
             inlineImageRegistry: inlineImageRegistry,
+            onInlineImageRejected: { message in
+                errorMessage = message
+            },
             onRequestLinkSheet: { input in
                 linkSheetInput = input
             },
@@ -2607,7 +2659,8 @@ public struct ComposeView: View {
             preservedQuotedHTML: restoredBody?.preservedQuotedHTML,
             quoteSeparatorHTML: restoredBody?.quoteSeparatorHTML ?? "",
             outerWrapperOpenHTML: restoredBody?.outerWrapperOpenHTML ?? "",
-            outerWrapperCloseHTML: restoredBody?.outerWrapperCloseHTML ?? ""
+            outerWrapperCloseHTML: restoredBody?.outerWrapperCloseHTML ?? "",
+            inlineImages: inlineImageRegistry.staged
         )
         return ScrollView {
             HTMLBodyWebView(
@@ -2833,18 +2886,25 @@ public struct ComposeView: View {
     @ViewBuilder
     private var richTextFormattingMenuContent: some View {
         if composeBodyFormat == .richTextHTML {
-            formatMenuSection([.bold, .italic, .underline])
+            formatMenuSection([.bold, .italic, .underline, .strikethrough, .inlineCode])
+            Divider()
+            Menu {
+                formatMenuSection([.heading1, .heading2, .heading3])
+            } label: {
+                Label(String(localized: "Heading", bundle: .module), systemImage: "textformat.size")
+            }
+            .disabled(isInteractionBlocked)
             Divider()
             #if os(macOS)
-            formatMenuSection([.insertLink, .bulletedList, .numberedList, .insertImage])
+            formatMenuSection([
+                .insertLink, .bulletedList, .numberedList, .codeBlock, .insertTable, .insertImage
+            ])
             Divider()
             formatMenuSection([.clearFormatting])
             Divider()
             formatMenuSection([.undo, .redo])
             #else
-            // Inline images stay macOS-only (cid: staging pipeline follow-up,
-            // ADR-0038); undo/redo come from the text view's own affordances.
-            formatMenuSection([.insertLink, .bulletedList, .numberedList])
+            formatMenuSection([.insertLink, .bulletedList, .numberedList, .codeBlock, .insertTable])
             Divider()
             formatMenuSection([.clearFormatting])
             #endif
@@ -3612,7 +3672,8 @@ public struct ComposeView: View {
             subject: subject,
             bodyText: bodyTextExcludingManagedSignature,
             hasAttachments: !pendingAttachments.isEmpty,
-            hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil
+            hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil,
+            hasInlineImages: !inlineImageRegistry.staged.isEmpty
         ) && !ComposeQuotedBodyUpgradePolicy.blocksSending(
             isUpgradePending: isQuotedBodyUpgradePending
         )
@@ -3805,7 +3866,11 @@ public struct ComposeView: View {
                 } else {
                     return
                 }
-                let body = try await ComposeDraftBodyRestoration.prepare(draft: resolved.draft, format: composeBodyFormat)
+                let body = try await ComposeDraftBodyRestoration.prepare(
+                    draft: resolved.draft,
+                    attachments: resolved.attachments,
+                    format: composeBodyFormat
+                )
                 try Task.checkCancellation()
                 guard !isDraftRestorationCancelled else { return }
                 guard currentComposeOperationSnapshot() == snapshot, selectedComposeSourceID == source else {
@@ -3826,6 +3891,26 @@ public struct ComposeView: View {
                 encryptMessage = draft.securityMode.requiresEncryption
                 requestReadReceipt = draft.readReceiptRequest != nil
                 pendingAttachments = ComposeDraftRestoration.pendingAttachments(from: resolved.attachments)
+                let restoredInline = ComposeDraftRestoration.inlineAttachments(from: resolved.attachments)
+                let restoredComposeImages = restoredInline.compactMap { attachment -> ComposeInlineImage? in
+                    guard let contentID = attachment.contentID else { return nil }
+                    return ComposeInlineImage(
+                        contentID: contentID,
+                        filename: attachment.filename,
+                        mimeType: attachment.mimeType,
+                        data: attachment.data
+                    )
+                }
+                inlineImageRegistry.restore(restoredComposeImages)
+                var seededInline: [String: ComposeStagedInlineAttachment] = [:]
+                for attachment in restoredInline {
+                    guard let contentID = attachment.contentID else { continue }
+                    seededInline[contentID] = ComposeStagedInlineAttachment(
+                        attachmentID: attachment.id,
+                        sourceID: activeComposeSourceID
+                    )
+                }
+                stagedInlineAttachments = seededInline
                 quoteProtection = body.preservedQuotedHTML == nil
                     ? draft.quoteBoundary.map(ComposeQuoteProtection.init(boundary:))
                     : nil
@@ -3890,6 +3975,8 @@ public struct ComposeView: View {
         bcc = []
         subject = ""
         pendingAttachments = []
+        inlineImageRegistry.reconcile(keepingContentIDs: [])
+        stagedInlineAttachments = [:]
         quoteProtection = nil
         restoredBody = nil
         bodyHTML = nil
@@ -3950,7 +4037,8 @@ public struct ComposeView: View {
             subject: subject,
             bodyText: bodyTextExcludingManagedSignature,
             hasAttachments: !pendingAttachments.isEmpty,
-            hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil
+            hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil,
+            hasInlineImages: !inlineImageRegistry.staged.isEmpty
         ) else { return }
         let request = startComposeOperation(kind: .autoSaveDraft)
         defer { finishComposeOperation(request) }
@@ -3997,22 +4085,25 @@ public struct ComposeView: View {
             throw MailBackendError
                 .backendSpecific(message: draftRestorationError ?? ComposeDraftRestoration.recoveryUnavailableMessage)
         }
-        let html = composeBodyFormat == .richTextHTML ? (bodyHTML ?? bodyText) : bodyText
+        let editableHTML = composeBodyFormat == .richTextHTML ? (bodyHTML ?? bodyText) : bodyText
+        let fullCIDSourceHTML = if let preservedQuote = restoredBody?.preservedQuotedHTML {
+            editableHTML + preservedQuote
+        } else {
+            editableHTML
+        }
         let images = ComposeDraftBuilder.inlineAttachments(
             fromRegistry: inlineImageRegistry,
             draftID: draftID,
-            bodyHTML: html
+            bodyHTML: fullCIDSourceHTML
         )
-        if restoredDraft != nil {
-            var remaining = ComposeAttachmentImport.maxAttachmentByteCount
-            let sizes = pendingAttachments.map { ($0.filename, $0.data.count) } + images.map { ($0.filename, $0.data.count) }
-            for (filename, count) in sizes {
-                guard count <= remaining else {
-                    throw MailBackendError
-                        .backendSpecific(message: ComposeAttachmentImport.attachmentBudgetExceededMessage(filename: filename))
-                }
-                remaining -= count
+        var remaining = ComposeAttachmentImport.maxAttachmentByteCount
+        let sizes = pendingAttachments.map { ($0.filename, $0.data.count) } + images.map { ($0.filename, $0.data.count) }
+        for (filename, count) in sizes {
+            guard count <= remaining else {
+                throw MailBackendError
+                    .backendSpecific(message: ComposeAttachmentImport.attachmentBudgetExceededMessage(filename: filename))
             }
+            remaining -= count
         }
         let stagingSourceID = activeComposeSourceID
         let backend = selectedComposeBackend
@@ -4201,6 +4292,7 @@ public struct ComposeView: View {
             bodyText: bodyTextExcludingManagedSignature,
             bodyHTML: composeBodyFormat == .richTextHTML ? bodyHTML : nil,
             attachmentIDs: pendingAttachments.map(\.id),
+            inlineImageCIDs: inlineImageRegistry.staged.map(\.contentID),
             requestReadReceipt: requestReadReceipt,
             remindIfNoReply: remindIfNoReply
         )

@@ -173,7 +173,9 @@ public struct MIMEMessageBuilder: Sendable {
 
         let inlineAttachments = attachments.filter { $0.isInline && $0.contentID != nil }
         let regularAttachments = attachments.filter { !$0.isInline }
-        let hasRegular = !regularAttachments.isEmpty || !draft.attachmentIDs.isEmpty
+        let inlineIDs = Set(inlineAttachments.map(\.id))
+        let hasUnresolvedRegularIDs = draft.attachmentIDs.contains { !inlineIDs.contains($0) }
+        let hasRegular = !regularAttachments.isEmpty || hasUnresolvedRegularIDs
         let hasInline = !inlineAttachments.isEmpty
         let hasHTML = !draft.htmlBody.isEmpty
 
@@ -211,7 +213,9 @@ public struct MIMEMessageBuilder: Sendable {
                     lines.append("--\(relatedBoundary)")
                     lines.append("Content-Type: \(attachment.mimeType); \(filenameParameter("name", attachment.filename))")
                     // swiftlint:disable:next force_unwrapping
-                    lines.append("Content-ID: <\(Self.headerSafe(attachment.contentID!))>")
+                    let bareContentID = attachment.contentID!
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
+                    lines.append("Content-ID: <\(Self.headerSafe(bareContentID))>")
                     lines.append("Content-Disposition: inline; \(filenameParameter("filename", attachment.filename))")
                     lines.append("Content-Transfer-Encoding: base64")
                     lines.append("")

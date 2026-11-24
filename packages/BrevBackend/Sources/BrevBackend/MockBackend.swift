@@ -439,6 +439,44 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         )
     }
 
+    /// Stages an inline `cid:` image attachment for a draft in the active mock mailbox.
+    public func stageInlineAttachment(
+        draftID: String,
+        contentID: String,
+        filename: String,
+        mimeType: String,
+        data: Data
+    ) async throws -> String {
+        try await store.uploadAttachment(
+            draftID: draftID,
+            data: data,
+            filename: filename,
+            mimeType: mimeType,
+            isInline: true,
+            contentID: contentID
+        )
+    }
+
+    /// Stages an inline `cid:` image attachment for a draft in the requested mock mailbox.
+    public func stageInlineAttachment(
+        draftID: String,
+        contentID: String,
+        filename: String,
+        mimeType: String,
+        data: Data,
+        sourceID: MailSourceID
+    ) async throws -> String {
+        try await store.uploadAttachment(
+            draftID: draftID,
+            data: data,
+            filename: filename,
+            mimeType: mimeType,
+            isInline: true,
+            contentID: contentID,
+            mailboxID: mailboxID(for: sourceID)
+        )
+    }
+
     public func send(draft: Draft) async throws -> SendResult {
         try await store.ensureActive()
         if let sendHandler { return try await sendHandler(draft, nil) }
@@ -3419,7 +3457,14 @@ private actor Store {
                   let metadata = data.attachmentsByID[id], let bytes = data.attachmentDataByID[id] else {
                 throw MailBackendError.notFound(id: id)
             }
-            return MIMEMessageAttachment(id: id, filename: metadata.name, mimeType: metadata.mimeType, data: bytes)
+            return MIMEMessageAttachment(
+                id: id,
+                filename: metadata.name,
+                mimeType: metadata.mimeType,
+                data: bytes,
+                isInline: metadata.isInline,
+                contentID: metadata.contentID
+            )
         }
     }
 
@@ -3547,13 +3592,17 @@ private actor Store {
         draftID: String,
         data: Data,
         filename: String,
-        mimeType: String
+        mimeType: String,
+        isInline: Bool = false,
+        contentID: String? = nil
     ) throws -> String {
         try uploadAttachment(
             draftID: draftID,
             data: data,
             filename: filename,
             mimeType: mimeType,
+            isInline: isInline,
+            contentID: contentID,
             mailboxID: activeMailboxID
         )
     }
@@ -3563,6 +3612,8 @@ private actor Store {
         data: Data,
         filename: String,
         mimeType: String,
+        isInline: Bool = false,
+        contentID: String? = nil,
         mailboxID: Mailbox.ID
     ) throws -> String {
         try ensureActive()
@@ -3578,6 +3629,8 @@ private actor Store {
                 name: filename,
                 mimeType: mimeType,
                 sizeBytes: data.count,
+                isInline: isInline,
+                contentID: contentID,
                 resource: attachmentID
             )
             mailboxData.attachmentDataByID[attachmentID] = data

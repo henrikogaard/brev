@@ -17,13 +17,16 @@ enum ComposeHTMLPreviewSource {
     /// Prefers serialized rich HTML when present; otherwise escapes plain editor text.
     /// When a reopened draft carries a preserved quoted HTML tail, appends a
     /// script-sanitized preview copy so the user sees the full outgoing message.
+    /// Rewrites local `cid:` image sources to in-memory `data:` URIs using
+    /// `inlineImages` without ever making external network requests.
     static func html(
         richHTML: String?,
         plainBody: String,
         preservedQuotedHTML: String? = nil,
         quoteSeparatorHTML: String = "",
         outerWrapperOpenHTML: String = "",
-        outerWrapperCloseHTML: String = ""
+        outerWrapperCloseHTML: String = "",
+        inlineImages: [ComposeInlineImage] = []
     ) -> String {
         let topHTML: String
         if let richHTML, !richHTML.isEmpty {
@@ -31,16 +34,19 @@ enum ComposeHTMLPreviewSource {
         } else {
             topHTML = ComposeHTMLBodyPolicy.html(fromEditorText: plainBody)
         }
-        guard let preservedQuotedHTML, !preservedQuotedHTML.isEmpty else {
-            return topHTML
+        let combined: String
+        if let preservedQuotedHTML, !preservedQuotedHTML.isEmpty {
+            combined = ComposeRestoredBody.reassembledHTML(
+                editedTopHTML: topHTML,
+                separatorHTML: quoteSeparatorHTML,
+                preservedQuotedHTML: sanitizedPreviewHTML(preservedQuotedHTML),
+                outerWrapperOpenHTML: outerWrapperOpenHTML,
+                outerWrapperCloseHTML: outerWrapperCloseHTML
+            )
+        } else {
+            combined = topHTML
         }
-        return ComposeRestoredBody.reassembledHTML(
-            editedTopHTML: topHTML,
-            separatorHTML: quoteSeparatorHTML,
-            preservedQuotedHTML: sanitizedPreviewHTML(preservedQuotedHTML),
-            outerWrapperOpenHTML: outerWrapperOpenHTML,
-            outerWrapperCloseHTML: outerWrapperCloseHTML
-        )
+        return rewriteLocalCIDImages(in: combined, inlineImages: inlineImages)
     }
 
     /// Returns preview-safe HTML for a preserved quote fragment, wrapping it in
@@ -54,9 +60,13 @@ enum ComposeHTMLPreviewSource {
     static func sanitizedQuotePreviewHTML(
         _ html: String,
         inheritedDirection: String? = nil,
-        leadingContextText: String = ""
+        leadingContextText: String = "",
+        inlineImages: [ComposeInlineImage] = []
     ) -> String {
-        let sanitized = sanitizedPreviewHTML(html)
+        let sanitized = rewriteLocalCIDImages(
+            in: sanitizedPreviewHTML(html),
+            inlineImages: inlineImages
+        )
         guard let dir = resolvedQuotePreviewDirection(
             inheritedDirection,
             leadingContextText: leadingContextText,
@@ -65,6 +75,24 @@ enum ComposeHTMLPreviewSource {
             return sanitized
         }
         return "<div dir=\"\(dir)\">\(sanitized)</div>"
+    }
+
+    private static func rewriteLocalCIDImages(
+        in html: String,
+        inlineImages: [ComposeInlineImage]
+    ) -> String {
+        guard !inlineImages.isEmpty,
+              html.range(of: "cid:", options: [.caseInsensitive]) != nil else {
+            return html
+        }
+        let payloads = inlineImages.map {
+            MessageInlineCIDImagePayload(
+                contentID: $0.contentID,
+                mimeType: $0.mimeType,
+                data: $0.data
+            )
+        }
+        return MessageInlineCIDRenderPolicy.rewriteCIDImageSources(in: html, payloads: payloads)
     }
 
     private static func resolvedQuotePreviewDirection(

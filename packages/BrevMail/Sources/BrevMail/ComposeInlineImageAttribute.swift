@@ -23,14 +23,17 @@ import AppKit
 enum ComposeInlineImageAttribute {
     /// The MIME Content-ID string for an inline image attachment run.
     static let contentID = NSAttributedString.Key("brevInlineContentID")
+    /// Optional alternative text (`alt`) preserved for an inline image attachment run.
+    static let alt = NSAttributedString.Key("brevInlineAlt")
 }
 
 /// Detects supported inline-image formats from their file signatures.
 enum ComposeInlineImageData {
-    /// Returns the MIME type for supported PNG, JPEG, and GIF data.
+    /// Returns the MIME type for supported PNG, JPEG, GIF, and WebP data.
     /// - Parameter data: The transferred image bytes to inspect.
-    /// - Returns: A supported image MIME type, or `nil` for unknown data.
+    /// - Returns: A supported image MIME type, or `nil` for unknown or empty data.
     static func mimeType(for data: Data) -> String? {
+        guard !data.isEmpty else { return nil }
         if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
             return "image/png"
         }
@@ -40,7 +43,27 @@ enum ComposeInlineImageData {
         if data.starts(with: Data("GIF87a".utf8)) || data.starts(with: Data("GIF89a".utf8)) {
             return "image/gif"
         }
+        if data.count >= 12,
+           data.starts(with: Data("RIFF".utf8)),
+           data[data.index(data.startIndex, offsetBy: 8) ..< data.index(data.startIndex, offsetBy: 12)]
+           == Data("WEBP".utf8) {
+            return "image/webp"
+        }
         return nil
+    }
+
+    /// Normalizes a MIME Content-ID for case-insensitive lookup (strips angle brackets,
+    /// surrounding whitespace, and percent-encoding).
+    static func normalizedContentID(_ raw: String) -> String {
+        var value = (raw.removingPercentEncoding ?? raw)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("<") {
+            value.removeFirst()
+        }
+        if value.hasSuffix(">") {
+            value.removeLast()
+        }
+        return value.lowercased()
     }
 }
 
@@ -50,15 +73,16 @@ enum ComposeInlineImageData {
 /// retrieval closure instead of an `NSPasteboard` directly so it can be unit-tested
 /// without an AppKit dependency.
 enum ComposePasteboardImage {
-    /// Preferred UTI order: png → jpeg → gif. Anything else is ignored.
+    /// Preferred UTI order: png → jpeg → gif → webp. Anything else is ignored.
     private static let preferenceOrder: [(uti: String, mimeType: String)] = [
         ("public.png", "image/png"),
         ("public.jpeg", "image/jpeg"),
         ("com.compuserve.gif", "image/gif"),
+        ("org.webmproject.webp", "image/webp"),
     ]
 
     /// Returns the highest-priority (data, mimeType) pair found in `types`, or `nil`
-    /// if none of the preferred types are present or the data closure returns `nil`.
+    /// if none of the preferred types are present or the data closure returns `nil`/empty.
     ///
     /// - Parameters:
     ///   - types: The UTI strings advertised by the pasteboard or drag source.
@@ -72,7 +96,7 @@ enum ComposePasteboardImage {
     ) -> (data: Data, mimeType: String)? {
         for candidate in preferenceOrder {
             guard types.contains(candidate.uti) else { continue }
-            guard let imageData = data(candidate.uti) else { continue }
+            guard let imageData = data(candidate.uti), !imageData.isEmpty else { continue }
             return (data: imageData, mimeType: candidate.mimeType)
         }
         return nil

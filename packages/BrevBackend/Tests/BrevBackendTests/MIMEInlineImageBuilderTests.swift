@@ -71,4 +71,66 @@ struct MIMEInlineImageBuilderTests {
         #expect(mime.contains("Content-ID: <c@brev>"))
         #expect(mime.contains("Content-Disposition: attachment"))
     }
+
+    @Test("inline-only draft with attachmentIDs populated omits empty multipart/mixed wrapper")
+    func inlineOnlyWithDraftAttachmentIDsOmitsMixed() {
+        let webpBytes = Data("RIFF\u{14}\0\0\0WEBPVP8 ".utf8)
+        let inline = MIMEMessageAttachment(
+            id: "inline-1",
+            filename: "photo.webp",
+            mimeType: "image/webp",
+            data: webpBytes,
+            isInline: true,
+            contentID: "webp1@brev.inline"
+        )
+        let draft = Draft(
+            id: "t-inline-only",
+            to: [Correspondent(email: "b@y.test")],
+            subject: "Inline WebP",
+            htmlBody: "<p><img src=\"cid:webp1@brev.inline\"></p>",
+            attachmentIDs: ["inline-1"]
+        )
+        let data = MIMEMessageBuilder(
+            draft: draft,
+            from: Correspondent(email: "a@x.test"),
+            attachments: [inline],
+            boundary: "INLINE-ONLY-BOUNDARY"
+        ).build()
+        let mime = String(decoding: data, as: UTF8.self)
+        #expect(!mime.contains("multipart/mixed"))
+        #expect(mime.contains("multipart/alternative"))
+        #expect(mime.contains("multipart/related; type=\"text/html\""))
+        #expect(mime.contains("Content-Type: image/webp"))
+        #expect(mime.contains("Content-ID: <webp1@brev.inline>"))
+        #expect(mime.contains("Content-Disposition: inline"))
+    }
+
+    @Test("MockBackend preserves isInline and contentID across stage, save, and localDraftAttachments")
+    func mockBackendInlineStagingPreservesMetadata() async throws {
+        let backend = MockBackend()
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        let draftID = "inline-mock-draft"
+        let inlineID = try await backend.stageInlineAttachment(
+            draftID: draftID,
+            contentID: "shot1@brev.inline",
+            filename: "image.png",
+            mimeType: "image/png",
+            data: png
+        )
+        let saved = try await backend.save(draft: Draft(
+            id: draftID,
+            to: [Correspondent(email: "b@y.test")],
+            subject: "With inline image",
+            htmlBody: "<img src=\"cid:shot1@brev.inline\">",
+            attachmentIDs: [inlineID]
+        ))
+        let service = try #require(backend.extensionService(LocalDraftAttachmentProviding.self))
+        let restored = try await service.localDraftAttachments(for: saved)
+        #expect(restored.count == 1)
+        #expect(restored.first?.id == inlineID)
+        #expect(restored.first?.isInline == true)
+        #expect(restored.first?.contentID == "shot1@brev.inline")
+        #expect(restored.first?.mimeType == "image/png")
+        #expect(restored.first?.data == png)
+    }
 }

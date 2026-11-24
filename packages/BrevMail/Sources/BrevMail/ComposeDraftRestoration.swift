@@ -176,22 +176,52 @@ enum ComposeDraftRestoration {
     }
 
     static func pendingAttachments(from attachments: [MIMEMessageAttachment]) -> [PendingAttachment] {
-        attachments.map {
-            PendingAttachment(filename: $0.filename, mimeType: $0.mimeType, data: $0.data, uploadedAttachmentID: $0.id)
-        }
+        attachments
+            .filter { !$0.isInline && $0.contentID == nil }
+            .map {
+                PendingAttachment(filename: $0.filename, mimeType: $0.mimeType, data: $0.data, uploadedAttachmentID: $0.id)
+            }
+    }
+
+    /// Returns the inline `cid:` image payloads carried by a restored draft.
+    static func inlineAttachments(from attachments: [MIMEMessageAttachment]) -> [MIMEMessageAttachment] {
+        attachments.filter { $0.isInline && $0.contentID != nil }
     }
 
     static func validationError(draft: Draft, attachments: [MIMEMessageAttachment]) -> String? {
         guard attachments.map(\.id) == draft.attachmentIDs,
               Set(draft.attachmentIDs).count == draft.attachmentIDs.count else { return unavailableMessage }
-        // The compose sanitizer retains only CID-backed image tags, not literal CID text.
-        if attachments.contains(where: { $0.isInline || $0.contentID != nil })
-            || ComposeHTMLBodyPolicy.richHTML(fromEditorHTML: draft.htmlBody).contains("<img src=") {
-            return String(
-                localized: "This draft contains inline images that cannot be restored safely yet. The draft was left unchanged.",
-                bundle: .module
-            )
+
+        let referencedCIDs = Set(
+            ComposeInlineImageRegistry.contentIDs(inHTML: draft.htmlBody)
+                .map(ComposeInlineImageData.normalizedContentID)
+        )
+        let inlineAttachments = attachments.filter { $0.isInline || $0.contentID != nil }
+
+        if !referencedCIDs.isEmpty || !inlineAttachments.isEmpty {
+            var providedCIDs = Set<String>()
+            for attachment in inlineAttachments {
+                guard attachment.isInline,
+                      let rawCID = attachment.contentID else {
+                    return inlineUnavailableMessage
+                }
+                let normalizedCID = ComposeInlineImageData.normalizedContentID(rawCID)
+                let normalizedMIME = attachment.mimeType
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                guard !normalizedCID.isEmpty,
+                      !attachment.data.isEmpty,
+                      attachment.data.count <= ComposeInlineImagePolicy.maxBytes,
+                      ComposeInlineImagePolicy.allowedMIMETypes.contains(normalizedMIME),
+                      providedCIDs.insert(normalizedCID).inserted else {
+                    return inlineUnavailableMessage
+                }
+            }
+            guard providedCIDs == referencedCIDs else {
+                return inlineUnavailableMessage
+            }
         }
+
         var remaining = ComposeAttachmentImport.maxAttachmentByteCount
         for attachment in attachments {
             guard attachment.data.count <= remaining else {
@@ -200,6 +230,13 @@ enum ComposeDraftRestoration {
             remaining -= attachment.data.count
         }
         return nil
+    }
+
+    private static var inlineUnavailableMessage: String {
+        String(
+            localized: "This draft contains inline images that cannot be restored safely yet. The draft was left unchanged.",
+            bundle: .module
+        )
     }
 
     static var unavailableMessage: String {

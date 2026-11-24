@@ -4,6 +4,27 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Rich HTML compose beyond MVP (#3):
+  - **Inline images (`cid:`):** Added WebP support alongside PNG, JPEG, and GIF
+    (with magic-byte sniffing, 10 MiB per-image and 25 MiB aggregate caps, and
+    fail-closed format/size validation), local in-memory `cid:` image rendering
+    inside HTML Preview and preserved quote previews with zero external network
+    fetches, lossless draft Save/autosave/reopen restoration of `cid:` inline
+    images, and cleaner RFC 2387 `multipart/related` MIME output (omitting
+    redundant `multipart/mixed` wrappers when only inline images are present).
+  - **Clean rich-HTML paste (`ComposeHTMLPasteSanitizer`):** Wired a linear
+    HTML paste sanitizer into macOS and iOS rich compose editors that preserves
+    semantic formatting (bold, italic, underline, strikethrough, `h1`–`h3`,
+    safe `http`/`https`/`mailto` links, lists, blockquotes, tables, inline
+    `code`, and `<pre><code>` blocks) while stripping scripts, styles, iframes,
+    forms, `on*` handlers, remote images/tracking pixels, unsafe link schemes,
+    and inline color/background CSS so pasted HTML adapts to light and dark
+    themes.
+  - **Tables, code blocks, headings, and strikethrough:** Added Format menu
+    actions and lossless serialization, preview styling, and draft reopening
+    for semantic HTML tables (`<table>`/`<thead>`/`<tbody>`/`<tr>`/`<th>`/`<td>`),
+    `<pre><code>` code blocks, inline `<code>`, `<h1>`–`<h3>` headings, and
+    `<s>` strikethrough while preserving all PR #350 quoted-thread invariants.
 - Opt-in background recent-mail and attachment indexing (#7): added device-local **Settings → Sync & Storage → Mail Storage → Background indexing** (strictly off by default, excluded from iCloud preference sync, included in portable settings backups without enabling `isEnabled` on restore) with 30/90/365-day lookback windows, optional text extraction for eligible non-inline attachments up to 10 MiB (PDF, plain text, RTF, HTML), automatic pausing on cellular/Low Data Mode/Low Power Mode via **Wi-Fi & power friendly**, Trash/Spam exclusion (including multi-label messages), unread-flag preservation, persisted per-account progress cursors, and live status/Pause/Resume/Index now/Reset controls wired into `AppSession` and `BackgroundMailCoordinator`.
 - Proactive opt-in on-device AI summaries and priority triage: added
   `AIBackend.isOnDeviceZeroNetwork` (enabled only for zero-network on-device

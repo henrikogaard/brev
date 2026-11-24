@@ -731,7 +731,7 @@ enum HTMLBodyDocument {
     }
 
     fileprivate static func containsHTMLMarkup(_ value: String) -> Bool {
-        let knownHTMLTagPattern = #"<\s*/?\s*(?:a|b|blockquote|br|div|em|font|h[1-6]|head|html|hr|i|img|li|meta|ol|p|span|strong|style|table|tbody|td|th|thead|title|tr|u|ul|body)\b[^>]*>"#
+        let knownHTMLTagPattern = #"<\s*/?\s*(?:a|b|blockquote|br|code|del|div|em|font|h[1-6]|head|html|hr|i|img|li|meta|ol|p|pre|s|span|strong|style|table|tbody|td|th|thead|title|tr|u|ul|body)\b[^>]*>"#
         return value.range(of: knownHTMLTagPattern, options: [.caseInsensitive, .regularExpression]) != nil
     }
 
