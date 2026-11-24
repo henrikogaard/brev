@@ -113,19 +113,68 @@ struct AgentAccessSettingsTests {
         let changeTools = AgentAccessToolSpec.exposedTools.filter { $0.permission == .approvalRequired }.map(\.name)
         #expect(changeTools == ["archive_messages", "label_messages"])
 
+        let socketPath = "/Users/demo/Library/Group Containers/group.eu.brevmail.brev/mcp.sock"
         let jsonSnippet = AgentAccessSocketConfiguration.clientConfigSnippet(
             for: .json,
-            helperPath: "/Applications/Brev.app/Contents/Helpers/brev-mcp"
+            helperPath: "/Applications/Brev.app/Contents/Helpers/brev-mcp",
+            socketPath: socketPath
         )
         #expect(jsonSnippet.contains("\"mcpServers\""))
+        #expect(jsonSnippet.contains("\"args\": [\"--socket\", \"\(socketPath)\"]"))
 
         let codexSnippet = AgentAccessSocketConfiguration.clientConfigSnippet(
             for: .codexTOML,
-            helperPath: "/Applications/Brev.app/Contents/Helpers/brev-mcp"
+            helperPath: "/Applications/Brev.app/Contents/Helpers/brev-mcp",
+            socketPath: socketPath
         )
         #expect(codexSnippet.contains("[mcp_servers.brev]"))
         #expect(codexSnippet.contains("command = \"/Applications/Brev.app/Contents/Helpers/brev-mcp\""))
+        #expect(codexSnippet.contains("args = [\"--socket\", \"\(socketPath)\"]"))
         #expect(AgentAccessSocketConfiguration.defaultSocketURL().path.utf8.count <= 100)
+    }
+
+    @Test("socket paths isolate stable, nightly, and test builds and stay within sun_path limit")
+    func socketPathsIsolateBuildsAndRespectLengthLimit() {
+        let shortContainer = URL(fileURLWithPath: "/Users/alice/Library/Group Containers/group.eu.brevmail.brev")
+        let stableURL = AgentAccessSocketConfiguration.defaultSocketURL(
+            bundleIdentifier: "eu.brevmail.brev",
+            groupContainerURL: shortContainer
+        )
+        let nightlyURL = AgentAccessSocketConfiguration.defaultSocketURL(
+            bundleIdentifier: "eu.brevmail.brev.nightly",
+            groupContainerURL: shortContainer
+        )
+        let testURL = AgentAccessSocketConfiguration.defaultSocketURL(
+            bundleIdentifier: "eu.brevmail.brev.test",
+            groupContainerURL: shortContainer
+        )
+        #expect(stableURL.lastPathComponent == "mcp.sock")
+        #expect(nightlyURL.lastPathComponent == "mcp-nightly.sock")
+        #expect(testURL.lastPathComponent != stableURL.lastPathComponent)
+        #expect(testURL.lastPathComponent != nightlyURL.lastPathComponent)
+
+        let overlongContainer = URL(
+            fileURLWithPath: "/Users/\(String(repeating: "very-long-home-name-", count: 5))/Library/Group Containers/group.eu.brevmail.brev"
+        )
+        let normalTemp = URL(fileURLWithPath: "/var/folders/ab/cdef/T")
+        let tempFallback = AgentAccessSocketConfiguration.defaultSocketURL(
+            bundleIdentifier: "eu.brevmail.brev",
+            groupContainerURL: overlongContainer,
+            temporaryDirectoryURL: normalTemp
+        )
+        #expect(tempFallback.path.hasPrefix(normalTemp.path))
+        #expect(tempFallback.path.utf8.count <= 100)
+
+        let overlongTemp = URL(
+            fileURLWithPath: "/var/folders/\(String(repeating: "x", count: 95))/T"
+        )
+        let tmpFallback = AgentAccessSocketConfiguration.defaultSocketURL(
+            bundleIdentifier: "eu.brevmail.brev.nightly",
+            groupContainerURL: overlongContainer,
+            temporaryDirectoryURL: overlongTemp
+        )
+        #expect(tmpFallback.path.hasPrefix("/tmp/"))
+        #expect(tmpFallback.path.utf8.count <= 100)
     }
 
     @Test("removing an account revokes its agent-access grant so re-adding requires fresh opt-in")

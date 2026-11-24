@@ -22,6 +22,8 @@ import Darwin
 /// is turned off, and never opens Realm or SQLite stores directly.
 enum BrevMCPHelperCLI {
     private static let appGroupIdentifier = "group.eu.brevmail.brev"
+    private static let stableBundleIdentifier = "eu.brevmail.brev"
+    private static let maxSocketPathUTF8Bytes = 100
 
     static func resolveSocketPath(arguments: [String] = CommandLine.arguments) -> String {
         if let index = arguments.firstIndex(of: "--socket"), index + 1 < arguments.count {
@@ -30,18 +32,68 @@ enum BrevMCPHelperCLI {
         if let env = ProcessInfo.processInfo.environment["BREV_MCP_SOCKET"], !env.isEmpty {
             return env
         }
-        let groupSocket = FileManager.default.homeDirectoryForCurrentUser
+        let bundleID = hostAppBundleIdentifier(executablePath: arguments.first)
+        let names = socketFileNames(forBundleIdentifier: bundleID)
+        let groupContainer = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library", isDirectory: true)
             .appendingPathComponent("Group Containers", isDirectory: true)
             .appendingPathComponent(appGroupIdentifier, isDirectory: true)
-            .appendingPathComponent("mcp.sock", isDirectory: false)
-            .path
-        if groupSocket.utf8.count <= 100 {
-            return groupSocket
+
+        for name in [names.primary, names.compact] {
+            let candidate = groupContainer.appendingPathComponent(name, isDirectory: false).path
+            if candidate.utf8.count <= maxSocketPathUTF8Bytes {
+                return candidate
+            }
         }
-        return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("brev-mcp-\(getuid()).sock", isDirectory: false)
+
+        let tempCandidate = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("b-\(getuid())-\(names.shortTag).sock", isDirectory: false)
             .path
+        if tempCandidate.utf8.count <= maxSocketPathUTF8Bytes {
+            return tempCandidate
+        }
+
+        return URL(fileURLWithPath: "/tmp", isDirectory: true)
+            .appendingPathComponent("b-\(getuid())-\(names.shortTag).sock", isDirectory: false)
+            .path
+    }
+
+    private static func hostAppBundleIdentifier(executablePath: String?) -> String? {
+        guard let executablePath, !executablePath.isEmpty else { return nil }
+        // Bundled helper lives at `<App>.app/Contents/Helpers/brev-mcp`.
+        let contentsURL = URL(fileURLWithPath: executablePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let infoPlistURL = contentsURL.appendingPathComponent("Info.plist", isDirectory: false)
+        guard let data = try? Data(contentsOf: infoPlistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let bundleID = plist["CFBundleIdentifier"] as? String,
+              !bundleID.isEmpty
+        else { return nil }
+        return bundleID
+    }
+
+    private static func socketFileNames(
+        forBundleIdentifier bundleID: String?
+    ) -> (primary: String, compact: String, shortTag: String) {
+        let trimmed = bundleID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty || trimmed == stableBundleIdentifier {
+            return ("mcp.sock", "m.sock", "s")
+        }
+        if trimmed.hasSuffix(".nightly") {
+            return ("mcp-nightly.sock", "m-n.sock", "n")
+        }
+        let hash = fnv1a6Hex(trimmed)
+        return ("mcp-\(hash).sock", "m-\(hash).sock", hash)
+    }
+
+    private static func fnv1a6Hex(_ input: String) -> String {
+        var hash: UInt32 = 2_166_136_261
+        for byte in input.utf8 {
+            hash ^= UInt32(byte)
+            hash = hash &* 16_777_619
+        }
+        return String(format: "%06x", hash & 0x00FF_FFFF)
     }
 
     static func run() {

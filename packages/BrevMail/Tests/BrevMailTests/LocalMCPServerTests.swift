@@ -664,11 +664,137 @@ struct LocalMCPServerTests {
         #expect(revokedRead["result"] == nil)
         #expect(auditStore.entries().first?.outcome == .blockedDisabled)
     }
+
+    @Test("unlabeled archived messages are readable via unscoped cache fallback and rejected reads never log sign-in codes")
+    func unlabeledArchivedReadAndAuditRedaction() async throws {
+        let account = BrevAccount(id: "acct-gmail", displayName: "Gmail", emailAddress: "user@gmail.example")
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let trash = Folder(id: "TRASH", name: "Trash", role: .trash)
+        // Archived Gmail message with empty label list resolves to synthetic ALL_MAIL, which is not in `folders`.
+        let archivedHeader = MessageHeader(
+            id: "gm-archived-1",
+            threadID: "t-arch",
+            folderID: "ALL_MAIL",
+            from: Correspondent(name: "Bank", email: "statements@bank.example"),
+            subject: "Annual statement",
+            snippet: "Your 2026 statement is ready.",
+            date: Date(timeIntervalSince1970: 1_735_689_900)
+        )
+        let backend = MCPBodyStubBackend(
+            wrapped: MockBackend(
+                account: account,
+                folders: [inbox, trash],
+                messagesByFolder: ["INBOX": [], "TRASH": []]
+            ),
+            bodies: [
+                "gm-archived-1": MessageBody(
+                    messageID: "gm-archived-1",
+                    plainText: "Annual statement body."
+                )
+            ],
+            unscopedExtraHeaders: [archivedHeader]
+        )
+
+        let settings = AgentAccessSettings(isEnabled: true, enabledAccountIDs: [account.id])
+        let auditStore = AgentAccessAuditLogStore(fileURL: nil, postsChangeNotification: false)
+        let broker = LocalMCPBroker(
+            backendsProvider: { [backend] },
+            settingsProvider: { settings },
+            auditStore: auditStore
+        )
+
+        let readResp = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 301,
+            "method": "tools/call",
+            "params": ["name": "read_message", "arguments": ["account_id": account.id, "message_id": "gm-archived-1"]]
+        ])
+        let payload = try parseToolTextPayload(readResp)
+        #expect(payload["body_text"] as? String == "Annual statement body.")
+        #expect(payload["folder_id"] as? String == "ALL_MAIL")
+
+        // Rejected reads supplying a sign-in code as `message_id` must NEVER write that value to the audit log.
+        for injectedID in ["839204", "Your verification code is 839204"] {
+            let missResp = try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": "miss-\(injectedID)",
+                "method": "tools/call",
+                "params": ["name": "read_message", "arguments": ["account_id": account.id, "message_id": injectedID]]
+            ])
+            #expect((missResp["error"] as? [String: Any])?["code"] as? Int == -32004)
+            let lastEntry = try #require(auditStore.entries().first)
+            #expect(lastEntry.parameterSummary == "header_cache_miss")
+            #expect(!lastEntry.parameterSummary.contains("839204"))
+        }
+    }
+
+    #if os(macOS)
+    @Test("socket ownership prevents unstarted stop() or competing start() from removing a live listener's socket")
+    func socketOwnershipProtectsLiveListenerAndCleansStaleSocket() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-own-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let socketURL = tempDir.appendingPathComponent("mcp.sock")
+
+        let backend = MockBackend()
+        let settings = AgentAccessSettings(isEnabled: true, enabledAccountIDs: [backend.account.id])
+        let broker = LocalMCPBroker(
+            backendsProvider: { [backend] },
+            settingsProvider: { settings },
+            auditStore: AgentAccessAuditLogStore(fileURL: nil, postsChangeNotification: false)
+        )
+
+        let primary = LocalMCPUnixSocketServer(socketURL: socketURL, broker: broker)
+        try primary.start()
+        defer { primary.stop() }
+
+        // Simulates Nightly launching with Agent access off: stop() without start() must NOT unlink primary's socket.
+        let unstartedSecondary = LocalMCPUnixSocketServer(socketURL: socketURL, broker: broker)
+        unstartedSecondary.stop()
+        #expect(FileManager.default.fileExists(atPath: socketURL.path))
+
+        // Competing start() against a live listener must fail with EADDRINUSE and preserve the live socket file.
+        let competingSecondary = LocalMCPUnixSocketServer(socketURL: socketURL, broker: broker)
+        do {
+            try competingSecondary.start()
+            Issue.record("Expected competing start() against a live socket to throw EADDRINUSE")
+        } catch let error as POSIXError {
+            #expect(error.code == .EADDRINUSE)
+        }
+        #expect(FileManager.default.fileExists(atPath: socketURL.path))
+
+        // Stop primary, create an abandoned stale socket file, and verify a fresh start() replaces it cleanly.
+        primary.stop()
+        #expect(!FileManager.default.fileExists(atPath: socketURL.path))
+
+        let staleFD = socket(AF_UNIX, SOCK_STREAM, 0)
+        #expect(staleFD >= 0)
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        for (idx, byte) in socketURL.path.utf8.enumerated() {
+            withUnsafeMutableBytes(of: &addr.sun_path) { raw in raw[idx] = byte }
+        }
+        let bindRes = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(staleFD, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        #expect(bindRes == 0)
+        close(staleFD)
+        #expect(FileManager.default.fileExists(atPath: socketURL.path))
+
+        let recovered = LocalMCPUnixSocketServer(socketURL: socketURL, broker: broker)
+        try recovered.start()
+        defer { recovered.stop() }
+        #expect(recovered.isRunning)
+    }
+    #endif
 }
 
 private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding, @unchecked Sendable {
     private let wrapped: MockBackend
     private let bodies: [String: MessageBody]
+    private let unscopedExtraHeaders: [MessageHeader]
     private let onCachedBodyRead: (@MainActor @Sendable () -> Void)?
     private let lock = NSLock()
     private var fetchCount = 0
@@ -689,10 +815,12 @@ private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding,
     init(
         wrapped: MockBackend,
         bodies: [String: MessageBody],
+        unscopedExtraHeaders: [MessageHeader] = [],
         onCachedBodyRead: (@MainActor @Sendable () -> Void)? = nil
     ) {
         self.wrapped = wrapped
         self.bodies = bodies
+        self.unscopedExtraHeaders = unscopedExtraHeaders
         self.onCachedBodyRead = onCachedBodyRead
     }
 
@@ -753,7 +881,11 @@ private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding,
     func send(draft: Draft) async throws -> SendResult { try await wrapped.send(draft: draft) }
     func search(_ query: SearchQuery) async throws -> [MessageHeader] {
         lock.withLock { searchCount += 1 }
-        return try await wrapped.search(query)
+        var results = try await wrapped.search(query)
+        if query.folderID == nil {
+            results.append(contentsOf: unscopedExtraHeaders.filter { query.matches($0) })
+        }
+        return results
     }
 
     func calendarEvent(from attachmentID: String) async throws -> CalendarEvent {

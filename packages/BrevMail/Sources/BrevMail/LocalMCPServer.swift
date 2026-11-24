@@ -658,13 +658,14 @@ public final class LocalMCPBroker {
 
         do {
             let folders = try await backend.folders()
+            let excludedFolderIDs = Set(folders.filter { $0.role == .trash || $0.role == .spam }.map(\.id))
             let excludedMessageIDs = await excludedMessageIDs(in: folders, backend: backend)
             if excludedMessageIDs.contains(messageID) {
                 recordAudit(
                     client: client,
                     toolName: "read_message",
                     accountID: accountID,
-                    parameterSummary: "blocked_trash_or_spam message_id=\(messageID)",
+                    parameterSummary: "blocked_trash_or_spam",
                     outcome: .denied
                 )
                 return errorResponse(
@@ -673,13 +674,21 @@ public final class LocalMCPBroker {
                     message: "Reading messages in Trash or Spam is permanently excluded from MCP."
                 )
             }
-            let matchedHeaders = try await findHeaders(messageIDs: [messageID], in: backend, folders: folders)
+            let matchedHeaders = try await findHeaders(
+                messageIDs: [messageID],
+                in: backend,
+                folders: folders,
+                excludedFolderIDs: excludedFolderIDs,
+                excludedMessageIDs: excludedMessageIDs
+            )
             guard let header = matchedHeaders[messageID] else {
+                // Never log unresolved caller-supplied `message_id` values so an
+                // agent cannot inject sign-in codes into the local audit log.
                 recordAudit(
                     client: client,
                     toolName: "read_message",
                     accountID: accountID,
-                    parameterSummary: "header_cache_miss message_id=\(messageID)",
+                    parameterSummary: "header_cache_miss",
                     outcome: .denied
                 )
                 return errorResponse(
@@ -750,7 +759,7 @@ public final class LocalMCPBroker {
                 client: client,
                 toolName: "read_message",
                 accountID: accountID,
-                parameterSummary: "read_failed message_id=\(messageID)",
+                parameterSummary: "read_failed",
                 outcome: .denied
             )
             return errorResponse(id: id, code: -32004, message: "Message not found in local cache.")
@@ -844,7 +853,7 @@ public final class LocalMCPBroker {
                         client: client,
                         toolName: toolName,
                         accountID: accountID,
-                        parameterSummary: "folder_not_found folder=\(folderID)",
+                        parameterSummary: "folder_not_found folder=\(Self.redactedForSignInCodes(folderID))",
                         outcome: .denied
                     )
                     return errorResponse(id: id, code: -32005, message: "Target folder not found.")
@@ -855,7 +864,7 @@ public final class LocalMCPBroker {
                         client: client,
                         toolName: toolName,
                         accountID: accountID,
-                        parameterSummary: "blocked_trash_or_spam folder=\(folderID)",
+                        parameterSummary: "blocked_trash_or_spam folder=\(Self.redactedForSignInCodes(folderID))",
                         outcome: .denied
                     )
                     return errorResponse(
@@ -877,11 +886,14 @@ public final class LocalMCPBroker {
             return errorResponse(id: id, code: -32003, message: "Couldn't inspect account folders.")
         }
 
+        let excludedFolderIDs = Set(folders.filter { $0.role == .trash || $0.role == .spam }.map(\.id))
         let previewIDs = Array(messageIDs.prefix(5))
         let previewHeaders = await (try? findHeaders(
             messageIDs: Set(previewIDs),
             in: backend,
-            folders: folders
+            folders: folders,
+            excludedFolderIDs: excludedFolderIDs,
+            excludedMessageIDs: nil
         )) ?? [:]
         let previews: [MCPApprovalRequest.MessagePreview] = previewIDs.map { messageID in
             if let header = previewHeaders[messageID] {
@@ -1023,7 +1035,9 @@ public final class LocalMCPBroker {
     private func findHeaders(
         messageIDs: Set<String>,
         in backend: any MailBackend,
-        folders: [Folder]
+        folders: [Folder],
+        excludedFolderIDs: Set<Folder.ID>,
+        excludedMessageIDs: Set<MessageHeader.ID>?
     ) async throws -> [String: MessageHeader] {
         guard !messageIDs.isEmpty else { return [:] }
         var remaining = messageIDs
@@ -1039,6 +1053,28 @@ public final class LocalMCPBroker {
                 remaining.remove(header.id)
             }
             if remaining.isEmpty { break }
+        }
+        // Fallback for archived messages without a catalog folder (e.g., unlabeled Gmail
+        // mail mapped to synthetic `ALL_MAIL`): query the local cache unscoped while
+        // still enforcing Trash/Spam exclusion.
+        if !remaining.isEmpty {
+            let excludedIDs: Set<MessageHeader.ID>
+            if let excludedMessageIDs {
+                excludedIDs = excludedMessageIDs
+            } else {
+                excludedIDs = await self.excludedMessageIDs(in: folders, backend: backend)
+            }
+            let unscoped = try await backend.search(SearchQuery(
+                text: "",
+                folderID: nil,
+                execution: .cacheOnly
+            ))
+            for header in unscoped where remaining.contains(header.id)
+                && !excludedFolderIDs.contains(header.folderID)
+                && !excludedIDs.contains(header.id) {
+                resolved[header.id] = header
+                remaining.remove(header.id)
+            }
         }
         return resolved
     }
@@ -1225,13 +1261,55 @@ public final class LocalMCPBroker {
 /// Listens on a `0600` user-private `AF_UNIX` stream socket and enforces same-UID peer credentials.
 /// Never opens any TCP or UDP socket.
 public final class LocalMCPUnixSocketServer: @unchecked Sendable {
+    /// Serializes client descriptor registration, shutdown, and closing under a single lock so
+    /// `stop()` can never shut down a descriptor number after it has been closed and recycled.
+    private final class ClientRegistry: @unchecked Sendable {
+        private let lock = NSLock()
+        private var isAccepting = false
+        private var activeClients: [UUID: Int32] = [:]
+
+        func open() {
+            lock.lock()
+            isAccepting = true
+            lock.unlock()
+        }
+
+        func register(_ fd: Int32) -> UUID? {
+            lock.lock()
+            defer { lock.unlock() }
+            guard isAccepting else { return nil }
+            let token = UUID()
+            activeClients[token] = fd
+            return token
+        }
+
+        func closeClient(token: UUID) {
+            lock.lock()
+            let fd = activeClients.removeValue(forKey: token)
+            if let fd {
+                close(fd)
+            }
+            lock.unlock()
+        }
+
+        func shutdownAllAndCloseAccepting() {
+            lock.lock()
+            isAccepting = false
+            for fd in activeClients.values {
+                _ = shutdown(fd, SHUT_RDWR)
+            }
+            lock.unlock()
+        }
+    }
+
     public let socketURL: URL
     private let broker: LocalMCPBroker
     private let queue = DispatchQueue(label: "eu.brevmail.local-mcp-socket", qos: .userInitiated, attributes: .concurrent)
     private let lock = NSLock()
+    private let clientRegistry = ClientRegistry()
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
-    private var activeClientFDs: Set<Int32> = []
+    private var ownsSocketFile = false
 
     public init(socketURL: URL = AgentAccessSocketConfiguration.defaultSocketURL(), broker: LocalMCPBroker) {
         self.socketURL = socketURL
@@ -1250,6 +1328,8 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
     }
 
     /// Starts listening on the user-private `0600` Unix domain socket.
+    /// Refuses to unlink a socket owned by another live listener (`EADDRINUSE`),
+    /// while cleaning up stale/abandoned socket files left by a prior crash.
     public func start() throws {
         lock.lock()
         defer { lock.unlock() }
@@ -1258,19 +1338,12 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
         let parentDir = socketURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: parentDir.path)
-        unlink(socketURL.path)
 
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-
+        let pathBytes = Array(socketURL.path.utf8)
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        let pathBytes = Array(socketURL.path.utf8)
         let maxPathLen = MemoryLayout.size(ofValue: addr.sun_path)
         guard pathBytes.count < maxPathLen else {
-            close(fd)
             throw POSIXError(.ENAMETOOLONG)
         }
         withUnsafeMutableBytes(of: &addr.sun_path) { rawBuffer in
@@ -1278,6 +1351,20 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
             for (index, byte) in pathBytes.enumerated() {
                 rawBuffer[index] = byte
             }
+        }
+
+        if Self.isLiveUnixSocket(addr: addr) {
+            throw POSIXError(.EADDRINUSE)
+        }
+        // Only remove an abandoned socket file after confirming no live listener owns it.
+        var st = stat()
+        if lstat(socketURL.path, &st) == 0, (st.st_mode & S_IFMT) == S_IFSOCK {
+            unlink(socketURL.path)
+        }
+
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
 
         let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
@@ -1308,6 +1395,8 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
         }
 
         listenFD = fd
+        ownsSocketFile = true
+        clientRegistry.open()
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in
             self?.acceptNextConnection()
@@ -1319,35 +1408,36 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
         source.resume()
     }
 
-    /// Stops listening, terminates any active client sockets, and unlinks the Unix domain socket file.
+    /// Stops listening, terminates any active client sockets, and unlinks the Unix domain socket
+    /// file only if this server instance bound it.
     public func stop() {
         lock.lock()
         let source = acceptSource
         acceptSource = nil
         listenFD = -1
-        let clientsToClose = activeClientFDs
-        activeClientFDs.removeAll()
+        let shouldUnlink = ownsSocketFile
+        ownsSocketFile = false
         lock.unlock()
 
+        clientRegistry.shutdownAllAndCloseAccepting()
         source?.cancel()
-        for clientFD in clientsToClose {
-            _ = shutdown(clientFD, SHUT_RDWR)
+        if shouldUnlink {
+            unlink(socketURL.path)
         }
-        unlink(socketURL.path)
     }
 
-    private func registerClientFD(_ clientFD: Int32) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard listenFD >= 0 else { return false }
-        activeClientFDs.insert(clientFD)
-        return true
-    }
-
-    private func unregisterClientFD(_ clientFD: Int32) {
-        lock.lock()
-        activeClientFDs.remove(clientFD)
-        lock.unlock()
+    private static func isLiveUnixSocket(addr: sockaddr_un) -> Bool {
+        let probeFD = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard probeFD >= 0 else { return false }
+        defer { close(probeFD) }
+        var mutableAddr = addr
+        let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+        let connected = withUnsafePointer(to: &mutableAddr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+                connect(probeFD, sockPtr, addrLen)
+            }
+        }
+        return connected == 0
     }
 
     private func acceptNextConnection() {
@@ -1380,19 +1470,19 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
             pid: peerPID > 0 ? peerPID : nil
         )
 
-        guard registerClientFD(clientFD) else {
+        guard let token = clientRegistry.register(clientFD) else {
             close(clientFD)
             return
         }
 
-        queue.async { [weak self, broker] in
-            defer { self?.unregisterClientFD(clientFD) }
+        let registry = clientRegistry
+        queue.async { [broker] in
+            defer { registry.closeClient(token: token) }
             Self.serveClient(fd: clientFD, client: clientContext, broker: broker)
         }
     }
 
     private static func serveClient(fd: Int32, client: MCPClientContext, broker: LocalMCPBroker) {
-        defer { close(fd) }
         var sessionClient = client
         var buffer = Data()
         var chunk = [UInt8](repeating: 0, count: 4096)

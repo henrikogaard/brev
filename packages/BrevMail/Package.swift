@@ -15,8 +15,7 @@ let package = Package(
         .iOS(.v17)
     ],
     products: [
-        .library(name: "BrevMail", targets: ["BrevMail"]),
-        .executable(name: "brev-mcp", targets: ["BrevMCPHelper"])
+        .library(name: "BrevMail", targets: ["BrevMail"])
     ],
     dependencies: [
         .package(path: "../BrevBackend"),
@@ -48,10 +47,6 @@ let package = Package(
             ],
             path: "Sources/BrevMail",
             resources: [.process("Resources")]
-        ),
-        .executableTarget(
-            name: "BrevMCPHelper",
-            path: "Sources/BrevMCPHelper"
         ),
         .testTarget(
             name: "BrevMailTests",

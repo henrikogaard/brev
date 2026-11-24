@@ -63,6 +63,7 @@ struct AgentAccessSection: View {
     private let auditStore: AgentAccessAuditLogStore
     private let accounts: [BrevAccount]
     private let helperPath: String
+    private let socketPath: String
     private let onSettingsChanged: (AgentAccessSettings) -> Void
 
     init(
@@ -70,12 +71,14 @@ struct AgentAccessSection: View {
         auditStore: AgentAccessAuditLogStore = .shared,
         accounts: [BrevAccount] = [],
         helperPath: String = AgentAccessSocketConfiguration.defaultHelperPath(),
+        socketPath: String = AgentAccessSocketConfiguration.defaultSocketURL().path,
         onSettingsChanged: @escaping (AgentAccessSettings) -> Void = { _ in }
     ) {
         self.settingsStore = settingsStore
         self.auditStore = auditStore
         self.accounts = accounts
         self.helperPath = helperPath
+        self.socketPath = socketPath
         self.onSettingsChanged = onSettingsChanged
         _settings = State(initialValue: AgentAccessSettings.load(from: settingsStore.defaults))
         _auditEntries = State(initialValue: auditStore.entries())
@@ -213,7 +216,8 @@ struct AgentAccessSection: View {
         ) {
             let snippet = AgentAccessSocketConfiguration.clientConfigSnippet(
                 for: selectedClientFormat,
-                helperPath: helperPath
+                helperPath: helperPath,
+                socketPath: socketPath
             )
             VStack(alignment: .leading, spacing: BrevSpacing.sm) {
                 Picker(String(localized: "Client format", bundle: .module), selection: $selectedClientFormat) {

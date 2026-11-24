@@ -368,12 +368,21 @@ public enum AgentAccessSocketConfiguration {
     /// Shared macOS App Group identifier used by sandboxed Brev builds and `brev-mcp`.
     public static let appGroupIdentifier = "group.eu.brevmail.brev"
 
+    /// Canonical stable macOS bundle identifier (`Brev.app`).
+    public static let stableBundleIdentifier = "eu.brevmail.brev"
+
     /// Maximum safe `sockaddr_un.sun_path` UTF-8 byte length on macOS (104 including NUL).
     private static let maxSocketPathUTF8Bytes = 100
 
-    /// User-private Unix domain socket path reachable by both sandboxed Brev builds and
-    /// the unsandboxed `brev-mcp` stdio helper without exceeding the 104-byte `sun_path` limit.
-    public static func defaultSocketURL() -> URL {
+    /// User-private Unix domain socket path scoped by app identity (`bundleIdentifier`) so
+    /// parallel Stable, Nightly, and Test builds never collide or unlink each other's sockets,
+    /// while staying within the 104-byte `sun_path` limit.
+    public static func defaultSocketURL(
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier,
+        groupContainerURL: URL? = nil,
+        temporaryDirectoryURL: URL? = nil
+    ) -> URL {
+        let names = socketFileNames(forBundleIdentifier: bundleIdentifier)
         #if os(macOS)
         let fallbackBase = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library", isDirectory: true)
@@ -383,15 +392,49 @@ public enum AgentAccessSocketConfiguration {
         let fallbackBase = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         #endif
-        let groupContainer = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+        let groupContainer = groupContainerURL
+            ?? FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
             ?? fallbackBase
-        let candidate = groupContainer.appendingPathComponent("mcp.sock", isDirectory: false)
-        if candidate.path.utf8.count <= maxSocketPathUTF8Bytes {
-            return candidate
+
+        for filename in [names.primary, names.compact] {
+            let candidate = groupContainer.appendingPathComponent(filename, isDirectory: false)
+            if candidate.path.utf8.count <= maxSocketPathUTF8Bytes {
+                return candidate
+            }
         }
-        return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("brev-mcp-\(getuid()).sock", isDirectory: false)
+
+        let tempBase = temporaryDirectoryURL ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        let tempCandidate = tempBase
+            .appendingPathComponent("b-\(getuid())-\(names.shortTag).sock", isDirectory: false)
+        if tempCandidate.path.utf8.count <= maxSocketPathUTF8Bytes {
+            return tempCandidate
+        }
+
+        return URL(fileURLWithPath: "/tmp", isDirectory: true)
+            .appendingPathComponent("b-\(getuid())-\(names.shortTag).sock", isDirectory: false)
+    }
+
+    private static func socketFileNames(
+        forBundleIdentifier bundleID: String?
+    ) -> (primary: String, compact: String, shortTag: String) {
+        let trimmed = bundleID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty || trimmed == stableBundleIdentifier {
+            return ("mcp.sock", "m.sock", "s")
+        }
+        if trimmed.hasSuffix(".nightly") {
+            return ("mcp-nightly.sock", "m-n.sock", "n")
+        }
+        let hash = fnv1a6Hex(trimmed)
+        return ("mcp-\(hash).sock", "m-\(hash).sock", hash)
+    }
+
+    private static func fnv1a6Hex(_ input: String) -> String {
+        var hash: UInt32 = 2_166_136_261
+        for byte in input.utf8 {
+            hash ^= UInt32(byte)
+            hash = hash &* 16_777_619
+        }
+        return String(format: "%06x", hash & 0x00FF_FFFF)
     }
 
     /// Default path to the bundled `brev-mcp` stdio bridge executable.
@@ -409,29 +452,40 @@ public enum AgentAccessSocketConfiguration {
         return "/Applications/Brev.app/Contents/Helpers/brev-mcp"
     }
 
-    /// Copyable MCP client configuration snippet for Claude Desktop/Code/Cursor (JSON) or Codex CLI (TOML).
+    /// Copyable MCP client configuration snippet for Claude Desktop/Code/Cursor (JSON) or Codex CLI (TOML),
+    /// explicitly passing the active app's socket path via `--socket` so Nightly, Test, and long-home-path
+    /// installs always connect to the exact bound listener.
     public static func clientConfigSnippet(
         for format: AgentAccessClientFormat = .json,
-        helperPath: String = defaultHelperPath()
+        helperPath: String = defaultHelperPath(),
+        socketPath: String = defaultSocketURL().path
     ) -> String {
+        let escapedHelper = escapeQuotedString(helperPath)
+        let escapedSocket = escapeQuotedString(socketPath)
         switch format {
         case .json:
             return """
             {
               "mcpServers": {
                 "brev": {
-                  "command": "\(helperPath)"
+                  "command": "\(escapedHelper)",
+                  "args": ["--socket", "\(escapedSocket)"]
                 }
               }
             }
             """
         case .codexTOML:
-            let escaped = helperPath.replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
             return """
             [mcp_servers.brev]
-            command = "\(escaped)"
+            command = "\(escapedHelper)"
+            args = ["--socket", "\(escapedSocket)"]
             """
         }
+    }
+
+    private static func escapeQuotedString(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 }

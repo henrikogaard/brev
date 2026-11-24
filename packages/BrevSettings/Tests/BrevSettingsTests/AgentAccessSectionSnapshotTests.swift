@@ -63,7 +63,8 @@ struct AgentAccessSectionSnapshotTests {
             settingsStore: SettingsPersistenceStore(defaults: defaults),
             auditStore: auditStore,
             accounts: accounts,
-            helperPath: "/Applications/Brev.app/Contents/Helpers/brev-mcp"
+            helperPath: "/Applications/Brev.app/Contents/Helpers/brev-mcp",
+            socketPath: "/Users/demo/Library/Group Containers/group.eu.brevmail.brev/mcp.sock"
         )
         .frame(width: 700, height: 1240)
         .background(theme.bgPrimary.color)

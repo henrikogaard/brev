@@ -188,7 +188,7 @@ let project = Project(
             productName: "brev-mcp",
             bundleId: "$(BREV_APP_BUNDLE_ID).mcp-helper",
             deploymentTargets: BrevConstants.macOSDeploymentTarget,
-            sources: ["../../packages/BrevMail/Sources/BrevMCPHelper/**"],
+            sources: ["BrevMCPHelper/**"],
             settings: .settings(
                 base: [
                     "BREV_APP_BUNDLE_ID": .string(BrevConstants.bundleIDPrefix),

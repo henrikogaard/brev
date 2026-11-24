@@ -138,6 +138,57 @@ struct IMAPMessageBodyCacheTests {
             encoding: "base64"
         ))
     }
+
+    @Test("cache-only body lookup parses backfilled raw IMAP sources without network fetches")
+    func cachedBodyFallsBackToCachedRawSourceWithoutNetwork() async throws {
+        let sourceCache = InMemoryIMAPMessageSourceCache()
+        let bodyCache = InMemoryIMAPMessageBodyCache()
+        let rawMIME = """
+        From: Maya <maya@example.org>\r
+        To: Henrik <person@example.org>\r
+        Subject: Backfilled invoice\r
+        Content-Type: text/plain; charset=utf-8\r
+        \r
+        Invoice total is 420 NOK.
+        """
+        await sourceCache.setSource(
+            IMAPMessageSource(uid: 77, rawMessage: rawMIME),
+            accountID: "account",
+            messageID: "INBOX:77"
+        )
+
+        let backend = IMAPSMTPBackend(
+            account: BrevAccount(id: "account", displayName: "Account", emailAddress: "person@example.org"),
+            configuration: IMAPAccountConfiguration(
+                accountID: "account",
+                emailAddress: "person@example.org",
+                displayName: "Account",
+                incoming: MailServerSettings(kind: .imap, host: "imap.example.org", port: 993, tlsMode: .implicit),
+                outgoing: MailServerSettings(kind: .smtp, host: "smtp.example.org", port: 465, tlsMode: .implicit),
+                credentialID: "credential"
+            ),
+            credential: MailAccountCredential(
+                incomingUsername: "person@example.org",
+                outgoingUsername: "person@example.org",
+                secret: "secret",
+                authentication: .password
+            ),
+            listFolders: { _, _ in [] },
+            fetchMessageSource: { _, _, _, _ in
+                throw MailBackendError.backendSpecific(message: "network source fetch must not run")
+            },
+            fetchMessageBody: { _, _, _, _ in
+                throw MailBackendError.backendSpecific(message: "network body fetch must not run")
+            },
+            sourceCache: sourceCache,
+            bodyCache: bodyCache
+        )
+
+        // Intentionally disconnected: cachedBody must parse the cached raw source locally.
+        let cached = try #require(await backend.cachedBody(for: "INBOX:77", sourceID: nil))
+        #expect(cached.plainText?.contains("Invoice total is 420 NOK.") == true)
+        #expect(await bodyCache.body(accountID: "account", messageID: "INBOX:77") == cached)
+    }
 }
 
 private actor StructuredBodyFetchRecorder {
