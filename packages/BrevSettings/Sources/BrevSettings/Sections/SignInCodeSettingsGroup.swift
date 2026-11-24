@@ -12,6 +12,7 @@
 
 import BrevBackend
 import BrevDesign
+import BrevThemes
 import SwiftUI
 
 /// Per-account consent for the sign-in panel (ADR-0088 decision 11).
@@ -50,7 +51,7 @@ struct SignInCodeSettingsGroup: View {
         SettingsGroup(
             title: String(localized: "Sign-in codes and links", bundle: .module),
             subtitle: String(
-                localized: "Shows a one-time code or sign-in link on screen the moment it arrives. For eligible new messages Brev reads the message body over the account's own connection, and codes may appear over other apps. Nothing is stored, logged, or synced.",
+                localized: "Shows a one-time code or sign-in link on screen the moment it arrives. Brev verifies the receiving server's Authentication-Results (DMARC plus aligned SPF or DKIM matching From) before reading the message body over the account's own connection, and drops messages that fail or lack authentication headers. Codes may appear over other apps; nothing is stored, logged, or synced.",
                 bundle: .module
             ),
             symbolName: "key.viewfinder"

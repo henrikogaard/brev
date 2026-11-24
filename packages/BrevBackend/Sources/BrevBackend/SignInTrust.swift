@@ -32,6 +32,8 @@ public enum SignInTrustFailure: String, Sendable, Equatable {
     case duplicateDMARC
     /// The `dmarc=` result is not `pass`.
     case dmarcNotPass
+    /// Neither an aligned `dkim=pass` nor an aligned `spf=pass` result was present in the top-most header.
+    case missingAlignedMechanism
     /// The DMARC-aligned domain does not match the single `From` address.
     case fromMismatch
     /// The message does not have exactly one `From` header with one address.
@@ -70,5 +72,72 @@ public protocol SignInTrustAssessing: Sendable {
 public extension SignInTrustAssessing {
     func signInTrustAssessmentForDeliveredNotification(for messageID: String) async -> SignInTrustAssessment {
         await signInTrustAssessment(for: messageID)
+    }
+}
+
+/// Bounded in-memory registry of freshly delivered message IDs observed during
+/// the active remote session. Entries expire after 10 minutes and never persist.
+final class SignInFreshDeliveryRegistry: @unchecked Sendable {
+    private struct Entry {
+        let id: String
+        let observedAt: Date
+        let messageDate: Date?
+    }
+
+    private let now: @Sendable () -> Date
+    private let lifetime: TimeInterval
+    private let capacity: Int
+    private let lock = NSLock()
+    private var entries: [Entry] = []
+
+    init(
+        now: @escaping @Sendable () -> Date = { Date() },
+        lifetime: TimeInterval = 600,
+        capacity: Int = 200
+    ) {
+        self.now = now
+        self.lifetime = lifetime
+        self.capacity = capacity
+    }
+
+    /// Records freshly delivered message IDs with their optional message dates.
+    func record(_ idsWithDates: [(id: String, messageDate: Date?)]) {
+        guard !idsWithDates.isEmpty else { return }
+        lock.withLock {
+            let observedAt = now()
+            pruneExpired(at: observedAt)
+            for item in idsWithDates.sorted(by: { $0.id < $1.id })
+                where !entries.contains(where: { $0.id == item.id }) {
+                entries.append(Entry(id: item.id, observedAt: observedAt, messageDate: item.messageDate))
+            }
+            while entries.count > capacity {
+                entries.removeFirst()
+            }
+        }
+    }
+
+    /// Returns whether `id` is an unexpired fresh delivery in this session.
+    func contains(_ id: String) -> Bool {
+        lock.withLock {
+            pruneExpired(at: now())
+            return entries.contains { $0.id == id }
+        }
+    }
+
+    /// Returns the recorded message date for an unexpired fresh delivery, if any.
+    func messageDate(for id: String) -> Date? {
+        lock.withLock {
+            pruneExpired(at: now())
+            return entries.first { $0.id == id }?.messageDate
+        }
+    }
+
+    /// Clears all fresh-delivery provenance when a connection ends.
+    func removeAll() {
+        lock.withLock { entries.removeAll() }
+    }
+
+    private func pruneExpired(at instant: Date) {
+        entries.removeAll { instant.timeIntervalSince($0.observedAt) >= lifetime }
     }
 }

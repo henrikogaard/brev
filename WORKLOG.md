@@ -1,5 +1,24 @@
 # Worklog
 
+## 2026-11-24 — Agent — Issue #5 (Generic IMAP Sign-In Code Detection)
+
+- Goal: enable generic IMAP sign-in code & link detection (#5) via RFC 8601 `Authentication-Results` parsing and domain alignment verification in `BrevBackend`, wire `IMAPSMTPBackend` (`SignInTrustAssessing`, `.trustedSignInAssessment`), keep per-account opt-in off by default with clear Settings trust copy (`en` + `nb`), and update design/privacy/release docs.
+- Changes:
+  - Added `AuthenticationResultsParser.swift` (`AuthenticationResultsParser`, `AuthenticationResultsHeader`, `AuthenticationResultsMethodResult`, `AuthenticationResultsSignInTrustAssessor`) in `packages/BrevBackend/Sources/BrevBackend/`: parses raw RFC 5322 headers (stopping at the first blank line, unfolding folded lines), lexes RFC 8601 `Authentication-Results` (nested comments, quoted strings, method versions, CFWS), inspects only the top-most receiving-server header (rejecting conflicting same-`authserv-id` DMARC headers and ignoring attacker-injected lower headers), validates a single RFC 5322 `From` mailbox domain, requires `dmarc=pass` with exact `header.from` match, and requires aligned `dkim=pass` (`header.d`/`header.i`) or `spf=pass` (`smtp.mailfrom`/`smtp.helo`) with multi-label public-suffix awareness.
+  - Added `SignInTrustFailure.missingAlignedMechanism` and `SignInFreshDeliveryRegistry` in `SignInTrust.swift`, connection generation tracking and `onFreshlyAdded` callback in `IMAPSMTPBackendState.swift`, and `IMAPSMTPBackend: SignInTrustAssessing` + `.trustedSignInAssessment` capability advertisement (when listing and header/source fetch are wired) using header-only `BODY.PEEK[HEADER]` before any body read.
+  - Updated `SignInCodeSettingsGroup.swift` and `packages/BrevSettings/Sources/BrevSettings/Resources/Localizable.xcstrings` (`en` + `nb`) to clearly explain `Authentication-Results` (`DMARC` + aligned `SPF`/`DKIM` matching `From`) verification and closed drop behavior; fixed missing `import BrevThemes` warning in `SignInCodeSettingsGroup.swift`.
+  - Updated `docs/design/privacy-and-security.md`, `PRIVACY.md`, and `CHANGELOG.md`.
+  - Added unit and integration tests in `AuthenticationResultsParserTests.swift`, `SignInTrustTests.swift`, `SignInCodeSettingsTests.swift`, and `SignInCodeArrivalControllerTests.swift`.
+- Verification:
+  - `swift test --package-path packages/BrevBackend` (1,239 tests in 120 suites passed, including 23 new parser and IMAP integration tests)
+  - `swift test --package-path packages/BrevGmail` (209 tests in 19 suites passed)
+  - `xcodebuild -scheme BrevSettings -destination 'platform=macOS,arch=arm64' -testLanguage en -testRegion en_US -only-testing:BrevSettingsTests/SignInCodeSettingsTests test` (6 tests passed) + non-snapshot `BrevSettings` suite
+  - `xcodebuild -scheme BrevMail -destination 'platform=macOS,arch=arm64' -testLanguage en -testRegion en_US -only-testing:BrevMailTests/SignInCodeArrivalControllerTests -only-testing:BrevMailTests/SignInCodeDetectorTests -only-testing:BrevMailTests/SignInCodeNotificationTests -only-testing:BrevMailTests/SignInCodePanelTests -only-testing:BrevMailTests/SignInCodePanelSnapshotTests -only-testing:BrevMailTests/NewMailDropDownPanelSnapshotTests test` (44 tests in 6 suites passed)
+  - `scripts/format.sh`, `scripts/lint.sh`, `scripts/test-public-source-markers.sh`, `scripts/test-telemetry-artifacts.sh`, Python verification of all `scripts/privacy-audit.sh` rules, and `git diff --check origin/main` passed.
+- Skipped:
+  - iOS Simulator snapshot re-recording for `BrevSettingsTests/SettingsFormSnapshotTests` (`forms.signin-codes-{light,dark,ax3}.png`, whose footer copy updated in `SignInCodeSettingsGroup.swift`): no iOS Simulator runtimes are installed on this host (`xcrun simctl list runtimes` is empty). Re-record those three PNGs on an iOS 27+ simulator host if the iOS snapshot gate runs.
+- Next: review PR on `feature/imap-signin-code-detection` and re-record `forms.signin-codes-*.png` on an iOS 27+ simulator runner if required.
+
 ## 2026-11-24 — Agent — #11 Closed-App Push Relay (Zero Brev Proxy)
 
 - Goal: implement opt-in, standards-first closed-app push options (user-hosted HTTPS relay + JMAP RFC 8620 §7.2 / RFC 8291 WebPush hooks) with zero Brev-operated proxy server.

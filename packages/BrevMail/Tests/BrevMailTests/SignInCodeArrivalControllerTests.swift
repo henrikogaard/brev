@@ -286,6 +286,118 @@ struct SignInCodeArrivalControllerTests {
         #expect(Mirror(reflecting: presentation).children.isEmpty)
     }
 
+    @Test("generic IMAP account extracts verified sign-in code on fresh arrival and drops unverified messages without body read")
+    func genericIMAPEndToEndVerification() async throws {
+        let now = Date()
+        let account = BrevAccount(
+            id: BrevAccount.imapSMTPAccountID(forEmailAddress: "alex@fastmail.example"),
+            displayName: "Fastmail",
+            emailAddress: "alex@fastmail.example"
+        )
+        let config = IMAPAccountConfiguration(
+            accountID: account.id,
+            emailAddress: account.emailAddress,
+            displayName: account.displayName,
+            incoming: MailServerSettings(
+                kind: .imap, host: "imap.fastmail.example", port: 993, tlsMode: .implicit, authentication: .password
+            ),
+            outgoing: MailServerSettings(
+                kind: .smtp, host: "smtp.fastmail.example", port: 465, tlsMode: .implicit, authentication: .password
+            ),
+            credentialID: account.id
+        )
+        let credential = MailAccountCredential(
+            incomingUsername: account.emailAddress,
+            outgoingUsername: account.emailAddress,
+            secret: "app-password",
+            authentication: .password
+        )
+        final class StateBox: @unchecked Sendable {
+            private let lock = NSLock()
+            var listings: [IMAPMessageListing] = []
+            var bodyReadUIDs: [Int] = []
+            func setListings(_ value: [IMAPMessageListing]) { lock.withLock { listings = value } }
+            func currentListings() -> [IMAPMessageListing] { lock.withLock { listings } }
+            func recordBodyRead(_ uid: Int) { lock.withLock { bodyReadUIDs.append(uid) } }
+            func reads() -> [Int] { lock.withLock { bodyReadUIDs } }
+        }
+        let stateBox = StateBox()
+        let headersByUID: [Int: String] = [
+            11: """
+            Authentication-Results: mx2.messagingengine.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r
+            From: Bank Login <alerts@bank.example>\r
+            \r
+            """,
+            12: """
+            Authentication-Results: mx2.messagingengine.com; dmarc=fail header.from=bank.example; dkim=fail\r
+            Authentication-Results: attacker.example; dmarc=pass header.from=bank.example; dkim=pass header.d=bank.example\r
+            From: Bank Login <alerts@bank.example>\r
+            \r
+            """
+        ]
+        func listing(_ uid: Int, date: Date) -> IMAPMessageListing {
+            IMAPMessageListing(
+                uid: uid,
+                messageID: "<m-\(uid)@bank.example>",
+                subject: "Sign-in code",
+                from: Correspondent(name: "Bank Login", email: "alerts@bank.example"),
+                to: [Correspondent(email: account.emailAddress)],
+                cc: [],
+                bcc: [],
+                date: date,
+                isRead: false,
+                isFlagged: false,
+                isAnswered: false
+            )
+        }
+        stateBox.setListings([listing(10, date: now.addingTimeInterval(-3600))])
+
+        let backend = IMAPSMTPBackend(
+            account: account,
+            configuration: config,
+            credential: credential,
+            listFolders: { _, _ in
+                [IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox)]
+            },
+            listMessages: { _, _, _, _, _ in
+                IMAPMessageListingPage(messages: stateBox.currentListings())
+            },
+            fetchMessageBody: { _, _, _, uid in
+                stateBox.recordBodyRead(uid)
+                return MessageBody(messageID: "INBOX:\(uid)", plainText: "Your verification code is \(Self.code)")
+            },
+            fetchMessagePart: { _, _, _, uid, _, _ in
+                Data((headersByUID[uid] ?? "").utf8)
+            },
+            signInTrustNow: { now }
+        )
+        #expect(backend.extendedCapabilities.contains(.trustedSignInAssessment))
+
+        let box = ConsentBox()
+        let presenter = SpyPresenter()
+        let controller = SignInCodeArrivalController(settings: { box.settings }, presenter: presenter)
+        try await backend.connect()
+        try await backend.refresh(folder: Folder(id: "INBOX", name: "Inbox", role: .inbox))
+
+        // Off by default: no body read and no presentation before explicit opt-in.
+        stateBox.setListings([listing(11, date: now), listing(12, date: now), listing(10, date: now.addingTimeInterval(-3600))])
+        try await backend.refresh(folder: Folder(id: "INBOX", name: "Inbox", role: .inbox))
+        controller.handle(.messagesAdded(folderID: "INBOX", messageIDs: ["INBOX:11", "INBOX:12"]), from: backend)
+        await controller.settle()
+        #expect(presenter.presented.isEmpty)
+        #expect(stateBox.reads().isEmpty)
+
+        // Opt in for this generic IMAP account: verified UID 11 presents; forged UID 12 never reads body.
+        box.mutate { $0.setAccountOverride(accountID: account.id, codesEnabled: true, linksEnabled: false) }
+        controller.handle(.messagesAdded(folderID: "INBOX", messageIDs: ["INBOX:11", "INBOX:12"]), from: backend)
+        await controller.settle()
+        #expect(presenter.presented.count == 1)
+        #expect(presenter.presented.first?.messageID == "INBOX:11")
+        #expect(presenter.presented.first?.content == .code(Self.code))
+        #expect(presenter.presented.first?.sender == "Bank Login")
+        #expect(stateBox.reads() == [11])
+    }
+
     #if os(macOS)
     private actor StubTokenStore: TokenStore {
         private var tokens: [String: Token] = [:]

@@ -264,6 +264,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private static let cacheSizeMetricsRefreshInterval: TimeInterval = 60
     private let deferredStartupLock = NSLock()
     private var didStartDeferredStartupWork = false
+    private let signInTrustNow: @Sendable () -> Date
+    private let freshDeliveryRegistry: SignInFreshDeliveryRegistry
 
     public var contactLookupProvider: (any ContactLookupProviding)? {
         get { contactLookupProviderLock.withLock { _contactLookupProvider } }
@@ -311,7 +313,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         offlineMutationConflictStore: (any OfflineMutationConflictStore)? = nil,
         outboundMessagePreparer: (any OutboundMessagePreparing)? = nil,
         sentMessageLedger: SentMessageLedger? = nil,
-        attachmentIndexConsent: AttachmentIndexConsentStore? = nil
+        attachmentIndexConsent: AttachmentIndexConsentStore? = nil,
+        signInTrustNow: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.account = account
         scheduledWorkGate = ScheduledSendWorkGate.forAccount(account.id)
@@ -359,6 +362,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         self.outboundMessagePreparer = outboundMessagePreparer
         self.sentMessageLedger = sentMessageLedger
         self.attachmentIndexConsent = attachmentIndexConsent
+        self.signInTrustNow = signInTrustNow
+        freshDeliveryRegistry = SignInFreshDeliveryRegistry(now: signInTrustNow)
         let hasAttachmentIndex = localSearchIndex != nil
         var advertisedCapabilities: BackendCapabilities = [.providerSyncHealth]
         if createFolder != nil {
@@ -412,6 +417,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
         if fetchMessageSource != nil {
             advertisedExtendedCapabilities.formUnion([.rawMessageSource, .rawMessageBytes])
+        }
+        if listMessages != nil, fetchMessagePart != nil || fetchMessageSource != nil {
+            // Generic IMAP sign-in verification via RFC 8601 Authentication-Results (#5).
+            advertisedExtendedCapabilities.insert(.trustedSignInAssessment)
         }
         if hasAttachmentIndex {
             // Local-only indexing of bytes already on device (ADR-0078 §8);
@@ -605,6 +614,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         cancelBackgroundDateRepairTasks()
         await headerCache?.flushPendingWrites()
         await disconnectSessionOperation?(configuration)
+        freshDeliveryRegistry.removeAll()
         await state.disconnect()
     }
 
@@ -814,10 +824,17 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             nextPageToken: page.nextPageToken
         )
         await emit(headerChangeEvents)
+        let headerDatesByID = Dictionary(
+            headers.map { ($0.id, $0.date) },
+            uniquingKeysWith: { first, _ in first }
+        )
         await state.recordListedMessageIDs(
             headers.map(\.id),
             folderID: folder.id,
-            isCompleteFolderWindow: page.nextPageToken == nil
+            isCompleteFolderWindow: page.nextPageToken == nil,
+            onFreshlyAdded: folder.role == .inbox ? { [freshDeliveryRegistry] addedIDs in
+                freshDeliveryRegistry.record(addedIDs.map { (id: $0, messageDate: headerDatesByID[$0]) })
+            } : nil
         )
         await state.clearBackgroundSyncFailure()
     }
@@ -1184,10 +1201,17 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     nextPageToken: page.nextPageToken
                 )
                 await emit(headerChangeEvents)
+                let headerDatesByID = Dictionary(
+                    headers.map { ($0.id, $0.date) },
+                    uniquingKeysWith: { first, _ in first }
+                )
                 await state.recordListedMessageIDs(
                     headers.map(\.id),
                     folderID: folder.id,
-                    isCompleteFolderWindow: page.nextPageToken == nil
+                    isCompleteFolderWindow: page.nextPageToken == nil,
+                    onFreshlyAdded: folder.role == .inbox ? { [freshDeliveryRegistry] addedIDs in
+                        freshDeliveryRegistry.record(addedIDs.map { (id: $0, messageDate: headerDatesByID[$0]) })
+                    } : nil
                 )
             } else {
                 var headerChangeEvents: [MailEvent] = []
@@ -6586,5 +6610,96 @@ extension IMAPSMTPBackend: BackgroundBodyIndexing {
             for: messageID,
             account: account
         )
+    }
+}
+
+extension IMAPSMTPBackend: SignInTrustAssessing {
+    /// Generic IMAP sign-in trust assessment (#5).
+    ///
+    /// Gates in order: IMAP backend identity → `.trustedSignInAssessment`
+    /// capability → active remote connection generation → Inbox folder →
+    /// live fresh-delivery registry → 10-minute freshness window →
+    /// raw RFC 5322 header fetch (`BODY.PEEK[HEADER]`) assessed by
+    /// `AuthenticationResultsSignInTrustAssessor`.
+    public func signInTrustAssessment(for messageID: String) async -> SignInTrustAssessment {
+        await evaluateSignInTrust(for: messageID, requireLiveFreshDelivery: true)
+    }
+
+    public func signInTrustAssessmentForDeliveredNotification(for messageID: String) async -> SignInTrustAssessment {
+        await evaluateSignInTrust(for: messageID, requireLiveFreshDelivery: false)
+    }
+
+    private func evaluateSignInTrust(
+        for messageID: String,
+        requireLiveFreshDelivery: Bool
+    ) async -> SignInTrustAssessment {
+        guard account.backendIdentifier == BrevAccount.imapSMTPBackendIdentifier,
+              extendedCapabilities.contains(.trustedSignInAssessment)
+        else {
+            return .unavailable(.unsupportedAccount)
+        }
+        guard let generation = await state.remoteConnectionGeneration() else {
+            return .unavailable(.notFreshDelivery)
+        }
+        guard let reference = try? Self.messageReference(from: messageID),
+              let folder = await state.folder(id: reference.folderID),
+              folder.role == .inbox
+        else {
+            return .unavailable(.wrongFolder)
+        }
+        if requireLiveFreshDelivery {
+            guard freshDeliveryRegistry.contains(messageID) else {
+                return .unavailable(.notFreshDelivery)
+            }
+        }
+        let messageDate: Date?
+        if let recordedDate = freshDeliveryRegistry.messageDate(for: messageID) {
+            messageDate = recordedDate
+        } else {
+            messageDate = await cachedMessageHeader(messageID: messageID, folderID: reference.folderID)?.date
+        }
+        guard let messageDate,
+              abs(signInTrustNow().timeIntervalSince(messageDate)) < 600
+        else {
+            return .unavailable(.stale)
+        }
+        guard let rawHeaders = await fetchRawHeadersForSignInTrust(
+            messageID: messageID,
+            folderID: reference.folderID,
+            uid: reference.uid
+        ) else {
+            return .unavailable(.noTrustedHeader)
+        }
+        guard await state.remoteConnectionGeneration() == generation else {
+            return .unavailable(.notFreshDelivery)
+        }
+        return AuthenticationResultsSignInTrustAssessor.assess(rawHeaders: rawHeaders)
+    }
+
+    private func fetchRawHeadersForSignInTrust(
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        uid: Int
+    ) async -> String? {
+        if let cached = await cachedMessageSource(messageID: messageID) {
+            return cached.rawMessage
+        }
+        if fetchMessagePartOperation != nil,
+           let headerData = try? await fetchMessagePartWithAuthenticatedOAuthRetry(
+               folderID: folderID,
+               uid: uid,
+               section: "HEADER",
+               transferEncoding: "7bit"
+           ) {
+            return IMAPMessageBodyParser().rawMessageString(from: headerData)
+        }
+        if fetchMessageSourceOperation != nil,
+           let source = try? await fetchMessageSourceWithAuthenticatedOAuthRetry(
+               folderID: folderID,
+               uid: uid
+           ) {
+            return source.rawMessage
+        }
+        return nil
     }
 }

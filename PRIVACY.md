@@ -1081,9 +1081,13 @@ Brev's optional sign-in code and link detection (ADR-0088) runs strictly on
 your device using deterministic local matching — no AI, no third-party service,
 and no new network endpoints. Both one-time codes and sign-in links are **off
 by default** per account and per device, and consent is excluded from backups
-and iCloud preference sync. When enabled on a supported, verified account, Brev
-may read the plain-text body of an eligible freshly arrived Inbox message over
-that account's own mail connection. Extracted codes and links live in memory
+and iCloud preference sync. When enabled on a supported, verified account, Brev verifies the receiving
+server's top-most `Authentication-Results` header (requiring `dmarc=pass`
+matching a single `From` domain plus an aligned `dkim=pass` or `spf=pass`,
+fetched via header-only `BODY.PEEK[HEADER]` on generic IMAP accounts) and drops
+messages that fail or lack authentication headers before reading the plain-text
+body of an eligible freshly arrived Inbox message over that account's own mail
+connection. Extracted codes and links live in memory
 only while shown, are never written to logs, analytics, or sync payloads, and
 are copied to the macOS clipboard with `org.nspasteboard.ConcealedType` and
 optional change-count-guarded clearing. On iOS, lock-screen-safe local
