@@ -21,7 +21,9 @@ enum ComposeHTMLPreviewSource {
         richHTML: String?,
         plainBody: String,
         preservedQuotedHTML: String? = nil,
-        quoteSeparatorHTML: String = ""
+        quoteSeparatorHTML: String = "",
+        outerWrapperOpenHTML: String = "",
+        outerWrapperCloseHTML: String = ""
     ) -> String {
         let topHTML: String
         if let richHTML, !richHTML.isEmpty {
@@ -35,8 +37,25 @@ enum ComposeHTMLPreviewSource {
         return ComposeRestoredBody.reassembledHTML(
             editedTopHTML: topHTML,
             separatorHTML: quoteSeparatorHTML,
-            preservedQuotedHTML: sanitizedPreviewHTML(preservedQuotedHTML)
+            preservedQuotedHTML: sanitizedPreviewHTML(preservedQuotedHTML),
+            outerWrapperOpenHTML: outerWrapperOpenHTML,
+            outerWrapperCloseHTML: outerWrapperCloseHTML
         )
+    }
+
+    /// Returns preview-safe HTML for a preserved quote fragment, wrapping it in
+    /// any inherited text direction (`dir="rtl"` / `"ltr"` / `"auto"`) so mixed-
+    /// direction quoted content renders identically to the original wrapper.
+    static func sanitizedQuotePreviewHTML(
+        _ html: String,
+        inheritedDirection: String? = nil
+    ) -> String {
+        let sanitized = sanitizedPreviewHTML(html)
+        guard let dir = inheritedDirection?.lowercased(),
+              dir == "rtl" || dir == "ltr" || dir == "auto" else {
+            return sanitized
+        }
+        return "<div dir=\"\(dir)\">\(sanitized)</div>"
     }
 
     /// Strips active script/embed blocks, inline event handlers, and executable

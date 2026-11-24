@@ -24,6 +24,7 @@ struct ComposePreservedQuoteSection: View {
     @State private var isExpanded: Bool
 
     let preservedQuotedHTML: String
+    let inheritedDirection: String?
     let stripTrackingPixels: Bool
     let fontFamily: MailboxFontFamily
     let textSize: MailboxTextSize
@@ -31,6 +32,7 @@ struct ComposePreservedQuoteSection: View {
 
     init(
         preservedQuotedHTML: String,
+        inheritedDirection: String? = nil,
         stripTrackingPixels: Bool = true,
         fontFamily: MailboxFontFamily = .system,
         textSize: MailboxTextSize = .medium,
@@ -38,6 +40,7 @@ struct ComposePreservedQuoteSection: View {
         initiallyExpanded: Bool = false
     ) {
         self.preservedQuotedHTML = preservedQuotedHTML
+        self.inheritedDirection = inheritedDirection
         self.stripTrackingPixels = stripTrackingPixels
         self.fontFamily = fontFamily
         self.textSize = textSize
@@ -94,7 +97,10 @@ struct ComposePreservedQuoteSection: View {
                 ScrollView {
                     HTMLBodyWebView(
                         store: previewWebViewStore,
-                        html: ComposeHTMLPreviewSource.sanitizedPreviewHTML(preservedQuotedHTML),
+                        html: ComposeHTMLPreviewSource.sanitizedQuotePreviewHTML(
+                            preservedQuotedHTML,
+                            inheritedDirection: inheritedDirection
+                        ),
                         allowRemoteContent: false,
                         stripTrackingPixels: stripTrackingPixels,
                         fontFamily: fontFamily,

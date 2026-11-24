@@ -578,4 +578,27 @@ struct MIMEMessageBuilderTests {
             .map { $0.trimmingCharacters(in: .whitespaces) }
         #expect(parsedAddresses == bccAddresses)
     }
+
+    @Test("text/plain MIME alternative strips tags containing > inside quoted attributes cleanly")
+    func plainTextAlternativeRespectsQuotedAngleBrackets() {
+        let draft = Draft(
+            id: "quoted-attr-1",
+            to: [Correspondent(email: "recipient@example.com")],
+            subject: "Re: Quoted attr",
+            htmlBody: """
+            <p>Top reply</p><blockquote data-label="a > b" title='x > y'>Original reply</blockquote>
+            """
+        )
+        let from = Correspondent(email: "sender@example.com")
+        let message = String(data: MIMEMessageBuilder(draft: draft, from: from).build(), encoding: .utf8) ?? ""
+
+        let plainSection = message
+            .components(separatedBy: "Content-Type: text/plain; charset=utf-8")[1]
+            .components(separatedBy: "\r\n--")[0]
+        #expect(plainSection.contains("Top reply"))
+        #expect(plainSection.contains("Original reply"))
+        #expect(!plainSection.contains("b\""))
+        #expect(!plainSection.contains("y'"))
+        #expect(!plainSection.contains("data-label"))
+    }
 }

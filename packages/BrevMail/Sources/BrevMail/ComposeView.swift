@@ -2530,9 +2530,10 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var preservedQuotedSection: some View {
-        if let preservedQuotedHTML = restoredBody?.preservedQuotedHTML {
+        if let restoredBody, let preservedQuotedHTML = restoredBody.preservedQuotedHTML {
             ComposePreservedQuoteSection(
                 preservedQuotedHTML: preservedQuotedHTML,
+                inheritedDirection: restoredBody.inheritedDirection,
                 stripTrackingPixels: stripTrackingPixels,
                 fontFamily: composeFontFamily,
                 textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium,
@@ -2603,7 +2604,9 @@ public struct ComposeView: View {
             richHTML: bodyHTML,
             plainBody: bodyText,
             preservedQuotedHTML: restoredBody?.preservedQuotedHTML,
-            quoteSeparatorHTML: restoredBody?.quoteSeparatorHTML ?? ""
+            quoteSeparatorHTML: restoredBody?.quoteSeparatorHTML ?? "",
+            outerWrapperOpenHTML: restoredBody?.outerWrapperOpenHTML ?? "",
+            outerWrapperCloseHTML: restoredBody?.outerWrapperCloseHTML ?? ""
         )
         return ScrollView {
             HTMLBodyWebView(

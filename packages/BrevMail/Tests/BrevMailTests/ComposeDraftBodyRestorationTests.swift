@@ -234,6 +234,142 @@ struct ComposeDraftBodyRestorationTests {
         #expect(rawQuote.contains("<script>"))
     }
 
+    @Test("enclosing RTL direction wrapper is preserved on edited reassembly and in quote previews")
+    func rtlWrapperPreservedOnEditAndPreview() async throws {
+        let hebrewQuote = "<blockquote type=\"cite\">עברית</blockquote>"
+        let hebrewHTML = "<div dir=\"rtl\">Reply<br>\(hebrewQuote)</div>"
+        let hebrewRestored = try await prepare(hebrewHTML, format: .richTextHTML)
+
+        #expect(hebrewRestored.attributedText.string == "Reply")
+        #expect(hebrewRestored.preservedQuotedHTML == hebrewQuote)
+        #expect(hebrewRestored.inheritedDirection == "rtl")
+        #expect(hebrewRestored.outerWrapperOpenHTML == "<div dir=\"rtl\">")
+        #expect(hebrewRestored.outerWrapperCloseHTML == "</div>")
+
+        let hebrewEdited = hebrewRestored.htmlBodyForSave(
+            currentBodyText: "Updated reply",
+            currentBodyHTML: "Updated reply",
+            editedTopHTML: "Updated reply"
+        )
+        #expect(hebrewEdited == "<div dir=\"rtl\">Updated reply<br>\(hebrewQuote)</div>")
+
+        let arabicQuote = "<div class=\"gmail_quote\">الاجتماع Friday?</div>"
+        let arabicHTML = "<div dir=\"rtl\">Reply<br>\(arabicQuote)</div>"
+        let arabicRestored = try await prepare(arabicHTML, format: .richTextHTML)
+
+        #expect(arabicRestored.inheritedDirection == "rtl")
+        let arabicEdited = arabicRestored.htmlBodyForSave(
+            currentBodyText: "Reply updated",
+            currentBodyHTML: "Reply updated",
+            editedTopHTML: "Reply updated"
+        )
+        #expect(arabicEdited == "<div dir=\"rtl\">Reply updated<br>\(arabicQuote)</div>")
+
+        let sectionPreview = ComposeHTMLPreviewSource.sanitizedQuotePreviewHTML(
+            arabicQuote,
+            inheritedDirection: arabicRestored.inheritedDirection
+        )
+        #expect(sectionPreview == "<div dir=\"rtl\">\(arabicQuote)</div>")
+
+        let fullPreview = ComposeHTMLPreviewSource.html(
+            richHTML: "Reply updated",
+            plainBody: "Reply updated",
+            preservedQuotedHTML: arabicRestored.preservedQuotedHTML,
+            quoteSeparatorHTML: arabicRestored.quoteSeparatorHTML,
+            outerWrapperOpenHTML: arabicRestored.outerWrapperOpenHTML,
+            outerWrapperCloseHTML: arabicRestored.outerWrapperCloseHTML
+        )
+        #expect(fullPreview == "<div dir=\"rtl\">Reply updated<br>\(arabicQuote)</div>")
+    }
+
+    @Test("raw style block with 8000+ repeated < characters scans linearly without stalling")
+    func linearScanOnRepeatedAngleBracketsInStyle() async throws {
+        let repeatedAngles = String(repeating: "<", count: 8500)
+        let quoteTail = "<blockquote type=\"cite\"><style>/* \(repeatedAngles) */</style><div>Fast quote</div></blockquote>"
+        let html = "Reply<br>\(quoteTail)"
+
+        let start = ContinuousClock.now
+        let restored = try await prepare(html, format: .richTextHTML)
+        let elapsed = ContinuousClock.now - start
+
+        #expect(restored.attributedText.string == "Reply")
+        #expect(restored.preservedQuotedHTML == quoteTail)
+        #expect(elapsed < .seconds(2))
+    }
+
+    @Test("typing a > quote line above a preserved Gmail thread keeps both lines editable after save and reopen")
+    func inlineGreaterThanQuoteLineStaysEditableAfterReopen() async throws {
+        let gmailTail = """
+        <div class="gmail_quote"><div dir="ltr" class="gmail_attr">On Mon, Alice wrote:<br></div>\
+        <blockquote class="gmail_quote" style="margin:0;border-left:1px solid #ccc">Original thread</blockquote></div>
+        """
+        let initialHTML = "<div dir=\"ltr\">Draft start</div><br>\(gmailTail)"
+        let firstOpen = try await prepare(initialHTML, format: .richTextHTML)
+
+        let authoredReply = NSAttributedString(string: "> Friday works\nLet's book a room.")
+        let serializedTop = ComposeRichTextHTMLSerializer.html(from: authoredReply)
+        #expect(serializedTop.contains("<blockquote>Friday works</blockquote>"))
+
+        let savedHTML = try #require(firstOpen.htmlBodyForSave(
+            currentBodyText: authoredReply.string,
+            currentBodyHTML: serializedTop,
+            editedTopHTML: serializedTop
+        ))
+        #expect(savedHTML.hasSuffix("<br>\(gmailTail)"))
+
+        let reopened = try await prepare(savedHTML, format: .richTextHTML)
+        #expect(reopened.attributedText.string == "> Friday works\nLet's book a room.")
+        #expect(reopened.preservedQuotedHTML == gmailTail)
+    }
+
+    @Test("reply text sharing a div with trailing attribution before a blockquote stays editable")
+    func replyAndAttributionInSameDivDoesNotLockReplyText() async throws {
+        let quoteTail = "<blockquote type=\"cite\">Original note</blockquote>"
+        let html = "<div>Thanks, Friday works.<br>On Monday, Ada wrote:</div>\(quoteTail)"
+        let restored = try await prepare(html, format: .richTextHTML)
+
+        #expect(restored.attributedText.string.contains("Thanks, Friday works."))
+        #expect(restored.preservedQuotedHTML == quoteTail)
+        #expect(restored.preservedQuotedHTML?.contains("Thanks, Friday works.") == false)
+
+        // A genuine 2-line wrapped standalone attribution without reply text still stays with the quote.
+        let wrappedQuoteTail = "<div>On Mon, Jan 1, 2026 at 10:00 AM<br>Ada wrote:</div>\(quoteTail)"
+        let wrappedHTML = "<div>Sounds good!</div>\(wrappedQuoteTail)"
+        let wrappedRestored = try await prepare(wrappedHTML, format: .richTextHTML)
+        #expect(wrappedRestored.attributedText.string == "Sounds good!")
+        #expect(wrappedRestored.preservedQuotedHTML == wrappedQuoteTail)
+    }
+
+    @Test("compact HTML5 quoted tables and lists omitting optional closing tags reopen cleanly")
+    func html5OptionalClosingTagsInsidePreservedQuotes() async throws {
+        let compactTableQuote = """
+        <div class="gmail_quote"><blockquote class="gmail_quote">\
+        <table><thead><tr><th>Item<th>Qty<tbody><tr><td>Apples<td>3<tr><td>Oranges<td>5</table>\
+        <ul><li>First item<li>Second item</ul>\
+        <p>Paragraph one<p>Paragraph two\
+        </blockquote></div>
+        """
+        let html = "<div dir=\"ltr\">Looks good!</div><br>\(compactTableQuote)"
+        let restored = try await prepare(html, format: .richTextHTML)
+
+        #expect(restored.attributedText.string == "Looks good!")
+        #expect(restored.originalHTML == html)
+        #expect(restored.preservedQuotedHTML == compactTableQuote)
+        #expect(restored.preservedQuotedPlainText.contains("Apples"))
+        #expect(restored.preservedQuotedPlainText.contains("Oranges"))
+    }
+
+    @Test("quoted plain text extraction respects > inside attribute values without leaking attribute markup")
+    func quotedPlainTextIgnoresAngleBracketInsideAttributeValue() async throws {
+        let quoteTail = "<blockquote data-label=\"a > b\" title='x > y'>Original reply</blockquote>"
+        let html = "Top<br>\(quoteTail)"
+        let restored = try await prepare(html, format: .richTextHTML)
+
+        #expect(restored.preservedQuotedPlainText == "Original reply")
+        #expect(!restored.preservedQuotedPlainText.contains("b\""))
+        #expect(!restored.preservedQuotedPlainText.contains("y'"))
+    }
+
     private func prepare(
         _ html: String,
         format: ComposeBodyFormat

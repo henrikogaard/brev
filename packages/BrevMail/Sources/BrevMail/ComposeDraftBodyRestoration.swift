@@ -32,6 +32,14 @@ struct ComposeRestoredBody {
     let quoteSeparatorHTML: String
     /// Plain-text fallback extracted from `preservedQuotedHTML`.
     let preservedQuotedPlainText: String
+    /// Enclosing opening wrapper tags (such as `<div dir="rtl">`) unwrapped during
+    /// quote splitting and re-applied on edited save/send.
+    let outerWrapperOpenHTML: String
+    /// Enclosing closing wrapper tags matching `outerWrapperOpenHTML`.
+    let outerWrapperCloseHTML: String
+    /// Inherited text direction (`"rtl"`, `"ltr"`, or `"auto"`) from an unwrapped
+    /// direction-bearing container, used to preserve directionality in previews.
+    let inheritedDirection: String?
 
     init(
         attributedText: NSAttributedString,
@@ -40,7 +48,10 @@ struct ComposeRestoredBody {
         editorFormat: ComposeBodyFormat,
         preservedQuotedHTML: String? = nil,
         quoteSeparatorHTML: String = "",
-        preservedQuotedPlainText: String = ""
+        preservedQuotedPlainText: String = "",
+        outerWrapperOpenHTML: String = "",
+        outerWrapperCloseHTML: String = "",
+        inheritedDirection: String? = nil
     ) {
         self.attributedText = attributedText
         self.originalHTML = originalHTML
@@ -49,6 +60,9 @@ struct ComposeRestoredBody {
         self.preservedQuotedHTML = preservedQuotedHTML
         self.quoteSeparatorHTML = quoteSeparatorHTML
         self.preservedQuotedPlainText = preservedQuotedPlainText
+        self.outerWrapperOpenHTML = outerWrapperOpenHTML
+        self.outerWrapperCloseHTML = outerWrapperCloseHTML
+        self.inheritedDirection = inheritedDirection
     }
 
     /// Produces the persisted HTML body for the current editor state.
@@ -70,28 +84,36 @@ struct ComposeRestoredBody {
         return Self.reassembledHTML(
             editedTopHTML: editedTopHTML,
             separatorHTML: quoteSeparatorHTML,
-            preservedQuotedHTML: preservedQuotedHTML
+            preservedQuotedHTML: preservedQuotedHTML,
+            outerWrapperOpenHTML: outerWrapperOpenHTML,
+            outerWrapperCloseHTML: outerWrapperCloseHTML
         )
     }
 
-    /// Reassembles serialized top reply HTML with a byte-for-byte preserved quote tail.
+    /// Reassembles serialized top reply HTML with a byte-for-byte preserved quote tail,
+    /// preserving any enclosing direction-bearing wrapper tags.
     static func reassembledHTML(
         editedTopHTML: String,
         separatorHTML: String,
-        preservedQuotedHTML: String
+        preservedQuotedHTML: String,
+        outerWrapperOpenHTML: String = "",
+        outerWrapperCloseHTML: String = ""
     ) -> String {
-        guard !editedTopHTML.isEmpty else {
-            return preservedQuotedHTML
-        }
-        let joiner: String
-        if !separatorHTML.isEmpty {
-            joiner = separatorHTML
-        } else if editedTopHTML.hasSuffix("<br>") {
-            joiner = "<br>"
+        let inner: String
+        if editedTopHTML.isEmpty {
+            inner = preservedQuotedHTML
         } else {
-            joiner = "<br><br>"
+            let joiner: String
+            if !separatorHTML.isEmpty {
+                joiner = separatorHTML
+            } else if editedTopHTML.hasSuffix("<br>") {
+                joiner = "<br>"
+            } else {
+                joiner = "<br><br>"
+            }
+            inner = editedTopHTML + joiner + preservedQuotedHTML
         }
-        return editedTopHTML + joiner + preservedQuotedHTML
+        return outerWrapperOpenHTML + inner + outerWrapperCloseHTML
     }
 
     /// Combines edited top plain text with extracted quoted plain text without
@@ -121,10 +143,16 @@ enum ComposeDraftBodyRestoration {
         let importable: ImportableBody
         let preservedQuotedHTML: String?
         let quoteSeparatorHTML: String
+        let outerWrapperOpenHTML: String
+        let outerWrapperCloseHTML: String
+        let inheritedDirection: String?
         if let flat = importableBody(from: html) {
             importable = flat
             preservedQuotedHTML = nil
             quoteSeparatorHTML = ""
+            outerWrapperOpenHTML = ""
+            outerWrapperCloseHTML = ""
+            inheritedDirection = nil
         } else if let split = ComposeDraftQuoteSplitter.split(html) {
             let trimmedPrefix = split.editablePrefixHTML.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmedPrefix.isEmpty {
@@ -137,6 +165,9 @@ enum ComposeDraftBodyRestoration {
             }
             preservedQuotedHTML = split.preservedQuotedHTML
             quoteSeparatorHTML = split.quoteSeparatorHTML
+            outerWrapperOpenHTML = split.outerWrapperOpenHTML
+            outerWrapperCloseHTML = split.outerWrapperCloseHTML
+            inheritedDirection = split.inheritedDirection
         } else {
             throw MailBackendError.backendSpecific(message: unsupportedMessage)
         }
@@ -175,7 +206,10 @@ enum ComposeDraftBodyRestoration {
             editorFormat: format,
             preservedQuotedHTML: preservedQuotedHTML,
             quoteSeparatorHTML: quoteSeparatorHTML,
-            preservedQuotedPlainText: preservedQuotedPlainText
+            preservedQuotedPlainText: preservedQuotedPlainText,
+            outerWrapperOpenHTML: outerWrapperOpenHTML,
+            outerWrapperCloseHTML: outerWrapperCloseHTML,
+            inheritedDirection: inheritedDirection
         )
     }
 
