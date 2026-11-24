@@ -31,7 +31,7 @@ if rg -n \
 fi
 
 if rg -n 'OpenPGP WKD|recipient-key lookup|keys\.openpgp\.org' \
-  "$ROOT/PRIVACY.md" "$ROOT/ADRs/0006-telemetry-and-privacy.md"; then
+  "$ROOT/PRIVACY.md" "$ROOT/docs/design/privacy-and-security.md"; then
   echo "test-openpgp-retired.sh: current privacy documentation still promises WKD" >&2
   exit 1
 fi

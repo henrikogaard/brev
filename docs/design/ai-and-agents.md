@@ -1,0 +1,44 @@
+# AI Features & Local Agent Access
+
+> Consolidates former ADRs `0008`, `0026`, `0027`, `0047`, `0051`, `0094`, and `0095`.
+
+## Core Principles
+
+1. **User-controlled providers, never a Brev AI proxy.** Brev never operates a hosted AI proxy, never sells AI credits, and never switches providers behind the user's back.
+2. **Clear processing transparency.** Every AI surface displays where text is processed: `"On this Mac"` / `"On this device"` for local models, `"Sent to: localhost (Ollama)"` for local servers, or `"Sent to: <host>"` for configured cloud/BYOK providers.
+3. **Provider-neutral UI.** Views call `AIBackend` and inspect capabilities—never type-checking concrete backends.
+4. **Prompt-injection boundary.** Incoming email content is untrusted input. Neither built-in AI nor external MCP agents may send mail, delete mail, or silently mutate mailbox state without explicit user confirmation.
+
+## Two-Tier AI Policy (Relaxed from Former ADRs `0008`/`0026`/`0027`/`0047`)
+
+Splitting **on-device** from **cloud/BYOK** lets Brev match modern native mail clients without compromising privacy:
+
+| Tier | Examples | Network | Invocation Policy |
+| --- | --- | --- | --- |
+| **On-device AI** | Apple Intelligence (`FoundationModels`, macOS 26+ / iOS 26+), user-downloaded local models (Slice 2), local Ollama/LM Studio | Zero network (or localhost only) | Off until user enables AI; once enabled, **may optionally run proactively** for thread preview summaries, priority/needs-reply badges, and inbox triage because no mail leaves the device |
+| **Cloud / BYOK AI** | User-configured OpenAI-compatible or provider-hosted endpoints (Keychain-backed API keys) | Sends selected text to user's chosen endpoint | **Always explicit user-invoked** (button click / prompt send) with visible destination badge |
+
+## Built-In AI Surfaces
+
+- **AI Writer (Compose & Inline Reply):** Rewriting shortcuts (shorten, expand, tone shifts), subject suggestions, quick reply starters, and `"Describe your reply"` drafting with a composer-local preview card (`Replace Draft` / `Insert` / `Copy` / `Retry` / `Cancel`) before mutating the draft.
+- **Thread Summaries:** Concise grounded summaries in the thread header (`Summarize`), using on-device or configured cloud backends.
+- **Assistant Sidebar Destination:** Full-pane mailbox Q&A above Inbox that searches local cached mail across accounts and renders grounded conversation cards (**Needs you**, **Worth a look**, **Updates & newsletters**) linking directly to real messages, with confirmed action chips.
+- **Supervised Mailbox Actions:** Natural-language filing/triage requests are parsed into an explicit local plan showing exact matched counts and target folders; execution runs through Brev's normal undoable mutation queue only after user confirmation.
+
+## On-Device Local Models (Slice 2 Roadmap)
+
+- **Slice 1 (shipped):** `AppleIntelligenceAIBackend` via `FoundationModels` (`SystemLanguageModel.default`), zero bundled weights, zero network, `"On this Mac"` badges, per-account and default provider selection in Settings → Writing → AI.
+- **Slice 2 (planned):** `"On this Mac (download a model)"` for Macs without Apple Intelligence or users preferring open-weights models. Weight downloads must be strictly user-initiated, show size/license/hash verification, live in backup-excluded Application Support storage, and be documented in [privacy-and-security.md](privacy-and-security.md) and [PRIVACY.md](../../PRIVACY.md) when shipped.
+
+## Local MCP Server for External Agents (`brev-mcp`)
+
+macOS-only, device-local Model Context Protocol (MCP) bridge letting local tools (Claude Desktop, Claude Code, Codex CLI, Cursor) work with Brev without exposing mail credentials or listening on any network port:
+
+- **Transport:** User-private `0600` `AF_UNIX` socket scoped by app bundle identity (`mcp.sock` for Stable, `mcp-nightly.sock` for Nightly, hashed tag for Test builds) with `getpeereid` same-UID peer verification on **both** `LocalMCPUnixSocketServer` and the bundled `Contents/Helpers/brev-mcp` stdio bridge. Zero TCP/UDP ports.
+- **Consent & visibility:** Master toggle and per-account grants default to off, are device-local only, and are excluded from `.brevbackup` and iCloud sync. Non-opted-in accounts are invisible.
+- **Tools:**
+  - *Read (cache-only, Trash/Spam excluded, sign-in codes redacted):* `list_accounts`, `list_folders`, `search_messages` (max 50/call), `read_message` (plain text + attachment names).
+  - *Change (per-call in-app approval sheet, max 25 messages, 60 s fail-closed timeout, single active prompt):* `archive_messages`, `label_messages` (Trash/Spam blocked).
+  - *Planned safe addition (relaxed from former ADR-0095):* **`create_draft`** (creates a Draft for the user to review and send manually in Brev; never sends).
+  - *Permanently excluded:* `send_message`, `delete_message`, `move_to_trash`, credential access, and settings mutations.
+- **Audit log:** Bounded 1,000-entry backup-excluded local ring buffer (`agent-access-audit.json`) viewable and clearable in Settings → Privacy & Security → Agent access; never logs message bodies, snippets, or unresolved caller-supplied IDs.

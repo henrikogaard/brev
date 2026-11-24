@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-11-24 — Agent — Design Documents Migration
+
+- Goal: replace the 95-file append-only `ADRs/` directory and `adr-required` protected-path CI gate with 10 living subsystem design documents under `docs/design/` (`docs/design/README.md` + 10 domain docs), discarding 24 obsolete/micromanagement ADRs and updating overly restrictive product constraints.
+- Changes: created `docs/design/{README,architecture,privacy-and-security,mail-sync-and-storage,providers,search-and-inbox,compose-and-drafts,ai-and-agents,calendar-contacts-tasks,design-system-and-ui,platform-release-and-qa}.md` and `prompts/design-doc.md`; removed `ADRs/`, `scripts/check-adr-required.sh`, and `prompts/new-adr.md`; removed the `adr-required` job from `.github/workflows/lint.yml` and `check-adr-required` from `scripts/lint.sh`; repointed `scripts/privacy-audit.sh`, `scripts/test-privacy-audit-coverage.sh`, and `scripts/test-openpgp-retired.sh` to `docs/design/privacy-and-security.md` and `docs/design/platform-release-and-qa.md`; updated `AGENTS.md`, `CONTRIBUTING.md`, `README.md`, `PRIVACY.md`, `llms.txt`, and `CHANGELOG.md`.
+- Verification: `scripts/lint.sh`, `scripts/format.sh`, `git diff --check origin/main`, and link/reference sweep for stale `ADRs/` paths. (Note: `rg`-dependent scripts such as `scripts/privacy-audit.sh` and `scripts/test.sh --self-tests-only` are also verified in GitHub Actions `lint` and `repository-self-tests` where ripgrep is installed.)
+- Skipped: TDD skipped per `AGENTS.md` documentation/configuration-only exception.
+
 ## 2026-11-23 — Agent — Issue #305
 
 - Goal: implement Accepted ADR-0095 local MCP server for macOS read-only and user-approved agent access (`Settings → Privacy & Security → Agent access`, `LocalMCPBroker`, `LocalMCPUnixSocketServer`, `brev-mcp` stdio helper, in-app approval sheet, audit log, privacy docs, and tests).

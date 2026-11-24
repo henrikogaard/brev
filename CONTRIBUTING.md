@@ -6,7 +6,7 @@ current provider and privacy decisions.
 
 ## Before changing code
 
-1. Read `AGENTS.md` and `ADRs/README.md`.
+1. Read `AGENTS.md` and `docs/design/README.md`.
 2. Check existing issues and discussions before starting broad work.
 3. Open an issue first when a change affects architecture, privacy, networking,
    account data, or distribution.
@@ -32,7 +32,8 @@ current provider and privacy decisions.
 ## Pull requests
 
 Keep each pull request small enough to review. Describe the user-visible result,
-tests run, skipped checks, privacy impact, and any ADR that governs the change.
+tests run, skipped checks, privacy impact, and any design doc in `docs/design/`
+that governs or changes with the work.
 Do not include generated credentials, live mailbox evidence, or unrelated
 formatting.
 

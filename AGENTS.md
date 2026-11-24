@@ -6,8 +6,8 @@ first when workflow rules change.
 
 This document is the contract for AI agents (Claude Code, Codex CLI, or
 any other) working in the Brev codebase. Read this in full before making
-changes. Read the relevant ADRs in `ADRs/` before designing anything
-substantial.
+changes. Read the relevant living design documents in `docs/design/` before
+designing anything substantial.
 
 ## Communication and summary format
 
@@ -53,30 +53,27 @@ Microsoft Graph/Exchange remains future provider scope.
 Before substantial work, read:
 
 1. **`AGENTS.md`** in full.
-2. **`ADRs/README.md`** — the ADR index and the rules for when a new
-   ADR is required.
-3. **ADR-0028** — the standards-first IMAP/SMTP roadmap and current
-   provider/backend direction.
-4. **ADR-0028** — the architectural invariants. ADR-0028 supersedes
-   the old roadmap parts, but the invariants still bind every change:
-   view-layer boundaries, capability-driven UI, and rendering-pipeline
-   seams.
-5. **Backend internals when relevant:** ADR-0029 (IMAP/SMTP backend
-   foundation) and ADR-0030 (full IMAP sync/cache engine).
-6. **The ADRs relevant to your area:**
-   - View / UI work: ADR-0002 (theme), ADR-0004 (layout)
-   - Backend / sync / provider integration: ADR-0001 (backend),
-     ADR-0028 (standards-first IMAP/SMTP roadmap)
-   - Avatars: ADR-0003
-   - Calendar: ADR-0007
-   - AI: ADR-0008
-   - Privacy: ADR-0006
-   - Build, lint, CI: ADR-0004, ADR-0005
-   - Release: ADR-0009
+2. **`docs/design/README.md`** — index of Brev's 10 living subsystem design
+   documents.
+3. **`docs/design/architecture.md`** — module boundaries, `MailBackend`
+   domain contract, capability-driven UI, and Realm isolation.
+4. **`docs/design/privacy-and-security.md`** — zero telemetry, external
+   network-calls ledger, encryption, S/MIME, sign-in codes, and local MCP
+   security boundaries.
+5. **The design document relevant to your area:**
+   - Sync, storage, offline queue, backups: `docs/design/mail-sync-and-storage.md`
+   - Providers & OAuth (Gmail, IMAP, Graph, JMAP): `docs/design/providers.md`
+   - Search, conversations, People/Updates, Subscriptions: `docs/design/search-and-inbox.md`
+   - Compose, rich HTML & drafts: `docs/design/compose-and-drafts.md`
+   - AI & local MCP agents: `docs/design/ai-and-agents.md`
+   - Calendar, Contacts & Tasks: `docs/design/calendar-contacts-tasks.md`
+   - Themes, avatars, layout, widgets, l10n: `docs/design/design-system-and-ui.md`
+   - Enforcement, release rings, background mail & QA: `docs/design/platform-release-and-qa.md`
 
-If your change requires a new ADR (per the protected-paths list in
-ADR-0005), draft it *first* using `prompts/new-adr.md` and link it
-in the PR.
+When a PR changes subsystem architecture, privacy boundaries, or protocols,
+update the matching living document in `docs/design/` in the same PR (use
+`prompts/design-doc.md` only when introducing a brand-new subsystem). Routine
+features, UI polish, and bug fixes do not require a design-doc update.
 
 Check the current branch, README, worklog, and GitHub issues before
 relying on any remembered product-state summary. Brev is a working
@@ -85,7 +82,7 @@ remaining priorities move with active issues.
 
 ## Repository structure
 
-See ADR-0004 for the full tree. Headlines:
+See `docs/design/architecture.md` for the full tree. Headlines:
 
 - `apps/macOS/` and `apps/iOS/` — the two app targets, both built
   fresh. Share components via `packages/BrevDesign/`.
@@ -142,7 +139,7 @@ if backend.capabilities.contains(.serverSideCalendarReply) {
 }
 ```
 
-See ADR-0001 for the capability flags. See ADR-0028 invariant 2.
+See `docs/design/architecture.md` for capability flags and boundary rules.
 
 ### Rule 4: Views don't see Realm types
 
@@ -150,23 +147,17 @@ See ADR-0001 for the capability flags. See ADR-0028 invariant 2.
 `Folder`, `Draft`). View code never imports `RealmSwift` and never sees
 `Object`, `Results<>`, `@ObservedResults`.
 
-### Rule 5: ADR-required protected paths
+### Rule 5: No new network calls without privacy documentation and opt-in
 
-If your change touches anything in the protected-paths list (ADR-0005),
-the PR must include a new or updated ADR. The `adr-required.yml` CI
-job blocks otherwise.
+Per `docs/design/privacy-and-security.md`, any new code that adds an external
+network call must:
 
-### Rule 6: No new network calls without explicit opt-in
-
-Per ADR-0006, Brev has a zero-network-by-default property verified
-by `BrevTesting`. Any new code that adds an external network call
-must:
-
-1. Be gated by an explicit user opt-in.
+1. Be gated by an explicit user opt-in (or clear onboarding consent).
 2. Be documented in `PRIVACY.md`.
-3. Be added to the network calls table in ADR-0006.
+3. Be added to the External Network Calls Ledger in
+   `docs/design/privacy-and-security.md`.
 
-### Rule 7: Test builds never replace the daily-driver app
+### Rule 6: Test builds never replace the daily-driver app
 
 All local development, UI, mock, smoke-account, and verification builds use
 `script/build_and_run.sh`'s default test identity. The produced and installed
@@ -191,10 +182,10 @@ adapted from the Karpathy-style agent guidelines:
   request has multiple plausible meanings and the wrong one would
   create churn, ask or draft the narrower plan first.
 - Define success criteria before editing: which tests, lint, builds,
-  ADR updates, issue updates, and worklog entries will prove the task
-  is complete.
+  design-doc updates (if applicable), issue updates, and worklog entries
+  will prove the task is complete.
 - Prefer the smallest implementation that satisfies the request and
-  existing ADRs. Do not add speculative flexibility, new abstractions,
+  existing design docs. Do not add speculative flexibility, new abstractions,
   provider-general machinery, or broad error handling for impossible
   states unless the current requirement needs it or the codebase already
   has that pattern.
@@ -228,10 +219,10 @@ If a requested change violates an invariant or hard rule, stop and
 surface the conflict instead of working around it. Henrik's input is
 required. Examples:
 
-- ADR-0028 says views do not import backend-specific models, but the
-  requested feature appears to require that boundary crossing.
-- ADR-0006 says new external network calls require explicit opt-in,
-  `PRIVACY.md` documentation, and an ADR-0006 network-calls entry.
+- `docs/design/architecture.md` says views do not import backend-specific
+  models, but the requested feature appears to require that boundary crossing.
+- `docs/design/privacy-and-security.md` says new external network calls
+  require opt-in, `PRIVACY.md` documentation, and a ledger entry.
 
 ### File creation defaults
 
@@ -241,7 +232,8 @@ required. Examples:
   header from `file-header-template.txt`.
 - Every public type and method has a doc comment explaining intent in
   one line, plus parameter descriptions when they are not obvious.
-- New user-visible strings use the String Catalog convention (ADR-0058):
+- New user-visible strings use the String Catalog convention
+  (`docs/design/design-system-and-ui.md`):
   `String(localized:)` / `Text(_:bundle:)` in app targets (no `bundle:`
   needed), `String(localized:bundle:.module)` / `Text(_:bundle:.module)`
   in SPM packages. Never a bare string literal in `NSAlert`, `Text`,
@@ -348,10 +340,10 @@ updates:
 - `CHANGELOG.md`: user-facing behavior, setup, migration, packaging, or
   release-facing changes shipped. Keep internal coordination in
   `WORKLOG.md`.
-- `PRIVACY.md` and ADR-0006: privacy posture, local data lifecycle, or
-  external network behavior changed.
-- `ADRs/`: protected paths, architectural decisions, backend/provider
-  direction, distribution, privacy, or enforcement changed.
+- `PRIVACY.md` and `docs/design/privacy-and-security.md`: privacy posture,
+  local data lifecycle, or external network behavior changed.
+- `docs/design/`: subsystem architecture, backend/provider direction,
+  distribution, privacy, or enforcement changed.
 - `docs/qa/**` or `docs/releases/**`: QA evidence, runbooks, release
   procedure, packaging, or verification changed.
 - `AGENTS.md`: workflow, conventions, or agent operating rules changed.
@@ -383,13 +375,12 @@ Conventional Commits. Examples:
 - `chore(deps): bump Tuist to 4.30.0`
 - `refactor(BrevBackend): extract MailBackend protocol`
 - `review: fix draft save race (#1234)`
-- `docs(adr): add ADR-0010 on logging strategy`
+- `docs(design): update compose-and-drafts for nested quote preservation`
 
 PR descriptions and commit messages should be direct, factual, and free
-of marketing language. Reference the ADR that justifies a change when an
-ADR is relevant. For decisions made during implementation that did not
-need an ADR but may surprise future readers, leave a short code comment
-with the rationale.
+of marketing language. Reference the relevant `docs/design/` document when
+relevant. For decisions made during implementation that may surprise future
+readers, leave a short code comment with the rationale.
 
 ### PR checklist
 
@@ -401,10 +392,11 @@ Before opening a PR:
    suites must also be added to the macOS<26 skip list in
    `.github/workflows/build.yml` and, when they should still run on a
    compatible host, to the `snapshot-macos` job's `-only-testing` list.
-4. If protected paths touched: ADR drafted/updated.
-5. If new external network call: opt-in gate + ADR-0006 entry +
-   PRIVACY.md update.
-6. CHANGELOG.md updated under `## Unreleased`.
+4. If architecture, privacy, or protocols changed: update the relevant doc in
+   `docs/design/`.
+5. If new external network call: opt-in gate + `docs/design/privacy-and-security.md`
+   ledger entry + `PRIVACY.md` update.
+6. `CHANGELOG.md` updated under `## Unreleased`.
 
 ### iOS beta releases
 
@@ -477,17 +469,15 @@ did not create unless Henrik explicitly asks for that cleanup.
 
 ## How to ask for help
 
-If a decision isn't obvious from the ADRs and invariants:
+If a decision isn't obvious from `docs/design/` and invariants:
 
 - **Tactical question** (which API to use, how to structure a view):
   proceed with the choice that best matches existing patterns in
   the codebase. Document the choice in your PR description.
-- **Strategic question** (architectural decision, would-need-an-ADR):
-  draft a Proposed-status ADR and open a PR with just the ADR.
-  Don't write the implementation until the ADR is Accepted.
-- **Ambiguous between tactical and strategic:** lean toward drafting
-  the ADR. Cheaper to write a small ADR than to re-do a
-  significant implementation.
+- **Strategic question** (major architectural or privacy shift):
+  propose an update to the relevant doc in `docs/design/` (or draft a new
+  subsystem doc via `prompts/design-doc.md`) and align with Henrik before
+  broad implementation.
 
 ## What good looks like
 
@@ -497,14 +487,15 @@ A model PR:
 - Includes tests for new logic (Swift Testing for behavior,
   snapshot tests for views).
 - Updates `CHANGELOG.md`.
-- If protected paths: includes the ADR alongside the change.
+- Updates the matching doc in `docs/design/` when architecture, privacy, or
+  protocols change.
 - Passes all CI gates.
 - Doesn't bundle unrelated changes ("while I was in here…" is the
   enemy of reviewable PRs).
 
 ## Reference
 
-- All ADRs: `ADRs/`
+- Living design documents: `docs/design/README.md`
 - This file: `AGENTS.md`
 - Privacy promise (user-facing): `PRIVACY.md`
 - License: MIT (see `LICENSE`)

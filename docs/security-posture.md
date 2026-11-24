@@ -106,8 +106,8 @@ absence of bugs.
 ## Privacy / telemetry
 
 No telemetry or crash-reporting libraries are linked; outbound network surfaces
-are opt-in and enumerated in `PRIVACY.md` and ADR-0006, and enforced by
-`scripts/privacy-audit.sh`.
+are opt-in and enumerated in `PRIVACY.md` and `docs/design/privacy-and-security.md`,
+and enforced by `scripts/privacy-audit.sh`.
 
 ## Reporting a problem
 

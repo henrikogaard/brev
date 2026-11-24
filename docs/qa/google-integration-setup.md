@@ -73,4 +73,4 @@ workspaces. Do not put values in prompts, knowledge files, logs, or tracked file
 
 References: [Google Picker setup](https://developers.google.com/workspace/drive/picker/guides/web-picker),
 [OAuth consent configuration](https://developers.google.com/workspace/guides/configure-oauth-consent),
-[ADR-0072](../../ADRs/0072-provider-neutral-calendar-contact-authoring.md).
+[Calendar, Contacts & Tasks design](../design/calendar-contacts-tasks.md).
