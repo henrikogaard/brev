@@ -18,7 +18,7 @@ import Testing
 
 /// Thread-safe spy `MailBackend` recording every network call made by `BackgroundRecentIndexingCoordinator`.
 private final class IndexingSpyBackend: MailBackend, CachedMessageBodyProviding, LocalAttachmentTextIndexing,
-    @unchecked Sendable {
+    BackgroundBodyIndexing, @unchecked Sendable {
     struct IndexedAttachmentRecord: Equatable, Sendable {
         let messageID: String
         let folderID: String
@@ -33,17 +33,23 @@ private final class IndexingSpyBackend: MailBackend, CachedMessageBodyProviding,
 
     private let lock = NSLock()
     private let configuredFolders: [Folder]
-    private let headersByFolder: [Folder.ID: [MessageHeader]]
-    private let bodiesByID: [String: MessageBody]
-    private let preCachedBodyIDs: Set<String>
+    private var headersByFolder: [Folder.ID: [MessageHeader]]
+    private var bodiesByID: [String: MessageBody]
+    private var cachedBodyIDs: Set<String>
+    private let cacheBodyAfterFetch: Bool
     private let attachmentPayloads: [String: Data]
-    private var preIndexedAttachmentMessageIDs: Set<String>
+    private var indexedAttachmentIDsByMessage: [String: Set<String>]
+    private let supportsBackgroundBodyIndexing: Bool
 
     var onBodyFetch: (@Sendable (String) async throws -> Void)?
+    var onDownloadAttachment: (@Sendable (String) async throws -> Void)?
+    var onIndexAttachmentText: (@Sendable (String) async throws -> Void)?
+    var onBackgroundBodyIndex: (@Sendable (String, Int) async throws -> MessageBody?)?
 
     private(set) var foldersCalls = 0
     private(set) var cachedHeadersCalls = 0
     private(set) var bodyFetchIDs: [String] = []
+    private(set) var backgroundBodyFetchIDs: [String] = []
     private(set) var downloadedAttachmentIDs: [String] = []
     private(set) var setReadCalls = 0
     private(set) var indexedAttachments: [IndexedAttachmentRecord] = []
@@ -58,16 +64,34 @@ private final class IndexingSpyBackend: MailBackend, CachedMessageBodyProviding,
         headersByFolder: [Folder.ID: [MessageHeader]],
         bodiesByID: [String: MessageBody],
         preCachedBodyIDs: Set<String> = [],
+        cacheBodyAfterFetch: Bool = false,
         attachmentPayloads: [String: Data] = [:],
-        preIndexedAttachmentMessageIDs: Set<String> = []
+        preIndexedAttachmentIDsByMessage: [String: Set<String>] = [:],
+        supportsBackgroundBodyIndexing: Bool = false
     ) {
         self.account = account
         configuredFolders = folders
         self.headersByFolder = headersByFolder
         self.bodiesByID = bodiesByID
-        self.preCachedBodyIDs = preCachedBodyIDs
+        cachedBodyIDs = preCachedBodyIDs
+        self.cacheBodyAfterFetch = cacheBodyAfterFetch
         self.attachmentPayloads = attachmentPayloads
-        self.preIndexedAttachmentMessageIDs = preIndexedAttachmentMessageIDs
+        indexedAttachmentIDsByMessage = preIndexedAttachmentIDsByMessage
+        self.supportsBackgroundBodyIndexing = supportsBackgroundBodyIndexing
+    }
+
+    func addMessage(_ header: MessageHeader, body: MessageBody, toFolder folderID: Folder.ID) {
+        lock.withLock {
+            headersByFolder[folderID, default: []].append(header)
+            bodiesByID[header.id] = body
+        }
+    }
+
+    func clearLiveAttachmentIndex() {
+        lock.withLock {
+            indexedAttachmentIDsByMessage.removeAll()
+            indexedAttachments.removeAll()
+        }
     }
 
     func connect() async throws {}
@@ -89,21 +113,31 @@ private final class IndexingSpyBackend: MailBackend, CachedMessageBodyProviding,
     }
 
     func cachedMessageHeaders(in folder: Folder, sourceID _: MailSourceID) async throws -> [MessageHeader] {
-        lock.withLock { cachedHeadersCalls += 1 }
-        return headersByFolder[folder.id] ?? []
+        lock.withLock {
+            cachedHeadersCalls += 1
+            return headersByFolder[folder.id] ?? []
+        }
     }
 
     func cachedBody(for messageID: MessageHeader.ID, sourceID _: MailSourceID?) async -> MessageBody? {
-        guard preCachedBodyIDs.contains(messageID) else { return nil }
-        return bodiesByID[messageID]
+        lock.withLock {
+            guard cachedBodyIDs.contains(messageID) else { return nil }
+            return bodiesByID[messageID]
+        }
     }
 
     func body(for messageID: String) async throws -> MessageBody {
         if let hook = lock.withLock({ onBodyFetch }) {
             try await hook(messageID)
         }
-        lock.withLock { bodyFetchIDs.append(messageID) }
-        guard let body = bodiesByID[messageID] else {
+        let body: MessageBody? = lock.withLock {
+            bodyFetchIDs.append(messageID)
+            if cacheBodyAfterFetch {
+                cachedBodyIDs.insert(messageID)
+            }
+            return bodiesByID[messageID]
+        }
+        guard let body else {
             throw MailBackendError.notFound(id: messageID)
         }
         return body
@@ -113,7 +147,31 @@ private final class IndexingSpyBackend: MailBackend, CachedMessageBodyProviding,
         try await body(for: messageID)
     }
 
+    func indexBackgroundBody(
+        for messageID: MessageHeader.ID,
+        sourceID _: MailSourceID,
+        maxFallbackSourceBytes: Int
+    ) async throws -> MessageBody? {
+        lock.withLock { backgroundBodyFetchIDs.append(messageID) }
+        if let hook = lock.withLock({ onBackgroundBodyIndex }) {
+            let result = try await hook(messageID, maxFallbackSourceBytes)
+            if result != nil, cacheBodyAfterFetch {
+                lock.withLock { _ = cachedBodyIDs.insert(messageID) }
+            }
+            return result
+        }
+        return lock.withLock {
+            if cacheBodyAfterFetch {
+                cachedBodyIDs.insert(messageID)
+            }
+            return bodiesByID[messageID]
+        }
+    }
+
     func downloadAttachment(_ attachment: BrevBackend.Attachment) async throws -> Data {
+        if let hook = lock.withLock({ onDownloadAttachment }) {
+            try await hook(attachment.id)
+        }
         lock.withLock { downloadedAttachmentIDs.append(attachment.id) }
         guard let data = attachmentPayloads[attachment.id] else {
             throw MailBackendError.notFound(id: attachment.id)
@@ -148,6 +206,8 @@ private final class IndexingSpyBackend: MailBackend, CachedMessageBodyProviding,
         case ObjectIdentifier(CachedMessageBodyProviding.self),
              ObjectIdentifier(LocalAttachmentTextIndexing.self):
             return self as? Service
+        case ObjectIdentifier(BackgroundBodyIndexing.self) where supportsBackgroundBodyIndexing:
+            return self as? Service
         default:
             return nil
         }
@@ -160,6 +220,9 @@ private final class IndexingSpyBackend: MailBackend, CachedMessageBodyProviding,
         name: String,
         text: String
     ) async throws {
+        if let hook = lock.withLock({ onIndexAttachmentText }) {
+            try await hook(attachmentID)
+        }
         lock.withLock {
             indexedAttachments.append(IndexedAttachmentRecord(
                 messageID: messageID,
@@ -168,12 +231,16 @@ private final class IndexingSpyBackend: MailBackend, CachedMessageBodyProviding,
                 name: name,
                 text: text
             ))
-            preIndexedAttachmentMessageIDs.insert(messageID)
+            indexedAttachmentIDsByMessage[messageID, default: []].insert(attachmentID)
         }
     }
 
     func indexedAttachmentMessageIDs() async -> Set<MessageHeader.ID> {
-        lock.withLock { preIndexedAttachmentMessageIDs }
+        lock.withLock { Set(indexedAttachmentIDsByMessage.keys) }
+    }
+
+    func indexedAttachmentIDs() async -> [MessageHeader.ID: Set<String>] {
+        lock.withLock { indexedAttachmentIDsByMessage }
     }
 }
 
@@ -551,5 +618,347 @@ struct BackgroundRecentIndexingCoordinatorTests {
         coordinator.cancelAccount(spy.account.id, clearProgress: true)
         #expect(store.load(accountID: spy.account.id) == .empty)
         #expect(coordinator.state == BackgroundIndexingState.idle)
+    }
+
+    @Test("drains backlogs larger than maxBatchSize across throttled batches and wakes on newly arrived headers")
+    func multiBatchBacklogAndForegroundArrivalWake() async throws {
+        let (store, defaults, suite) = try makeStore("backlog-wake")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let headers = (1 ... 5).map { header(id: "m\($0)", daysAgo: Double($0)) }
+        let bodies = Dictionary(uniqueKeysWithValues: headers.map { ($0.id, body(id: $0.id)) })
+
+        let spy = IndexingSpyBackend(
+            folders: [inbox],
+            headersByFolder: ["INBOX": headers],
+            bodiesByID: bodies
+        )
+        let settings = BackgroundIndexingSettings(
+            isEnabled: true,
+            windowDays: .days90,
+            indexAttachments: false,
+            requireUnmeteredNetworkAndPower: true
+        )
+
+        let coordinator = BackgroundRecentIndexingCoordinator(
+            backendsProvider: { [spy] },
+            settingsProvider: { settings },
+            environmentProvider: { BackgroundIndexingEnvironmentSnapshot() },
+            progressStore: store,
+            now: { fixedNow },
+            maxBatchSize: 2,
+            pacingDelay: .zero,
+            batchInterval: .zero
+        )
+
+        await coordinator.runPassNow()
+        // All 5 messages drained across 3 consecutive throttled batches of size 2.
+        #expect(spy.bodyFetchIDs == ["m1", "m2", "m3", "m4", "m5"])
+        #expect(coordinator.state == BackgroundIndexingState.completed)
+        #expect(coordinator.pendingCount == 0)
+
+        // Foreground sync brings in a brand-new header after the backlog drained.
+        let freshHeader = header(id: "m0-fresh", daysAgo: 0.1)
+        spy.addMessage(freshHeader, body: body(id: "m0-fresh"), toFolder: "INBOX")
+        coordinator.notifyNewHeadersAvailable()
+        for _ in 0 ..< 50 where !spy.bodyFetchIDs.contains("m0-fresh") {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(spy.bodyFetchIDs.contains("m0-fresh"))
+        #expect(coordinator.state == BackgroundIndexingState.completed)
+    }
+
+    @Test("enabling attachment indexing after body-only pass inspects cached body even when IMAP header hasAttachments is false")
+    func attachmentOptInAfterBodyOnlyPassWithIMAPStyleHeader() async throws {
+        let (store, defaults, suite) = try makeStore("body-then-att")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        // IMAP listings default hasAttachments = false until body is parsed.
+        let msg = header(id: "INBOX:1", daysAgo: 1, hasAttachments: false)
+        let pdfLike = BrevBackend.Attachment(id: "att-1", name: "notes.txt", mimeType: "text/plain", sizeBytes: 120)
+        let spy = IndexingSpyBackend(
+            folders: [inbox],
+            headersByFolder: ["INBOX": [msg]],
+            bodiesByID: ["INBOX:1": body(id: "INBOX:1", attachments: [pdfLike])],
+            cacheBodyAfterFetch: true,
+            attachmentPayloads: ["att-1": Data("important follow-up attachment".utf8)]
+        )
+
+        var settings = BackgroundIndexingSettings(
+            isEnabled: true,
+            windowDays: .days90,
+            indexAttachments: false,
+            requireUnmeteredNetworkAndPower: true
+        )
+
+        let coordinator = BackgroundRecentIndexingCoordinator(
+            backendsProvider: { [spy] },
+            settingsProvider: { settings },
+            environmentProvider: { BackgroundIndexingEnvironmentSnapshot() },
+            progressStore: store,
+            now: { fixedNow },
+            pacingDelay: .zero,
+            batchInterval: .zero
+        )
+
+        // First pass: body-only.
+        await coordinator.runPassNow()
+        #expect(spy.bodyFetchIDs == ["INBOX:1"])
+        #expect(spy.downloadedAttachmentIDs.isEmpty)
+
+        // User later turns on attachment indexing.
+        settings.indexAttachments = true
+        await coordinator.runPassNow()
+
+        // Cached body revealed att-1 even though header.hasAttachments == false; body was not re-fetched.
+        #expect(spy.bodyFetchIDs == ["INBOX:1"])
+        #expect(spy.downloadedAttachmentIDs == ["att-1"])
+        #expect(spy.indexedAttachments.map(\.attachmentID) == ["att-1"])
+    }
+
+    @Test("mid-message pause preserves first attachment and resumes second; transient download and FTS failures retry cleanly")
+    func perAttachmentTrackingPauseAndTransientRetries() async throws {
+        let (store, defaults, suite) = try makeStore("per-att-retry")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let msg = header(id: "m1", daysAgo: 1, hasAttachments: true)
+        let att1 = BrevBackend.Attachment(id: "att-1", name: "first.txt", mimeType: "text/plain", sizeBytes: 64)
+        let att2 = BrevBackend.Attachment(id: "att-2", name: "second.txt", mimeType: "text/plain", sizeBytes: 64)
+        let att3 = BrevBackend.Attachment(id: "att-3", name: "third.txt", mimeType: "text/plain", sizeBytes: 64)
+
+        let spy = IndexingSpyBackend(
+            folders: [inbox],
+            headersByFolder: ["INBOX": [msg]],
+            bodiesByID: ["m1": body(id: "m1", attachments: [att1, att2, att3])],
+            cacheBodyAfterFetch: true,
+            attachmentPayloads: [
+                "att-1": Data("first document".utf8),
+                "att-2": Data("second document".utf8),
+                "att-3": Data("third document".utf8)
+            ]
+        )
+
+        let settings = BackgroundIndexingSettings(
+            isEnabled: true,
+            windowDays: .days90,
+            indexAttachments: true,
+            requireUnmeteredNetworkAndPower: true
+        )
+
+        var coordinatorRef: BackgroundRecentIndexingCoordinator?
+        var shouldPauseOnAtt2 = true
+        var shouldFailDownloadAtt2 = true
+        var shouldFailFTSAtt3 = true
+
+        spy.onDownloadAttachment = { attachmentID in
+            if attachmentID == "att-2", await MainActor.run(body: { shouldPauseOnAtt2 }) {
+                await MainActor.run {
+                    shouldPauseOnAtt2 = false
+                    coordinatorRef?.pause()
+                }
+                throw CancellationError()
+            }
+            if attachmentID == "att-2", await MainActor.run(body: { shouldFailDownloadAtt2 }) {
+                await MainActor.run { shouldFailDownloadAtt2 = false }
+                throw MailBackendError.network(underlying: "temporary disconnect")
+            }
+        }
+        spy.onIndexAttachmentText = { attachmentID in
+            if attachmentID == "att-3", await MainActor.run(body: { shouldFailFTSAtt3 }) {
+                await MainActor.run { shouldFailFTSAtt3 = false }
+                throw MailBackendError.backendSpecific(message: "sqlite busy")
+            }
+        }
+
+        let coordinator = BackgroundRecentIndexingCoordinator(
+            backendsProvider: { [spy] },
+            settingsProvider: { settings },
+            environmentProvider: { BackgroundIndexingEnvironmentSnapshot() },
+            progressStore: store,
+            now: { fixedNow },
+            pacingDelay: .zero,
+            batchInterval: .zero
+        )
+        coordinatorRef = coordinator
+
+        // Pass 1: att-1 indexes, then pauses cleanly before att-2.
+        await coordinator.runPassNow()
+        #expect(coordinator.state == BackgroundIndexingState.paused(.userPaused))
+        #expect(spy.indexedAttachments.map(\.attachmentID) == ["att-1"])
+        #expect(!store.load(accountID: spy.account.id).indexedAttachmentMessageIDs.contains("m1"))
+
+        // Pass 2: att-1 is NOT re-downloaded; att-2 fails download transiently, att-3 fails FTS write transiently.
+        await coordinator.runPassNow()
+        #expect(spy.downloadedAttachmentIDs.filter { $0 == "att-1" }.count == 1)
+        #expect(!store.load(accountID: spy.account.id).indexedAttachmentMessageIDs.contains("m1"))
+
+        // Pass 3: both att-2 and att-3 succeed on retry, message is now marked attachment-complete.
+        await coordinator.runPassNow()
+        #expect(Set(spy.indexedAttachments.map(\.attachmentID)) == ["att-1", "att-2", "att-3"])
+        #expect(store.load(accountID: spy.account.id).indexedAttachmentMessageIDs.contains("m1"))
+    }
+
+    @Test("removing the attachment index reconciles progress so Index now re-indexes attachments")
+    func attachmentIndexRemovalInvalidatesProgress() async throws {
+        let (store, defaults, suite) = try makeStore("invalidate-att")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let msg = header(id: "m1", daysAgo: 1, hasAttachments: true)
+        let att = BrevBackend.Attachment(id: "att-1", name: "brief.txt", mimeType: "text/plain", sizeBytes: 64)
+        let spy = IndexingSpyBackend(
+            folders: [inbox],
+            headersByFolder: ["INBOX": [msg]],
+            bodiesByID: ["m1": body(id: "m1", attachments: [att])],
+            cacheBodyAfterFetch: true,
+            attachmentPayloads: ["att-1": Data("brief contents".utf8)]
+        )
+
+        let settings = BackgroundIndexingSettings(
+            isEnabled: true,
+            windowDays: .days90,
+            indexAttachments: true,
+            requireUnmeteredNetworkAndPower: true
+        )
+        let coordinator = BackgroundRecentIndexingCoordinator(
+            backendsProvider: { [spy] },
+            settingsProvider: { settings },
+            environmentProvider: { BackgroundIndexingEnvironmentSnapshot() },
+            progressStore: store,
+            now: { fixedNow },
+            pacingDelay: .zero,
+            batchInterval: .zero
+        )
+
+        await coordinator.runPassNow()
+        #expect(spy.downloadedAttachmentIDs == ["att-1"])
+
+        // Simulate Mail Storage "Remove" wiping the live FTS attachment index.
+        spy.clearLiveAttachmentIndex()
+        await coordinator.runPassNow()
+
+        // Reconciling against empty live FTS re-indexed att-1 without re-fetching body.
+        #expect(spy.bodyFetchIDs == ["m1"])
+        #expect(spy.downloadedAttachmentIDs == ["att-1", "att-1"])
+        #expect(spy.indexedAttachments.map(\.attachmentID) == ["att-1"])
+    }
+
+    @Test("excludes Gmail multi-label messages carrying Trash or Spam alongside a custom label")
+    func excludesDualLabeledTrashAndSpamMessages() async throws {
+        let (store, defaults, suite) = try makeStore("gmail-dual-label")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let custom = Folder(id: "Label_Work", name: "Work", role: .custom)
+        let trash = Folder(id: "TRASH", name: "Trash", role: .trash)
+        let spam = Folder(id: "SPAM", name: "Spam", role: .spam)
+
+        let clean = MessageHeader(
+            id: "m-clean",
+            threadID: "t-clean",
+            folderID: "Label_Work",
+            from: Correspondent(name: "A", email: "a@example.org"),
+            subject: "Clean work mail",
+            snippet: "ok",
+            date: fixedNow.addingTimeInterval(-3600),
+            labels: ["Label_Work"]
+        )
+        let trashedAlsoWork = MessageHeader(
+            id: "m-trashed-work",
+            threadID: "t-trash",
+            folderID: "Label_Work",
+            from: Correspondent(name: "B", email: "b@example.org"),
+            subject: "Trashed work mail",
+            snippet: "deleted",
+            date: fixedNow.addingTimeInterval(-1800),
+            labels: ["Label_Work", "TRASH"]
+        )
+        let spammedAlsoWork = MessageHeader(
+            id: "m-spammed-work",
+            threadID: "t-spam",
+            folderID: "Label_Work",
+            from: Correspondent(name: "C", email: "c@example.org"),
+            subject: "Spammed work mail",
+            snippet: "junk",
+            date: fixedNow.addingTimeInterval(-900),
+            labels: ["Label_Work"]
+        )
+
+        let spy = IndexingSpyBackend(
+            folders: [custom, trash, spam],
+            headersByFolder: [
+                "Label_Work": [clean, trashedAlsoWork, spammedAlsoWork],
+                "TRASH": [trashedAlsoWork],
+                "SPAM": [spammedAlsoWork]
+            ],
+            bodiesByID: [
+                "m-clean": body(id: "m-clean"),
+                "m-trashed-work": body(id: "m-trashed-work"),
+                "m-spammed-work": body(id: "m-spammed-work")
+            ]
+        )
+
+        let settings = BackgroundIndexingSettings(
+            isEnabled: true,
+            windowDays: .days90,
+            indexAttachments: false,
+            requireUnmeteredNetworkAndPower: true
+        )
+        let coordinator = BackgroundRecentIndexingCoordinator(
+            backendsProvider: { [spy] },
+            settingsProvider: { settings },
+            environmentProvider: { BackgroundIndexingEnvironmentSnapshot() },
+            progressStore: store,
+            now: { fixedNow },
+            pacingDelay: .zero,
+            batchInterval: .zero
+        )
+
+        await coordinator.runPassNow()
+        #expect(spy.bodyFetchIDs == ["m-clean"])
+    }
+
+    @Test("uses low-priority BackgroundBodyIndexing seam and does not mark skipped fallback as indexed")
+    func usesBackgroundBodyIndexingSeam() async throws {
+        let (store, defaults, suite) = try makeStore("bg-body-seam")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let okMsg = header(id: "m-ok", daysAgo: 1)
+        let skippedMsg = header(id: "m-skip", daysAgo: 2)
+        let spy = IndexingSpyBackend(
+            folders: [inbox],
+            headersByFolder: ["INBOX": [okMsg, skippedMsg]],
+            bodiesByID: ["m-ok": body(id: "m-ok")],
+            supportsBackgroundBodyIndexing: true
+        )
+        spy.onBackgroundBodyIndex = { messageID, _ in
+            messageID == "m-ok" ? MessageBody(messageID: "m-ok", html: nil, plainText: "indexed body", attachments: []) : nil
+        }
+
+        let settings = BackgroundIndexingSettings(
+            isEnabled: true,
+            windowDays: .days90,
+            indexAttachments: false,
+            requireUnmeteredNetworkAndPower: true
+        )
+        let coordinator = BackgroundRecentIndexingCoordinator(
+            backendsProvider: { [spy] },
+            settingsProvider: { settings },
+            environmentProvider: { BackgroundIndexingEnvironmentSnapshot() },
+            progressStore: store,
+            now: { fixedNow },
+            pacingDelay: .zero,
+            batchInterval: .zero
+        )
+
+        await coordinator.runPassNow()
+        #expect(spy.bodyFetchIDs.isEmpty)
+        #expect(spy.backgroundBodyFetchIDs == ["m-ok", "m-skip"])
+        let saved = store.load(accountID: spy.account.id)
+        #expect(saved.indexedBodyMessageIDs == ["m-ok"])
+        #expect(!saved.indexedBodyMessageIDs.contains("m-skip"))
     }
 }

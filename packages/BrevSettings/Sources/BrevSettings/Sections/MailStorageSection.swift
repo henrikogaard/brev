@@ -884,6 +884,13 @@ struct MailStorageSection: View {
             )
         } else {
             await backend.removeAttachmentIndex()
+            BackgroundIndexingProgressStore(defaults: settingsStore.defaults)
+                .clearAttachmentProgress(accountID: backend.account.id)
+            NotificationCenter.default.post(
+                name: .brevBackgroundAttachmentIndexDidInvalidate,
+                object: nil,
+                userInfo: ["accountID": backend.account.id]
+            )
             statusMessage = String(localized: "Removed the attachment index.", bundle: .module)
         }
         attachmentIndexBytes = await backend.attachmentIndexBytes()
@@ -1104,6 +1111,13 @@ struct MailStorageSection: View {
                 switch step {
                 case .resetLocalCacheAndIndex:
                     try await repair.resetLocalCacheAndIndex(for: sourceID)
+                    BackgroundIndexingProgressStore(defaults: settingsStore.defaults)
+                        .clear(accountID: backend.account.id)
+                    NotificationCenter.default.post(
+                        name: .brevBackgroundAttachmentIndexDidInvalidate,
+                        object: nil,
+                        userInfo: ["accountID": backend.account.id]
+                    )
                 case .rebuildSearchIndex:
                     try await repair.rebuildSearchIndex(for: sourceID)
                 case .applyRetentionAfterDownload:

@@ -3555,6 +3555,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         case ObjectIdentifier(LocalAttachmentTextIndexing.self):
             guard localSearchIndex != nil else { return nil }
             return self as? Service
+        case ObjectIdentifier(BackgroundBodyIndexing.self):
+            return self as? Service
         case ObjectIdentifier(RelatedConversationLoading.self):
             guard searchRelatedHeadersOperation != nil, relatedConversationConsent != nil else { return nil }
             return self as? Service
@@ -6171,5 +6173,99 @@ extension IMAPSMTPBackend: LocalAttachmentTextIndexing {
 
     public func indexedAttachmentMessageIDs() async -> Set<MessageHeader.ID> {
         await localSearchIndex?.indexedAttachmentMessageIDs(accountID: account.id) ?? []
+    }
+
+    public func indexedAttachmentIDs() async -> [MessageHeader.ID: Set<String>] {
+        await localSearchIndex?.indexedAttachmentIDs(accountID: account.id) ?? [:]
+    }
+}
+
+extension IMAPSMTPBackend: BackgroundBodyIndexing {
+    /// Background-priority body fetch that never preempts foreground refreshes
+    /// or draft discovery, persists extracted body text into `localSearchIndex`,
+    /// and skips unbounded raw-source fallback when structured fetch fails.
+    public func indexBackgroundBody(
+        for messageID: MessageHeader.ID,
+        sourceID: MailSourceID,
+        maxFallbackSourceBytes: Int
+    ) async throws -> MessageBody? {
+        try validateSourceID(sourceID)
+        let reference = try Self.messageReference(from: messageID)
+
+        if let cached = await cachedParsedBody(messageID: messageID) {
+            await indexSearchableBodyTextIfAvailable(cached, messageID: messageID)
+            return cached
+        }
+        if let source = await cachedMessageSource(messageID: messageID) {
+            let body = IMAPMessageBodyParser().parse(
+                messageID: messageID,
+                rawMessage: source.rawMessage
+            )
+            await bodyCache?.setBody(body, accountID: account.id, messageID: messageID)
+            await indexSearchableBodyTextIfAvailable(body, messageID: messageID)
+            return body
+        }
+
+        if fetchMessageBodyOperation != nil {
+            do {
+                try await state.requireConnected()
+                let body = try await fetchMessageBodyWithAuthenticatedOAuthRetry(
+                    folderID: reference.folderID,
+                    uid: reference.uid
+                )
+                await bodyCache?.setBody(body, accountID: account.id, messageID: messageID)
+                await indexSearchableBodyTextIfAvailable(body, messageID: messageID)
+                return body
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // During background indexing, never fall back to an unbounded
+                // full-source `BODY.PEEK[]` download after structured fetch fails;
+                // leave malformed or huge messages for explicit on-demand open.
+                return nil
+            }
+        }
+
+        let source = try await loadMessageSource(
+            messageID: messageID,
+            folderID: reference.folderID,
+            uid: reference.uid
+        )
+        let sourceBytes = source.rawMessageData?.count ?? source.rawMessage.utf8.count
+        guard sourceBytes <= maxFallbackSourceBytes else {
+            return nil
+        }
+        let body = IMAPMessageBodyParser().parse(
+            messageID: messageID,
+            rawMessage: source.rawMessage
+        )
+        await bodyCache?.setBody(body, accountID: account.id, messageID: messageID)
+        await indexSearchableBodyTextIfAvailable(body, messageID: messageID)
+        return body
+    }
+
+    private func indexSearchableBodyTextIfAvailable(
+        _ body: MessageBody,
+        messageID: MessageHeader.ID
+    ) async {
+        guard let localSearchIndex else { return }
+        var segments: [String] = []
+        if let plain = body.plainText?.trimmingCharacters(in: .whitespacesAndNewlines), !plain.isEmpty {
+            segments.append(plain)
+        }
+        if let html = body.html, !html.isEmpty,
+           let stripped = try? HTMLTextStripper.visibleText(from: Data(html.utf8))
+           .trimmingCharacters(in: .whitespacesAndNewlines),
+           !stripped.isEmpty {
+            if segments.isEmpty {
+                segments.append(stripped)
+            }
+        }
+        guard !segments.isEmpty else { return }
+        await localSearchIndex.indexBodyText(
+            segments.joined(separator: "\n"),
+            for: messageID,
+            account: account
+        )
     }
 }

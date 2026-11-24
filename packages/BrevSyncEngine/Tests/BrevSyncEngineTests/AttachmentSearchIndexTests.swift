@@ -266,4 +266,60 @@ struct AttachmentSearchIndexTests {
         #expect(store.indexedAttachmentMessageIDs(accountID: account.id).isEmpty)
         #expect(store.indexedAttachmentMessageIDs(accountID: other.id) == [header.id])
     }
+
+    @Test("indexBodyText makes body-only words searchable without storing raw MIME bytes")
+    func indexBodyTextEnablesOfflineSearch() throws {
+        let url = Self.databaseURL()
+        defer { Self.removeDatabase(at: url) }
+        let account = Self.account()
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let header = Self.header("INBOX:42", folder: "INBOX", subject: "Weekly check-in")
+        try store.ensureAccount(id: account.id)
+        try store.upsertHeaders([header], accountID: account.id)
+
+        // Before body indexing, the body-only keyword does not match.
+        #expect(store.searchHeaders(SearchQuery(text: "platypus-budget"), accountID: account.id, limit: 20).isEmpty)
+
+        // Structured body text indexing persists into FTS without touching message_bodies.
+        try store.indexBodyText("Please review the platypus-budget appendix.", accountID: account.id, messageID: header.id)
+        let hits = store.searchHeaders(SearchQuery(text: "platypus-budget"), accountID: account.id, limit: 20)
+        #expect(hits.map(\.id) == [header.id])
+        #expect(store.body(accountID: account.id, messageID: header.id) == nil)
+    }
+
+    @Test("indexedAttachmentIDs tracks per-attachment IDs and matchingAttachmentMessageIDs works without message_headers")
+    func perAttachmentIDsAndAttachmentOnlyMatching() throws {
+        let url = Self.databaseURL()
+        defer { Self.removeDatabase(at: url) }
+        let account = Self.account()
+        let store = try SQLiteSyncStore(databaseURL: url)
+        try store.ensureAccount(id: account.id)
+
+        // Simulate Gmail: rows in attachment_search with no rows in message_headers.
+        try store.indexAttachmentText(
+            accountID: account.id,
+            messageID: "gmail-msg-1",
+            folderID: "INBOX",
+            attachmentID: "att-1",
+            name: "contract.pdf",
+            text: "unique-quartz-clause"
+        )
+        try store.indexAttachmentText(
+            accountID: account.id,
+            messageID: "gmail-msg-1",
+            folderID: "INBOX",
+            attachmentID: "att-2",
+            name: "addendum.txt",
+            text: "second attachment body"
+        )
+
+        let perMessage = store.indexedAttachmentIDs(accountID: account.id)
+        #expect(perMessage["gmail-msg-1"] == ["att-1", "att-2"])
+
+        let matches = store.matchingAttachmentMessageIDs(
+            SearchQuery(text: "unique-quartz-clause"),
+            accountID: account.id
+        )
+        #expect(matches == ["gmail-msg-1"])
+    }
 }

@@ -87,6 +87,8 @@ public final class AppSession {
     public let backgroundIndexing: BackgroundRecentIndexingCoordinator
     private var backgroundIndexingSettingsObserver: NSObjectProtocol?
     private var backgroundIndexingPowerObserver: NSObjectProtocol?
+    private var backgroundIndexingSyncObserver: NSObjectProtocol?
+    private var backgroundIndexingInvalidationObserver: NSObjectProtocol?
     /// Session-owned executor for Mark-as-read and Archive notification
     /// actions (#307, ADR-0075). Works even when no mail window is open.
     public let notificationActionExecutor: NotificationActionExecutor
@@ -487,6 +489,26 @@ public final class AppSession {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.backgroundIndexing.handleEnvironmentChanged()
+            }
+        }
+        backgroundIndexingSyncObserver = notificationCenter.addObserver(
+            forName: .brevForegroundMailDidSync,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.backgroundIndexing.notifyNewHeadersAvailable()
+            }
+        }
+        backgroundIndexingInvalidationObserver = notificationCenter.addObserver(
+            forName: .brevBackgroundAttachmentIndexDidInvalidate,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let accountID = note.userInfo?["accountID"] as? String
+            Task { @MainActor [weak self] in
+                guard let self, let accountID else { return }
+                backgroundIndexing.invalidateAttachmentProgress(accountID: accountID)
             }
         }
         notificationActionExecutor.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }

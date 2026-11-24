@@ -1,5 +1,23 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #353 review fixes (Issue #7)
+
+- Goal: address all 10 Codex and Devin review findings on PR #353 (`feature/background-recent-indexing`) in a single batched commit.
+- Changes:
+  - Continuous backlog draining & foreground wake: updated `BackgroundRecentIndexingCoordinator` to loop across throttled batches past `maxBatchSize` (40), added `notifyNewHeadersAvailable()` + `.brevForegroundMailDidSync`, and wired wakes from `AppSession` and `BrevMailRootView` (visible inbox refreshes + `.messagesAdded`).
+  - IMAP background body indexing, priority & bounded fallback: added `BackgroundBodyIndexing` protocol (`BrevBackend`) implemented by `IMAPSMTPBackend` so background body fetches never call `beginForegroundIMAPRead()` (never preempting folder refreshes or draft discovery), persist extracted plain/stripped-HTML body text into `localSearchIndex` (`SQLiteSyncStore.indexBodyText` / `InMemorySyncStore.indexBodyText`) without forcing raw MIME downloads, and skip unbounded `BODY.PEEK[]` fallback above `maxFallbackSourceBytes`.
+  - Attachment pass reliability & invalidation: updated `BackgroundRecentIndexingCoordinator` to inspect cached body attachments even when IMAP headers report `hasAttachments == false`, persist per-attachment progress (`ftsIndexedAttachmentIDsByMessage` + `skippedAttachmentIDsByMessage`) after each attachment so mid-message pauses preserve completed attachments and transient download/timeout/FTS errors retry on subsequent passes while deterministic skips stay recorded, reconcile progress against live FTS attachment IDs (`LocalAttachmentTextIndexing.indexedAttachmentIDs()`), and invalidate stored progress from `MailStorageSection` via `.brevBackgroundAttachmentIndexDidInvalidate` on attachment index removal or full cache reset.
+  - Gmail multi-label Trash/Spam exclusion & offline search: excluded multi-label messages carrying Trash or Spam (`\Trash`, `\Junk`, `TRASH`, `SPAM`, or membership in `.trash`/`.spam` folders) across folders; extended `GmailAPIBackend.cachedSearch` to include cached plain/HTML bodies (via public `HTMLTextStripper.visibleText`) and FTS `matchingAttachmentMessageIDs` gated by `SearchQuery.matchesMetadata(_:)` and folder/label scope.
+  - Backup opt-in safety & privacy docs: updated `SettingsBackupCodec` to strip `backgroundIndexing.isEnabled` from backup payloads and preserve the restoring device's local `isEnabled` value; clarified IMAP structured `BODYSTRUCTURE` fetches, bounded fallback skipping, dual-label Trash/Spam exclusion, and backup opt-in preservation in `PRIVACY.md` and `docs/design/privacy-and-security.md`.
+- Verification:
+  - `swift test --package-path packages/BrevBackend --filter 'AttachmentTextExtractorTests|IMAPBackgroundIndexingTests'`
+  - `swift test --package-path packages/BrevSyncEngine --filter AttachmentSearchIndexTests`
+  - `swift test --package-path packages/BrevGmail --filter GmailAttachmentIndexTests`
+  - `swift test --package-path packages/BrevSettings --filter 'BackgroundIndexingSettingsTests|BackupTests|MailStorageSectionTests|SettingsSearchPlatformTests'`
+  - `swift test --package-path packages/BrevMail --filter 'BackgroundRecentIndexingCoordinatorTests|BackgroundMailCoordinatorTests|AppSessionTests'`
+  - `scripts/format.sh`, `scripts/lint.sh`, Python verification of all `scripts/privacy-audit.sh` regexes (`rg` unavailable locally), and `git diff --check origin/main`.
+- Skipped: macOS snapshot tests unchanged (no UI layout changes in this review batch); iOS Simulator build/test left for GitHub Actions CI.
+
 ## 2026-11-24 — Agent — Issue #7 (Background recent-mail & attachment indexing)
 
 - Goal: implement opt-in background recent-mail and attachment indexing (`docs/design/search-and-inbox.md`, `docs/design/privacy-and-security.md`) on `feature/background-recent-indexing` with strictly off-by-default privacy posture, network/power gating, Settings UI, tests, macOS 26+ snapshots, and documentation updates.

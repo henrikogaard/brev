@@ -42,6 +42,193 @@ struct GmailAttachmentIndexTests {
         )
         #expect(!without.extendedCapabilities.contains(.localAttachmentIndex))
     }
+
+    @Test("offline cached search matches cached bodies and indexed attachments while respecting label and metadata filters")
+    func offlineCachedSearchMatchesBodiesAndIndexedAttachments() async throws {
+        let store = InMemoryGmailAccountStore()
+        let index = StubLocalSearchIndex()
+        let labels = [
+            GmailLabel(id: "INBOX", name: "INBOX", type: "system"),
+            GmailLabel(id: "TRASH", name: "TRASH", type: "system"),
+            GmailLabel(id: "SPAM", name: "SPAM", type: "system"),
+            GmailLabel(id: "Label_Work", name: "Work", type: "user")
+        ]
+
+        let bodyMessage = GmailMessage(
+            id: "msg-body",
+            threadID: "t-body",
+            labelIDs: ["INBOX"],
+            snippet: "Generic preview",
+            internalDate: "1750000000000",
+            payload: GmailMessagePart(
+                partID: "",
+                mimeType: "text/plain",
+                filename: nil,
+                headers: [
+                    GmailMessageHeader(name: "From", value: "Alice <alice@example.org>"),
+                    GmailMessageHeader(name: "Subject", value: "Status update")
+                ],
+                body: GmailMessageBody(
+                    size: 40,
+                    data: Data("Hidden body-only token: aurora-borealis-77".utf8)
+                        .base64EncodedString()
+                        .replacingOccurrences(of: "+", with: "-")
+                        .replacingOccurrences(of: "/", with: "_")
+                        .replacingOccurrences(of: "=", with: ""),
+                    attachmentID: nil
+                ),
+                parts: []
+            )
+        )
+        let attachmentMessage = GmailMessage(
+            id: "msg-att",
+            threadID: "t-att",
+            labelIDs: ["INBOX", "Label_Work"],
+            snippet: "See attached",
+            internalDate: "1750000001000",
+            payload: GmailMessagePart(
+                partID: "",
+                mimeType: "text/plain",
+                filename: nil,
+                headers: [
+                    GmailMessageHeader(name: "From", value: "Bob <bob@example.org>"),
+                    GmailMessageHeader(name: "Subject", value: "Contract")
+                ],
+                body: nil,
+                parts: []
+            )
+        )
+        let trashedDualLabelMessage = GmailMessage(
+            id: "msg-trash-work",
+            threadID: "t-trash",
+            labelIDs: ["Label_Work", "TRASH"],
+            snippet: "Old draft",
+            internalDate: "1750000002000",
+            payload: GmailMessagePart(
+                partID: "",
+                mimeType: "text/plain",
+                filename: nil,
+                headers: [
+                    GmailMessageHeader(name: "From", value: "Bob <bob@example.org>"),
+                    GmailMessageHeader(name: "Subject", value: "Deleted contract")
+                ],
+                body: nil,
+                parts: []
+            )
+        )
+
+        try await store.replaceSnapshot(GmailAccountSnapshot(
+            accountID: Self.account.id,
+            state: GmailAccountState(
+                accountID: Self.account.id,
+                emailAddress: Self.account.emailAddress,
+                historyID: "1"
+            ),
+            labels: labels,
+            messages: [bodyMessage, attachmentMessage, trashedDualLabelMessage]
+        ))
+        try await index.indexAttachmentText(
+            accountID: Self.account.id,
+            messageID: "msg-att",
+            folderID: "INBOX",
+            attachmentID: "att-1",
+            name: "spec.pdf",
+            text: "Confidential solstice-clause-88 inside PDF"
+        )
+        try await index.indexAttachmentText(
+            accountID: Self.account.id,
+            messageID: "msg-trash-work",
+            folderID: "Label_Work",
+            attachmentID: "att-trash",
+            name: "old.pdf",
+            text: "Confidential solstice-clause-88 inside trashed PDF"
+        )
+
+        let transport = OfflineSearchTransport(labels: labels)
+        let backend = GmailAPIBackend(
+            account: Self.account,
+            transport: transport,
+            store: store,
+            localSearchIndex: index
+        )
+        try await backend.connect()
+
+        // Body-only offline hit.
+        let bodyHits: [MessageHeader] = try await backend.search(SearchQuery(text: "aurora-borealis-77"))
+        #expect(bodyHits.map(\.id) == ["msg-body"])
+
+        // Metadata filter still excludes body hit when sender doesn't match.
+        let wrongSender: [MessageHeader] = try await backend.search(SearchQuery(
+            text: "aurora-borealis-77",
+            from: "bob@example.org"
+        ))
+        #expect(wrongSender.isEmpty)
+
+        // Indexed-attachment-only offline hit respects ALL_MAIL Trash exclusion.
+        let attHitsAllMail: [MessageHeader] = try await backend.search(SearchQuery(
+            text: "solstice-clause-88",
+            folderID: "ALL_MAIL"
+        ))
+        #expect(attHitsAllMail.map(\.id) == ["msg-att"])
+
+        // Custom label query exposes canonical \Trash membership on dual-labeled messages.
+        let workFolder = Folder(id: "Label_Work", name: "Work", role: .custom)
+        let mailbox = try await backend.currentMailbox()
+        let workHeaders = try await backend.cachedMessageHeaders(
+            in: workFolder,
+            sourceID: backend.sourceID(for: mailbox)
+        )
+        let dualLabeled = try #require(workHeaders.first { $0.id == "msg-trash-work" })
+        #expect(dualLabeled.labels.contains { $0.caseInsensitiveCompare("\\Trash") == .orderedSame })
+    }
+}
+
+/// Transport that allows `connect()` (profile/labels) and fails `listMessages` with an
+/// offline URL error so `GmailAPIBackend.search` exercises its local `cachedSearch` fallback.
+private actor OfflineSearchTransport: GmailAPITransporting {
+    private let labels: [GmailLabel]
+    init(labels: [GmailLabel]) { self.labels = labels }
+    func profile() async throws -> GmailProfile {
+        GmailProfile(emailAddress: "person@example.org", messagesTotal: 3, threadsTotal: 3, historyID: "1")
+    }
+
+    func listLabels() async throws -> [GmailLabel] { labels }
+    func listMessages(
+        labelID _: String?,
+        query _: String?,
+        pageToken _: String?,
+        maxResults _: Int
+    ) async throws -> GmailMessagePage {
+        throw URLError(.notConnectedToInternet)
+    }
+
+    func getMessage(messageID _: String, format _: GmailMessageFormat) async throws -> GmailMessage {
+        throw URLError(.notConnectedToInternet)
+    }
+
+    func getThread(threadID _: String, metadataHeaders _: [String]) async throws -> GmailThread {
+        throw URLError(.notConnectedToInternet)
+    }
+
+    func getAttachment(messageID _: String, attachmentID _: String) async throws -> GmailAttachment {
+        throw URLError(.notConnectedToInternet)
+    }
+
+    func createDraft(rawMIME _: String, threadID _: String?) async throws -> GmailDraft {
+        throw URLError(.notConnectedToInternet)
+    }
+
+    func updateDraft(id _: String, rawMIME _: String, threadID _: String?) async throws -> GmailDraft {
+        throw URLError(.notConnectedToInternet)
+    }
+
+    func deleteDraft(id _: String) async throws { throw URLError(.notConnectedToInternet) }
+    func sendDraft(id _: String) async throws -> GmailMessage { throw URLError(.notConnectedToInternet) }
+    func sendMessage(rawMIME _: String, threadID _: String?) async throws -> GmailMessage {
+        throw URLError(.notConnectedToInternet)
+    }
+
+    func listSendAs() async throws -> [GmailSendAs] { [] }
 }
 
 /// Transport that never performs network I/O in these tests.
@@ -83,8 +270,10 @@ private actor ThrowingTransport: GmailAPITransporting {
     func listSendAs() async throws -> [GmailSendAs] { throw GmailAPIError.invalidRequest }
 }
 
-/// Minimal local-index stub; the capability check only needs the protocol.
+/// Minimal local-index stub supporting attachment FTS storage and lookup.
 private actor StubLocalSearchIndex: MailLocalSearchIndex {
+    private var attachments: [String: [(attachmentID: String, text: String)]] = [:]
+
     func cachedHeaders(
         for folder: Folder, account: BrevAccount, pageToken: String?
     ) async -> (headers: [MessageHeader], nextPageToken: String?)? { nil }
@@ -103,4 +292,32 @@ private actor StubLocalSearchIndex: MailLocalSearchIndex {
     func clearFolder(folderID: Folder.ID, account: BrevAccount) async {}
     func clearAccount(_ account: BrevAccount) async {}
     func metrics(for account: BrevAccount) async -> LocalSearchIndexMetrics? { nil }
+
+    func indexAttachmentText(
+        accountID _: String,
+        messageID: MessageHeader.ID,
+        folderID _: Folder.ID,
+        attachmentID: String,
+        name _: String,
+        text: String
+    ) async throws {
+        attachments[messageID, default: []].append((attachmentID, text))
+    }
+
+    func indexedAttachmentIDs(accountID _: String) async -> [MessageHeader.ID: Set<String>] {
+        attachments.mapValues { Set($0.map(\.attachmentID)) }
+    }
+
+    func matchingAttachmentMessageIDs(
+        for query: SearchQuery,
+        account _: BrevAccount
+    ) async -> Set<MessageHeader.ID> {
+        var hits = Set<MessageHeader.ID>()
+        for (messageID, entries) in attachments {
+            if entries.contains(where: { query.matchesText($0.text) }) {
+                hits.insert(messageID)
+            }
+        }
+        return hits
+    }
 }

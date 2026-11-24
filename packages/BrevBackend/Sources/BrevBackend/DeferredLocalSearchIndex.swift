@@ -95,6 +95,14 @@ public final class DeferredLocalSearchIndex: MailLocalSearchIndex, @unchecked Se
         await index?.storeRawMessage(data, for: messageID, account: account)
     }
 
+    public func indexBodyText(
+        _ bodyText: String,
+        for messageID: MessageHeader.ID,
+        account: BrevAccount
+    ) async {
+        await index?.indexBodyText(bodyText, for: messageID, account: account)
+    }
+
     public func deleteMessages(
         _ messageIDs: [MessageHeader.ID],
         account: BrevAccount
@@ -171,6 +179,17 @@ public final class DeferredLocalSearchIndex: MailLocalSearchIndex, @unchecked Se
 
     public func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID> {
         await index?.indexedAttachmentMessageIDs(accountID: accountID) ?? []
+    }
+
+    public func indexedAttachmentIDs(accountID: String) async -> [MessageHeader.ID: Set<String>] {
+        await index?.indexedAttachmentIDs(accountID: accountID) ?? [:]
+    }
+
+    public func matchingAttachmentMessageIDs(
+        for query: SearchQuery,
+        account: BrevAccount
+    ) async -> Set<MessageHeader.ID> {
+        await index?.matchingAttachmentMessageIDs(for: query, account: account) ?? []
     }
 
     public func matchedAttachmentNames(

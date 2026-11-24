@@ -18,6 +18,12 @@ public extension Notification.Name {
     static let brevBackgroundIndexingSettingsDidChange = Notification.Name(
         "eu.brevmail.settings.backgroundIndexing.changed"
     )
+
+    /// Posted when the local attachment index or local mail cache is cleared
+    /// so background indexing invalidates stored attachment progress (`userInfo["accountID"]`).
+    static let brevBackgroundAttachmentIndexDidInvalidate = Notification.Name(
+        "eu.brevmail.settings.backgroundIndexing.attachmentInvalidated"
+    )
 }
 
 /// Lookback window for opt-in background recent-mail and attachment indexing.
@@ -219,12 +225,18 @@ public final class BackgroundIndexingStatusModel {
 public struct BackgroundIndexingAccountProgress: Codable, Equatable, Sendable {
     public var indexedBodyMessageIDs: Set<String>
     public var indexedAttachmentMessageIDs: Set<String>
+    /// Per-message attachment IDs written to local FTS (reconciled against live FTS state).
+    public var ftsIndexedAttachmentIDsByMessage: [String: Set<String>]
+    /// Per-message attachment IDs deterministically skipped (oversized, unsupported, empty/encrypted).
+    public var skippedAttachmentIDsByMessage: [String: Set<String>]
     public var lastIndexedAt: Date?
 
     /// Empty progress state for an account that has not been indexed yet.
     public static let empty = BackgroundIndexingAccountProgress(
         indexedBodyMessageIDs: [],
         indexedAttachmentMessageIDs: [],
+        ftsIndexedAttachmentIDsByMessage: [:],
+        skippedAttachmentIDsByMessage: [:],
         lastIndexedAt: nil
     )
 
@@ -232,11 +244,41 @@ public struct BackgroundIndexingAccountProgress: Codable, Equatable, Sendable {
     public init(
         indexedBodyMessageIDs: Set<String> = [],
         indexedAttachmentMessageIDs: Set<String> = [],
+        ftsIndexedAttachmentIDsByMessage: [String: Set<String>] = [:],
+        skippedAttachmentIDsByMessage: [String: Set<String>] = [:],
         lastIndexedAt: Date? = nil
     ) {
         self.indexedBodyMessageIDs = indexedBodyMessageIDs
         self.indexedAttachmentMessageIDs = indexedAttachmentMessageIDs
+        self.ftsIndexedAttachmentIDsByMessage = ftsIndexedAttachmentIDsByMessage
+        self.skippedAttachmentIDsByMessage = skippedAttachmentIDsByMessage
         self.lastIndexedAt = lastIndexedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case indexedBodyMessageIDs
+        case indexedAttachmentMessageIDs
+        case ftsIndexedAttachmentIDsByMessage
+        case skippedAttachmentIDsByMessage
+        case lastIndexedAt
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        indexedBodyMessageIDs = try container.decodeIfPresent(Set<String>.self, forKey: .indexedBodyMessageIDs) ?? []
+        indexedAttachmentMessageIDs = try container.decodeIfPresent(
+            Set<String>.self,
+            forKey: .indexedAttachmentMessageIDs
+        ) ?? []
+        ftsIndexedAttachmentIDsByMessage = try container.decodeIfPresent(
+            [String: Set<String>].self,
+            forKey: .ftsIndexedAttachmentIDsByMessage
+        ) ?? [:]
+        skippedAttachmentIDsByMessage = try container.decodeIfPresent(
+            [String: Set<String>].self,
+            forKey: .skippedAttachmentIDsByMessage
+        ) ?? [:]
+        lastIndexedAt = try container.decodeIfPresent(Date.self, forKey: .lastIndexedAt)
     }
 }
 
@@ -285,6 +327,20 @@ public struct BackgroundIndexingProgressStore: @unchecked Sendable {
         if tracked.remove(accountID) != nil {
             defaults.set(Array(tracked).sorted(), forKey: Self.trackedAccountsKey)
         }
+    }
+
+    /// Clears only attachment-indexing completion records for `accountID` while
+    /// preserving body-indexing progress (used when the user removes the attachment index).
+    public func clearAttachmentProgress(accountID: String) {
+        var progress = load(accountID: accountID)
+        guard !progress.indexedAttachmentMessageIDs.isEmpty
+            || !progress.ftsIndexedAttachmentIDsByMessage.isEmpty
+            || !progress.skippedAttachmentIDsByMessage.isEmpty
+        else { return }
+        progress.indexedAttachmentMessageIDs.removeAll()
+        progress.ftsIndexedAttachmentIDsByMessage.removeAll()
+        progress.skippedAttachmentIDsByMessage.removeAll()
+        save(progress, accountID: accountID)
     }
 
     /// Clears persisted progress across all tracked accounts and any supplied `accountIDs`.

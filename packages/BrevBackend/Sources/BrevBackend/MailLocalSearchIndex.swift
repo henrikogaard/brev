@@ -79,6 +79,14 @@ public protocol MailLocalSearchIndex: Sendable {
         account: BrevAccount
     ) async
 
+    /// Indexes extracted plain-text body content into the local FTS search row
+    /// for an already-cached header without requiring full raw RFC 5322 bytes.
+    func indexBodyText(
+        _ bodyText: String,
+        for messageID: MessageHeader.ID,
+        account: BrevAccount
+    ) async
+
     func deleteMessages(
         _ messageIDs: [MessageHeader.ID],
         account: BrevAccount
@@ -141,6 +149,15 @@ public protocol MailLocalSearchIndex: Sendable {
     /// Message IDs that already have at least one indexed attachment row.
     func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID>
 
+    /// Per-message sets of attachment IDs currently present in the attachment FTS index.
+    func indexedAttachmentIDs(accountID: String) async -> [MessageHeader.ID: Set<String>]
+
+    /// Message IDs whose indexed attachment text matches `query.text` in local FTS.
+    func matchingAttachmentMessageIDs(
+        for query: SearchQuery,
+        account: BrevAccount
+    ) async -> Set<MessageHeader.ID>
+
     /// Deterministic matched-attachment name per result message, set only for
     /// hits that came from attachment content rather than the message itself.
     func matchedAttachmentNames(
@@ -157,6 +174,13 @@ public extension MailLocalSearchIndex {
     /// Keeps rendering/search caching available for adapters without provenance support.
     func storeOriginalRawMessage(_ data: Data, for messageID: MessageHeader.ID, account: BrevAccount) async {
         await storeRawMessage(data, for: messageID, account: account)
+    }
+
+    /// Default no-op for adapters that only index raw RFC 5322 message payloads.
+    func indexBodyText(_ bodyText: String, for messageID: MessageHeader.ID, account: BrevAccount) async {
+        _ = bodyText
+        _ = messageID
+        _ = account
     }
 
     func search(
@@ -184,6 +208,17 @@ public extension MailLocalSearchIndex {
     func attachmentIndexBytes(accountID: String) async -> Int { 0 }
 
     func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID> { [] }
+
+    func indexedAttachmentIDs(accountID: String) async -> [MessageHeader.ID: Set<String>] { [:] }
+
+    func matchingAttachmentMessageIDs(
+        for query: SearchQuery,
+        account: BrevAccount
+    ) async -> Set<MessageHeader.ID> {
+        _ = query
+        _ = account
+        return []
+    }
 
     func matchedAttachmentNames(
         matching query: SearchQuery,

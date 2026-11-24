@@ -7969,6 +7969,7 @@ public struct BrevMailRootView: View {
             backends: backends,
             sourceSections: enabledSourceSections
         )
+        NotificationCenter.default.post(name: .brevForegroundMailDidSync, object: nil)
         guard canApplyRefreshResponse(request) else {
             finishRefresh(request)
             return nil
@@ -9340,13 +9341,17 @@ public struct BrevMailRootView: View {
                 return
             }
             enqueueBackendEventRefresh(event)
-            if case .messagesAdded(let folderID, let messageIDs) = event,
-               effects.postNewMailNotification {
-                await postNewMailNotification(
-                    folderID: folderID,
-                    messageIDs: messageIDs,
-                    backend: backend
-                )
+            if case .messagesAdded(let folderID, let messageIDs) = event {
+                if !messageIDs.isEmpty {
+                    NotificationCenter.default.post(name: .brevForegroundMailDidSync, object: nil)
+                }
+                if effects.postNewMailNotification {
+                    await postNewMailNotification(
+                        folderID: folderID,
+                        messageIDs: messageIDs,
+                        backend: backend
+                    )
+                }
             }
         case .mailboxChanged(let mailboxID):
             guard backend.account.id == selectedBackend.account.id,

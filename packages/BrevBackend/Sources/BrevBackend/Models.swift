@@ -895,6 +895,36 @@ public struct SearchQuery: Sendable, Hashable, Codable {
     /// server-side search) and the local SQLite/FTS search index.
     /// Text matching is case- and diacritic-insensitive.
     public func matches(_ header: MessageHeader) -> Bool {
+        guard matchesMetadata(header) else { return false }
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedText.isEmpty {
+            let needle = Self.normalizedSearchString(trimmedText)
+            let matchText = Self.normalizedContains(header.subject, needle)
+                || Self.normalizedContains(header.snippet, needle)
+                || Self.normalizedContains(header.from.email, needle)
+                || Self.normalizedContains(header.from.name ?? "", needle)
+                || header.to.contains {
+                    Self.normalizedContains($0.email, needle)
+                        || Self.normalizedContains($0.name ?? "", needle)
+                }
+                || header.cc.contains {
+                    Self.normalizedContains($0.email, needle)
+                        || Self.normalizedContains($0.name ?? "", needle)
+                }
+                || header.bcc.contains {
+                    Self.normalizedContains($0.email, needle)
+                        || Self.normalizedContains($0.name ?? "", needle)
+                }
+            if !matchText { return false }
+        }
+        return true
+    }
+
+    /// Evaluates every structured filter predicate (`isUnread`, `isFlagged`,
+    /// `hasAttachments`, `folderScope`, `dateRange`, `from`, `to`, `subject`)
+    /// without checking the free-text `text` query. Used when `text` is matched
+    /// separately against cached body text or local attachment FTS hits.
+    public func matchesMetadata(_ header: MessageHeader) -> Bool {
         // Cheap predicates first: folder scope, flags, and the date range
         // reject most rows without paying for string normalization.
         if let isUnread, header.isRead == isUnread { return false }
@@ -937,28 +967,16 @@ public struct SearchQuery: Sendable, Hashable, Codable {
             )
             if !Self.normalizedContains(header.subject, needle) { return false }
         }
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedText.isEmpty {
-            let needle = Self.normalizedSearchString(trimmedText)
-            let matchText = Self.normalizedContains(header.subject, needle)
-                || Self.normalizedContains(header.snippet, needle)
-                || Self.normalizedContains(header.from.email, needle)
-                || Self.normalizedContains(header.from.name ?? "", needle)
-                || header.to.contains {
-                    Self.normalizedContains($0.email, needle)
-                        || Self.normalizedContains($0.name ?? "", needle)
-                }
-                || header.cc.contains {
-                    Self.normalizedContains($0.email, needle)
-                        || Self.normalizedContains($0.name ?? "", needle)
-                }
-                || header.bcc.contains {
-                    Self.normalizedContains($0.email, needle)
-                        || Self.normalizedContains($0.name ?? "", needle)
-                }
-            if !matchText { return false }
-        }
         return true
+    }
+
+    /// Returns `true` when `value` contains the normalized free-text `text`
+    /// query (or when `text` is empty).
+    public func matchesText(_ value: String) -> Bool {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { return true }
+        let needle = Self.normalizedSearchString(trimmedText)
+        return Self.normalizedContains(value, needle)
     }
 
     /// `normalizedNeedle` must already be folded via `normalizedSearchString`;

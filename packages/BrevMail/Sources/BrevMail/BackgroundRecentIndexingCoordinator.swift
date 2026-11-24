@@ -15,6 +15,14 @@ import BrevSettings
 import Foundation
 import Observation
 
+public extension Notification.Name {
+    /// Posted when foreground mailbox sync or live arrival stores new message headers
+    /// so opt-in background indexing can catch up without requiring background-mail mode.
+    static let brevForegroundMailDidSync = Notification.Name(
+        "eu.brevmail.mail.foregroundDidSync"
+    )
+}
+
 /// Point-in-time snapshot of device network and power conditions sampled before
 /// every background indexing unit of work.
 public struct BackgroundIndexingEnvironmentSnapshot: Equatable, Sendable {
@@ -58,12 +66,17 @@ public struct BackgroundIndexingEnvironmentSnapshot: Equatable, Sendable {
 /// - Strictly performs ZERO work and ZERO network calls while `settings.isEnabled == false`.
 /// - Pauses cleanly on offline, cellular/expensive/constrained networks, or Low Power Mode
 ///   when `settings.requireUnmeteredNetworkAndPower == true`.
-/// - Excludes Trash and Spam folders from automatic backfill.
-/// - Fetches missing bodies via `MailBackend.body(for:sourceID:)` (which uses IMAP `BODY.PEEK[]`
-///   or Gmail read APIs) and never mutates read/unread flags.
-/// - Only downloads non-inline, text-extractable attachments within `maxAttachmentBytes`
-///   and feeds extracted text into the backend's local FTS index via `LocalAttachmentTextIndexing`.
-/// - Persists per-account indexed cursors so messages are not re-fetched across runs.
+/// - Excludes Trash and Spam folders — and multi-label messages carrying Trash or Spam
+///   alongside another label (e.g. Gmail) — from automatic backfill.
+/// - Uses `BackgroundBodyIndexing` when available so IMAP fetches run at background priority
+///   (never preempting foreground refreshes or draft discovery), persist searchable body text
+///   into local FTS, and skip unbounded raw-source fallback above `maxAttachmentBytes`.
+/// - Never mutates read/unread flags.
+/// - Tracks attachment completion per attachment ID so mid-message pauses preserve completed
+///   attachments without skipping remaining ones, and retries transient download/timeout/FTS
+///   failures on later passes while deterministically skipping inline, oversized, or unsupported files.
+/// - Reconciles stored attachment progress against live FTS index IDs so removing the
+///   attachment index cleanly re-enables indexing.
 @MainActor
 @Observable
 public final class BackgroundRecentIndexingCoordinator {
@@ -93,22 +106,35 @@ public final class BackgroundRecentIndexingCoordinator {
     private let maxBatchSize: Int
     private let maxAttachmentBytes: Int
     private let pacingDelay: Duration
+    private let batchInterval: Duration
     private let sleep: @Sendable (Duration) async throws -> Void
 
     private var activeTask: Task<Void, Never>?
     private var activeGeneration = 0
     private var isUserPaused = false
+    private var needsFollowUpSweep = false
+
+    private static let excludedCanonicalLabels: Set<String> = [
+        "trash",
+        "spam",
+        "\\trash",
+        "\\junk",
+        "\\spam",
+        "[gmail]/trash",
+        "[gmail]/spam"
+    ]
 
     /// Creates a background recent-mail indexing coordinator.
     /// - Parameters:
     ///   - backendsProvider: Returns currently connected mail backends.
     ///   - settingsProvider: Reads the current `BackgroundIndexingSettings`.
     ///   - environmentProvider: Samples live network and power conditions.
-    ///   - progressStore: Persists per-account indexed message IDs so already-indexed mail is skipped.
+    ///   - progressStore: Persists per-account indexed message and attachment IDs.
     ///   - now: Supplies the current date for window filtering and timestamps (injectable for tests).
-    ///   - maxBatchSize: Maximum number of messages processed per throttled pass.
-    ///   - maxAttachmentBytes: Maximum per-attachment byte size eligible for background download & extraction.
-    ///   - pacingDelay: Polite yield delay between message fetches to avoid competing with foreground mail reads.
+    ///   - maxBatchSize: Maximum number of messages processed per throttled batch before pausing briefly.
+    ///   - maxAttachmentBytes: Maximum per-attachment byte size (and fallback raw-source cap) for background indexing.
+    ///   - pacingDelay: Polite yield delay between message fetches inside a batch.
+    ///   - batchInterval: Polite breather delay between consecutive throttled batches when a backlog remains.
     ///   - sleep: Async sleep implementation (injectable for deterministic tests).
     public init(
         backendsProvider: @escaping @MainActor () -> [any MailBackend] = { [] },
@@ -128,6 +154,7 @@ public final class BackgroundRecentIndexingCoordinator {
         maxBatchSize: Int = 40,
         maxAttachmentBytes: Int = BackgroundIndexingSettings.defaultMaxAttachmentBytes,
         pacingDelay: Duration = .milliseconds(150),
+        batchInterval: Duration = .milliseconds(500),
         sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in
             try await Task.sleep(for: duration)
         }
@@ -140,6 +167,7 @@ public final class BackgroundRecentIndexingCoordinator {
         self.maxBatchSize = max(1, maxBatchSize)
         self.maxAttachmentBytes = max(1, maxAttachmentBytes)
         self.pacingDelay = pacingDelay
+        self.batchInterval = batchInterval
         self.sleep = sleep
         statusModel = BackgroundIndexingStatusModel()
         lastIndexedAt = progressStore.latestIndexedAt()
@@ -166,6 +194,7 @@ public final class BackgroundRecentIndexingCoordinator {
         guard settings.isEnabled else {
             cancelActiveWork()
             isUserPaused = false
+            needsFollowUpSweep = false
             pendingCount = 0
             state = .idle
             publishStatus()
@@ -183,6 +212,18 @@ public final class BackgroundRecentIndexingCoordinator {
             return
         }
         startPassIfIdle()
+    }
+
+    /// Wakes the indexer when foreground sync or live mail arrival adds new headers.
+    /// Strictly a no-op when disabled or manually paused.
+    public func notifyNewHeadersAvailable() {
+        let settings = settingsProvider()
+        guard settings.isEnabled, !isUserPaused else { return }
+        if activeTask != nil {
+            needsFollowUpSweep = true
+            return
+        }
+        reconcile()
     }
 
     /// Reacts to network reachability, metering, or Low Power Mode changes.
@@ -208,6 +249,7 @@ public final class BackgroundRecentIndexingCoordinator {
     /// Manually pauses background indexing until the user chooses Resume or Index now.
     public func pause() {
         isUserPaused = true
+        needsFollowUpSweep = false
         cancelActiveWork()
         if settingsProvider().isEnabled {
             state = .paused(.userPaused)
@@ -226,6 +268,7 @@ public final class BackgroundRecentIndexingCoordinator {
     /// Cancels in-flight work and stops indexing cleanly (for sign-out or shutdown).
     public func stop() {
         cancelActiveWork()
+        needsFollowUpSweep = false
         pendingCount = 0
         state = .idle
         publishStatus()
@@ -240,6 +283,14 @@ public final class BackgroundRecentIndexingCoordinator {
         reconcile()
     }
 
+    /// Clears stored attachment-indexing progress for `accountID` after the user removes
+    /// the local attachment index or clears local cache in Mail Storage settings.
+    public func invalidateAttachmentProgress(accountID: BrevAccount.ID) {
+        cancelActiveWork()
+        progressStore.clearAttachmentProgress(accountID: accountID)
+        reconcile()
+    }
+
     /// Clears persisted per-account indexing cursors and restarts a pass if enabled.
     public func resetIndexState() async {
         cancelActiveWork()
@@ -250,6 +301,7 @@ public final class BackgroundRecentIndexingCoordinator {
         pendingCount = 0
         lastIndexedAt = nil
         isUserPaused = false
+        needsFollowUpSweep = false
         state = .idle
         publishStatus()
         if settingsProvider().isEnabled {
@@ -268,11 +320,12 @@ public final class BackgroundRecentIndexingCoordinator {
             return
         }
         isUserPaused = false
+        needsFollowUpSweep = false
         cancelActiveWork()
         activeGeneration &+= 1
         let generation = activeGeneration
         let task = Task<Void, Never> { @MainActor [weak self] in
-            await self?.executePass(generation: generation)
+            await self?.executeBacklog(generation: generation)
         }
         activeTask = task
         await task.value
@@ -284,8 +337,8 @@ public final class BackgroundRecentIndexingCoordinator {
         guard activeTask == nil else { return }
         activeGeneration &+= 1
         let generation = activeGeneration
-        activeTask = Task { @MainActor [weak self] in
-            await self?.executePass(generation: generation)
+        activeTask = Task<Void, Never> { @MainActor [weak self] in
+            await self?.executeBacklog(generation: generation)
         }
     }
 
@@ -304,13 +357,71 @@ public final class BackgroundRecentIndexingCoordinator {
         let needsAttachments: Bool
     }
 
-    private func executePass(generation: Int) async {
+    private enum BatchOutcome {
+        case drained
+        case moreRemaining(madeProgress: Bool)
+        case stopped
+    }
+
+    /// Runs consecutive throttled batches of `maxBatchSize` until the backlog drains,
+    /// indexing stops/pauses, or a batch makes no forward progress (preventing tight retry loops
+    /// on persistent transient failures).
+    private func executeBacklog(generation: Int) async {
         defer {
             if activeGeneration == generation {
                 activeTask = nil
             }
         }
 
+        // Track messages that already hit a transient attachment error in this sweep so
+        // follow-up batches don't immediately hammer the same failing attachment in a tight loop.
+        var deferredMessageIDs = Set<MessageHeader.ID>()
+
+        while true {
+            needsFollowUpSweep = false
+            let outcome = await executeSingleBatch(
+                generation: generation,
+                deferredMessageIDs: &deferredMessageIDs
+            )
+            switch outcome {
+            case .stopped:
+                return
+            case .drained:
+                if needsFollowUpSweep, isStillEligible(generation: generation) {
+                    continue
+                }
+                if isStillEligible(generation: generation) {
+                    state = .completed
+                    publishStatus()
+                }
+                return
+            case .moreRemaining(let madeProgress):
+                guard madeProgress, isStillEligible(generation: generation) else {
+                    if isStillEligible(generation: generation) {
+                        state = .completed
+                        publishStatus()
+                    }
+                    return
+                }
+                if batchInterval > .zero {
+                    do {
+                        try await sleep(batchInterval)
+                    } catch {
+                        handleCancellationIfCurrent(generation: generation)
+                        return
+                    }
+                } else {
+                    await Task.yield()
+                }
+                guard isStillEligible(generation: generation) else { return }
+            }
+        }
+    }
+
+    private func executeSingleBatch(
+        generation: Int,
+        deferredMessageIDs: inout Set<MessageHeader.ID>
+    ) async -> BatchOutcome {
         let initialSettings = settingsProvider()
         guard initialSettings.isEnabled, !isUserPaused, !Task.isCancelled, activeGeneration == generation else {
             if !initialSettings.isEnabled {
@@ -318,13 +429,13 @@ public final class BackgroundRecentIndexingCoordinator {
                 state = .idle
                 publishStatus()
             }
-            return
+            return .stopped
         }
 
         if let reason = environmentProvider().pauseReason(for: initialSettings) {
             state = .paused(reason)
             publishStatus()
-            return
+            return .stopped
         }
 
         let backends = backendsProvider().filter { $0.account.id != LocalMailBackend.accountID }
@@ -332,34 +443,89 @@ public final class BackgroundRecentIndexingCoordinator {
 
         var candidates: [Candidate] = []
         var progressByAccount: [String: BackgroundIndexingAccountProgress] = [:]
+        var liveIndexedAttachmentsByAccount: [String: [MessageHeader.ID: Set<String>]] = [:]
 
         for backend in backends {
-            guard isStillEligible(generation: generation) else { return }
+            guard isStillEligible(generation: generation) else { return .stopped }
             let accountID = backend.account.id
             var progress = progressStore.load(accountID: accountID)
-            if let attachmentIndexer = backend.extensionService(LocalAttachmentTextIndexing.self) {
-                let alreadyIndexedAttachments = await attachmentIndexer.indexedAttachmentMessageIDs()
-                progress.indexedAttachmentMessageIDs.formUnion(alreadyIndexedAttachments)
+            var progressMutated = false
+
+            // Reconcile stored FTS attachment progress against live local index rows so
+            // removing the attachment index cleanly re-enables attachment indexing.
+            if let ftsIndexer = backend.extensionService(LocalAttachmentTextIndexing.self) {
+                let liveIDs = await ftsIndexer.indexedAttachmentIDs()
+                liveIndexedAttachmentsByAccount[accountID] = liveIDs
+                if reconcileAttachmentProgress(&progress, against: liveIDs) {
+                    progressMutated = true
+                }
             }
-            progressByAccount[accountID] = progress
 
-            guard let mailbox = try? await backend.currentMailbox() else { continue }
+            guard let mailbox = try? await backend.currentMailbox() else {
+                if progressMutated { progressStore.save(progress, accountID: accountID) }
+                progressByAccount[accountID] = progress
+                continue
+            }
             let sourceID = backend.sourceID(for: mailbox)
-            guard let folders = try? await backend.folders(in: sourceID) else { continue }
+            guard let folders = try? await backend.folders(in: sourceID) else {
+                if progressMutated { progressStore.save(progress, accountID: accountID) }
+                progressByAccount[accountID] = progress
+                continue
+            }
 
+            // Collect message IDs residing in Trash or Spam so multi-label accounts
+            // (e.g. Gmail messages carrying both a custom label and TRASH/SPAM) are excluded.
+            var excludedMessageIDs = Set<MessageHeader.ID>()
+            for folder in folders where !Self.isEligibleFolder(folder) {
+                guard isStillEligible(generation: generation) else { return .stopped }
+                if let excludedHeaders = try? await backend.cachedMessageHeaders(in: folder, sourceID: sourceID) {
+                    for header in excludedHeaders {
+                        excludedMessageIDs.insert(header.id)
+                    }
+                }
+            }
+
+            let cachedBodyProvider = backend.extensionService(CachedMessageBodyProviding.self)
             var seenMessageIDs = Set<MessageHeader.ID>()
+
             for folder in folders where Self.isEligibleFolder(folder) {
-                guard isStillEligible(generation: generation) else { return }
+                guard isStillEligible(generation: generation) else { return .stopped }
                 guard let headers = try? await backend.cachedMessageHeaders(in: folder, sourceID: sourceID) else {
                     continue
                 }
                 for header in headers {
                     guard header.date >= cutoffDate else { continue }
+                    guard !excludedMessageIDs.contains(header.id),
+                          !Self.hasExcludedTrashOrSpamLabel(header)
+                    else { continue }
+                    guard !deferredMessageIDs.contains(header.id) else { continue }
                     guard seenMessageIDs.insert(header.id).inserted else { continue }
+
                     let needsBody = !progress.indexedBodyMessageIDs.contains(header.id)
-                    let needsAttachments = initialSettings.indexAttachments
-                        && header.hasAttachments
-                        && !progress.indexedAttachmentMessageIDs.contains(header.id)
+                    var needsAttachments = false
+                    if initialSettings.indexAttachments,
+                       !progress.indexedAttachmentMessageIDs.contains(header.id) {
+                        if header.hasAttachments {
+                            needsAttachments = true
+                        } else if let cachedBody = await cachedBodyProvider?.cachedBody(
+                            for: header.id,
+                            sourceID: sourceID
+                        ) {
+                            // IMAP listings default `hasAttachments = false` and structured fetches
+                            // populate `body.attachments` without mutating headers; inspect cached body
+                            // metadata before excluding a message from attachment indexing.
+                            if cachedBody.attachments.contains(where: { !$0.isInline }) {
+                                needsAttachments = true
+                            } else {
+                                progress.indexedAttachmentMessageIDs.insert(header.id)
+                                progressMutated = true
+                            }
+                        } else if needsBody {
+                            // Once the body is fetched in this pass we will inspect its attachments.
+                            needsAttachments = true
+                        }
+                    }
+
                     guard needsBody || needsAttachments else { continue }
                     candidates.append(Candidate(
                         backend: backend,
@@ -371,9 +537,14 @@ public final class BackgroundRecentIndexingCoordinator {
                     ))
                 }
             }
+
+            if progressMutated {
+                progressStore.save(progress, accountID: accountID)
+            }
+            progressByAccount[accountID] = progress
         }
 
-        guard isStillEligible(generation: generation) else { return }
+        guard isStillEligible(generation: generation) else { return .stopped }
 
         candidates.sort { lhs, rhs in
             if lhs.header.date != rhs.header.date {
@@ -388,40 +559,58 @@ public final class BackgroundRecentIndexingCoordinator {
             if lastIndexedAt == nil {
                 lastIndexedAt = progressStore.latestIndexedAt(accountIDs: backends.map(\.account.id))
             }
-            state = .completed
-            publishStatus()
-            return
+            return .drained
         }
 
         var completedInBatch = 0
+        var madeProgressInBatch = false
         state = .running(completed: 0, total: batch.count)
         publishStatus()
 
         for (index, candidate) in batch.enumerated() {
-            guard isStillEligible(generation: generation) else { return }
+            guard isStillEligible(generation: generation) else { return .stopped }
             let currentSettings = settingsProvider()
             let accountID = candidate.backend.account.id
             var progress = progressByAccount[accountID] ?? progressStore.load(accountID: accountID)
 
             do {
-                let body = try await resolveBody(for: candidate, needsBody: candidate.needsBody)
-                guard isStillEligible(generation: generation) else { return }
+                let resolvedBody = try await resolveBody(for: candidate)
+                guard isStillEligible(generation: generation) else { return .stopped }
 
                 if candidate.needsBody {
-                    progress.indexedBodyMessageIDs.insert(candidate.header.id)
-                    indexedMessagesCount += 1
+                    if resolvedBody != nil {
+                        progress.indexedBodyMessageIDs.insert(candidate.header.id)
+                        indexedMessagesCount += 1
+                        madeProgressInBatch = true
+                    } else {
+                        // Structured fetch failed and raw fallback was intentionally skipped;
+                        // defer for this sweep without falsely claiming the body is indexed.
+                        deferredMessageIDs.insert(candidate.header.id)
+                    }
                 }
 
-                if currentSettings.indexAttachments,
+                if let body = resolvedBody,
+                   currentSettings.indexAttachments,
                    !progress.indexedAttachmentMessageIDs.contains(candidate.header.id) {
-                    let newlyIndexed = try await indexEligibleAttachments(
+                    let liveAttachmentIDs = liveIndexedAttachmentsByAccount[accountID]?[candidate.header.id] ?? []
+                    let outcome = try await indexEligibleAttachments(
                         in: body,
                         candidate: candidate,
+                        liveIndexedAttachmentIDs: liveAttachmentIDs,
+                        progress: &progress,
                         generation: generation
                     )
-                    guard isStillEligible(generation: generation) else { return }
-                    indexedAttachmentsCount += newlyIndexed
-                    progress.indexedAttachmentMessageIDs.insert(candidate.header.id)
+                    guard isStillEligible(generation: generation) else { return .stopped }
+                    if outcome.newlyIndexedCount > 0 {
+                        indexedAttachmentsCount += outcome.newlyIndexedCount
+                        madeProgressInBatch = true
+                    }
+                    if !outcome.hadTransientFailure {
+                        progress.indexedAttachmentMessageIDs.insert(candidate.header.id)
+                        madeProgressInBatch = true
+                    } else {
+                        deferredMessageIDs.insert(candidate.header.id)
+                    }
                 }
 
                 let timestamp = now()
@@ -435,13 +624,15 @@ public final class BackgroundRecentIndexingCoordinator {
                 state = .running(completed: completedInBatch, total: batch.count)
                 publishStatus()
             } catch is CancellationError {
+                progressByAccount[accountID] = progress
+                progressStore.save(progress, accountID: accountID)
                 handleCancellationIfCurrent(generation: generation)
-                return
+                return .stopped
             } catch {
-                guard isStillEligible(generation: generation) else { return }
+                guard isStillEligible(generation: generation) else { return .stopped }
                 state = .failed(error.localizedDescription)
                 publishStatus()
-                return
+                return .stopped
             }
 
             if index + 1 < batch.count {
@@ -450,7 +641,7 @@ public final class BackgroundRecentIndexingCoordinator {
                         try await sleep(pacingDelay)
                     } catch {
                         handleCancellationIfCurrent(generation: generation)
-                        return
+                        return .stopped
                     }
                 } else {
                     await Task.yield()
@@ -458,84 +649,198 @@ public final class BackgroundRecentIndexingCoordinator {
             }
         }
 
-        guard isStillEligible(generation: generation) else { return }
-        state = .completed
-        publishStatus()
+        guard isStillEligible(generation: generation) else { return .stopped }
+        return pendingCount > 0 ? .moreRemaining(madeProgress: madeProgressInBatch) : .drained
     }
 
-    private func resolveBody(for candidate: Candidate, needsBody: Bool) async throws -> MessageBody {
+    private func resolveBody(for candidate: Candidate) async throws -> MessageBody? {
+        // Prefer the dedicated low-priority, size-bounded background indexing seam when
+        // offered (e.g. IMAP) so foreground refreshes/draft discovery are never preempted
+        // and searchable body text is persisted to local FTS before returning.
+        if let backgroundBodyIndexer = candidate.backend.extensionService(BackgroundBodyIndexing.self) {
+            return try await backgroundBodyIndexer.indexBackgroundBody(
+                for: candidate.header.id,
+                sourceID: candidate.sourceID,
+                maxFallbackSourceBytes: maxAttachmentBytes
+            )
+        }
         if let cachedProvider = candidate.backend.extensionService(CachedMessageBodyProviding.self),
            let cached = await cachedProvider.cachedBody(for: candidate.header.id, sourceID: candidate.sourceID) {
             return cached
         }
-        _ = needsBody
         return try await candidate.backend.body(for: candidate.header.id, sourceID: candidate.sourceID)
+    }
+
+    private struct AttachmentIndexingOutcome {
+        let newlyIndexedCount: Int
+        let hadTransientFailure: Bool
     }
 
     private func indexEligibleAttachments(
         in body: MessageBody,
         candidate: Candidate,
+        liveIndexedAttachmentIDs: Set<String>,
+        progress: inout BackgroundIndexingAccountProgress,
         generation: Int
-    ) async throws -> Int {
-        let eligible = body.attachments.filter { isEligibleAttachment($0) }
-        guard !eligible.isEmpty else { return 0 }
-
+    ) async throws -> AttachmentIndexingOutcome {
+        let messageID = candidate.header.id
+        let accountID = candidate.backend.account.id
         let ftsIndexer = candidate.backend.extensionService(LocalAttachmentTextIndexing.self)
-        var indexedCount = 0
 
-        for attachment in eligible {
-            guard isStillEligible(generation: generation) else {
-                throw CancellationError()
+        var ftsCompleted = progress.ftsIndexedAttachmentIDsByMessage[messageID] ?? []
+        ftsCompleted.formUnion(liveIndexedAttachmentIDs)
+        var skipped = progress.skippedAttachmentIDsByMessage[messageID] ?? []
+
+        var newlyIndexedCount = 0
+        var hadTransientFailure = false
+
+        for attachment in body.attachments {
+            // Deterministically skip inline, oversized, or unsupported attachments without network I/O.
+            guard !attachment.isInline else { continue }
+            if ftsCompleted.contains(attachment.id) || skipped.contains(attachment.id) {
+                continue
             }
-            let data: Data
-            do {
-                data = try await candidate.backend.downloadAttachment(attachment, sourceID: candidate.sourceID)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                // Skip individual unreadable/missing attachments without aborting the whole pass.
+            guard attachment.sizeBytes >= 0,
+                  attachment.sizeBytes <= maxAttachmentBytes,
+                  AttachmentTextExtractor.isSupported(mimeType: attachment.mimeType, fileName: attachment.name)
+            else {
+                skipped.insert(attachment.id)
+                progress.skippedAttachmentIDsByMessage[messageID] = skipped
                 continue
             }
 
             guard isStillEligible(generation: generation) else {
+                progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
+                progress.skippedAttachmentIDsByMessage[messageID] = skipped
+                progressStore.save(progress, accountID: accountID)
                 throw CancellationError()
             }
-            guard data.count <= maxAttachmentBytes else { continue }
+
+            let data: Data
+            do {
+                data = try await candidate.backend.downloadAttachment(attachment, sourceID: candidate.sourceID)
+            } catch is CancellationError {
+                progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
+                progress.skippedAttachmentIDsByMessage[messageID] = skipped
+                progressStore.save(progress, accountID: accountID)
+                throw CancellationError()
+            } catch {
+                // Transient download failure: leave attachment uncompleted so a later pass retries it.
+                hadTransientFailure = true
+                continue
+            }
+
+            guard isStillEligible(generation: generation) else {
+                progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
+                progress.skippedAttachmentIDsByMessage[messageID] = skipped
+                progressStore.save(progress, accountID: accountID)
+                throw CancellationError()
+            }
+
+            guard data.count <= maxAttachmentBytes else {
+                skipped.insert(attachment.id)
+                progress.skippedAttachmentIDsByMessage[messageID] = skipped
+                progressStore.save(progress, accountID: accountID)
+                continue
+            }
 
             let mimeType = attachment.mimeType
             let fileName = attachment.name
-            let extracted = try? await Task.detached(priority: .utility) {
-                try await AttachmentTextExtractor.extract(
-                    data: data,
-                    mimeType: mimeType,
-                    fileName: fileName,
-                    timeout: AttachmentTextExtractor.defaultTimeout
-                )
-            }.value
+            let extracted: String?
+            do {
+                extracted = try await Task.detached(priority: .utility) {
+                    try await AttachmentTextExtractor.extract(
+                        data: data,
+                        mimeType: mimeType,
+                        fileName: fileName,
+                        timeout: AttachmentTextExtractor.defaultTimeout
+                    )
+                }.value
+            } catch is CancellationError {
+                progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
+                progress.skippedAttachmentIDsByMessage[messageID] = skipped
+                progressStore.save(progress, accountID: accountID)
+                throw CancellationError()
+            } catch AttachmentTextExtractionError.timedOut {
+                hadTransientFailure = true
+                continue
+            } catch {
+                hadTransientFailure = true
+                continue
+            }
 
             guard isStillEligible(generation: generation) else {
+                progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
+                progress.skippedAttachmentIDsByMessage[messageID] = skipped
+                progressStore.save(progress, accountID: accountID)
                 throw CancellationError()
             }
-            guard let extracted, !extracted.isEmpty else { continue }
+
+            guard let extracted, !extracted.isEmpty else {
+                // Encrypted/malformed/no-text document: deterministically skip on future passes.
+                skipped.insert(attachment.id)
+                progress.skippedAttachmentIDsByMessage[messageID] = skipped
+                progressStore.save(progress, accountID: accountID)
+                continue
+            }
 
             if let ftsIndexer {
-                try? await ftsIndexer.indexAttachmentText(
-                    messageID: candidate.header.id,
-                    folderID: candidate.folderID,
-                    attachmentID: attachment.id,
-                    name: attachment.name,
-                    text: extracted
-                )
+                do {
+                    try await ftsIndexer.indexAttachmentText(
+                        messageID: messageID,
+                        folderID: candidate.folderID,
+                        attachmentID: attachment.id,
+                        name: attachment.name,
+                        text: extracted
+                    )
+                } catch is CancellationError {
+                    progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
+                    progress.skippedAttachmentIDsByMessage[messageID] = skipped
+                    progressStore.save(progress, accountID: accountID)
+                    throw CancellationError()
+                } catch {
+                    // Transient FTS write failure: leave uncompleted for retry.
+                    hadTransientFailure = true
+                    continue
+                }
             }
-            indexedCount += 1
+
+            ftsCompleted.insert(attachment.id)
+            progress.ftsIndexedAttachmentIDsByMessage[messageID] = ftsCompleted
+            progress.skippedAttachmentIDsByMessage[messageID] = skipped
+            progressStore.save(progress, accountID: accountID)
+            newlyIndexedCount += 1
         }
-        return indexedCount
+
+        return AttachmentIndexingOutcome(
+            newlyIndexedCount: newlyIndexedCount,
+            hadTransientFailure: hadTransientFailure
+        )
     }
 
-    private func isEligibleAttachment(_ attachment: Attachment) -> Bool {
-        guard !attachment.isInline else { return false }
-        guard attachment.sizeBytes >= 0, attachment.sizeBytes <= maxAttachmentBytes else { return false }
-        return AttachmentTextExtractor.isSupported(mimeType: attachment.mimeType, fileName: attachment.name)
+    /// Reconciles stored FTS attachment progress against the live local index.
+    /// Any attachment previously written to FTS that is no longer present (for example
+    /// because the user removed the attachment index) is pruned and its owning message
+    /// is marked eligible for re-indexing.
+    private func reconcileAttachmentProgress(
+        _ progress: inout BackgroundIndexingAccountProgress,
+        against liveIndexedIDs: [MessageHeader.ID: Set<String>]
+    ) -> Bool {
+        var mutated = false
+        for (messageID, recordedIDs) in progress.ftsIndexedAttachmentIDsByMessage {
+            let liveForMessage = liveIndexedIDs[messageID] ?? []
+            let surviving = recordedIDs.intersection(liveForMessage)
+            if surviving != recordedIDs {
+                mutated = true
+                if surviving.isEmpty {
+                    progress.ftsIndexedAttachmentIDsByMessage.removeValue(forKey: messageID)
+                } else {
+                    progress.ftsIndexedAttachmentIDsByMessage[messageID] = surviving
+                }
+                progress.indexedAttachmentMessageIDs.remove(messageID)
+            }
+        }
+        return mutated
     }
 
     private static func isEligibleFolder(_ folder: Folder) -> Bool {
@@ -544,6 +849,12 @@ public final class BackgroundRecentIndexingCoordinator {
             false
         default:
             true
+        }
+    }
+
+    private static func hasExcludedTrashOrSpamLabel(_ header: MessageHeader) -> Bool {
+        header.labels.contains { label in
+            excludedCanonicalLabels.contains(label.lowercased())
         }
     }
 

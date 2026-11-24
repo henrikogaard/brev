@@ -53,7 +53,7 @@ struct BackgroundIndexingSettingsTests {
         }
     }
 
-    @Test("SettingsBackupCodec round-trips BackgroundIndexingSettings")
+    @Test("SettingsBackupCodec restores preferences without silently enabling background indexing")
     func backupCodecRoundTrip() throws {
         let (sourceDefaults, sourceSuite) = try makeDefaults("backup-src")
         let (targetDefaults, targetSuite) = try makeDefaults("backup-dst")
@@ -68,16 +68,28 @@ struct BackgroundIndexingSettingsTests {
             isEnabled: true,
             windowDays: .days365,
             indexAttachments: false,
-            requireUnmeteredNetworkAndPower: true
+            requireUnmeteredNetworkAndPower: false
         )
         sourceStore.save(custom)
 
         let payload = SettingsBackupCodec.export(from: sourceStore)
-        #expect(payload.backgroundIndexing == custom)
+        #expect(payload.backgroundIndexing == BackgroundIndexingBackupSettings(custom))
         #expect(SettingsBackupPayload.knownKeys.contains("backgroundIndexing"))
 
+        // Target starts with default (isEnabled == false): restore must NOT flip isEnabled to true.
         SettingsBackupCodec.apply(payload, to: targetStore, mode: .replace)
-        #expect(targetStore.backgroundIndexingSettings() == custom)
+        let restored = targetStore.backgroundIndexingSettings()
+        #expect(restored.isEnabled == false)
+        #expect(restored.windowDays == .days365)
+        #expect(restored.indexAttachments == false)
+        #expect(restored.requireUnmeteredNetworkAndPower == false)
+
+        // When target already opted in locally, restore preserves local isEnabled == true.
+        targetStore.save(BackgroundIndexingSettings(isEnabled: true, windowDays: .days30))
+        SettingsBackupCodec.apply(payload, to: targetStore, mode: .replace)
+        let preserved = targetStore.backgroundIndexingSettings()
+        #expect(preserved.isEnabled == true)
+        #expect(preserved.windowDays == .days365)
     }
 
     @Test("background indexing keys stay excluded from iCloud preference sync")
@@ -99,11 +111,20 @@ struct BackgroundIndexingSettingsTests {
         let progress = BackgroundIndexingAccountProgress(
             indexedBodyMessageIDs: ["m1", "m2"],
             indexedAttachmentMessageIDs: ["m1"],
+            ftsIndexedAttachmentIDsByMessage: ["m1": ["a1"]],
+            skippedAttachmentIDsByMessage: ["m2": ["a2"]],
             lastIndexedAt: timestamp
         )
         progressStore.save(progress, accountID: "acct-a")
         #expect(progressStore.load(accountID: "acct-a") == progress)
         #expect(progressStore.latestIndexedAt() == timestamp)
+
+        progressStore.clearAttachmentProgress(accountID: "acct-a")
+        let afterAttachmentClear = progressStore.load(accountID: "acct-a")
+        #expect(afterAttachmentClear.indexedBodyMessageIDs == ["m1", "m2"])
+        #expect(afterAttachmentClear.indexedAttachmentMessageIDs.isEmpty)
+        #expect(afterAttachmentClear.ftsIndexedAttachmentIDsByMessage.isEmpty)
+        #expect(afterAttachmentClear.skippedAttachmentIDsByMessage.isEmpty)
 
         SettingsPersistenceStore(defaults: defaults).removeAccountScopedState(accountID: "acct-a")
         #expect(progressStore.load(accountID: "acct-a") == .empty)

@@ -1155,6 +1155,19 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         try storeBody(data, accountID: accountID, messageID: messageID, isOriginal: isOriginal, confirmedSource: true)
     }
 
+    func indexBodyText(_ bodyText: String, accountID: String, messageID: MessageHeader.ID) throws {
+        try lock.withLock {
+            guard let header = header(accountID: accountID, messageID: messageID) else { return }
+            try inTransaction {
+                try upsertSearchRow(
+                    header,
+                    accountID: accountID,
+                    bodyText: bodyText
+                )
+            }
+        }
+    }
+
     private func storeBody(
         _ data: Data,
         accountID: String,
@@ -1573,6 +1586,56 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             while sqlite3_step(stmt) == SQLITE_ROW {
                 guard let ptr = sqlite3_column_text(stmt, 0) else { continue }
                 result.insert(String(cString: ptr))
+            }
+            return result
+        }
+    }
+
+    func indexedAttachmentIDs(accountID: String) -> [MessageHeader.ID: Set<String>] {
+        lock.withLock {
+            var stmt: OpaquePointer?
+            let sql = """
+                SELECT message_id, attachment_id FROM attachment_search
+                WHERE account_id = ?;
+            """
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [:] }
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+            var result: [MessageHeader.ID: Set<String>] = [:]
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                guard let msgPtr = sqlite3_column_text(stmt, 0),
+                      let attPtr = sqlite3_column_text(stmt, 1)
+                else { continue }
+                result[String(cString: msgPtr), default: []].insert(String(cString: attPtr))
+            }
+            return result
+        }
+    }
+
+    func matchingAttachmentMessageIDs(
+        _ query: SearchQuery,
+        accountID: String
+    ) -> Set<MessageHeader.ID> {
+        let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ftsQueries = Self.ftsQueries(for: text)
+        guard !ftsQueries.isEmpty else { return [] }
+        return lock.withLock {
+            var result = Set<MessageHeader.ID>()
+            for ftsQuery in ftsQueries {
+                var stmt: OpaquePointer?
+                let sql = """
+                    SELECT DISTINCT message_id FROM attachment_search
+                    WHERE attachment_search MATCH ?
+                      AND account_id = ?;
+                """
+                guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { continue }
+                defer { sqlite3_finalize(stmt) }
+                sqlite3_bind_text(stmt, 1, ftsQuery, -1, Self.transient)
+                sqlite3_bind_text(stmt, 2, accountID, -1, Self.transient)
+                while sqlite3_step(stmt) == SQLITE_ROW {
+                    guard let ptr = sqlite3_column_text(stmt, 0) else { continue }
+                    result.insert(String(cString: ptr))
+                }
             }
             return result
         }

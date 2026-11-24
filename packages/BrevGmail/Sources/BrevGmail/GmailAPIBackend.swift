@@ -1028,6 +1028,17 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         previewOnly: Bool,
         onUpdate: MailSearchProgressHandler?
     ) async throws -> [MessageHeader] {
+        let trimmedText = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let attachmentHitIDs: Set<MessageHeader.ID>
+        if !trimmedText.isEmpty, let localSearchIndex {
+            attachmentHitIDs = await localSearchIndex.matchingAttachmentMessageIDs(
+                for: query,
+                account: account
+            )
+        } else {
+            attachmentHitIDs = []
+        }
+
         var cursor: String?
         var results: [MessageHeader] = []
         var first = true
@@ -1048,7 +1059,15 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
                     folderID: query.folderID ?? Self.primaryFolderID(for: message, labels: labels),
                     labels: labels
                 )
-                if query.matches(header) { batch.append(header) }
+                if query.matches(header) {
+                    batch.append(header)
+                } else if !trimmedText.isEmpty, query.matchesMetadata(header) {
+                    if attachmentHitIDs.contains(message.id) {
+                        batch.append(header)
+                    } else if await cachedBodyMatchesQuery(messageID: message.id, query: query) {
+                        batch.append(header)
+                    }
+                }
             }
             results.append(contentsOf: batch)
             if !previewOnly || !batch.isEmpty {
@@ -1068,6 +1087,22 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             try checkSearch(generation)
         }
         return results.sorted { $0.date == $1.date ? $0.id > $1.id : $0.date > $1.date }
+    }
+
+    private func cachedBodyMatchesQuery(
+        messageID: MessageHeader.ID,
+        query: SearchQuery
+    ) async -> Bool {
+        guard let body = await cachedBody(for: messageID, sourceID: nil) else { return false }
+        if let plain = body.plainText, !plain.isEmpty, query.matchesText(plain) {
+            return true
+        }
+        if let html = body.html, !html.isEmpty,
+           let stripped = try? HTMLTextStripper.visibleText(from: Data(html.utf8)),
+           query.matchesText(stripped) {
+            return true
+        }
+        return false
     }
 
     private func searchHeaders(
@@ -3046,5 +3081,10 @@ extension GmailAPIBackend: LocalAttachmentTextIndexing {
     /// Returns message IDs that already have indexed attachment text for this Gmail account.
     public func indexedAttachmentMessageIDs() async -> Set<MessageHeader.ID> {
         await localSearchIndex?.indexedAttachmentMessageIDs(accountID: account.id) ?? []
+    }
+
+    /// Returns per-message sets of attachment IDs currently indexed for this Gmail account.
+    public func indexedAttachmentIDs() async -> [MessageHeader.ID: Set<String>] {
+        await localSearchIndex?.indexedAttachmentIDs(accountID: account.id) ?? [:]
     }
 }
