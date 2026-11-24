@@ -411,7 +411,8 @@ public enum AgentAccessSocketConfiguration {
         }
 
         return URL(fileURLWithPath: "/tmp", isDirectory: true)
-            .appendingPathComponent("b-\(getuid())-\(names.shortTag).sock", isDirectory: false)
+            .appendingPathComponent("b-\(getuid())", isDirectory: true)
+            .appendingPathComponent("\(names.shortTag).sock", isDirectory: false)
     }
 
     private static func socketFileNames(

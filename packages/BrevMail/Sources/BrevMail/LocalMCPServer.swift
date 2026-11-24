@@ -1337,7 +1337,16 @@ public final class LocalMCPUnixSocketServer: @unchecked Sendable {
 
         let parentDir = socketURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: parentDir.path)
+        var dirStat = stat()
+        guard lstat(parentDir.path, &dirStat) == 0,
+              (dirStat.st_mode & S_IFMT) == S_IFDIR,
+              dirStat.st_uid == geteuid()
+        else {
+            throw POSIXError(.EACCES)
+        }
+        guard chmod(parentDir.path, mode_t(0o700)) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EACCES)
+        }
 
         let pathBytes = Array(socketURL.path.utf8)
         var addr = sockaddr_un()

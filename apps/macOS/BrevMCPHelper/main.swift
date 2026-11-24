@@ -54,7 +54,8 @@ enum BrevMCPHelperCLI {
         }
 
         return URL(fileURLWithPath: "/tmp", isDirectory: true)
-            .appendingPathComponent("b-\(getuid())-\(names.shortTag).sock", isDirectory: false)
+            .appendingPathComponent("b-\(getuid())", isDirectory: true)
+            .appendingPathComponent("\(names.shortTag).sock", isDirectory: false)
             .path
     }
 
@@ -214,6 +215,14 @@ enum BrevMCPHelperCLI {
             }
         }
         guard result == 0 else {
+            close(fd)
+            return nil
+        }
+        // Verify the listener is owned by the current macOS user so another local user
+        // cannot impersonate Brev on a fallback socket path (ADR-0095 §1).
+        var peerUID: uid_t = 0
+        var peerGID: gid_t = 0
+        guard getpeereid(fd, &peerUID, &peerGID) == 0, peerUID == geteuid() else {
             close(fd)
             return nil
         }

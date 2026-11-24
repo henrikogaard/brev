@@ -173,7 +173,7 @@ struct AgentAccessSettingsTests {
             groupContainerURL: overlongContainer,
             temporaryDirectoryURL: overlongTemp
         )
-        #expect(tmpFallback.path.hasPrefix("/tmp/"))
+        #expect(tmpFallback.path.hasPrefix("/tmp/b-\(getuid())/"))
         #expect(tmpFallback.path.utf8.count <= 100)
     }
 
