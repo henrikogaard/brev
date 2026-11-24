@@ -261,27 +261,15 @@ public final class PushWakeCoordinator {
         let wakeStartedAt = now()
 
         for targetBackend in matchedBackends {
-            let baseline: CachedInboxBaseline? = if customNotifyArrivedMail == nil, payload.eventKind == .newMail {
+            let baseline: CachedInboxBaseline? = if customNotifyArrivedMail == nil {
                 await Self.snapshotCachedInboxBaseline(for: targetBackend)
             } else {
                 nil
             }
 
-            let arrivedCollector = ArrivedInboxIDCollector()
-            let changeTask: Task<Void, Never>? = if let inboxID = baseline?.inboxFolderID {
-                Task {
-                    for await event in targetBackend.subscribeToChanges() {
-                        if case .messagesAdded(let folderID, let messageIDs) = event, folderID == inboxID {
-                            await arrivedCollector.record(messageIDs)
-                        }
-                    }
-                }
-            } else {
-                nil
-            }
-
+            // Never call `targetBackend.subscribeToChanges()` here: on IMAP backends that
+            // starts a new IDLE watcher and displaces the shared IDLE session.
             let failure = await refreshBackends([targetBackend])
-            changeTask?.cancel()
 
             if let failure {
                 failures.append((accountID: targetBackend.account.id, message: failure))
@@ -293,22 +281,20 @@ public final class PushWakeCoordinator {
                 await customNotifyArrivedMail(targetBackend, payload)
                 deliveredNewDataAccountIDs.append(targetBackend.account.id)
             } else {
-                let positiveArrivedIDs = await arrivedCollector.recordedIDs()
-                let hadNewArrivals = await deliverSceneLessNotificationIfNeeded(
+                let didObserveNewData = await reconcilePostRefreshAndNotifyIfNeeded(
                     for: targetBackend,
                     payload: payload,
                     baseline: baseline,
-                    positiveArrivedIDs: positiveArrivedIDs,
                     wakeStartedAt: wakeStartedAt
                 )
-                if hadNewArrivals {
+                if didObserveNewData {
                     deliveredNewDataAccountIDs.append(targetBackend.account.id)
                 }
             }
         }
 
-        // Report `.newData` when at least one account synced new data/alerts,
-        // `.noData` when at least one account synced cleanly without new data,
+        // Report `.newData` when at least one account synced new data/mailbox changes,
+        // `.noData` when at least one account synced cleanly with unchanged state,
         // and `.failed` only when ALL attempted accounts failed.
         if let firstWithNewData = deliveredNewDataAccountIDs.first {
             return .synced(accountID: firstWithNewData)
@@ -346,13 +332,43 @@ public final class PushWakeCoordinator {
         return await handleWake(payload)
     }
 
+    /// Extracts a numeric IMAP UID from `IMAPSMTPBackend`'s canonical `"\(folderID):\(uid)"` header ID.
+    /// Returns `nil` for non-IMAP backends (such as Gmail opaque message IDs).
+    static func extractIMAPUID(from messageID: String, folderID: String) -> UInt32? {
+        let prefix = "\(folderID):"
+        guard messageID.hasPrefix(prefix) else { return nil }
+        return UInt32(messageID.dropFirst(prefix.count))
+    }
+
+    private struct CachedHeaderState: Equatable {
+        let isRead: Bool
+        let isFlagged: Bool
+        let flagColor: FlagColor?
+        let labels: [String]
+        let date: Date
+        let subject: String
+    }
+
     private struct CachedInboxBaseline {
         let inboxFolderID: String
         let messageIDs: Set<String>
+        let headerStates: [String: CachedHeaderState]
         let latestCachedDate: Date?
+        let maxCachedIMAPUID: UInt32?
     }
 
-    /// Reads the pre-refresh Inbox message ID and date watermark strictly from the backend's
+    private static func headerState(for header: MessageHeader) -> CachedHeaderState {
+        CachedHeaderState(
+            isRead: header.isRead,
+            isFlagged: header.isFlagged,
+            flagColor: header.flagColor,
+            labels: header.labels,
+            date: header.date,
+            subject: header.subject
+        )
+    }
+
+    /// Reads the pre-refresh Inbox state baseline strictly from the backend's
     /// local header cache (`cachedMessageHeaders`) without hitting the live server.
     ///
     /// Reading from the live server before refresh would already include the newly
@@ -371,91 +387,126 @@ public final class PushWakeCoordinator {
         guard let cachedHeaders = try? await backend.cachedMessageHeaders(in: inbox, sourceID: sourceID) else {
             return nil
         }
+        var states: [String: CachedHeaderState] = [:]
+        states.reserveCapacity(cachedHeaders.count)
+        for header in cachedHeaders {
+            states[header.id] = headerState(for: header)
+        }
+        let maxUID = cachedHeaders.compactMap { extractIMAPUID(from: $0.id, folderID: inbox.id) }.max()
         return CachedInboxBaseline(
             inboxFolderID: inbox.id,
             messageIDs: Set(cachedHeaders.map(\.id)),
-            latestCachedDate: cachedHeaders.map(\.date).max()
+            headerStates: states,
+            latestCachedDate: cachedHeaders.map(\.date).max(),
+            maxCachedIMAPUID: maxUID
         )
     }
 
-    /// Evaluates `NewMailNotificationPolicy` and posts local notifications ONLY for
-    /// genuinely newly arrived unread Inbox messages (preferring positive fresh-delivery
-    /// IDs from `MailEvent.messagesAdded`, and falling back to cache-diff + date watermark
-    /// so older uncached unread messages never trigger bogus alerts).
-    ///
-    /// - Returns: `true` if at least one newly arrived unread message was observed.
-    private func deliverSceneLessNotificationIfNeeded(
+    /// Determines whether a post-refresh message absent from `baseline.messageIDs` is a
+    /// genuine newly delivered arrival rather than an older uncached backfill message.
+    private static func isGenuineNewArrival(
+        _ header: MessageHeader,
+        inboxFolderID: String,
+        baseline: CachedInboxBaseline,
+        wakeStartedAt: Date
+    ) -> Bool {
+        guard !baseline.messageIDs.contains(header.id) else { return false }
+        if baseline.messageIDs.isEmpty {
+            let emptyCacheCutoff = wakeStartedAt.addingTimeInterval(-Self.emptyCacheArrivalWindow)
+            return header.date >= emptyCacheCutoff
+        }
+        if let latestDate = baseline.latestCachedDate, header.date > latestDate {
+            return true
+        }
+        if let maxUID = baseline.maxCachedIMAPUID,
+           let candidateUID = extractIMAPUID(from: header.id, folderID: inboxFolderID),
+           candidateUID > maxUID {
+            return true
+        }
+        return false
+    }
+
+    /// Reconciles post-refresh Inbox state against the pre-refresh local-cache baseline:
+    /// - Detects any mailbox state mutation (new arrival, read/flag/label change, or removal)
+    ///   for both `.newMail` and `.mailboxChanged` wakes so iOS receives accurate `.newData` vs `.noData`.
+    /// - Posts scene-less local alerts strictly on `.newMail` wakes for genuinely newly arrived
+    ///   unread Inbox messages, avoiding re-alerts and older uncached Gmail backfill spam.
+    private func reconcilePostRefreshAndNotifyIfNeeded(
         for backend: any MailBackend,
         payload: PushWakePayload,
         baseline: CachedInboxBaseline?,
-        positiveArrivedIDs: Set<String>,
         wakeStartedAt: Date
     ) async -> Bool {
-        guard payload.eventKind == .newMail,
-              let baseline
-        else {
-            return false
-        }
-        let notificationSettings = notificationSettingsProvider()
-        let decision = NewMailNotificationPolicy.decision(
-            settings: notificationSettings,
-            accountID: backend.account.id
-        )
-        guard let folders = try? await backend.folders(),
+        guard let baseline,
+              let folders = try? await backend.folders(),
               let inbox = folders.first(where: { $0.role == .inbox }),
               let page = try? await backend.enumerateMessages(in: inbox, pageToken: nil)
         else {
             return false
         }
 
-        let newlyArrivedUnread: [MessageHeader]
-        if !positiveArrivedIDs.isEmpty {
-            newlyArrivedUnread = page.headers.filter { header in
-                !header.isRead && positiveArrivedIDs.contains(header.id)
-            }
-        } else {
-            let watermarkDate = baseline.latestCachedDate
-                ?? wakeStartedAt.addingTimeInterval(-Self.emptyCacheArrivalWindow)
-            newlyArrivedUnread = page.headers.filter { header in
-                !header.isRead
-                    && !baseline.messageIDs.contains(header.id)
-                    && header.date > watermarkDate
-            }
+        let postHeaders = page.headers
+        var postStates: [String: CachedHeaderState] = [:]
+        postStates.reserveCapacity(postHeaders.count)
+        for header in postHeaders {
+            postStates[header.id] = Self.headerState(for: header)
         }
 
-        guard !newlyArrivedUnread.isEmpty else {
-            return false
+        let hasGenuineAddition = postHeaders.contains { header in
+            Self.isGenuineNewArrival(
+                header,
+                inboxFolderID: inbox.id,
+                baseline: baseline,
+                wakeStartedAt: wakeStartedAt
+            )
         }
+        let hasFlagOrMetadataMutation = postHeaders.contains { header in
+            guard let prior = baseline.headerStates[header.id] else { return false }
+            return prior != Self.headerState(for: header)
+        }
+        let oldestPostDate = postHeaders.map(\.date).min()
+        let hasRemovalInWindow = baseline.headerStates.contains { id, prior in
+            guard postStates[id] == nil else { return false }
+            guard let oldestPostDate else { return true }
+            return prior.date >= oldestPostDate
+        }
+        let didObserveNewData = hasGenuineAddition || hasFlagOrMetadataMutation || hasRemovalInWindow
 
-        if decision.shouldDeliver {
-            for header in newlyArrivedUnread.prefix(5) {
-                let arrived = PushWakeArrivedMessage(
-                    messageID: header.id,
-                    from: header.from,
-                    subject: header.subject,
-                    snippet: header.snippet,
-                    receivedAt: header.date,
-                    accountID: backend.account.id,
-                    folderID: inbox.id,
-                    folderName: inbox.name,
-                    showPreviews: decision.showPreviews,
-                    playSound: decision.playSound
+        if payload.eventKind == .newMail {
+            let newlyArrivedUnread = postHeaders.filter { header in
+                !header.isRead && Self.isGenuineNewArrival(
+                    header,
+                    inboxFolderID: inbox.id,
+                    baseline: baseline,
+                    wakeStartedAt: wakeStartedAt
                 )
-                await deliverNotification(arrived)
+            }
+            if !newlyArrivedUnread.isEmpty {
+                let notificationSettings = notificationSettingsProvider()
+                let decision = NewMailNotificationPolicy.decision(
+                    settings: notificationSettings,
+                    accountID: backend.account.id
+                )
+                if decision.shouldDeliver {
+                    for header in newlyArrivedUnread.prefix(5) {
+                        let arrived = PushWakeArrivedMessage(
+                            messageID: header.id,
+                            from: header.from,
+                            subject: header.subject,
+                            snippet: header.snippet,
+                            receivedAt: header.date,
+                            accountID: backend.account.id,
+                            folderID: inbox.id,
+                            folderName: inbox.name,
+                            showPreviews: decision.showPreviews,
+                            playSound: decision.playSound
+                        )
+                        await deliverNotification(arrived)
+                    }
+                }
             }
         }
-        return true
-    }
-}
 
-private actor ArrivedInboxIDCollector {
-    private var ids: Set<String> = []
-
-    func record(_ newIDs: [String]) {
-        ids.formUnion(newIDs)
-    }
-
-    func recordedIDs() -> Set<String> {
-        ids
+        return didObserveNewData
     }
 }

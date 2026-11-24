@@ -572,6 +572,162 @@ struct PushWakeCoordinatorTests {
         #expect(deliveredMessages.map(\.messageID) == [freshArrival.id])
     }
 
+    @Test("cold IMAP wake alerts on delayed newly delivered message with higher UID and older Date header")
+    func coldIMAPDelayedDeliveryWithHigherUIDAndOlderDateAlerts() async {
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox, unreadCount: 2, totalCount: 2)
+        let cachedNewest = MessageHeader(
+            id: "INBOX:100",
+            threadID: "thread-100",
+            folderID: inbox.id,
+            from: Correspondent(name: "Alice", email: "alice@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Cached newest message",
+            snippet: "UID 100 at 10:00",
+            date: Date(timeIntervalSince1970: 1_750_003_600),
+            isRead: false
+        )
+        // Delayed delivery: UID 101 > cached max UID 100, yet Date header is 30 minutes OLDER than UID 100.
+        let delayedArrival = MessageHeader(
+            id: "INBOX:101",
+            threadID: "thread-101",
+            folderID: inbox.id,
+            from: Correspondent(name: "Greylisted Sender", email: "delayed@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Delayed delivery",
+            snippet: "Arrived late with older Date header",
+            date: Date(timeIntervalSince1970: 1_750_001_800),
+            isRead: false
+        )
+        // Older uncached message (UID 50 < 100, older Date): must NOT alert.
+        let olderUncachedIMAP = MessageHeader(
+            id: "INBOX:50",
+            threadID: "thread-50",
+            folderID: inbox.id,
+            from: Correspondent(name: "Archive", email: "old@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Old IMAP message",
+            snippet: "UID 50 below max cached UID",
+            date: Date(timeIntervalSince1970: 1_749_000_000),
+            isRead: false
+        )
+
+        let backend = MockBackend(
+            account: Self.workAccount,
+            extendedCapabilities: [.cachedMessageHeaders],
+            folders: [inbox],
+            messagesByFolder: [inbox.id: [cachedNewest, delayedArrival, olderUncachedIMAP]]
+        )
+        let cacheBox = CachedHeaderBox(headers: [cachedNewest])
+        backend.cachedMessageHeadersHandler = { _, _ in
+            await cacheBox.currentHeaders()
+        }
+
+        var deliveredMessages: [PushWakeArrivedMessage] = []
+        var enabledNotifications = NotificationSettings.defaults
+        enabledNotifications.notificationsEnabled = true
+        let notificationSnapshot = enabledNotifications
+
+        let coordinator = PushWakeCoordinator(
+            settingsProvider: {
+                PushRelaySettings(
+                    isEnabled: true,
+                    mode: .userHostedRelay,
+                    endpointURLString: "https://relay.example.com/push",
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
+                )
+            },
+            notificationSettingsProvider: { notificationSnapshot },
+            backendsProvider: { [backend] },
+            refreshBackends: { _ in
+                await cacheBox.setHeaders([cachedNewest, delayedArrival, olderUncachedIMAP])
+                return nil
+            },
+            deliverNotification: { arrived in
+                deliveredMessages.append(arrived)
+            }
+        )
+
+        let result = await coordinator.handleWake(
+            PushWakePayload(accountID: Self.workOpaqueToken, stateToken: "uid-101", eventKind: .newMail)
+        )
+        #expect(result == .synced(accountID: Self.workAccount.id))
+        #expect(result.fetchOutcome == .newData)
+        // Higher IMAP UID `INBOX:101` alerts despite older Date; lower UID `INBOX:50` does NOT alert.
+        #expect(deliveredMessages.map(\.messageID) == [delayedArrival.id])
+    }
+
+    @Test("mailbox_changed wake reports newData on flag-only mutation with zero alerts and noData when unchanged")
+    func mailboxChangedFlagMutationReportsNewDataWithoutAlerts() async throws {
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox, unreadCount: 1, totalCount: 1)
+        let unreadMessage = MessageHeader(
+            id: "INBOX:200",
+            threadID: "thread-200",
+            folderID: inbox.id,
+            from: Correspondent(name: "Alice", email: "alice@example.org"),
+            to: [Correspondent(email: "work@example.org")],
+            subject: "Flag mutation test",
+            snippet: "Marked read remotely",
+            date: Date(timeIntervalSince1970: 1_750_005_000),
+            isRead: false
+        )
+
+        let backend = MockBackend(
+            account: Self.workAccount,
+            extendedCapabilities: [.cachedMessageHeaders],
+            folders: [inbox],
+            messagesByFolder: [inbox.id: [unreadMessage]]
+        )
+
+        var deliveredMessages: [PushWakeArrivedMessage] = []
+        var enabledNotifications = NotificationSettings.defaults
+        enabledNotifications.notificationsEnabled = true
+        let notificationSnapshot = enabledNotifications
+        var markReadDuringRefresh = true
+
+        let coordinator = PushWakeCoordinator(
+            settingsProvider: {
+                PushRelaySettings(
+                    isEnabled: true,
+                    mode: .userHostedRelay,
+                    endpointURLString: "https://relay.example.com/push",
+                    enabledAccountIDs: [Self.workAccount.id],
+                    opaqueAccountTokens: [Self.workAccount.id: Self.workOpaqueToken]
+                )
+            },
+            notificationSettingsProvider: { notificationSnapshot },
+            backendsProvider: { [backend] },
+            refreshBackends: { _ in
+                if await MainActor.run(body: { markReadDuringRefresh }) {
+                    try? await backend.setRead(true, for: [unreadMessage.id])
+                }
+                return nil
+            },
+            deliverNotification: { arrived in
+                deliveredMessages.append(arrived)
+            }
+        )
+
+        let flagWake = PushWakePayload(
+            accountID: Self.workOpaqueToken,
+            stateToken: "modseq-500",
+            eventKind: .mailboxChanged
+        )
+
+        // 1. Flag-only change (marked read) MUST report `.newData` with 0 arrival alerts.
+        let mutatedResult = await coordinator.handleWake(flagWake)
+        #expect(mutatedResult == .synced(accountID: Self.workAccount.id))
+        #expect(mutatedResult.fetchOutcome == .newData)
+        #expect(deliveredMessages.isEmpty)
+
+        // 2. Subsequent unchanged refresh MUST report `.noData` with 0 alerts.
+        markReadDuringRefresh = false
+        let unchangedResult = await coordinator.handleWake(flagWake)
+        #expect(unchangedResult == .syncedNoNewData(accountID: Self.workAccount.id))
+        #expect(unchangedResult.fetchOutcome == .noData)
+        #expect(deliveredMessages.isEmpty)
+    }
+
     @Test("multi-account wake continues refreshing and alerting remaining accounts when an earlier account fails")
     func multiAccountWakeContinuesPastFirstAccountFailure() async {
         let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 1, totalCount: 1)
@@ -709,16 +865,18 @@ struct PushWakeCoordinatorTests {
         let session = AppSession(accountStore: InMemoryAccountStore(), tokenStore: StubPushTestTokenStore())
         #expect(session.pushWakeCoordinator.onJMAPVerificationChallenge != nil)
         let verifiedAt = Date(timeIntervalSince1970: 1_800_123_456)
+        session.configurePushRelayVerificationForTesting(
+            defaults: defaults,
+            secretStore: secretStore,
+            client: client,
+            now: { verifiedAt }
+        )
 
         // 1. Early challenge for `jmap-sub-early` arrives BEFORE `jmap-sub-early` is persisted:
         // buffered in memory with zero network calls yet; `jmap-sub-pending` stays untouched.
         await session.handleJMAPVerificationChallenge(
             subscriptionID: "jmap-sub-early",
-            verificationCode: "early-code-77",
-            settingsStore: store,
-            secretStore: secretStore,
-            client: client,
-            now: { verifiedAt }
+            verificationCode: "early-code-77"
         )
         #expect(await transport.recordedRequests().isEmpty)
         #expect(store.pushRelaySettings().activeRegistration?.state == .pendingVerification)
@@ -726,11 +884,7 @@ struct PushWakeCoordinatorTests {
         // 2. Matching challenge for `jmap-sub-pending` verifies immediately and transitions to `.active`.
         await session.handleJMAPVerificationChallenge(
             subscriptionID: "jmap-sub-pending",
-            verificationCode: "challenge-42",
-            settingsStore: store,
-            secretStore: secretStore,
-            client: client,
-            now: { verifiedAt }
+            verificationCode: "challenge-42"
         )
         let afterFirst = await transport.recordedRequests()
         #expect(afterFirst.count == 1)
@@ -744,8 +898,9 @@ struct PushWakeCoordinatorTests {
         #expect(updated.activeRegistration?.registeredAt == verifiedAt)
         #expect(updated.lastRegistrationError == nil)
 
-        // 3. Once `jmap-sub-early` is persisted as `.pendingVerification`, consuming buffered
-        // challenges immediately verifies it with `early-code-77` and transitions it to `.active`.
+        // 3. Persist `jmap-sub-early` as `.pendingVerification` WITHOUT calling any helper directly:
+        // `store.save(...)` posts `.brevPushRelaySettingsDidChange`, triggering `AppSession`'s real
+        // observer to consume the buffered challenge and transition `jmap-sub-early` to `.active`.
         var earlyPending = updated
         earlyPending.activeRegistration = ActivePushRelayRegistration(
             mode: .jmapWebPush,
@@ -755,12 +910,13 @@ struct PushWakeCoordinatorTests {
             state: .pendingVerification
         )
         store.save(earlyPending)
-        await session.consumeBufferedJMAPVerificationChallengeIfNeeded(
-            settingsStore: store,
-            secretStore: secretStore,
-            client: client,
-            now: { verifiedAt.addingTimeInterval(5) }
-        )
+
+        for _ in 0 ..< 100 {
+            if store.pushRelaySettings().activeRegistration?.state == .active {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
         let afterSecond = await transport.recordedRequests()
         #expect(afterSecond.count == 2)
