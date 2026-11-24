@@ -268,6 +268,7 @@ extension SettingsSection {
                 String(localized: "Sender icons are explicit", bundle: .module),
                 String(localized: "AI Writer requires consent", bundle: .module),
                 String(localized: "Remote content allowlist", bundle: .module),
+                String(localized: "Review Privacy & Convenience Choices…", bundle: .module),
             ]
         case .agentAccess: return [
                 String(localized: "Agent access", bundle: .module),

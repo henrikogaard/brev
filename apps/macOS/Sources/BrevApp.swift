@@ -39,6 +39,8 @@ struct BrevApp: App {
     @State private var updateController = MacUpdateController()
     @State private var networkMonitor = NetworkReachabilityMonitor()
     @State private var sessionRestoreAttempted = false
+    @State private var didStartWithoutAccounts = false
+    @State private var isShowingPrivacyOnboardingSheet = false
     @State private var settingsMailboxContext = SettingsMailboxContext()
     @State private var settingsSectionRequest: SettingsSection?
     @State private var isShowingAddAccountSheet = false
@@ -221,6 +223,25 @@ struct BrevApp: App {
                 }
             }
             .sheet(
+                isPresented: $isShowingPrivacyOnboardingSheet,
+                onDismiss: {
+                    if !PrivacyOnboardingSettings.load().hasCompletedOnboarding {
+                        PrivacyOnboardingChoices.keepPrivacyDefaults()
+                    }
+                }
+            ) {
+                PrivacyOnboardingSheet(
+                    mode: .firstRun,
+                    onAIProviderConfigurationChanged: {
+                        await session.reloadConfiguredAIBackends()
+                    },
+                    onDismiss: {
+                        isShowingPrivacyOnboardingSheet = false
+                    }
+                )
+                .brevTheme(session.theme)
+            }
+            .sheet(
                 item: Binding(
                     get: { session.mcpApprovalCoordinator.activeRequest },
                     set: { next in
@@ -252,6 +273,9 @@ struct BrevApp: App {
                 consumeIntentHandoff()
                 await session.ensureAccountsRestored()
                 sessionRestoreAttempted = true
+                didStartWithoutAccounts = !session.visibleBackends.contains {
+                    $0.account.backendIdentifier != BrevAccount.demoBackendIdentifier
+                }
                 session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
                 session.startReconnectMutationReplay(monitor: networkMonitor)
                 session.openMainWindowForPanelReply = {
@@ -284,6 +308,15 @@ struct BrevApp: App {
                 BrevMacOSAppDelegate.currentSession = session
                 session.syncBackgroundPanelSubscriptions()
                 session.syncSignInCodeArrivalSubscriptions()
+                presentPrivacyOnboardingIfNeeded()
+            }
+            .onChange(of: session.pendingInitialMailboxSelectionAccountID) { _, _ in
+                presentPrivacyOnboardingIfNeeded()
+            }
+            .onChange(of: isShowingAddAccountSheet) { _, isPresented in
+                if !isPresented {
+                    presentPrivacyOnboardingIfNeeded()
+                }
             }
             .onReceive(
                 NotificationCenter.default.publisher(for: .brevDidReceiveMailtoURL)
@@ -530,6 +563,39 @@ struct BrevApp: App {
         session.pimSyncScheduler.start(
             interval: FetchScheduleSettings.load().interval.intervalSeconds
         )
+    }
+
+    @MainActor
+    private func presentPrivacyOnboardingIfNeeded() {
+        guard sessionRestoreAttempted, !isShowingPrivacyOnboardingSheet else { return }
+        let isDeveloperBuild: Bool = {
+            #if DEBUG
+            true
+            #else
+            false
+            #endif
+        }()
+        let hasRealAccount = session.visibleBackends.contains {
+            $0.account.backendIdentifier != BrevAccount.demoBackendIdentifier
+        }
+        let isDemoSession = !session.visibleBackends.isEmpty && !hasRealAccount
+        let shouldPresent = PrivacyOnboardingPresentationPolicy.shouldPresentAfterFirstAccountSetup(
+            hasCompletedOnboarding: PrivacyOnboardingSettings.load().hasCompletedOnboarding,
+            isSuppressedByEnvironment: PrivacyOnboardingPresentationPolicy.isSuppressedByEnvironment(
+                isDeveloperBuild: isDeveloperBuild
+            ),
+            isDemoSession: isDemoSession,
+            didStartWithoutAccounts: didStartWithoutAccounts,
+            hasVisibleRealAccount: hasRealAccount,
+            hasPendingInitialMailboxSelection: session.pendingInitialMailboxSelectionAccountID != nil,
+            hasOtherModalPresented: isShowingAddAccountSheet
+                || showRestoreErrorAlert
+                || session.mcpApprovalCoordinator.activeRequest != nil,
+            hasExistingCustomizedSettings: PrivacyOnboardingChoices.hasExistingCustomizedSettings()
+        )
+        if shouldPresent {
+            isShowingPrivacyOnboardingSheet = true
+        }
     }
 
     private var browserOpenURLAction: OpenURLAction {

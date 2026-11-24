@@ -1,5 +1,19 @@
 # Worklog
 
+## 2026-11-24 — Agent — Upgrade #9: Onboarding privacy & convenience choices (`feature/onboarding-privacy-choices`)
+
+- Goal: implement an optional, plain-language Privacy & Convenience Choices walkthrough presented once after first-run account setup and re-openable anytime from Settings → Privacy, keeping every opt-in setting strictly `false` by default and preserving all `privacy-audit.sh` invariants.
+- Changes:
+  - Added `PrivacyOnboardingSettings`, `PrivacyOnboardingMode`, `PrivacyOnboardingChoices`, and `PrivacyOnboardingPresentationPolicy` in `packages/BrevSettings/Sources/BrevSettings/PrivacyOnboardingSettings.swift` with device-local completion key `onboarding.privacyChoices.completed` (excluded from `PreferenceSyncAllowlist` and `.brevbackup`), diff-based `apply(to:relativeTo:appleIntelligenceAvailability:)` that preserves untouched granular settings and never flips `allowRemoteContent` on or disables `stripTrackingPixels`, and suppression rules for demo/mock mode, automated tests, snapshot runs, and existing users.
+  - Added `PrivacyOnboardingSheet` in `packages/BrevSettings/Sources/BrevSettings/PrivacyOnboardingSheet.swift` covering Sender Avatars (domain BIMI/favicons + Gravatar), Trusted-Sender Remote Images, iCloud Preference Sync, Background Mail (macOS) & Recent-Mail Indexing, and zero-network On-Device AI (Apple Intelligence + optional proactive triage, unavailable-state explanation, zero cloud/BYOK providers), using semantic `@Environment(\.brevTheme)` tokens only and full `en` + `nb` String Catalog entries.
+  - Wired **"Review Privacy & Convenience Choices…"** into `PrivacySection`, `SettingsView`, and `SettingsSearch`, and wired first-run presentation (after first real account setup completes and any `InitialMailboxSelectionSheet` settles) into `apps/macOS/Sources/BrevApp.swift` and `apps/iOS/Sources/BrevApp.swift`.
+  - Added unit tests (`PrivacyOnboardingTests`) and macOS 26+ light/dark pixel-snapshot tests (`PrivacyOnboardingSnapshotTests`), registered in both the macOS<26 skip list and `snapshot-macos` `-only-testing` list in `.github/workflows/build.yml`.
+  - Updated `docs/design/privacy-and-security.md`, `docs/design/design-system-and-ui.md`, and `CHANGELOG.md`.
+- Verification:
+  - Local zero-window checks: `python3 -m json.tool` + `en`/`nb` key coverage check on `Localizable.xcstrings`, `scripts/format.sh`, `scripts/lint.sh`, privacy-audit regex verification, and `git diff --check origin/main`.
+  - Remote `macmini-devbox` (macOS 27.0 / Xcode 27.2, isolated `/tmp/brev-wave4a`, removed afterward): `BrevSettingsTests/PrivacyOnboardingTests`, `BackupTests`, `SettingsSearchPlatformTests`, `AvatarPrivacySettingsTests`, `MailboxViewSettingsTests`, `PreferenceSyncStoreTests`, `PrivacyOnboardingSnapshotTests` (record + verify in light & dark modes, all 4 PNGs visually inspected), and `BrevMacOS` / `BrevIOS` build verification.
+- Skipped: local `BrevSettings`/`BrevMail` `swift test` and `xcodebuild` runs (per desktop-isolation rule; executed on `macmini-devbox` instead); full iOS Simulator test suite left for GitHub Actions CI.
+
 ## 2026-11-24 — Agent — Roadmap #3 (Rich HTML compose beyond MVP)
 
 - Goal: implement rich HTML compose beyond MVP on `feature/rich-html-compose-v2` targeting `main` — inline `cid:` images (PNG/JPEG/GIF/WebP, byte caps, HTML preview rendering, lossless draft save/autosave/reopen, clean RFC 2387 `multipart/related` MIME), deterministic rich-HTML paste sanitization, and semantic HTML tables, `<pre><code>` code blocks, inline `<code>`, headings (`h1`–`h3`), and strikethrough (`<s>`) while preserving all PR #350 quoted-thread invariants.

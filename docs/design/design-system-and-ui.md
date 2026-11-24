@@ -15,7 +15,7 @@ All visual colors flow through `@Environment(\.brevTheme)` (`BrevTheme` in `pack
 
 - Cascading resolution chain in `packages/BrevAvatars/`: **Apple Contacts (opt-in) → in-memory cache → BIMI → Domain favicon → Gravatar → themed initials**.
 - **SVG safety:** BIMI SVG payloads referencing external images/stylesheets are rejected before rendering so an avatar fetch can never leak secondary requests.
-- **Relaxed default posture:** Keep **Gravatar** (which hashes sender email addresses to a third party) strictly opt-in, but offer a clear first-run onboarding toggle and allow domain-only **BIMI / Domain favicons** to be enabled easily out of the box so fresh installs don't default to a wall of bare initials.
+- **Relaxed default posture:** Keep **Gravatar** (which hashes sender email addresses to a third party) strictly opt-in, and surface clear first-run opt-in toggles in the **Privacy & Convenience Choices** walkthrough (re-openable anytime from **Settings → Privacy & Security → Privacy → Review Privacy & Convenience Choices…**) separating domain-only **BIMI / Domain favicons** from **Gravatar** so users can opt into richer sender logos without flipping any zero-network default silently.
 
 ## Multi-Source Workspace & Platform Ergonomics
 

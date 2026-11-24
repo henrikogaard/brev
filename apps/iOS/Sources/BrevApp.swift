@@ -49,6 +49,8 @@ struct BrevApp: App {
     @State private var pendingComposePrefill: ComposePrefill?
     @State private var pendingNotificationRoute: NotificationMailRoute?
     @State private var sessionRestoreAttempted = false
+    @State private var didStartWithoutAccounts = false
+    @State private var isShowingPrivacyOnboardingSheet = false
     @State private var settingsMailboxContext = SettingsMailboxContext()
     @State private var isShowingAddAccountSheet = false
     @State private var showRestoreErrorAlert = false
@@ -346,6 +348,33 @@ struct BrevApp: App {
             )) {
                 addAccountSheet
             }
+            .sheet(
+                isPresented: Binding(
+                    get: {
+                        isShowingPrivacyOnboardingSheet
+                            && !showSettings
+                            && !isShowingAddAccountSheet
+                            && readerCommandHandoff == nil
+                    },
+                    set: { isShowingPrivacyOnboardingSheet = $0 }
+                ),
+                onDismiss: {
+                    if !PrivacyOnboardingSettings.load().hasCompletedOnboarding {
+                        PrivacyOnboardingChoices.keepPrivacyDefaults()
+                    }
+                }
+            ) {
+                PrivacyOnboardingSheet(
+                    mode: .firstRun,
+                    onAIProviderConfigurationChanged: {
+                        await session.reloadConfiguredAIBackends()
+                    },
+                    onDismiss: {
+                        isShowingPrivacyOnboardingSheet = false
+                    }
+                )
+                .brevRootAppearance(session: session)
+            }
             .fullScreenCover(isPresented: $showCalendar) {
                 // No NavigationStack wrapper: the root view is itself a
                 // NavigationSplitView, which renders nothing when nested
@@ -401,6 +430,9 @@ struct BrevApp: App {
                 applyIOSAppIcon(appIconVariant)
                 await session.ensureAccountsRestored()
                 sessionRestoreAttempted = true
+                didStartWithoutAccounts = !session.visibleBackends.contains {
+                    $0.account.backendIdentifier != BrevAccount.demoBackendIdentifier
+                }
                 session.installNotificationActionHandlers(on: appDelegate.notificationDelegate)
                 session.attachNetworkMonitor(networkMonitor)
                 BrevIOSAppDelegate.currentBackends = session.visibleBackends
@@ -427,6 +459,15 @@ struct BrevApp: App {
             }
             .onChange(of: session.visibleBackends.map(\.account.id)) { _, _ in
                 BrevIOSAppDelegate.currentBackends = session.visibleBackends
+                presentPrivacyOnboardingIfNeeded(hasReaderCommandHandoff: readerCommandHandoff != nil)
+            }
+            .onChange(of: session.pendingInitialMailboxSelectionAccountID) { _, _ in
+                presentPrivacyOnboardingIfNeeded(hasReaderCommandHandoff: readerCommandHandoff != nil)
+            }
+            .onChange(of: isShowingAddAccountSheet) { _, isPresented in
+                if !isPresented {
+                    presentPrivacyOnboardingIfNeeded(hasReaderCommandHandoff: readerCommandHandoff != nil)
+                }
             }
             .onOpenURL { url in
                 handleIncomingURL(url)
@@ -582,6 +623,42 @@ struct BrevApp: App {
                 applyIOSAppIcon(variant)
             }
         )
+    }
+
+    @MainActor
+    private func presentPrivacyOnboardingIfNeeded(hasReaderCommandHandoff: Bool) {
+        guard sessionRestoreAttempted, !isShowingPrivacyOnboardingSheet, !hasReaderCommandHandoff else { return }
+        let isDeveloperBuild: Bool = {
+            #if DEBUG
+            true
+            #else
+            false
+            #endif
+        }()
+        let hasRealAccount = session.visibleBackends.contains {
+            $0.account.backendIdentifier != BrevAccount.demoBackendIdentifier
+        }
+        let isDemoSession = !session.visibleBackends.isEmpty && !hasRealAccount
+        let shouldPresent = PrivacyOnboardingPresentationPolicy.shouldPresentAfterFirstAccountSetup(
+            hasCompletedOnboarding: PrivacyOnboardingSettings.load().hasCompletedOnboarding,
+            isSuppressedByEnvironment: PrivacyOnboardingPresentationPolicy.isSuppressedByEnvironment(
+                isDeveloperBuild: isDeveloperBuild
+            ),
+            isDemoSession: isDemoSession,
+            didStartWithoutAccounts: didStartWithoutAccounts,
+            hasVisibleRealAccount: hasRealAccount,
+            hasPendingInitialMailboxSelection: session.pendingInitialMailboxSelectionAccountID != nil,
+            hasOtherModalPresented: isShowingAddAccountSheet
+                || showSettings
+                || showRestoreErrorAlert
+                || showCalendar
+                || showContacts
+                || showTasks,
+            hasExistingCustomizedSettings: PrivacyOnboardingChoices.hasExistingCustomizedSettings()
+        )
+        if shouldPresent {
+            isShowingPrivacyOnboardingSheet = true
+        }
     }
 
     @MainActor
