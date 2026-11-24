@@ -171,7 +171,7 @@ struct AgentAccessSection: View {
         SettingsGroup(
             title: String(localized: "Exposed tools", bundle: .module),
             subtitle: String(
-                localized: "Send, reply, forward, delete, move to Trash, and settings changes are permanently excluded.",
+                localized: "Sending mail, deleting or trashing mail, and credential or settings changes are permanently excluded.",
                 bundle: .module
             ),
             symbolName: "wrench.and.screwdriver"

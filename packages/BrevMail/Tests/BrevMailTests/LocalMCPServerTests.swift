@@ -789,6 +789,426 @@ struct LocalMCPServerTests {
         #expect(recovered.isRunning)
     }
     #endif
+
+    @Test("tools/list advertises create_draft schema and keeps send/delete/trash tools excluded")
+    func createDraftToolListedAndExclusionsPreserved() async throws {
+        let backend = MockBackend()
+        let settings = AgentAccessSettings(isEnabled: true, enabledAccountIDs: [backend.account.id])
+        let broker = LocalMCPBroker(
+            backendsProvider: { [backend] },
+            settingsProvider: { settings },
+            auditStore: AgentAccessAuditLogStore(fileURL: nil, postsChangeNotification: false)
+        )
+
+        let listResp = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 401,
+            "method": "tools/list"
+        ])
+        let result = try #require(listResp["result"] as? [String: Any])
+        let tools = try #require(result["tools"] as? [[String: Any]])
+        let toolNames = tools.compactMap { $0["name"] as? String }
+        #expect(toolNames.contains("create_draft"))
+        for forbidden in ["send_message", "delete_message", "move_to_trash", "empty_trash"] {
+            #expect(!toolNames.contains(forbidden))
+            let callResp = try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": "forbid-\(forbidden)",
+                "method": "tools/call",
+                "params": ["name": forbidden, "arguments": ["account_id": backend.account.id]]
+            ])
+            #expect((callResp["error"] as? [String: Any])?["code"] as? Int == -32601)
+        }
+
+        let draftTool = try #require(tools.first { ($0["name"] as? String) == "create_draft" })
+        let schema = try #require(draftTool["inputSchema"] as? [String: Any])
+        let properties = try #require(schema["properties"] as? [String: Any])
+        let required = Set(schema["required"] as? [String] ?? [])
+        #expect(required == ["account_id", "to", "subject", "body_text"])
+        #expect(properties["cc"] != nil)
+        #expect(properties["bcc"] != nil)
+        #expect(properties["in_reply_to_message_id"] != nil)
+        #expect(schema["additionalProperties"] as? Bool == false)
+    }
+
+    @Test("create_draft prompts with preview, saves via backend.save on approval, supports reply threading, and never sends")
+    func createDraftApprovalSavesDraftNeverSendsAndSupportsReplyThreading() async throws {
+        let account = BrevAccount(id: "acct-work", displayName: "Work", emailAddress: "work@northwind.example")
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let drafts = Folder(id: "drafts", name: "Drafts", role: .drafts)
+        let original = MessageHeader(
+            id: "msg-orig",
+            threadID: "thread-q3",
+            folderID: "inbox",
+            from: Correspondent(name: "Maya", email: "maya@northwind.example"),
+            to: [Correspondent(name: "Work", email: "work@northwind.example")],
+            subject: "Q3 contract",
+            snippet: "Please review the draft terms.",
+            date: Date(timeIntervalSince1970: 1_735_689_600),
+            messageID: "<orig-q3@northwind.example>"
+        )
+        let backend = MCPBodyStubBackend(
+            wrapped: MockBackend(
+                account: account,
+                folders: [inbox, drafts],
+                messagesByFolder: ["inbox": [original], "drafts": []]
+            ),
+            bodies: [:]
+        )
+
+        let settings = AgentAccessSettings(isEnabled: true, enabledAccountIDs: [account.id])
+        let auditStore = AgentAccessAuditLogStore(fileURL: nil, postsChangeNotification: false)
+        let coordinator = MCPApprovalCoordinator()
+        let broker = LocalMCPBroker(
+            backendsProvider: { [backend] },
+            settingsProvider: { settings },
+            auditStore: auditStore,
+            approvalCoordinator: coordinator,
+            approvalTimeoutSeconds: 2.0
+        )
+
+        let bodySecret = "Hello Maya,\n\n<script>alert(1)</script> ConfidentialBodyMarker991."
+        let draftTask = Task {
+            try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": 402,
+                "method": "tools/call",
+                "params": [
+                    "name": "create_draft",
+                    "arguments": [
+                        "account_id": account.id,
+                        "to": ["maya@northwind.example"],
+                        "cc": ["sam@northwind.example"],
+                        "bcc": ["audit@northwind.example"],
+                        "subject": "  Re: Q3 contract  ",
+                        "body_text": bodySecret,
+                        "in_reply_to_message_id": "msg-orig"
+                    ]
+                ]
+            ])
+        }
+
+        for _ in 0 ..< 100 where coordinator.activeRequest == nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let active = try #require(coordinator.activeRequest)
+        #expect(active.toolName == "create_draft")
+        #expect(active.accountID == account.id)
+        #expect(active.accountLabel == "Work")
+        let preview = try #require(active.draftPreview)
+        #expect(preview.to == ["maya@northwind.example"])
+        #expect(preview.cc == ["sam@northwind.example"])
+        #expect(preview.bcc == ["audit@northwind.example"])
+        #expect(preview.subject == "Re: Q3 contract")
+        #expect(preview.bodyPreview.contains("Hello Maya"))
+        #expect(preview.inReplyToSubject == "Q3 contract")
+
+        coordinator.approveActiveRequest()
+        let resp = try await draftTask.value
+        let payload = try parseToolTextPayload(resp)
+        let draftID = try #require(payload["draft_id"] as? String)
+        #expect(!draftID.isEmpty)
+        #expect(payload["account_id"] as? String == account.id)
+        #expect(payload["subject"] as? String == "Re: Q3 contract")
+        #expect(payload["recipient_count"] as? Int == 3)
+        #expect(payload["status"] as? String == "saved_as_draft")
+
+        #expect(backend.sendCallCount == 0)
+        #expect(backend.savedDrafts.count == 1)
+        let saved = try #require(backend.savedDrafts.first)
+        #expect(saved.id == draftID)
+        #expect(saved.to.map(\.email) == ["maya@northwind.example"])
+        #expect(saved.cc.map(\.email) == ["sam@northwind.example"])
+        #expect(saved.bcc.map(\.email) == ["audit@northwind.example"])
+        #expect(saved.subject == "Re: Q3 contract")
+        #expect(saved.threadID == "thread-q3")
+        #expect(saved.inReplyToMessageID == "<orig-q3@northwind.example>")
+        #expect(!saved.htmlBody.contains("<script>"))
+        #expect(saved.htmlBody.contains("ConfidentialBodyMarker991"))
+
+        let auditEntry = try #require(auditStore.entries().first)
+        #expect(auditEntry.toolName == "create_draft")
+        #expect(auditEntry.outcome == .approved)
+        #expect(auditEntry.accountID == account.id)
+        #expect(!auditEntry.parameterSummary.contains("ConfidentialBodyMarker991"))
+    }
+
+    @Test("create_draft denial, timeout, and mid-flight consent revocation never save or send")
+    func createDraftDenialTimeoutAndConsentRevocation() async throws {
+        let account = BrevAccount(id: "acct-work", displayName: "Work", emailAddress: "work@northwind.example")
+        let backend = MCPBodyStubBackend(
+            wrapped: MockBackend(
+                account: account,
+                folders: [Folder(id: "inbox", name: "Inbox", role: .inbox)],
+                messagesByFolder: [:]
+            ),
+            bodies: [:]
+        )
+
+        @MainActor
+        final class ToggleSettings {
+            var settings: AgentAccessSettings
+            init(_ settings: AgentAccessSettings) { self.settings = settings }
+        }
+        let state = ToggleSettings(AgentAccessSettings(isEnabled: true, enabledAccountIDs: [account.id]))
+        let auditStore = AgentAccessAuditLogStore(fileURL: nil, postsChangeNotification: false)
+        let coordinator = MCPApprovalCoordinator()
+        let broker = LocalMCPBroker(
+            backendsProvider: { [backend] },
+            settingsProvider: { state.settings },
+            auditStore: auditStore,
+            approvalCoordinator: coordinator,
+            approvalTimeoutSeconds: 2.0
+        )
+
+        let args: [String: Any] = [
+            "account_id": account.id,
+            "to": ["alice@example.org"],
+            "subject": "Quarterly update",
+            "body_text": "PrivateDraftBodyNeverLogged774"
+        ]
+
+        // 1. Denied approval -> -32010, no draft saved, logged without body.
+        let denyTask = Task {
+            try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": 410,
+                "method": "tools/call",
+                "params": ["name": "create_draft", "arguments": args]
+            ])
+        }
+        for _ in 0 ..< 100 where coordinator.activeRequest == nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        coordinator.denyActiveRequest()
+        let denyResp = try await denyTask.value
+        #expect((denyResp["error"] as? [String: Any])?["code"] as? Int == -32010)
+        #expect(backend.savedDrafts.isEmpty)
+        #expect(backend.sendCallCount == 0)
+        let denyAudit = try #require(auditStore.entries().first)
+        #expect(denyAudit.toolName == "create_draft")
+        #expect(denyAudit.outcome == .denied)
+        #expect(!denyAudit.parameterSummary.contains("PrivateDraftBodyNeverLogged774"))
+
+        // 2. Timeout -> -32011, no draft saved.
+        let fastBroker = LocalMCPBroker(
+            backendsProvider: { [backend] },
+            settingsProvider: { state.settings },
+            auditStore: auditStore,
+            approvalCoordinator: coordinator,
+            approvalTimeoutSeconds: 0.15
+        )
+        let timeoutResp = try await sendRPC(fastBroker, [
+            "jsonrpc": "2.0",
+            "id": 411,
+            "method": "tools/call",
+            "params": ["name": "create_draft", "arguments": args]
+        ])
+        #expect((timeoutResp["error"] as? [String: Any])?["code"] as? Int == -32011)
+        #expect(backend.savedDrafts.isEmpty)
+        #expect(auditStore.entries().first?.outcome == .timedOut)
+
+        // 3. Consent revoked while prompt is open -> -32001, no draft saved.
+        let revokeTask = Task {
+            try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": 412,
+                "method": "tools/call",
+                "params": ["name": "create_draft", "arguments": args]
+            ])
+        }
+        for _ in 0 ..< 100 where coordinator.activeRequest == nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        state.settings.isEnabled = false
+        coordinator.approveActiveRequest()
+        let revokeResp = try await revokeTask.value
+        #expect((revokeResp["error"] as? [String: Any])?["code"] as? Int == -32001)
+        #expect(backend.savedDrafts.isEmpty)
+        #expect(backend.sendCallCount == 0)
+        #expect(auditStore.entries().first?.outcome == .blockedDisabled)
+    }
+
+    @Test("create_draft rejects invalid arguments, out-of-scope reply IDs, and redacts sign-in codes in previews and audit logs")
+    func createDraftValidationAndSignInCodeRedaction() async throws {
+        let allowedAccount = BrevAccount(id: "acct-allowed", displayName: "Allowed", emailAddress: "allowed@example.org")
+        let hiddenAccount = BrevAccount(id: "acct-hidden", displayName: "Hidden", emailAddress: "hidden@example.org")
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let trash = Folder(id: "trash", name: "Trash", role: .trash)
+
+        let trashMsg = MessageHeader(
+            id: "msg-in-trash",
+            threadID: "t-trash",
+            folderID: "trash",
+            from: Correspondent(name: "Trash", email: "trash@example.org"),
+            subject: "Deleted secret",
+            snippet: "Secret",
+            date: Date(timeIntervalSince1970: 1_735_689_600)
+        )
+        let hiddenMsg = MessageHeader(
+            id: "msg-in-hidden",
+            threadID: "t-hidden",
+            folderID: "inbox",
+            from: Correspondent(name: "Hidden", email: "secret@example.org"),
+            subject: "Other account secret",
+            snippet: "Secret",
+            date: Date(timeIntervalSince1970: 1_735_689_600)
+        )
+        let allowedBackend = MCPBodyStubBackend(
+            wrapped: MockBackend(
+                account: allowedAccount,
+                folders: [inbox, trash],
+                messagesByFolder: ["inbox": [], "trash": [trashMsg]]
+            ),
+            bodies: [:]
+        )
+        let hiddenBackend = MCPBodyStubBackend(
+            wrapped: MockBackend(
+                account: hiddenAccount,
+                folders: [inbox],
+                messagesByFolder: ["inbox": [hiddenMsg]]
+            ),
+            bodies: [:]
+        )
+
+        let settings = AgentAccessSettings(isEnabled: true, enabledAccountIDs: [allowedAccount.id])
+        let auditStore = AgentAccessAuditLogStore(fileURL: nil, postsChangeNotification: false)
+        let coordinator = MCPApprovalCoordinator()
+        let broker = LocalMCPBroker(
+            backendsProvider: { [allowedBackend, hiddenBackend] },
+            settingsProvider: { settings },
+            auditStore: auditStore,
+            approvalCoordinator: coordinator,
+            approvalTimeoutSeconds: 2.0
+        )
+
+        // Disallowed account fails closed with -32002.
+        let hiddenAcctResp = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 420,
+            "method": "tools/call",
+            "params": [
+                "name": "create_draft",
+                "arguments": [
+                    "account_id": hiddenAccount.id,
+                    "to": ["alice@example.org"],
+                    "subject": "Hi",
+                    "body_text": "Hello"
+                ]
+            ]
+        ])
+        #expect((hiddenAcctResp["error"] as? [String: Any])?["code"] as? Int == -32002)
+        #expect(auditStore.entries().first?.outcome == .blockedAccount)
+
+        // Empty / malformed recipients fail closed without prompting or saving.
+        let badRecipientCases: [[String: Any]] = [
+            ["account_id": allowedAccount.id, "to": [], "subject": "Hi", "body_text": "Hello"],
+            ["account_id": allowedAccount.id, "to": ["not-an-email"], "subject": "Hi", "body_text": "Hello"],
+            ["account_id": allowedAccount.id, "to": ["you@corp.com@evil.com"], "subject": "Hi", "body_text": "Hello"],
+            [
+                "account_id": allowedAccount.id,
+                "to": ["alice@example.org\r\nBcc: evil@example.org"],
+                "subject": "Hi",
+                "body_text": "Hello"
+            ],
+            [
+                "account_id": allowedAccount.id,
+                "to": ["alice@example.org"],
+                "cc": ["bad-cc"],
+                "subject": "Hi",
+                "body_text": "Hello"
+            ],
+            ["account_id": allowedAccount.id, "to": ["alice@example.org"], "bcc": [""], "subject": "Hi", "body_text": "Hello"]
+        ]
+        for (idx, badArgs) in badRecipientCases.enumerated() {
+            let resp = try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": 421 + idx,
+                "method": "tools/call",
+                "params": ["name": "create_draft", "arguments": badArgs]
+            ])
+            #expect((resp["error"] as? [String: Any])?["code"] as? Int == -32602)
+            #expect(auditStore.entries().first?.outcome == .denied)
+        }
+
+        // Oversized body (> 64 KiB) fails closed.
+        let hugeBody = String(repeating: "a", count: LocalMCPBroker.maxDraftBodyBytes + 1)
+        let hugeResp = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 430,
+            "method": "tools/call",
+            "params": [
+                "name": "create_draft",
+                "arguments": [
+                    "account_id": allowedAccount.id,
+                    "to": ["alice@example.org"],
+                    "subject": "Huge",
+                    "body_text": hugeBody
+                ]
+            ]
+        ])
+        #expect((hugeResp["error"] as? [String: Any])?["code"] as? Int == -32602)
+
+        // Inaccessible in_reply_to_message_id (Trash, other account, or injected OTP) fails closed without leaking.
+        for badReplyID in ["msg-in-trash", "msg-in-hidden", "Your verification code is 839204"] {
+            let resp = try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": "reply-\(badReplyID)",
+                "method": "tools/call",
+                "params": [
+                    "name": "create_draft",
+                    "arguments": [
+                        "account_id": allowedAccount.id,
+                        "to": ["alice@example.org"],
+                        "subject": "Re: Secret",
+                        "body_text": "Hello",
+                        "in_reply_to_message_id": badReplyID
+                    ]
+                ]
+            ])
+            let error = try #require(resp["error"] as? [String: Any])
+            #expect(error["code"] as? Int == -32004)
+            #expect((error["message"] as? String)?.contains("839204") == false)
+            #expect((error["message"] as? String)?.contains("Trash") == false)
+            let lastAudit = try #require(auditStore.entries().first)
+            #expect(!lastAudit.parameterSummary.contains("839204"))
+            #expect(!lastAudit.parameterSummary.contains("msg-in-trash"))
+            #expect(!lastAudit.parameterSummary.contains("msg-in-hidden"))
+        }
+
+        // Sign-in code redaction in draft approval preview and audit log.
+        let otpTask = Task {
+            try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": 440,
+                "method": "tools/call",
+                "params": [
+                    "name": "create_draft",
+                    "arguments": [
+                        "account_id": allowedAccount.id,
+                        "to": ["alice@example.org"],
+                        "subject": "Your verification code is 839204",
+                        "body_text": "Your Acme sign-in verification code is 839204. SecretMarker440."
+                    ]
+                ]
+            ])
+        }
+        for _ in 0 ..< 100 where coordinator.activeRequest == nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let otpPreview = try #require(coordinator.activeRequest?.draftPreview)
+        #expect(!otpPreview.subject.contains("839204"))
+        #expect(!otpPreview.bodyPreview.contains("839204"))
+        coordinator.denyActiveRequest()
+        _ = try await otpTask.value
+
+        let otpAudit = try #require(auditStore.entries().first)
+        #expect(!otpAudit.parameterSummary.contains("839204"))
+        #expect(!otpAudit.parameterSummary.contains("SecretMarker440"))
+        #expect(allowedBackend.savedDrafts.isEmpty)
+        #expect(hiddenBackend.savedDrafts.isEmpty)
+        #expect(allowedBackend.sendCallCount == 0)
+    }
 }
 
 private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding, @unchecked Sendable {
@@ -799,6 +1219,8 @@ private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding,
     private let lock = NSLock()
     private var fetchCount = 0
     private var searchCount = 0
+    private var recordedSavedDrafts: [Draft] = []
+    private var recordedSendCount = 0
 
     var networkBodyFetchCount: Int {
         lock.withLock { fetchCount }
@@ -806,6 +1228,14 @@ private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding,
 
     var searchCallCount: Int {
         lock.withLock { searchCount }
+    }
+
+    var savedDrafts: [Draft] {
+        lock.withLock { recordedSavedDrafts }
+    }
+
+    var sendCallCount: Int {
+        lock.withLock { recordedSendCount }
     }
 
     func resetSearchCallCount() {
@@ -876,9 +1306,19 @@ private final class MCPBodyStubBackend: MailBackend, CachedMessageBodyProviding,
         try await wrapped.delete(messageIDs: messageIDs)
     }
 
-    func save(draft: Draft) async throws -> Draft { try await wrapped.save(draft: draft) }
+    func save(draft: Draft) async throws -> Draft {
+        let saved = try await wrapped.save(draft: draft)
+        lock.withLock { recordedSavedDrafts.append(saved) }
+        return saved
+    }
+
     func discard(draftID: String) async throws { try await wrapped.discard(draftID: draftID) }
-    func send(draft: Draft) async throws -> SendResult { try await wrapped.send(draft: draft) }
+
+    func send(draft: Draft) async throws -> SendResult {
+        lock.withLock { recordedSendCount += 1 }
+        return try await wrapped.send(draft: draft)
+    }
+
     func search(_ query: SearchQuery) async throws -> [MessageHeader] {
         lock.withLock { searchCount += 1 }
         var results = try await wrapped.search(query)

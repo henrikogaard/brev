@@ -17161,6 +17161,91 @@
           }
         }
       }
+    },
+    "Create draft": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create draft"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opprett utkast"
+          }
+        }
+      }
+    },
+    "%@ wants to save a draft in %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wants to save a draft in %@."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ønsker å lagre et utkast i %@."
+          }
+        }
+      }
+    },
+    "In reply to": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In reply to"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Som svar på"
+          }
+        }
+      }
+    },
+    "Draft preview truncated": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Draft preview truncated"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forhåndsvisning av utkast er avkortet"
+          }
+        }
+      }
+    },
+    "This only saves a draft for your manual review. External agents can never send or delete mail.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This only saves a draft for your manual review. External agents can never send or delete mail."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dette lagrer kun et utkast til manuell gjennomgang. Eksterne agenter kan aldri sende eller slette e-post."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

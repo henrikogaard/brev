@@ -99,7 +99,7 @@ struct AgentAccessSettingsTests {
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
     }
 
-    @Test("exposed tool inventory lists only the six ADR-0095 tools and excludes send/delete")
+    @Test("exposed tool inventory lists all seven local MCP tools and excludes send/delete")
     func exposedToolsInventory() {
         let names = AgentAccessToolSpec.exposedTools.map(\.name)
         #expect(names == [
@@ -108,10 +108,14 @@ struct AgentAccessSettingsTests {
             "search_messages",
             "read_message",
             "archive_messages",
-            "label_messages"
+            "label_messages",
+            "create_draft"
         ])
+        for forbidden in ["send_message", "delete_message", "move_to_trash", "empty_trash"] {
+            #expect(!names.contains(forbidden))
+        }
         let changeTools = AgentAccessToolSpec.exposedTools.filter { $0.permission == .approvalRequired }.map(\.name)
-        #expect(changeTools == ["archive_messages", "label_messages"])
+        #expect(changeTools == ["archive_messages", "label_messages", "create_draft"])
 
         let socketPath = "/Users/demo/Library/Group Containers/group.eu.brevmail.brev/mcp.sock"
         let jsonSnippet = AgentAccessSocketConfiguration.clientConfigSnippet(

@@ -61,5 +61,42 @@ struct MCPApprovalSheetSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    @Test("approval sheet renders create_draft preview in light and dark themes", arguments: ["light", "dark"])
+    func createDraftApprovalSheetPresentation(_ mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let request = MCPApprovalRequest(
+            clientName: "Claude",
+            clientPID: 4242,
+            toolName: "create_draft",
+            accountID: "acct-work",
+            accountLabel: "Work",
+            targetFolderName: nil,
+            messageCount: 0,
+            previews: [],
+            draftPreview: MCPApprovalRequest.DraftPreview(
+                to: ["maya@northwind.example"],
+                cc: ["sam@northwind.example"],
+                bcc: [],
+                subject: "Re: Q3 vendor contract renewal",
+                bodyPreview: "Hi Maya,\n\nThanks for sending over the updated terms. I will review section 4 and follow up tomorrow morning.",
+                isBodyTruncated: false,
+                inReplyToSubject: "Q3 vendor contract renewal"
+            ),
+            createdAt: Date(timeIntervalSince1970: 1_735_689_600)
+        )
+        let view = MCPApprovalSheetView(request: request, onApprove: {}, onDeny: {})
+            .frame(width: 440, height: 390, alignment: .top)
+            .background(theme.bgPrimary.color)
+            .environment(\.brevTheme, theme)
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 440, height: 390)),
+            named: "mcp-approval-sheet-create-draft-" + mode,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
 }
 #endif

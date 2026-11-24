@@ -38,7 +38,6 @@ macOS-only, device-local Model Context Protocol (MCP) bridge letting local tools
 - **Consent & visibility:** Master toggle and per-account grants default to off, are device-local only, and are excluded from `.brevbackup` and iCloud sync. Non-opted-in accounts are invisible.
 - **Tools:**
   - *Read (cache-only, Trash/Spam excluded, sign-in codes redacted):* `list_accounts`, `list_folders`, `search_messages` (max 50/call), `read_message` (plain text + attachment names).
-  - *Change (per-call in-app approval sheet, max 25 messages, 60 s fail-closed timeout, single active prompt):* `archive_messages`, `label_messages` (Trash/Spam blocked).
-  - *Planned safe addition (relaxed from former ADR-0095):* **`create_draft`** (creates a Draft for the user to review and send manually in Brev; never sends).
-  - *Permanently excluded:* `send_message`, `delete_message`, `move_to_trash`, credential access, and settings mutations.
+  - *Change (per-call in-app approval sheet, 60 s fail-closed timeout, single active prompt):* `archive_messages` and `label_messages` (max 25 messages, Trash/Spam blocked), plus `create_draft` (plain-text body up to 64 KiB, validated recipients, optional in-scope `in_reply_to_message_id`, draft preview in the approval sheet, saves a Draft for manual review in Brev and never sends).
+  - *Permanently excluded:* `send_message`, `delete_message`, `move_to_trash`, `empty_trash`, credential access, and settings mutations.
 - **Audit log:** Bounded 1,000-entry backup-excluded local ring buffer (`agent-access-audit.json`) viewable and clearable in Settings → Privacy & Security → Agent access; never logs message bodies, snippets, or unresolved caller-supplied IDs.

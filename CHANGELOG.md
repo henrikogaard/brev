@@ -4,6 +4,13 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Local MCP `create_draft` tool (#6): local MCP clients can now propose
+  plain-text drafts (with optional reply threading via an in-scope
+  `in_reply_to_message_id`) behind a mandatory per-call in-app approval sheet
+  showing account, recipients, subject, and a bounded redacted body preview.
+  Approved calls save a draft for manual review via `backend.save(draft:)` and
+  never send mail; `send_message`, `delete_message`, `move_to_trash`,
+  `empty_trash`, and credential/settings mutations remain permanently excluded.
 - Replaced the 95-file `ADRs/` directory and protected-path `adr-required` CI
   gate with 10 living subsystem design documents under `docs/design/`,
   discarding 24 obsolete/micromanagement records and relaxing overly

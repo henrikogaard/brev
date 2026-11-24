@@ -1014,18 +1014,22 @@ TCP or UDP ports and makes no network requests of its own.
   sync.
 - **Bounded scope:** Read tools return only already-cached mail for enabled
   accounts (capped at 50 search results, excluding Trash and Spam, with detected
-  sign-in codes and sign-in links redacted). `archive_messages` and
-  `label_messages` require explicit per-call confirmation in Brev (at most 25
-  messages per request, with a 60-second automatic deny timeout and no
-  session-wide auto-approve). Sending mail, deleting or trashing mail, and
-  changing credentials or settings are not exposed.
+  sign-in codes and sign-in links redacted). `archive_messages`,
+  `label_messages` (at most 25 messages per request), and `create_draft`
+  (plain-text draft up to 64 KiB, saved as a Draft for your manual review and
+  never sent) require explicit per-call confirmation in Brev with a 60-second
+  automatic deny timeout and no session-wide auto-approve. Sending mail,
+  deleting or trashing mail, emptying Trash, and changing credentials or
+  settings are not exposed.
 - **External client boundary:** When you enable Agent access and connect a local
   tool such as Claude Code or Codex CLI, mail returned by Brev leaves Brev to
   that local tool and may then be sent to that tool's configured model provider
   under its privacy policy.
 - **Local audit log:** Every request (allowed, approved, denied, or blocked) is
   recorded in a local, backup-excluded 1,000-entry log you can review or clear
-  at any time in **Settings → Privacy & Security → Agent access**.
+  at any time in **Settings → Privacy & Security → Agent access**. Audit entries
+  never store raw message or draft bodies, sign-in codes, or unresolved
+  caller-supplied IDs.
 
 **How to disable:** Settings → Privacy & Security → Agent access → turn off
 **Allow local agents to access Brev** (or turn off individual accounts).
