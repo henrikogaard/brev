@@ -245,6 +245,7 @@ public final class OnDeviceThreadTriageStore {
         let token: UUID
         let fingerprint: String
         let task: Task<Void, Never>
+        var needsBodyUpgradeRecheck = false
     }
 
     @ObservationIgnored
@@ -683,6 +684,12 @@ public final class OnDeviceThreadTriageStore {
                 continue
             }
             if activeTasksByOwner[ownerID]?[key]?.fingerprint == headerFP {
+                // If an earlier pass is still in flight (e.g. a snippet pass or a cache check
+                // that already observed nil before a body was cached), flag one coalesced recheck
+                // so the new schedule call is never silently dropped.
+                if canUpgradeFromCachedBody {
+                    activeTasksByOwner[ownerID]?[key]?.needsBodyUpgradeRecheck = true
+                }
                 continue
             }
 
@@ -697,26 +704,38 @@ public final class OnDeviceThreadTriageStore {
                         }
                     }
                 }
-                guard !Task.isCancelled else { return }
-                let liveSettings = resolveLiveSettings(
-                    fallback: settings,
-                    overrideProvider: liveSettingsProvider
-                )
-                guard liveSettings.isProactiveOnDeviceTriageAvailable else {
-                    clearAll()
-                    return
+                while !Task.isCancelled {
+                    if activeTasksByOwner[ownerID]?[key]?.token == token {
+                        activeTasksByOwner[ownerID]?[key]?.needsBodyUpgradeRecheck = false
+                    }
+                    let liveSettings = resolveLiveSettings(
+                        fallback: settings,
+                        overrideProvider: liveSettingsProvider
+                    )
+                    guard liveSettings.isProactiveOnDeviceTriageAvailable else {
+                        clearAll()
+                        return
+                    }
+                    _ = await triageIfEligible(
+                        accountID: item.accountID,
+                        headers: resolved.orderedHeaders,
+                        folder: item.folder,
+                        allFolders: item.allFolders,
+                        settings: liveSettings,
+                        liveSettingsProvider: liveSettingsProvider,
+                        backend: item.backend,
+                        cachedBodyProvider: item.cachedBodyProvider,
+                        sourceID: item.sourceID
+                    )
+                    guard !Task.isCancelled,
+                          activeTasksByOwner[ownerID]?[key]?.token == token,
+                          activeTasksByOwner[ownerID]?[key]?.needsBodyUpgradeRecheck == true,
+                          item.cachedBodyProvider != nil,
+                          hasFullBodyCoverageByKey[key] != true
+                    else {
+                        break
+                    }
                 }
-                _ = await triageIfEligible(
-                    accountID: item.accountID,
-                    headers: resolved.orderedHeaders,
-                    folder: item.folder,
-                    allFolders: item.allFolders,
-                    settings: liveSettings,
-                    liveSettingsProvider: liveSettingsProvider,
-                    backend: item.backend,
-                    cachedBodyProvider: item.cachedBodyProvider,
-                    sourceID: item.sourceID
-                )
             }
             activeTasksByOwner[ownerID, default: [:]][key] = ScheduledTaskEntry(
                 token: token,

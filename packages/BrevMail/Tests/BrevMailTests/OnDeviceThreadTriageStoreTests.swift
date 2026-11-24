@@ -96,6 +96,63 @@ private final class RecordingCachedBodyProvider: CachedMessageBodyProviding, @un
     }
 }
 
+private actor GatedCachedBodyProvider: CachedMessageBodyProviding {
+    private var bodies: [MessageHeader.ID: MessageBody] = [:]
+    private var callCount = 0
+    private var pausedCallNumber: Int?
+    private var pausedStarted = false
+    private var pausedStartWaiter: CheckedContinuation<Void, Never>?
+    private var pausedReleased = false
+    private var pausedReleaseWaiter: CheckedContinuation<Void, Never>?
+
+    func pauseNextRead(onCall callNumber: Int) {
+        pausedCallNumber = callNumber
+        pausedStarted = false
+        pausedReleased = false
+    }
+
+    func setBody(_ body: MessageBody, for messageID: MessageHeader.ID) {
+        bodies[messageID] = body
+    }
+
+    func waitUntilPausedCallStarted() async {
+        if pausedStarted { return }
+        await withCheckedContinuation { continuation in
+            pausedStartWaiter = continuation
+        }
+    }
+
+    func releasePausedCall() {
+        pausedReleased = true
+        if let waiter = pausedReleaseWaiter {
+            pausedReleaseWaiter = nil
+            waiter.resume()
+        }
+    }
+
+    func cachedBody(for messageID: MessageHeader.ID, sourceID: MailSourceID?) async -> MessageBody? {
+        _ = sourceID
+        callCount += 1
+        let currentCall = callCount
+        // Snapshot body BEFORE suspending so the paused call simulates an earlier check
+        // that already observed `nil` before a new body was written to cache.
+        let snapshot = bodies[messageID]
+        if pausedCallNumber == currentCall {
+            pausedStarted = true
+            if let waiter = pausedStartWaiter {
+                pausedStartWaiter = nil
+                waiter.resume()
+            }
+            if !pausedReleased {
+                await withCheckedContinuation { continuation in
+                    pausedReleaseWaiter = continuation
+                }
+            }
+        }
+        return snapshot
+    }
+}
+
 private actor GatedViewportTriageBackend: AIBackend {
     nonisolated let identifier = "gated-viewport-on-device"
     nonisolated let displayName = "Gated Viewport On-Device"
@@ -164,6 +221,21 @@ struct OnDeviceThreadTriageStoreTests {
         consentGiven: true,
         proactiveOnDeviceTriageEnabled: true
     )
+
+    private func waitUntil(
+        timeoutSeconds: TimeInterval = 8.0,
+        pollNanoseconds: UInt64 = 10_000_000,
+        condition: @MainActor () async -> Bool
+    ) async throws -> Bool {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while Date() < deadline {
+            if await condition() {
+                return true
+            }
+            try await Task.sleep(nanoseconds: pollNanoseconds)
+        }
+        return await condition()
+    }
 
     private func makeHeader(
         id: String = "msg-1",
@@ -325,7 +397,9 @@ struct OnDeviceThreadTriageStoreTests {
             proactiveOnDeviceTriageEnabled: false
         )
         optedOut.save(to: defaults)
-        try await Task.sleep(nanoseconds: 180_000_000)
+        let cleared = try await waitUntil { store.insightsByKey.isEmpty }
+        #expect(cleared)
+        try await Task.sleep(nanoseconds: 150_000_000)
 
         #expect(store.insightsByKey.isEmpty)
         let totalCalls = await onDeviceBackend.recordedPrompts.count
@@ -700,13 +774,11 @@ struct OnDeviceThreadTriageStoreTests {
 
         let key5 = OnDeviceThreadTriageStore.cacheKey(accountID: "acct-1", header: t5)
         let key6 = OnDeviceThreadTriageStore.cacheKey(accountID: "acct-1", header: t6)
-        for _ in 0 ..< 50 {
-            if store.insightsByKey[key5] != nil, store.insightsByKey[key6] != nil {
-                break
-            }
-            try await Task.sleep(nanoseconds: 10_000_000)
+        let newRowsTriaged = try await waitUntil {
+            store.insightsByKey[key5] != nil && store.insightsByKey[key6] != nil
         }
 
+        #expect(newRowsTriaged)
         #expect(store.insightsByKey[key5] != nil)
         #expect(store.insightsByKey[key6] != nil)
 
@@ -749,14 +821,13 @@ struct OnDeviceThreadTriageStoreTests {
             backend: backend,
             cachedBodyProvider: bodyProvider
         )
-        for _ in 0 ..< 50 {
-            if store.insightsByKey[key] != nil { break }
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
+        let initialReady = try await waitUntil { store.insightsByKey[key] != nil }
+        #expect(initialReady)
         #expect(store.insightsByKey[key]?.summary == "Snippet-only summary before body cached.")
         #expect(await backend.recordedPrompts.count == 1)
 
         // 2. Rescheduling while body is still absent checks cache-only provider and avoids re-running the model.
+        let readsBeforeSecondPass = bodyProvider.requestedIDs.count
         store.scheduleVisibleThreads(
             ownerID: "list-upgrade",
             accountID: "acct-1",
@@ -766,10 +837,14 @@ struct OnDeviceThreadTriageStoreTests {
             backend: backend,
             cachedBodyProvider: bodyProvider
         )
-        try await Task.sleep(nanoseconds: 30_000_000)
+        let secondPassCheckedCache = try await waitUntil {
+            bodyProvider.requestedIDs.count > readsBeforeSecondPass
+        }
+        #expect(secondPassCheckedCache)
         #expect(await backend.recordedPrompts.count == 1)
 
-        // 3. Body becomes locally cached -> scheduleVisibleThreads upgrades the insight automatically.
+        // 3. Body becomes locally cached -> scheduleVisibleThreads upgrades the insight automatically,
+        // even if step 2's cache check task is still unwinding.
         bodyProvider.setBody(
             MessageBody(
                 messageID: "msg-upgrade",
@@ -786,16 +861,14 @@ struct OnDeviceThreadTriageStoreTests {
             backend: backend,
             cachedBodyProvider: bodyProvider
         )
-        for _ in 0 ..< 50 {
-            if store.insightsByKey[key]?.summary == "Full cached body confirms Friday 3 PM deadline." {
-                break
-            }
-            try await Task.sleep(nanoseconds: 10_000_000)
+        let upgraded = try await waitUntil {
+            store.insightsByKey[key]?.summary == "Full cached body confirms Friday 3 PM deadline."
         }
+        #expect(upgraded)
         #expect(store.insightsByKey[key]?.priority == .urgent)
         #expect(store.insightsByKey[key]?.summary == "Full cached body confirms Friday 3 PM deadline.")
         let prompts = await backend.recordedPrompts
-        #expect(prompts.count == 2)
+        try #require(prompts.count == 2)
         #expect(prompts[1].contains("Full cached body confirming the binding deadline is Friday 3 PM."))
 
         // 4. Once full body coverage is cached, subsequent reschedules skip synchronously without extra cache reads.
@@ -812,6 +885,83 @@ struct OnDeviceThreadTriageStoreTests {
         try await Task.sleep(nanoseconds: 20_000_000)
         #expect(bodyProvider.requestedIDs.count == readsAfterUpgrade)
         #expect(await backend.recordedPrompts.count == 2)
+    }
+
+    @Test("rescheduling after body caches while an earlier cache check is in flight does not drop upgrade")
+    func scheduleVisibleThreadsRechecksWhenBodyCachesDuringInFlightPass() async throws {
+        let store = OnDeviceThreadTriageStore(defaults: nil)
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let header = makeHeader(
+            id: "msg-race-upgrade",
+            threadID: "thread-race-upgrade",
+            subject: "Contract terms",
+            snippet: "Short preview."
+        )
+        let key = OnDeviceThreadTriageStore.cacheKey(accountID: "acct-1", header: header)
+        let bodyProvider = GatedCachedBodyProvider()
+        let backend = StubMailTriageAIBackend(
+            isOnDeviceZeroNetwork: true,
+            responses: [
+                #"{"priority":"normal","summary":"Initial snippet summary."}"#,
+                #"{"priority":"urgent","summary":"Upgraded after in-flight cache check."}"#
+            ]
+        )
+
+        // First pass caches snippet-only insight (body read #1 returns nil).
+        store.scheduleVisibleThreads(
+            ownerID: "list-race",
+            accountID: "acct-1",
+            threadGroups: [[header]],
+            folder: inbox,
+            settings: enabledSettings,
+            backend: backend,
+            cachedBodyProvider: bodyProvider
+        )
+        let initialReady = try await waitUntil { store.insightsByKey[key] != nil }
+        #expect(initialReady)
+
+        // Second pass pauses inside cachedBody (read #2) after observing nil.
+        await bodyProvider.pauseNextRead(onCall: 2)
+        store.scheduleVisibleThreads(
+            ownerID: "list-race",
+            accountID: "acct-1",
+            threadGroups: [[header]],
+            folder: inbox,
+            settings: enabledSettings,
+            backend: backend,
+            cachedBodyProvider: bodyProvider
+        )
+        await bodyProvider.waitUntilPausedCallStarted()
+
+        // While read #2 is still in flight, the body is written to cache and scheduleVisibleThreads fires again.
+        await bodyProvider.setBody(
+            MessageBody(
+                messageID: "msg-race-upgrade",
+                plainText: "Urgent full body written while earlier check was in flight."
+            ),
+            for: "msg-race-upgrade"
+        )
+        store.scheduleVisibleThreads(
+            ownerID: "list-race",
+            accountID: "acct-1",
+            threadGroups: [[header]],
+            folder: inbox,
+            settings: enabledSettings,
+            backend: backend,
+            cachedBodyProvider: bodyProvider
+        )
+
+        // Release paused read #2 (which returns its pre-write nil snapshot).
+        // The store must run one coalesced recheck and upgrade the summary automatically.
+        await bodyProvider.releasePausedCall()
+        let upgraded = try await waitUntil {
+            store.insightsByKey[key]?.summary == "Upgraded after in-flight cache check."
+        }
+        #expect(upgraded)
+        #expect(store.insightsByKey[key]?.priority == .urgent)
+        let prompts = await backend.recordedPrompts
+        try #require(prompts.count == 2)
+        #expect(prompts[1].contains("Urgent full body written while earlier check was in flight."))
     }
 
     #if os(macOS)
@@ -952,8 +1102,11 @@ struct OnDeviceThreadTriageStoreTests {
         // Opting out in UserDefaults clears cached insights across both surfaces immediately
         AIWriterSettings(isEnabled: true, consentGiven: true, proactiveOnDeviceTriageEnabled: false)
             .save(to: defaults)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        #expect(store.insightsByKey.isEmpty)
+        let clearedAfterOptOut = try await waitUntil {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+            return store.insightsByKey.isEmpty
+        }
+        #expect(clearedAfterOptOut)
     }
     #endif
 

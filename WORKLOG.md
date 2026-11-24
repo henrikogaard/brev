@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-24 — Agent — Proactive Opt-In On-Device AI (#4, PR #352 CI race fix)
+
+- Goal: fix the CI failure in `OnDeviceThreadTriageStoreTests.scheduleVisibleThreadsUpgradesSnippetSummaryOnceBodyIsCached` and eliminate the underlying body-upgrade scheduling race under heavy parallel CI load.
+- Changes:
+  - `BrevMail`: added `needsBodyUpgradeRecheck` coalescing on `OnDeviceThreadTriageStore.ScheduledTaskEntry` so calling `scheduleVisibleBatch`/`scheduleVisibleThreads` after a message body enters local cache while an earlier pass for the same `(ownerID, key, headerFP)` is still in flight triggers one coalesced recheck instead of silently dropping the upgrade.
+  - `BrevMailTests`: replaced short fixed-count polling loops and sleeps in `OnDeviceThreadTriageStoreTests` with a shared 8-second `waitUntil` helper, guarded `prompts.count == 2` via `try #require` before indexing `prompts[1]`, and added a deterministic gated-provider regression test (`scheduleVisibleThreadsRechecksWhenBodyCachesDuringInFlightPass`).
+- Verification: repeated `swift test --package-path packages/BrevMail --filter OnDeviceThreadTriageStoreTests`, full `swift test --package-path packages/BrevMail --skip SnapshotTests`, `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
 ## 2026-11-24 — Agent — Proactive Opt-In On-Device AI (#4, PR #352 round-2 review fixes)
 
 - Goal: address the 4 follow-up findings from Devin Review round 2 on PR #352 (`feature/proactive-on-device-ai`).
