@@ -1036,20 +1036,11 @@ struct BackgroundRecentIndexingCoordinatorTests {
             requireUnmeteredNetworkAndPower: true
         )
 
-        var enteredAtt2Continuation: CheckedContinuation<Void, Never>?
-        var releaseAtt2Continuation: CheckedContinuation<Void, Never>?
+        let gate = AsyncPauseGate()
 
         spy.onDownloadAttachment = { attachmentID in
             guard attachmentID == "att-2" else { return }
-            await MainActor.run {
-                enteredAtt2Continuation?.resume()
-                enteredAtt2Continuation = nil
-            }
-            await withCheckedContinuation { continuation in
-                Task { @MainActor in
-                    releaseAtt2Continuation = continuation
-                }
-            }
+            await gate.markEnteredAndWaitUntilReleased()
             throw CancellationError()
         }
 
@@ -1063,16 +1054,11 @@ struct BackgroundRecentIndexingCoordinatorTests {
             batchInterval: .zero
         )
 
-        let enteredAtt2 = Task<Void, Never> { @MainActor in
-            await withCheckedContinuation { continuation in
-                enteredAtt2Continuation = continuation
-            }
-        }
         let passTask = Task<Void, Never> { @MainActor in
             await coordinator.runPassNow()
         }
 
-        await enteredAtt2.value
+        await gate.waitUntilEntered()
         // Attachment 1 was saved incrementally while the generation was still active.
         #expect(store.load(accountID: spy.account.id).ftsIndexedAttachmentIDsByMessage["m1"] == ["att-1"])
 
@@ -1081,11 +1067,48 @@ struct BackgroundRecentIndexingCoordinatorTests {
         await coordinator.resetIndexState()
         #expect(store.load(accountID: spy.account.id) == .empty)
 
-        releaseAtt2Continuation?.resume()
-        releaseAtt2Continuation = nil
+        await gate.release()
         await passTask.value
 
         // Stale cancelled generation must NOT restore old progress after resetIndexState().
         #expect(store.load(accountID: spy.account.id) == .empty)
+    }
+}
+
+/// Race-free synchronization gate for deterministic mid-flight cancellation tests.
+private actor AsyncPauseGate {
+    private var entered = false
+    private var released = false
+    private var enterWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func markEnteredAndWaitUntilReleased() async {
+        entered = true
+        let waiters = enterWaiters
+        enterWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+
+        guard !released else { return }
+        await withCheckedContinuation { continuation in
+            releaseWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilEntered() async {
+        guard !entered else { return }
+        await withCheckedContinuation { continuation in
+            enterWaiters.append(continuation)
+        }
+    }
+
+    func release() {
+        released = true
+        let waiters = releaseWaiters
+        releaseWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 }

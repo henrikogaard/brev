@@ -1,5 +1,18 @@
 # Worklog
 
+## 2026-11-24 — Agent — PR #353 round-3 review fixes (Issue #7)
+
+- Goal: address all 4 round-3 Devin Review findings on PR #353 (`feature/background-recent-indexing`) in one commit.
+- Changes:
+  - `GmailAPIBackend.localAttachmentSearchMatches`: enforce `!scope.includeSpamTrash` exclusion unconditionally across custom-label searches as well as `ALL_MAIL` / unscoped searches, and skip local attachment FTS merge when free-text query contains negations (`-term`), boolean/grouping operators (`OR`/`AND`/`NOT`/`{}`/`()`), or inline Gmail operators (`from:`, `subject:`, `has:`, `label:`, etc.).
+  - `SQLiteSyncStore.indexBodyText` & `InMemorySyncStore.indexBodyText`: only preserve an existing raw-MIME search row when the stored raw body is confirmed (`recoveryState?.sourceConfirmed != false`), allowing fresh structured body text to populate FTS without unlocking quarantined legacy raw bodies.
+  - `BackgroundRecentIndexingCoordinatorTests`: replaced the two-continuation race in `resetIndexStateBlocksStaleCancelledGenerationWrites` with a race-free `AsyncPauseGate` actor.
+- Verification:
+  - `swift test --package-path packages/BrevSyncEngine --filter 'AttachmentSearchIndexTests|IMAPLegacyRecoveryTests'`
+  - `swift test --package-path packages/BrevGmail --filter GmailAttachmentIndexTests`
+  - `swift test --package-path packages/BrevMail --filter BackgroundRecentIndexingCoordinatorTests`
+  - `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+
 ## 2026-11-24 — Agent — PR #353 round-2 review fixes (Issue #7)
 
 - Goal: address all 4 round-2 Devin Review edge cases on PR #353 (`feature/background-recent-indexing`) in one commit.

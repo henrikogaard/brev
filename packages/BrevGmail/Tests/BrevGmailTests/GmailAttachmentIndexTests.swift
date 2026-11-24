@@ -281,6 +281,24 @@ struct GmailAttachmentIndexTests {
         let merged: [MessageHeader] = try await backend.search(SearchQuery(text: "solstice-clause-88"))
         #expect(merged.map(\.id) == ["msg-online", "msg-local-att"])
 
+        // Custom-label online search also excludes messages carrying TRASH alongside that label.
+        let workLabelHits: [MessageHeader] = try await backend.search(SearchQuery(
+            text: "solstice-clause-88",
+            folderID: "Label_Work"
+        ))
+        #expect(workLabelHits.map(\.id) == ["msg-online", "msg-local-att"])
+
+        // Negation and Gmail operator queries skip local FTS merge so Gmail remains authoritative.
+        let negatedHits: [MessageHeader] = try await backend.search(SearchQuery(
+            text: "solstice-clause-88 -draft"
+        ))
+        #expect(negatedHits.map(\.id) == ["msg-online"])
+
+        let operatorHits: [MessageHeader] = try await backend.search(SearchQuery(
+            text: "solstice-clause-88 from:alice@example.org"
+        ))
+        #expect(operatorHits.map(\.id) == ["msg-online"])
+
         // Metadata filter excludes local attachment hit when sender does not match.
         let aliceOnly: [MessageHeader] = try await backend.search(SearchQuery(
             text: "solstice-clause-88",

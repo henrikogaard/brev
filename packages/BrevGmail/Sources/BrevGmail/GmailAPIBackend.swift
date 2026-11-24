@@ -1025,7 +1025,10 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         generation: UUID
     ) async throws -> [MessageHeader] {
         let trimmedText = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty, let localSearchIndex else { return [] }
+        guard !trimmedText.isEmpty,
+              Self.isPlainPositiveSearchText(trimmedText),
+              let localSearchIndex
+        else { return [] }
         let attachmentHitIDs = await localSearchIndex.matchingAttachmentMessageIDs(
             for: query,
             account: account
@@ -1040,14 +1043,11 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             guard let message = try? await store.message(accountID: account.id, messageID: messageID) else {
                 continue
             }
-            if let folderID = query.folderID, !folderID.isEmpty {
-                if folderID == "ALL_MAIL" {
-                    guard !message.labelIDs.contains("SPAM"), !message.labelIDs.contains("TRASH") else { continue }
-                } else if !message.labelIDs.contains(folderID) {
-                    continue
-                }
-            } else if !scope.includeSpamTrash {
+            if !scope.includeSpamTrash {
                 guard !message.labelIDs.contains("SPAM"), !message.labelIDs.contains("TRASH") else { continue }
+            }
+            if let folderID = query.folderID, !folderID.isEmpty, folderID != "ALL_MAIL" {
+                guard message.labelIDs.contains(folderID) else { continue }
             }
             let header = Self.header(
                 from: message,
@@ -1058,6 +1058,27 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             matches.append(header)
         }
         return matches.sorted { $0.date == $1.date ? $0.id > $1.id : $0.date > $1.date }
+    }
+
+    /// Returns `true` only when free-text search terms contain plain positive keywords
+    /// (no negations like `-draft`, Gmail boolean/grouping syntax like `OR`/`{}`/`()`,
+    /// or inline Gmail operators like `from:`/`subject:`/`has:`/`label:` that local FTS
+    /// cannot faithfully enforce against server semantics).
+    private static func isPlainPositiveSearchText(_ text: String) -> Bool {
+        if text.contains(where: { $0 == "(" || $0 == ")" || $0 == "{" || $0 == "}" }) {
+            return false
+        }
+        let tokens = text.split(whereSeparator: \.isWhitespace)
+        guard !tokens.isEmpty else { return false }
+        for rawToken in tokens {
+            let token = String(rawToken)
+            if token.hasPrefix("-") { return false }
+            if token == "OR" || token == "AND" || token == "NOT" { return false }
+            if token.range(of: #"^[A-Za-z][A-Za-z0-9_-]*:"#, options: .regularExpression) != nil {
+                return false
+            }
+        }
+        return true
     }
 
     private func checkSearch(_ generation: UUID) throws {

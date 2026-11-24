@@ -328,6 +328,50 @@ struct AttachmentSearchIndexTests {
         #expect(after.map(\.id) == [header.id])
     }
 
+    @Test("indexBodyText populates FTS when an unconfirmed legacy raw body is quarantined without unlocking it")
+    func indexBodyTextAllowsStructuredBodyWhenLegacyRawBodyIsQuarantined() throws {
+        let url = Self.databaseURL()
+        defer { Self.removeDatabase(at: url) }
+        let account = Self.account()
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let header = Self.header("INBOX:7", folder: "INBOX", subject: "Current subject")
+        try store.ensureAccount(id: account.id)
+
+        // Seed an old raw body and quarantine it via legacy snapshot import.
+        try store.storeOriginalBody(
+            Data("quarantined-legacy-secret".utf8),
+            accountID: account.id,
+            messageID: header.id
+        )
+        let legacySnapshot = IMAPMailboxHeaderCacheSnapshot(
+            headers: [header],
+            uidValidity: 1
+        )
+        try store.storeIMAPSnapshot(legacySnapshot, accountID: account.id, folderID: "INBOX", importingLegacy: true)
+
+        // Confirm the current server header while its legacy raw body remains unconfirmed/quarantined.
+        let page = IMAPHeaderPageWrite(
+            folderID: "INBOX",
+            pageToken: nil,
+            headers: [header],
+            uidValidity: 1,
+            highestModSeq: nil,
+            nextPageToken: nil
+        )
+        try store.storeIMAPPage(page, accountID: account.id)
+
+        #expect(store.body(accountID: account.id, messageID: header.id) == nil)
+        #expect(store.searchHeaders(SearchQuery(text: "quarantined-legacy-secret"), accountID: account.id, limit: 20).isEmpty)
+
+        // Fresh structured body text must populate FTS without unlocking the quarantined raw body.
+        try store.indexBodyText("fresh-structured-body-token", accountID: account.id, messageID: header.id)
+
+        #expect(store.searchHeaders(SearchQuery(text: "fresh-structured-body-token"), accountID: account.id, limit: 20)
+            .map(\.id) == [header.id])
+        #expect(store.searchHeaders(SearchQuery(text: "quarantined-legacy-secret"), accountID: account.id, limit: 20).isEmpty)
+        #expect(store.body(accountID: account.id, messageID: header.id) == nil)
+    }
+
     @Test("indexedAttachmentIDs tracks per-attachment IDs and matchingAttachmentMessageIDs works without message_headers")
     func perAttachmentIDsAndAttachmentOnlyMatching() throws {
         let url = Self.databaseURL()

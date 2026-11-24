@@ -713,7 +713,8 @@ actor InMemorySyncStore: SyncStoreProtocol {
 
     func indexBodyText(_ bodyText: String, accountID: String, messageID: MessageHeader.ID) throws {
         let key = "\(accountID)|\(messageID)"
-        guard bodies[key] == nil else { return }
+        let hasConfirmedBody = bodies[key] != nil && recovery[key]?.sourceConfirmed != false
+        guard !hasConfirmedBody else { return }
         indexedBodyTexts[key] = bodyText
     }
 

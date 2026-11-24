@@ -1158,9 +1158,17 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     func indexBodyText(_ bodyText: String, accountID: String, messageID: MessageHeader.ID) throws {
         try lock.withLock {
             guard let header = header(accountID: accountID, messageID: messageID) else { return }
-            // Preserve search rows derived from stored raw MIME source so structured
-            // background passes never downgrade a full raw-source index row.
-            if hasStoredBody(accountID: accountID, messageID: messageID) { return }
+            let isQuarantinedRawBody = try recoveryState(
+                accountID: accountID,
+                messageID: messageID
+            )?.sourceConfirmed == false
+            // Preserve search rows derived from a confirmed raw MIME source so structured
+            // background passes never downgrade a full raw-source index row, while still
+            // allowing fresh structured body text to populate FTS when a legacy raw row
+            // is quarantined (without unlocking the quarantined raw body).
+            if !isQuarantinedRawBody, hasStoredBody(accountID: accountID, messageID: messageID) {
+                return
+            }
             try inTransaction {
                 try upsertSearchRow(
                     header,
