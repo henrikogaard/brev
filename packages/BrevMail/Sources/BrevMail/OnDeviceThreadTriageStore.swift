@@ -176,6 +176,43 @@ public enum ProactiveTriageVisibleWindow {
     }
 }
 
+/// One thread item scheduled by a list viewport owner for background on-device triage.
+public struct ProactiveTriageScheduledItem {
+    /// Owning account identifier used to scope triage cache keys.
+    public let accountID: BrevAccount.ID
+    /// Loaded headers belonging to the thread.
+    public let headers: [MessageHeader]
+    /// Current folder displaying the thread, if known.
+    public let folder: Folder?
+    /// All folders for `accountID` so Trash and Spam messages in the thread can be excluded.
+    public let allFolders: [Folder]
+    /// Account-scoped AI backend evaluated against the zero-network locality gate.
+    public let backend: any AIBackend
+    /// Optional cache-only body provider (never performs network fetches).
+    public let cachedBodyProvider: (any CachedMessageBodyProviding)?
+    /// Optional mailbox source identifier passed to `cachedBodyProvider`.
+    public let sourceID: MailSourceID?
+
+    /// Creates a scheduled triage item for a single visible thread.
+    public init(
+        accountID: BrevAccount.ID,
+        headers: [MessageHeader],
+        folder: Folder?,
+        allFolders: [Folder] = [],
+        backend: any AIBackend,
+        cachedBodyProvider: (any CachedMessageBodyProviding)? = nil,
+        sourceID: MailSourceID? = nil
+    ) {
+        self.accountID = accountID
+        self.headers = headers
+        self.folder = folder
+        self.allFolders = allFolders
+        self.backend = backend
+        self.cachedBodyProvider = cachedBodyProvider
+        self.sourceID = sourceID
+    }
+}
+
 /// Main-actor observable local cache and scheduler for opt-in proactive on-device triage.
 ///
 /// Enforces two hard privacy gates before reading cached bodies or running inference:
@@ -204,14 +241,23 @@ public final class OnDeviceThreadTriageStore {
     @ObservationIgnored
     private var defaultsObserver: NSObjectProtocol?
 
+    private struct ScheduledTaskEntry {
+        let token: UUID
+        let fingerprint: String
+        let task: Task<Void, Never>
+    }
+
     @ObservationIgnored
     private var headerFingerprintByKey: [String: String] = [:]
+
+    @ObservationIgnored
+    private var hasFullBodyCoverageByKey: [String: Bool] = [:]
 
     @ObservationIgnored
     private var lruOrder: [String] = []
 
     @ObservationIgnored
-    private var activeTasksByKey: [String: (fingerprint: String, task: Task<Void, Never>)] = [:]
+    private var activeTasksByOwner: [String: [String: ScheduledTaskEntry]] = [:]
 
     /// Creates a store backed by the given proactive on-device triage engine.
     ///
@@ -381,16 +427,27 @@ public final class OnDeviceThreadTriageStore {
         return existing
     }
 
-    /// Cancels all active triage tasks and wipes cached insights immediately.
-    public func clearAll() {
-        for entry in activeTasksByKey.values {
+    /// Cancels all queued list-triage tasks owned by a specific viewport owner without disturbing other owners.
+    public func cancelScheduledTasks(forOwner ownerID: String) {
+        guard let ownerTasks = activeTasksByOwner.removeValue(forKey: ownerID) else { return }
+        for entry in ownerTasks.values {
             entry.task.cancel()
         }
-        activeTasksByKey.removeAll()
+    }
+
+    /// Cancels all active triage tasks and wipes cached insights immediately.
+    public func clearAll() {
+        for ownerTasks in activeTasksByOwner.values {
+            for entry in ownerTasks.values {
+                entry.task.cancel()
+            }
+        }
+        activeTasksByOwner.removeAll()
         if !insightsByKey.isEmpty {
             insightsByKey.removeAll()
         }
         headerFingerprintByKey.removeAll()
+        hasFullBodyCoverageByKey.removeAll()
         lruOrder.removeAll()
         let engine = engine
         Task {
@@ -407,7 +464,8 @@ public final class OnDeviceThreadTriageStore {
         storeInsight(
             insight,
             for: key,
-            headerFingerprint: headerFingerprint ?? insight.sourceFingerprint
+            headerFingerprint: headerFingerprint ?? insight.sourceFingerprint,
+            hasFullBodyCoverage: true
         )
     }
 
@@ -503,7 +561,11 @@ public final class OnDeviceThreadTriageStore {
         }
 
         let fullFingerprint = Self.sourceFingerprint(for: ordered, cachedBodies: cachedBodies)
+        let hasFullBodyCoverage = recentWindow.allSatisfy { header in
+            !Self.cachedPlainText(for: cachedBodies[header.id], fallbackSnippet: "").isEmpty
+        }
         if let existing = cachedInsight(for: key, sourceFingerprint: fullFingerprint) {
+            hasFullBodyCoverageByKey[key] = hasFullBodyCoverage
             return existing
         }
 
@@ -528,13 +590,145 @@ public final class OnDeviceThreadTriageStore {
             return nil
         }
         if let insight {
-            storeInsight(insight, for: key, headerFingerprint: headerFP)
+            storeInsight(
+                insight,
+                for: key,
+                headerFingerprint: headerFP,
+                hasFullBodyCoverage: hasFullBodyCoverage
+            )
         }
         return insight
     }
 
-    /// Enqueues a bounded window of visible threads for background on-device triage.
+    /// Reconciles one viewport owner's bounded batch of visible threads for background on-device triage,
+    /// cancelling queued jobs from that owner whose threads scrolled offscreen or changed headers while
+    /// allowing snippet-only insights to upgrade once full message bodies appear in local cache.
+    public func scheduleVisibleBatch(
+        ownerID: String,
+        items: [ProactiveTriageScheduledItem],
+        settings: AIWriterSettings,
+        liveSettingsProvider: (() -> AIWriterSettings)? = nil,
+        maxThreads: Int = ProactiveTriageVisibleWindow.defaultMaxBatchSize
+    ) {
+        let currentSettings = resolveLiveSettings(
+            fallback: settings,
+            overrideProvider: liveSettingsProvider
+        )
+        guard currentSettings.isProactiveOnDeviceTriageAvailable else {
+            clearAll()
+            return
+        }
+
+        struct ResolvedBatchItem {
+            let item: ProactiveTriageScheduledItem
+            let key: String
+            let orderedHeaders: [MessageHeader]
+            let headerFingerprint: String
+        }
+
+        var resolvedItems: [ResolvedBatchItem] = []
+        var desiredFingerprintsByKey: [String: String] = [:]
+        let limit = max(0, maxThreads)
+        resolvedItems.reserveCapacity(min(limit, items.count))
+
+        for item in items {
+            guard resolvedItems.count < limit else { break }
+            guard item.backend.isOnDeviceZeroNetwork, !Self.isExcludedFolder(item.folder) else {
+                continue
+            }
+            let eligible = Self.eligibleHeaders(
+                from: item.headers,
+                folder: item.folder,
+                allFolders: item.allFolders
+            )
+            let ordered = Self.sortedChronologically(eligible)
+            guard let latest = ordered.last else { continue }
+            let key = Self.cacheKey(accountID: item.accountID, header: latest)
+            guard desiredFingerprintsByKey[key] == nil else { continue }
+            let headerFP = Self.headerFingerprint(forOrderedHeaders: ordered)
+            desiredFingerprintsByKey[key] = headerFP
+            resolvedItems.append(ResolvedBatchItem(
+                item: item,
+                key: key,
+                orderedHeaders: ordered,
+                headerFingerprint: headerFP
+            ))
+        }
+
+        // Cancel superseded offscreen or stale-fingerprint jobs for this viewport owner.
+        // Shared inferences remain alive inside `ProactiveOnDeviceTriageEngine` if another owner
+        // or the open conversation reader still awaits the same thread.
+        var ownerTasks = activeTasksByOwner[ownerID] ?? [:]
+        for (existingKey, existingEntry) in ownerTasks {
+            if desiredFingerprintsByKey[existingKey] != existingEntry.fingerprint {
+                existingEntry.task.cancel()
+                ownerTasks.removeValue(forKey: existingKey)
+            }
+        }
+        if ownerTasks.isEmpty {
+            activeTasksByOwner.removeValue(forKey: ownerID)
+        } else {
+            activeTasksByOwner[ownerID] = ownerTasks
+        }
+
+        for resolved in resolvedItems {
+            let key = resolved.key
+            let headerFP = resolved.headerFingerprint
+            let item = resolved.item
+
+            let hasCached = cachedInsight(for: key, matchingHeaderFingerprint: headerFP) != nil
+            let canUpgradeFromCachedBody = item.cachedBodyProvider != nil
+                && hasFullBodyCoverageByKey[key] != true
+            if hasCached && !canUpgradeFromCachedBody {
+                continue
+            }
+            if activeTasksByOwner[ownerID]?[key]?.fingerprint == headerFP {
+                continue
+            }
+
+            let token = UUID()
+            let task = Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer {
+                    if self.activeTasksByOwner[ownerID]?[key]?.token == token {
+                        self.activeTasksByOwner[ownerID]?.removeValue(forKey: key)
+                        if self.activeTasksByOwner[ownerID]?.isEmpty == true {
+                            self.activeTasksByOwner.removeValue(forKey: ownerID)
+                        }
+                    }
+                }
+                guard !Task.isCancelled else { return }
+                let liveSettings = resolveLiveSettings(
+                    fallback: settings,
+                    overrideProvider: liveSettingsProvider
+                )
+                guard liveSettings.isProactiveOnDeviceTriageAvailable else {
+                    clearAll()
+                    return
+                }
+                _ = await triageIfEligible(
+                    accountID: item.accountID,
+                    headers: resolved.orderedHeaders,
+                    folder: item.folder,
+                    allFolders: item.allFolders,
+                    settings: liveSettings,
+                    liveSettingsProvider: liveSettingsProvider,
+                    backend: item.backend,
+                    cachedBodyProvider: item.cachedBodyProvider,
+                    sourceID: item.sourceID
+                )
+            }
+            activeTasksByOwner[ownerID, default: [:]][key] = ScheduledTaskEntry(
+                token: token,
+                fingerprint: headerFP,
+                task: task
+            )
+        }
+    }
+
+    /// Enqueues a bounded window of visible threads for one viewport owner for background on-device triage.
     public func scheduleVisibleThreads(
+        ownerID: String = "default",
         accountID: BrevAccount.ID,
         threadGroups: [[MessageHeader]],
         folder: Folder?,
@@ -554,60 +748,29 @@ public final class OnDeviceThreadTriageStore {
             clearAll()
             return
         }
-        guard let backend, backend.isOnDeviceZeroNetwork else {
-            return
-        }
-        guard !Self.isExcludedFolder(folder) else {
+        guard let backend, backend.isOnDeviceZeroNetwork, !Self.isExcludedFolder(folder) else {
+            cancelScheduledTasks(forOwner: ownerID)
             return
         }
 
-        for group in threadGroups.prefix(max(0, maxThreads)) {
-            let eligible = Self.eligibleHeaders(from: group, folder: folder, allFolders: allFolders)
-            let ordered = Self.sortedChronologically(eligible)
-            guard let latest = ordered.last else { continue }
-            let key = Self.cacheKey(accountID: accountID, header: latest)
-            let headerFP = Self.headerFingerprint(forOrderedHeaders: ordered)
-            if cachedInsight(for: key, matchingHeaderFingerprint: headerFP) != nil {
-                continue
-            }
-            if let existing = activeTasksByKey[key] {
-                if existing.fingerprint == headerFP {
-                    continue
-                }
-                existing.task.cancel()
-                activeTasksByKey.removeValue(forKey: key)
-            }
-
-            let task = Task { @MainActor [weak self] in
-                guard let self else { return }
-                defer {
-                    if self.activeTasksByKey[key]?.fingerprint == headerFP {
-                        self.activeTasksByKey.removeValue(forKey: key)
-                    }
-                }
-                guard !Task.isCancelled else { return }
-                let liveSettings = resolveLiveSettings(
-                    fallback: settings,
-                    overrideProvider: liveSettingsProvider
-                )
-                guard liveSettings.isProactiveOnDeviceTriageAvailable else {
-                    clearAll()
-                    return
-                }
-                _ = await triageIfEligible(
-                    accountID: accountID,
-                    headers: ordered,
-                    folder: folder,
-                    allFolders: allFolders,
-                    settings: liveSettings,
-                    liveSettingsProvider: liveSettingsProvider,
-                    backend: backend,
-                    cachedBodyProvider: cachedBodyProvider,
-                    sourceID: sourceID
-                )
-            }
-            activeTasksByKey[key] = (fingerprint: headerFP, task: task)
+        let batchItems = threadGroups.map { group in
+            ProactiveTriageScheduledItem(
+                accountID: accountID,
+                headers: group,
+                folder: folder,
+                allFolders: allFolders,
+                backend: backend,
+                cachedBodyProvider: cachedBodyProvider,
+                sourceID: sourceID
+            )
         }
+        scheduleVisibleBatch(
+            ownerID: ownerID,
+            items: batchItems,
+            settings: currentSettings,
+            liveSettingsProvider: liveSettingsProvider,
+            maxThreads: maxThreads
+        )
     }
 
     // MARK: - LRU cache management
@@ -615,15 +778,18 @@ public final class OnDeviceThreadTriageStore {
     private func storeInsight(
         _ insight: ThreadTriageInsight,
         for key: String,
-        headerFingerprint: String
+        headerFingerprint: String,
+        hasFullBodyCoverage: Bool
     ) {
         insightsByKey[key] = insight
         headerFingerprintByKey[key] = headerFingerprint
+        hasFullBodyCoverageByKey[key] = hasFullBodyCoverage
         touchLRU(key)
         while lruOrder.count > maxCacheEntries {
             let evicted = lruOrder.removeFirst()
             insightsByKey.removeValue(forKey: evicted)
             headerFingerprintByKey.removeValue(forKey: evicted)
+            hasFullBodyCoverageByKey.removeValue(forKey: evicted)
         }
     }
 

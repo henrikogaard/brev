@@ -154,6 +154,7 @@ struct UnifiedInboxListView: View {
     @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
     @AppStorage(AIWriterSettings.Key.proactiveOnDeviceTriageEnabled)
     private var proactiveOnDeviceTriageEnabled = false
+    @State private var triageOwnerID = "unified-inbox:\(UUID().uuidString)"
     @State private var activeInboxCategory: InboxCategory = .all
     @State private var inboxCategoryOverrideRevision = 0
     @State private var inboxCategoryOverrideStore = InboxCategoryOverrideStore()
@@ -355,26 +356,29 @@ struct UnifiedInboxListView: View {
             uniquingKeysWith: { $0 + $1 }
         )
         let selected = visibleUnifiedProactiveTriageBatch()
-        for item in selected {
+        let batchItems: [ProactiveTriageScheduledItem] = selected.compactMap { item in
             guard let aiBackend = aiBackendsByAccountID[item.sourceID.accountID],
                   aiBackend.isOnDeviceZeroNetwork,
                   !OnDeviceThreadTriageStore.isExcludedFolder(item.folder)
-            else { continue }
+            else { return nil }
             let key = OnDeviceThreadTriageStore.cacheKey(accountID: item.sourceID.accountID, header: item.header)
             let group = unifiedTriageThreadIndex.headers(for: key, fallback: item.header)
             let ownerBackend = backends.first { $0.account.id == item.sourceID.accountID }
-            triageStore.scheduleVisibleThreads(
+            return ProactiveTriageScheduledItem(
                 accountID: item.sourceID.accountID,
-                threadGroups: [group],
+                headers: group,
                 folder: item.folder,
                 allFolders: foldersByAccountID[item.sourceID.accountID] ?? [],
-                settings: settings,
                 backend: aiBackend,
                 cachedBodyProvider: ownerBackend?.extensionService(CachedMessageBodyProviding.self),
-                sourceID: item.sourceID,
-                maxThreads: 1
+                sourceID: item.sourceID
             )
         }
+        triageStore.scheduleVisibleBatch(
+            ownerID: triageOwnerID,
+            items: batchItems,
+            settings: settings
+        )
     }
 
     var body: some View {
@@ -399,6 +403,9 @@ struct UnifiedInboxListView: View {
             }
             .task(id: unifiedProactiveTriageTaskKey) {
                 scheduleUnifiedProactiveTriageIfEligible()
+            }
+            .onDisappear {
+                triageStore?.cancelScheduledTasks(forOwner: triageOwnerID)
             }
         #if os(iOS)
             .toolbar { selectionToolbar(visibleItems: presentationSnapshot.visibleItems) }

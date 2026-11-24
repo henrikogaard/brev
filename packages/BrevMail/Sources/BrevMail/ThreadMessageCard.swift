@@ -38,6 +38,7 @@ struct ThreadMessageCard: View {
     let showsAvatar: Bool
     let isWorkBlocked: Bool
     let dateTextOverride: String?
+    let onBodyLoaded: ((MessageHeader.ID, RenderedBody) -> Void)?
     let onToggle: () -> Void
 
     @State private var renderedBody: RenderedBody?
@@ -108,6 +109,7 @@ struct ThreadMessageCard: View {
         initialRenderedBody: RenderedBody? = nil,
         renderPool: ThreadConversationRenderPool? = nil,
         inviteReconciler: CalendarInviteReconciler? = nil,
+        onBodyLoaded: ((MessageHeader.ID, RenderedBody) -> Void)? = nil,
         onToggle: @escaping () -> Void
     ) {
         self.header = header
@@ -118,6 +120,7 @@ struct ThreadMessageCard: View {
         self.showsAvatar = showsAvatar
         self.isWorkBlocked = isWorkBlocked
         self.dateTextOverride = dateTextOverride
+        self.onBodyLoaded = onBodyLoaded
         self.onToggle = onToggle
         self.inviteReconciler = inviteReconciler
         let renderPool = renderPool ?? ThreadConversationRenderPool()
@@ -738,6 +741,7 @@ struct ThreadMessageCard: View {
             guard nativeHTMLImportGeneration == loadGeneration, header.id == messageID else { return }
             renderedBody = resolved
             inlineCIDResolvedMessageID = messageID
+            onBodyLoaded?(messageID, resolved)
             await updateDerivedBodyState()
             while nativeHTMLImportRefreshPending {
                 nativeHTMLImportRefreshPending = false

@@ -300,6 +300,34 @@ struct ThreadAISummarySessionState: Equatable, Sendable {
     var activeRequest: ThreadAISummaryRequest?
     var state: ThreadAISummaryState?
 
+    mutating func beginRequest(_ request: ThreadAISummaryRequest, providerLabel: String) {
+        activeRequest = request
+        state = .loading(providerLabel: providerLabel)
+    }
+
+    func isActive(_ request: ThreadAISummaryRequest) -> Bool {
+        activeRequest == request
+    }
+
+    mutating func finishRequest(_ request: ThreadAISummaryRequest, state newState: ThreadAISummaryState) {
+        guard activeRequest == request else { return }
+        state = newState
+        activeRequest = nil
+    }
+
+    mutating func cancelRequest(_ request: ThreadAISummaryRequest) {
+        guard activeRequest == request else { return }
+        state = nil
+        activeRequest = nil
+    }
+
+    mutating func cancelInFlightRequest() {
+        activeRequest = nil
+        if state?.isLoading == true {
+            state = nil
+        }
+    }
+
     mutating func switchConversation(to newIdentity: String) -> Bool {
         guard newIdentity != conversationIdentity else { return false }
         conversationIdentity = newIdentity

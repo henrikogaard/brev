@@ -96,6 +96,66 @@ private final class RecordingCachedBodyProvider: CachedMessageBodyProviding, @un
     }
 }
 
+private actor GatedViewportTriageBackend: AIBackend {
+    nonisolated let identifier = "gated-viewport-on-device"
+    nonisolated let displayName = "Gated Viewport On-Device"
+    nonisolated let transparencyLabel = "On this Mac"
+    nonisolated let isOnDeviceZeroNetwork = true
+    nonisolated let contextBudget: AIBackendContextBudget? = .onDevice
+
+    var startedPrompts: [String] = []
+    private var gatedTag: String?
+    private var gatedStarted = false
+    private var gatedStartWaiter: CheckedContinuation<Void, Never>?
+    private var gatedReleased = false
+    private var gatedReleaseWaiter: CheckedContinuation<Void, Never>?
+
+    init(gatedTag: String) {
+        self.gatedTag = gatedTag
+    }
+
+    func waitUntilGatedStarted() async {
+        if gatedStarted { return }
+        await withCheckedContinuation { continuation in
+            gatedStartWaiter = continuation
+        }
+    }
+
+    func releaseGate() {
+        gatedReleased = true
+        if let waiter = gatedReleaseWaiter {
+            gatedReleaseWaiter = nil
+            waiter.resume()
+        }
+    }
+
+    func generateReply(to messages: [AIMessage], instruction: String?) async throws -> AIResponse {
+        _ = instruction
+        let prompt = messages.map(\.content).joined(separator: "\n")
+        startedPrompts.append(prompt)
+
+        if let gatedTag, prompt.contains(gatedTag) {
+            gatedStarted = true
+            if let waiter = gatedStartWaiter {
+                gatedStartWaiter = nil
+                waiter.resume()
+            }
+            if !gatedReleased {
+                await withCheckedContinuation { continuation in
+                    gatedReleaseWaiter = continuation
+                }
+            }
+        }
+        try Task.checkCancellation()
+        return AIResponse(text: #"{"priority":"normal","summary":"Viewport triage completed."}"#)
+    }
+
+    func shortcut(_ action: AIShortcutAction, on text: String) async throws -> AIResponse {
+        _ = action
+        return AIResponse(text: text)
+    }
+}
+
 @Suite("On-device thread triage store")
 @MainActor
 struct OnDeviceThreadTriageStoreTests {
@@ -576,6 +636,182 @@ struct OnDeviceThreadTriageStoreTests {
         #expect(prompts.count == 1)
         #expect(!prompts[0].contains("739104"))
         #expect(prompts[0].contains("[Redacted"))
+    }
+
+    @Test("scrolled-past viewport batch jobs are cancelled per owner without starving new rows or co-waiting readers")
+    func supersededOffscreenViewportJobsAreCancelledPerOwner() async throws {
+        let engine = ProactiveOnDeviceTriageEngine(maxConcurrentInferences: 1)
+        let store = OnDeviceThreadTriageStore(engine: engine, defaults: nil)
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let backend = GatedViewportTriageBackend(gatedTag: "Subject-Thread-1")
+
+        let t1 = makeHeader(id: "m-1", threadID: "t-1", subject: "Subject-Thread-1")
+        let t2 = makeHeader(id: "m-2", threadID: "t-2", subject: "Subject-Thread-2")
+        let t3 = makeHeader(id: "m-3", threadID: "t-3", subject: "Subject-Thread-3")
+        let t4 = makeHeader(id: "m-4", threadID: "t-4", subject: "Subject-Thread-4")
+        let t5 = makeHeader(id: "m-5", threadID: "t-5", subject: "Subject-Thread-5")
+        let t6 = makeHeader(id: "m-6", threadID: "t-6", subject: "Subject-Thread-6")
+
+        // Viewport owner schedules initial batch [t1, t2, t3, t4]. t1 occupies the single slot
+        // and blocks at the gate while t2..t4 wait in the engine's queue.
+        store.scheduleVisibleThreads(
+            ownerID: "folder-list",
+            accountID: "acct-1",
+            threadGroups: [[t1], [t2], [t3], [t4]],
+            folder: inbox,
+            settings: enabledSettings,
+            backend: backend,
+            maxThreads: 4
+        )
+        await backend.waitUntilGatedStarted()
+
+        // Reader simultaneously awaits t1 so shared inference must survive the list scrolling past t1.
+        let readerTask = Task { @MainActor in
+            await store.triageIfEligible(
+                accountID: "acct-1",
+                headers: [t1],
+                folder: inbox,
+                settings: enabledSettings,
+                backend: backend
+            )
+        }
+        await Task.yield()
+        await Task.yield()
+
+        // User scrolls down: owner replaces its viewport batch with [t5, t6].
+        // Superseded offscreen jobs (t2, t3, t4) are cancelled immediately.
+        store.scheduleVisibleThreads(
+            ownerID: "folder-list",
+            accountID: "acct-1",
+            threadGroups: [[t5], [t6]],
+            folder: inbox,
+            settings: enabledSettings,
+            backend: backend,
+            maxThreads: 4
+        )
+        await Task.yield()
+        await Task.yield()
+
+        // Release t1 so queued work drains.
+        await backend.releaseGate()
+
+        let readerInsight = try #require(await readerTask.value)
+        #expect(readerInsight.summary == "Viewport triage completed.")
+
+        let key5 = OnDeviceThreadTriageStore.cacheKey(accountID: "acct-1", header: t5)
+        let key6 = OnDeviceThreadTriageStore.cacheKey(accountID: "acct-1", header: t6)
+        for _ in 0 ..< 50 {
+            if store.insightsByKey[key5] != nil, store.insightsByKey[key6] != nil {
+                break
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        #expect(store.insightsByKey[key5] != nil)
+        #expect(store.insightsByKey[key6] != nil)
+
+        let started = await backend.startedPrompts
+        #expect(started.contains(where: { $0.contains("Subject-Thread-1") }))
+        #expect(started.contains(where: { $0.contains("Subject-Thread-5") }))
+        #expect(started.contains(where: { $0.contains("Subject-Thread-6") }))
+        #expect(!started.contains(where: { $0.contains("Subject-Thread-2") }))
+        #expect(!started.contains(where: { $0.contains("Subject-Thread-3") }))
+        #expect(!started.contains(where: { $0.contains("Subject-Thread-4") }))
+    }
+
+    @Test("scheduleVisibleThreads upgrades snippet-only cached insight once full body is cached")
+    func scheduleVisibleThreadsUpgradesSnippetSummaryOnceBodyIsCached() async throws {
+        let store = OnDeviceThreadTriageStore(defaults: nil)
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let header = makeHeader(
+            id: "msg-upgrade",
+            threadID: "thread-upgrade",
+            subject: "Lease addendum",
+            snippet: "Short snippet only."
+        )
+        let key = OnDeviceThreadTriageStore.cacheKey(accountID: "acct-1", header: header)
+        let bodyProvider = RecordingCachedBodyProvider()
+        let backend = StubMailTriageAIBackend(
+            isOnDeviceZeroNetwork: true,
+            responses: [
+                #"{"priority":"normal","summary":"Snippet-only summary before body cached."}"#,
+                #"{"priority":"urgent","summary":"Full cached body confirms Friday 3 PM deadline."}"#
+            ]
+        )
+
+        // 1. Initial schedule before body is cached -> produces snippet-only summary.
+        store.scheduleVisibleThreads(
+            ownerID: "list-upgrade",
+            accountID: "acct-1",
+            threadGroups: [[header]],
+            folder: inbox,
+            settings: enabledSettings,
+            backend: backend,
+            cachedBodyProvider: bodyProvider
+        )
+        for _ in 0 ..< 50 {
+            if store.insightsByKey[key] != nil { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        #expect(store.insightsByKey[key]?.summary == "Snippet-only summary before body cached.")
+        #expect(await backend.recordedPrompts.count == 1)
+
+        // 2. Rescheduling while body is still absent checks cache-only provider and avoids re-running the model.
+        store.scheduleVisibleThreads(
+            ownerID: "list-upgrade",
+            accountID: "acct-1",
+            threadGroups: [[header]],
+            folder: inbox,
+            settings: enabledSettings,
+            backend: backend,
+            cachedBodyProvider: bodyProvider
+        )
+        try await Task.sleep(nanoseconds: 30_000_000)
+        #expect(await backend.recordedPrompts.count == 1)
+
+        // 3. Body becomes locally cached -> scheduleVisibleThreads upgrades the insight automatically.
+        bodyProvider.setBody(
+            MessageBody(
+                messageID: "msg-upgrade",
+                plainText: "Full cached body confirming the binding deadline is Friday 3 PM."
+            ),
+            for: "msg-upgrade"
+        )
+        store.scheduleVisibleThreads(
+            ownerID: "list-upgrade",
+            accountID: "acct-1",
+            threadGroups: [[header]],
+            folder: inbox,
+            settings: enabledSettings,
+            backend: backend,
+            cachedBodyProvider: bodyProvider
+        )
+        for _ in 0 ..< 50 {
+            if store.insightsByKey[key]?.summary == "Full cached body confirms Friday 3 PM deadline." {
+                break
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        #expect(store.insightsByKey[key]?.priority == .urgent)
+        #expect(store.insightsByKey[key]?.summary == "Full cached body confirms Friday 3 PM deadline.")
+        let prompts = await backend.recordedPrompts
+        #expect(prompts.count == 2)
+        #expect(prompts[1].contains("Full cached body confirming the binding deadline is Friday 3 PM."))
+
+        // 4. Once full body coverage is cached, subsequent reschedules skip synchronously without extra cache reads.
+        let readsAfterUpgrade = bodyProvider.requestedIDs.count
+        store.scheduleVisibleThreads(
+            ownerID: "list-upgrade",
+            accountID: "acct-1",
+            threadGroups: [[header]],
+            folder: inbox,
+            settings: enabledSettings,
+            backend: backend,
+            cachedBodyProvider: bodyProvider
+        )
+        try await Task.sleep(nanoseconds: 20_000_000)
+        #expect(bodyProvider.requestedIDs.count == readsAfterUpgrade)
+        #expect(await backend.recordedPrompts.count == 2)
     }
 
     #if os(macOS)

@@ -424,6 +424,7 @@ public actor ProactiveOnDeviceTriageEngine {
     ].joined(separator: " ")
 
     private struct InFlightEntry {
+        let generation: UUID
         let fingerprint: String
         let task: Task<Void, Never>
         var waiters: [UUID: CheckedContinuation<ThreadTriageInsight?, Never>]
@@ -537,15 +538,17 @@ public actor ProactiveOnDeviceTriageEngine {
                     self.inFlight[input.cacheKey] = running
                     return
                 }
+                let generation = UUID()
                 let task = Task<Void, Never> {
                     let result = await self.runTriage(input: input, backend: backend)
                     self.completeInFlight(
                         cacheKey: input.cacheKey,
-                        fingerprint: input.sourceFingerprint,
+                        generation: generation,
                         result: result
                     )
                 }
                 self.inFlight[input.cacheKey] = InFlightEntry(
+                    generation: generation,
                     fingerprint: input.sourceFingerprint,
                     task: task,
                     waiters: [waiterID: continuation]
@@ -564,10 +567,10 @@ public actor ProactiveOnDeviceTriageEngine {
 
     private func completeInFlight(
         cacheKey: String,
-        fingerprint: String,
+        generation: UUID,
         result: ThreadTriageInsight?
     ) {
-        guard let entry = inFlight[cacheKey], entry.fingerprint == fingerprint else { return }
+        guard let entry = inFlight[cacheKey], entry.generation == generation else { return }
         inFlight.removeValue(forKey: cacheKey)
         for continuation in entry.waiters.values {
             continuation.resume(returning: result)
@@ -579,10 +582,11 @@ public actor ProactiveOnDeviceTriageEngine {
         fingerprint: String,
         waiterID: UUID
     ) {
-        guard var entry = inFlight[cacheKey], entry.fingerprint == fingerprint else { return }
-        if let continuation = entry.waiters.removeValue(forKey: waiterID) {
-            continuation.resume(returning: nil)
-        }
+        guard var entry = inFlight[cacheKey],
+              entry.fingerprint == fingerprint,
+              let continuation = entry.waiters.removeValue(forKey: waiterID)
+        else { return }
+        continuation.resume(returning: nil)
         if entry.waiters.isEmpty {
             inFlight.removeValue(forKey: cacheKey)
             entry.task.cancel()

@@ -166,6 +166,7 @@ public struct MessageListView: View {
     @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
     @AppStorage(AIWriterSettings.Key.proactiveOnDeviceTriageEnabled)
     private var proactiveOnDeviceTriageEnabled = false
+    @State private var triageOwnerID = "message-list:\(UUID().uuidString)"
     @State private var activeInboxCategory: InboxCategory = .all
     @State private var activePeopleUpdatesTab: InboxSplitTab = .people
     @State private var inboxCategoryOverrideRevision = 0
@@ -304,6 +305,9 @@ public struct MessageListView: View {
             }
             .task(id: proactiveTriageTaskKey) {
                 scheduleProactiveOnDeviceTriageIfEligible()
+            }
+            .onDisappear {
+                triageStore?.cancelScheduledTasks(forOwner: triageOwnerID)
             }
             // Not a `.task(id:)`: that also runs on appear, where the `reloadKey` task has
             // already loaded the folder or run the search, and fetched the first page twice.
@@ -1489,6 +1493,7 @@ public struct MessageListView: View {
             return
         }
         guard let aiBackend, aiBackend.isOnDeviceZeroNetwork, !OnDeviceThreadTriageStore.isExcludedFolder(folder) else {
+            triageStore.cancelScheduledTasks(forOwner: triageOwnerID)
             return
         }
         if triageThreadIndex.headersByCacheKey.isEmpty, !headers.isEmpty {
@@ -1500,6 +1505,7 @@ public struct MessageListView: View {
             return triageThreadIndex.headers(for: key, fallback: header)
         }
         triageStore.scheduleVisibleThreads(
+            ownerID: triageOwnerID,
             accountID: backend.account.id,
             threadGroups: groups,
             folder: folder,

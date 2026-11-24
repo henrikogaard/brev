@@ -1,5 +1,15 @@
 # Worklog
 
+## 2026-11-24 — Agent — Proactive Opt-In On-Device AI (#4, PR #352 round-2 review fixes)
+
+- Goal: address the 4 follow-up findings from Devin Review round 2 on PR #352 (`feature/proactive-on-device-ai`).
+- Changes:
+  - `BrevAI`: tagged `ProactiveOnDeviceTriageEngine.InFlightEntry` with a unique `generation: UUID` checked in `completeInFlight`, and required `waiterID` presence in `cancelInFlightWaiter`, so a cancelled inference unwinding late can never resolve a replacement request's waiters with `nil`; added a deterministic gated-backend regression test.
+  - `BrevMail`: added per-owner viewport task tracking (`ProactiveTriageScheduledItem`, `scheduleVisibleBatch`, `cancelScheduledTasks(forOwner:)`) in `OnDeviceThreadTriageStore` and wired `MessageListView` and `UnifiedInboxListView` with stable per-view owner IDs + `.onDisappear` cleanup so scrolled-past list jobs cancel promptly while preserving shared inference for co-waiting readers/owners.
+  - `BrevMail`: tracked `hasFullBodyCoverageByKey` in `OnDeviceThreadTriageStore` so `scheduleVisibleThreads` / `scheduleVisibleBatch` upgrades snippet-only cached insights automatically once full message bodies appear in `CachedMessageBodyProviding` (zero network calls, skipping synchronously once full body coverage is cached), and wired `ThreadMessageCard.onBodyLoaded` in `ThreadConversationView` to refresh proactive triage as cards finish loading bodies.
+  - `BrevMail`: refactored `ThreadConversationView` to store and drive manual summary state directly through `ThreadAISummarySessionState` (calling `switchConversation`, `beginRequest`, `finishRequest`, `cancelRequest`, and `cancelInFlightRequest` in production).
+- Verification: `scripts/format.sh`, `scripts/lint.sh`, `swift test --package-path packages/BrevAI`, `swift test --package-path packages/BrevMail`, macOS 26+ `xcodebuild` for `ProactiveTriageSnapshotTests`, `OnDeviceThreadTriageStoreTests`, and `ThreadAISummaryTests`, and `git diff --check origin/main`.
+
 ## 2026-11-24 — Agent — Proactive Opt-In On-Device AI (#4, PR #352 review fixes)
 
 - Goal: address all 15 distinct Codex & Devin Review findings (3 security, 8 bugs, 4 polish/perf) on PR #352 (`feature/proactive-on-device-ai`).

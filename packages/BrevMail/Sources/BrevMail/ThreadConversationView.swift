@@ -86,9 +86,10 @@ public struct ThreadConversationView: View {
     @State private var exportShareURL: URL?
     #endif
     @State private var showAISummaryConsent = false
-    @State private var activeAISummaryRequest: ThreadAISummaryRequest?
-    @State private var aiSummaryState: ThreadAISummaryState?
+    @State private var aiSummarySession: ThreadAISummarySessionState
     @State private var manualAISummaryTask: Task<Void, Never>?
+    @State private var loadedPlainTextByMessageID: [MessageHeader.ID: String] = [:]
+    @State private var cachedBodyRevision = 0
     @AppStorage(AIWriterSettings.Key.isEnabled) private var aiEnabled = false
     @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
     @AppStorage(AIWriterSettings.Key.proactiveOnDeviceTriageEnabled)
@@ -142,6 +143,15 @@ public struct ThreadConversationView: View {
         self.dateTextProvider = dateTextProvider
         self.inviteReconciler = inviteReconciler
         self.readerFooter = readerFooter
+        _aiSummarySession = State(
+            initialValue: ThreadAISummarySessionState(
+                conversationIdentity: ThreadAISummarySessionState.conversationIdentity(
+                    sourceID: sourceID,
+                    accountID: backend.account.id,
+                    headers: threadHeaders
+                )
+            )
+        )
     }
 
     // MARK: - Derived state
@@ -226,7 +236,7 @@ public struct ThreadConversationView: View {
                     RelatedConversationFootnote(horizontalPadding: BrevSpacing.md, bottomPadding: BrevSpacing.sm)
                     #endif
 
-                    if let aiSummaryState {
+                    if let aiSummaryState = aiSummarySession.state {
                         ThreadAISummaryPanel(
                             state: aiSummaryState,
                             onRetry: aiSummaryRetryAction
@@ -252,7 +262,14 @@ public struct ThreadConversationView: View {
                                 dateTextOverride: dateTextProvider?(header),
                                 initialRenderedBody: preloadedBodies[header.id],
                                 renderPool: renderPool,
-                                inviteReconciler: inviteReconciler
+                                inviteReconciler: inviteReconciler,
+                                onBodyLoaded: { messageID, rendered in
+                                    if let plain = rendered.plainText?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                       !plain.isEmpty {
+                                        loadedPlainTextByMessageID[messageID] = plain
+                                    }
+                                    cachedBodyRevision &+= 1
+                                }
                             ) {
                                 animate(.easeInOut(duration: 0.2)) {
                                     if expandedMessageIDs.contains(header.id) {
@@ -313,12 +330,18 @@ public struct ThreadConversationView: View {
                     }
                 }
                 // Re-initialise when the selected thread changes.
-                .onChange(of: conversationIdentity) { _, _ in
-                    resetManualAISummaryState()
+                .onChange(of: conversationIdentity) { _, newIdentity in
+                    if aiSummarySession.switchConversation(to: newIdentity) {
+                        manualAISummaryTask?.cancel()
+                        manualAISummaryTask = nil
+                    }
+                    loadedPlainTextByMessageID.removeAll()
+                    cachedBodyRevision = 0
                 }
                 .onDisappear {
                     manualAISummaryTask?.cancel()
                     manualAISummaryTask = nil
+                    aiSummarySession.cancelInFlightRequest()
                 }
                 .onChange(of: threadHeaders.first?.threadID) { _, newThreadID in
                     guard newThreadID != nil else { return }
@@ -760,8 +783,7 @@ public struct ThreadConversationView: View {
             threadID: threadHeaders.last?.threadID,
             messageIDs: includedHeaders.map(\.id)
         )
-        activeAISummaryRequest = request
-        aiSummaryState = .loading(providerLabel: aiBackend.transparencyLabel)
+        aiSummarySession.beginRequest(request, providerLabel: aiBackend.transparencyLabel)
 
         do {
             var bodies: [MessageHeader.ID: MessageBody] = [:]
@@ -776,7 +798,7 @@ public struct ThreadConversationView: View {
                     listUnsubscribe: loaded.listUnsubscribe
                 )
             }
-            guard activeAISummaryRequest == request else {
+            guard aiSummarySession.isActive(request) else {
                 return
             }
             guard let context = ThreadAISummaryContextBuilder.context(
@@ -786,35 +808,37 @@ public struct ThreadConversationView: View {
                 maxCharacters: budget.maxTotalContextBytes,
                 maxUTF8Bytes: budget.maxTotalContextBytes
             ) else {
-                aiSummaryState = .failure(
-                    message: "Couldn't summarize this thread.",
-                    providerLabel: aiBackend.transparencyLabel
+                aiSummarySession.finishRequest(
+                    request,
+                    state: .failure(
+                        message: "Couldn't summarize this thread.",
+                        providerLabel: aiBackend.transparencyLabel
+                    )
                 )
-                activeAISummaryRequest = nil
                 return
             }
             let response = try await aiBackend.generateReply(
                 to: context.messages,
                 instruction: context.instruction
             )
-            guard activeAISummaryRequest == request else { return }
-            aiSummaryState = .success(ThreadAISummaryPresentation.make(
-                responseText: response.text,
-                providerLabel: aiBackend.transparencyLabel,
-                wasTruncated: context.wasTruncated
-            ))
-            activeAISummaryRequest = nil
-        } catch is CancellationError {
-            guard activeAISummaryRequest == request else { return }
-            aiSummaryState = nil
-            activeAISummaryRequest = nil
-        } catch {
-            guard activeAISummaryRequest == request else { return }
-            aiSummaryState = .failure(
-                message: ThreadAISummaryErrorPresentation.message(for: error),
-                providerLabel: aiBackend.transparencyLabel
+            aiSummarySession.finishRequest(
+                request,
+                state: .success(ThreadAISummaryPresentation.make(
+                    responseText: response.text,
+                    providerLabel: aiBackend.transparencyLabel,
+                    wasTruncated: context.wasTruncated
+                ))
             )
-            activeAISummaryRequest = nil
+        } catch is CancellationError {
+            aiSummarySession.cancelRequest(request)
+        } catch {
+            aiSummarySession.finishRequest(
+                request,
+                state: .failure(
+                    message: ThreadAISummaryErrorPresentation.message(for: error),
+                    providerLabel: aiBackend.transparencyLabel
+                )
+            )
         }
     }
 
@@ -1000,10 +1024,7 @@ public struct ThreadConversationView: View {
     }
 
     private var aiSummaryMenuDisabled: Bool {
-        if case .loading = aiSummaryState {
-            return true
-        }
-        return false
+        aiSummarySession.state?.isLoading == true
     }
 
     private var shouldShowAISummaryMenu: Bool {
@@ -1019,7 +1040,7 @@ public struct ThreadConversationView: View {
             ),
             hasProviderBackend: aiBackend != nil,
             isBusy: isWorkBlocked,
-            hasActiveRequest: activeAISummaryRequest != nil,
+            hasActiveRequest: aiSummarySession.activeRequest != nil,
             messageCount: threadHeaders.count
         )
     }
@@ -1037,13 +1058,6 @@ public struct ThreadConversationView: View {
         manualAISummaryTask = Task {
             await summarizeThread(with: aiBackend)
         }
-    }
-
-    private func resetManualAISummaryState() {
-        manualAISummaryTask?.cancel()
-        manualAISummaryTask = nil
-        activeAISummaryRequest = nil
-        aiSummaryState = nil
     }
 
     private var eligibleProactiveHeaders: [MessageHeader] {
@@ -1064,7 +1078,7 @@ public struct ThreadConversationView: View {
 
     private var proactiveThreadTriageTaskID: String {
         let fingerprint = OnDeviceThreadTriageStore.headerFingerprint(for: eligibleProactiveHeaders)
-        return "\(backend.account.id)|\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(aiBackend?.identifier ?? "")|\(fingerprint)"
+        return "\(backend.account.id)|\(aiEnabled)|\(aiConsentGiven)|\(proactiveOnDeviceTriageEnabled)|\(aiBackend?.identifier ?? "")|\(fingerprint)|\(cachedBodyRevision)"
     }
 
     private var activeProactiveTriageInsight: ThreadTriageInsight? {
@@ -1092,7 +1106,10 @@ public struct ThreadConversationView: View {
             return
         }
         guard let aiBackend, aiBackend.isOnDeviceZeroNetwork else { return }
-        let preloadedPlain = preloadedBodies.compactMapValues(\.plainText)
+        var preloadedPlain = preloadedBodies.compactMapValues(\.plainText)
+        for (messageID, plain) in loadedPlainTextByMessageID {
+            preloadedPlain[messageID] = plain
+        }
         _ = await triageStore.triageIfEligible(
             accountID: backend.account.id,
             headers: threadHeaders,
@@ -1110,7 +1127,7 @@ public struct ThreadConversationView: View {
     /// failure is transient and the summary request can actually run again
     /// (provider present, consent/settings OK, no work or request in flight).
     private var aiSummaryRetryAction: (() -> Void)? {
-        guard case .failure = aiSummaryState,
+        guard case .failure = aiSummarySession.state,
               let aiBackend,
               ThreadAISummaryAvailability.disabledReason(in: aiSummaryAvailabilityState) == nil
         else { return nil }

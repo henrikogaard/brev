@@ -83,6 +83,68 @@ private actor RecordingTriageAIBackend: AIBackend {
     }
 }
 
+private actor GatedCancellationTriageBackend: AIBackend {
+    nonisolated let identifier = "gated-on-device"
+    nonisolated let displayName = "Gated On-Device"
+    nonisolated let transparencyLabel = "On this Mac"
+    nonisolated let isOnDeviceZeroNetwork = true
+    nonisolated let contextBudget: AIBackendContextBudget? = .onDevice
+
+    private var callCount = 0
+    private var startedCalls: Set<Int> = []
+    private var startedWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var releasedCalls: Set<Int> = []
+    private var releaseWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+
+    func waitUntilStarted(call: Int) async {
+        if startedCalls.contains(call) { return }
+        await withCheckedContinuation { continuation in
+            startedWaiters[call] = continuation
+        }
+    }
+
+    func release(call: Int) {
+        releasedCalls.insert(call)
+        if let continuation = releaseWaiters.removeValue(forKey: call) {
+            continuation.resume()
+        }
+    }
+
+    private func waitForRelease(call: Int) async {
+        if releasedCalls.contains(call) { return }
+        await withCheckedContinuation { continuation in
+            releaseWaiters[call] = continuation
+        }
+    }
+
+    func generateReply(to messages: [AIMessage], instruction: String?) async throws -> AIResponse {
+        _ = messages
+        _ = instruction
+        callCount += 1
+        let thisCall = callCount
+        startedCalls.insert(thisCall)
+        if let waiter = startedWaiters.removeValue(forKey: thisCall) {
+            waiter.resume()
+        }
+
+        // Hold intentionally across task cancellation so the test can deterministically
+        // register a replacement request before the cancelled first inference unwinds.
+        await waitForRelease(call: thisCall)
+
+        if thisCall == 1 {
+            throw CancellationError()
+        }
+        return AIResponse(
+            text: #"{"priority":"urgent","summary":"Replacement inference succeeded cleanly."}"#
+        )
+    }
+
+    func shortcut(_ action: AIShortcutAction, on text: String) async throws -> AIResponse {
+        _ = action
+        return AIResponse(text: text)
+    }
+}
+
 @Suite("Proactive on-device AI triage engine")
 struct ProactiveOnDeviceTriageEngineTests {
     private let enabledSettings = AIWriterSettings(
@@ -449,6 +511,41 @@ struct ProactiveOnDeviceTriageEngineTests {
         }
 
         #expect(await backend.maxObservedConcurrency == 1)
+    }
+
+    @Test("cancelled earlier inference unwinding late cannot resolve replacement request with nil")
+    func cancelledInferenceUnwindingLateDoesNotResolveReplacementWithNil() async throws {
+        let engine = ProactiveOnDeviceTriageEngine(maxConcurrentInferences: 2)
+        let backend = GatedCancellationTriageBackend()
+        let input = makeInput(cacheKey: "acct-1|race-thread", fingerprint: "fp-same")
+
+        let firstTask = Task {
+            await engine.insight(for: input, settings: enabledSettings, backend: backend)
+        }
+        await backend.waitUntilStarted(call: 1)
+
+        // Cancel the first caller; its waiter resolves nil and evicts generation 1 from `inFlight`,
+        // while the underlying call 1 remains held inside `generateReply`.
+        firstTask.cancel()
+        let firstResult = await firstTask.value
+        #expect(firstResult == nil)
+
+        // Start a replacement request with the exact same cacheKey & sourceFingerprint.
+        let secondTask = Task {
+            await engine.insight(for: input, settings: enabledSettings, backend: backend)
+        }
+        await backend.waitUntilStarted(call: 2)
+
+        // Now let cancelled call 1 unwind and invoke `completeInFlight` with stale generation 1.
+        await backend.release(call: 1)
+        await Task.yield()
+        await Task.yield()
+
+        // Release replacement call 2 and verify it still delivers its valid summary.
+        await backend.release(call: 2)
+        let secondResult = try #require(await secondTask.value)
+        #expect(secondResult.priority == .urgent)
+        #expect(secondResult.summary == "Replacement inference succeeded cleanly.")
     }
 
     @Test("unavailable on-device backend skips gracefully without crashing")
