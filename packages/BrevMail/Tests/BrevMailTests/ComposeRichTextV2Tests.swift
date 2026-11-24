@@ -761,57 +761,119 @@ struct ComposeRichTextV2Tests {
         #expect(afterOverlapQuote.isEqual(to: beforeQuote))
     }
 
-    @Test("native ComposeRichTextView Undo restores a deleted inline image and its cid attachment across autosave")
-    func nativeEditorUndoRestoresDeletedInlineImageAcrossAutosave() throws {
-        let harness = EditorHarness(text: "")
-        let editor = try harness.mount(inWindow: true)
+    @Test("close() serializes newer edits and inline images behind an in-flight autosave and reuses its remote draft ID")
+    func closeSerializesNewerEditsBehindInFlightAutoSaveAndReusesRemoteID() async throws {
+        let backing = MockBackend()
+        let gatedBackend = GatedFirstSaveBackend(backing: backing)
+        let harness = try ComposeViewHarness(backend: gatedBackend)
+        defer { harness.dispose() }
+        await harness.render { harness.editor != nil }
+
+        let editor = try #require(harness.editor)
+        let mounted = try #require(harness.mounted)
+
+        // 1. Type initial text and start an inactivity autosave that pauses inside backend.save(draft:).
+        editor.insertText("First version", replacementRange: NSRange(location: 0, length: 0))
+        await harness.render { editor.string == "First version" }
+
+        let inFlightAutoSave = Task { @MainActor in
+            await mounted.autoSaveDraftAfterInactivity()
+        }
+        await gatedBackend.waitForFirstSavePaused()
+
+        // 2. While the first autosave is still in flight, add newer edits + an inline image and click Close.
+        let end = (editor.string as NSString).length
+        editor.setSelectedRange(NSRange(location: end, length: 0))
+        editor.insertText(" + newer edit before close ", replacementRange: NSRange(location: end, length: 0))
+        #expect(editor.brevInsertImagePayload(data: Self.minimalPNG, mimeType: "image/png"))
+        await harness.render { editor.string.contains("newer edit before close") }
+
+        mounted.close()
+        #expect(harness.didUnmountOnClose)
+
+        // 3. Release the first autosave; the dismissal save must run afterward and reuse its remoteID.
+        await gatedBackend.releaseFirstSave()
+        await inFlightAutoSave.value
+        await harness.waitUntil {
+            harness.savedDrafts.contains { $0.htmlBody.contains("newer edit before close") }
+        }
+
+        let recordedSaves = await gatedBackend.recordedSavedDrafts()
+        #expect(recordedSaves.count == 2)
+        let firstSavedRemoteID = try #require(recordedSaves[0].remoteID)
+        #expect(recordedSaves[1].remoteID == firstSavedRemoteID)
+        #expect(recordedSaves[1].htmlBody.contains("newer edit before close"))
+        #expect(recordedSaves[1].htmlBody.contains("<img src=\"cid:"))
+        #expect(recordedSaves[1].attachmentIDs.count == 1)
+
+        // 4. Drafts has a single draft (no duplicate) that reopens cleanly with the newer edits and inline PNG.
+        let draftsFolder = try #require(await backing.folders().first { $0.role == .drafts })
+        let draftHeaders = try await backing.messages(in: draftsFolder, pageToken: nil).0
+        #expect(draftHeaders.count == 1)
+        let resolved = try await ComposeDraftRestoration.resolve(
+            header: draftHeaders[0],
+            backend: backing,
+            sourceID: nil
+        )
+        #expect(ComposeDraftRestoration.validationError(draft: resolved.draft, attachments: resolved.attachments) == nil)
+        #expect(resolved.draft.htmlBody.contains("newer edit before close"))
+        #expect(ComposeDraftRestoration.inlineAttachments(from: resolved.attachments).count == 1)
+        let reopened = try await ComposeDraftBodyRestoration.prepare(
+            draft: resolved.draft,
+            attachments: resolved.attachments,
+            format: .richTextHTML
+        )
+        #expect(reopened.initialEditorHTML.contains("newer edit before close"))
+        #expect(reopened.initialEditorHTML.contains("<img src=\"cid:"))
+    }
+
+    @Test("native ComposeRichTextView Undo restores a deleted inline image across backend autosave and reopens cleanly")
+    func nativeEditorUndoRestoresDeletedInlineImageAcrossAutosave() async throws {
+        let backend = MockBackend()
+        let harness = try ComposeViewHarness(backend: backend, inWindow: true)
+        defer { harness.dispose() }
+        await harness.render { harness.editor != nil }
+
+        let editor = try #require(harness.editor)
+        let mounted = try #require(harness.mounted)
         let undoManager = try #require(editor.undoManager)
         undoManager.groupsByEvent = false
-        let sourceID = MailSourceID(accountID: "acct-undo", mailboxID: "default")
 
-        // 1. Insert inline PNG via the real editor path in its own undo group.
+        // 1. Insert inline PNG via the real editor path and autosave to MockBackend.
         undoManager.beginUndoGrouping()
         #expect(editor.brevInsertImagePayload(data: Self.minimalPNG, mimeType: "image/png"))
         editor.breakUndoCoalescing()
         undoManager.endUndoGrouping()
-        harness.flush.performFlush()
+        await harness.render { (editor.textStorage?.length ?? 0) > 0 }
 
-        let staged = try #require(harness.registry.staged.first)
-        let cid = staged.contentID
-        #expect(harness.html?.contains("<img src=\"cid:\(cid)\">") == true)
-        let stagedAttachments: [String: ComposeStagedInlineAttachment] = [
-            cid: ComposeStagedInlineAttachment(attachmentID: "att-undo-1", sourceID: sourceID)
-        ]
+        let cid = try #require(editor.textStorage?.attribute(
+            ComposeInlineImageAttribute.contentID,
+            at: 0,
+            effectiveRange: nil
+        ) as? String)
+        await mounted.autoSaveDraftAfterInactivity()
+        let firstSaved = try #require(harness.savedDrafts.last)
+        #expect(firstSaved.htmlBody.contains("<img src=\"cid:\(cid)\">"))
+        #expect(firstSaved.attachmentIDs.count == 1)
 
-        // 2. Delete the inline image natively in ComposeRichTextView in a separate undo group.
+        // 2. Delete the inline image natively in ComposeRichTextView and autosave: Drafts drops the image.
         undoManager.beginUndoGrouping()
         editor.setSelectedRange(NSRange(location: 0, length: (editor.string as NSString).length))
         editor.delete(nil)
         editor.breakUndoCoalescing()
         undoManager.endUndoGrouping()
-        harness.flush.performFlush()
-        #expect(harness.html?.contains("<img src=\"cid:") == false)
+        await harness.render { editor.string.isEmpty }
 
-        // 3. Simulate autosave while deleted: active draft omits the attachment, registry keeps bytes.
-        let htmlAfterDelete = harness.html ?? ""
-        #expect(ComposeDraftBuilder.inlineAttachments(
-            fromRegistry: harness.registry,
-            draftID: "draft-native-undo",
-            bodyHTML: htmlAfterDelete,
-            reconcileRegistry: false
-        ).isEmpty)
-        #expect(ComposeAttachmentUploadState.inlineAttachmentIDs(
-            from: stagedAttachments,
-            for: sourceID,
-            activeContentIDs: ComposeInlineImageRegistry.contentIDs(inHTML: htmlAfterDelete)
-        ).isEmpty)
+        await mounted.autoSaveDraftAfterInactivity()
+        let afterDelete = try #require(harness.savedDrafts.last)
+        #expect(!afterDelete.htmlBody.contains("<img src=\"cid:"))
+        #expect(afterDelete.attachmentIDs.isEmpty)
 
-        // 4. Native Undo restores the NSTextAttachment + CID attribute in textStorage and HTML.
+        // 3. Native Undo restores the NSTextAttachment + CID attribute in textStorage.
         #expect(undoManager.canUndo)
         undoManager.undo()
-        harness.flush.performFlush()
+        await harness.render { (editor.textStorage?.length ?? 0) > 0 }
 
-        try #require((editor.textStorage?.length ?? 0) > 0)
         let restoredCID = editor.textStorage?.attribute(
             ComposeInlineImageAttribute.contentID,
             at: 0,
@@ -819,23 +881,31 @@ struct ComposeRichTextV2Tests {
         ) as? String
         #expect(restoredCID == cid)
         #expect(editor.textStorage?.attribute(.attachment, at: 0, effectiveRange: nil) != nil)
-        let htmlAfterUndo = try #require(harness.html)
-        #expect(htmlAfterUndo.contains("<img src=\"cid:\(cid)\">"))
 
-        // 5. Re-saving/staging after Undo recovers the inline image and its backend attachment ID.
-        let recoveredImages = ComposeDraftBuilder.inlineAttachments(
-            fromRegistry: harness.registry,
-            draftID: "draft-native-undo",
-            bodyHTML: htmlAfterUndo,
-            reconcileRegistry: false
+        // 4. Persisting after Undo saves the restored inline image back to Drafts and reopens cleanly.
+        await mounted.saveDraft()
+        let afterUndo = try #require(harness.savedDrafts.last)
+        #expect(afterUndo.htmlBody.contains("<img src=\"cid:\(cid)\">"))
+        #expect(afterUndo.attachmentIDs.count == 1)
+
+        let draftsFolder = try #require(await backend.folders().first { $0.role == .drafts })
+        let header = try #require(await backend.messages(in: draftsFolder, pageToken: nil).0.first {
+            $0.id == afterUndo.remoteID
+        })
+        let resolved = try await ComposeDraftRestoration.resolve(header: header, backend: backend, sourceID: nil)
+        #expect(ComposeDraftRestoration.validationError(draft: resolved.draft, attachments: resolved.attachments) == nil)
+        let restoredInline = ComposeDraftRestoration.inlineAttachments(from: resolved.attachments)
+        #expect(restoredInline.count == 1)
+        #expect(restoredInline[0].contentID == cid)
+        #expect(restoredInline[0].data == Self.minimalPNG)
+
+        let reopened = try await ComposeDraftBodyRestoration.prepare(
+            draft: resolved.draft,
+            attachments: resolved.attachments,
+            format: .richTextHTML
         )
-        #expect(recoveredImages.count == 1)
-        #expect(recoveredImages[0].contentID == cid)
-        #expect(ComposeAttachmentUploadState.inlineAttachmentIDs(
-            from: stagedAttachments,
-            for: sourceID,
-            activeContentIDs: ComposeInlineImageRegistry.contentIDs(inHTML: htmlAfterUndo)
-        ) == ["att-undo-1"])
+        #expect(reopened.initialEditorHTML.contains("<img src=\"cid:\(cid)\">"))
+        #expect(ComposeRichTextHTMLSerializer.html(from: reopened.attributedText) == resolved.draft.htmlBody)
     }
 
     private static func paddedPNG(byteCount: Int) -> Data {
@@ -848,19 +918,177 @@ struct ComposeRichTextV2Tests {
 
     // MARK: - Helper Harnesses
 
+    private final class GatedFirstSaveBackend: MailBackend, @unchecked Sendable {
+        private let backing: MockBackend
+        private let gate = FirstSaveGate()
+
+        init(backing: MockBackend) {
+            self.backing = backing
+        }
+
+        var account: BrevAccount { backing.account }
+        var capabilities: BackendCapabilities { backing.capabilities }
+
+        func connect() async throws { try await backing.connect() }
+        func disconnect() async { await backing.disconnect() }
+        func folders() async throws -> [Folder] { try await backing.folders() }
+        func refresh(folder: Folder) async throws { try await backing.refresh(folder: folder) }
+        func messages(in folder: Folder, pageToken: String?) async throws -> (
+            headers: [MessageHeader],
+            nextPageToken: String?
+        ) {
+            try await backing.messages(in: folder, pageToken: pageToken)
+        }
+
+        func body(for messageID: String) async throws -> MessageBody {
+            try await backing.body(for: messageID)
+        }
+
+        func setRead(_ isRead: Bool, for messageIDs: [String]) async throws {
+            try await backing.setRead(isRead, for: messageIDs)
+        }
+
+        func setFlagged(_ isFlagged: Bool, for messageIDs: [String]) async throws {
+            try await backing.setFlagged(isFlagged, for: messageIDs)
+        }
+
+        func move(messageIDs: [String], to folder: Folder) async throws {
+            try await backing.move(messageIDs: messageIDs, to: folder)
+        }
+
+        func delete(messageIDs: [String]) async throws { try await backing.delete(messageIDs: messageIDs) }
+
+        func save(draft: Draft) async throws -> Draft {
+            await gate.pauseIfFirstSave()
+            let saved = try await backing.save(draft: draft)
+            await gate.record(saved: saved)
+            return saved
+        }
+
+        func save(draft: Draft, sourceID: MailSourceID) async throws -> Draft {
+            await gate.pauseIfFirstSave()
+            let saved = try await backing.save(draft: draft, sourceID: sourceID)
+            await gate.record(saved: saved)
+            return saved
+        }
+
+        func draft(for messageID: String) async throws -> Draft? {
+            try await backing.draft(for: messageID)
+        }
+
+        func localDraftAttachments(for draft: Draft) async throws -> [MIMEMessageAttachment] {
+            try await backing.localDraftAttachments(for: draft)
+        }
+
+        func uploadAttachment(
+            draftID: String,
+            data: Data,
+            filename: String,
+            mimeType: String
+        ) async throws -> String {
+            try await backing.uploadAttachment(
+                draftID: draftID,
+                data: data,
+                filename: filename,
+                mimeType: mimeType
+            )
+        }
+
+        func stageInlineAttachment(
+            draftID: String,
+            contentID: String,
+            filename: String,
+            mimeType: String,
+            data: Data
+        ) async throws -> String {
+            try await backing.stageInlineAttachment(
+                draftID: draftID,
+                contentID: contentID,
+                filename: filename,
+                mimeType: mimeType,
+                data: data
+            )
+        }
+
+        func discard(draftID: String) async throws { try await backing.discard(draftID: draftID) }
+        func send(draft: Draft) async throws -> SendResult { try await backing.send(draft: draft) }
+        func search(_ query: SearchQuery) async throws -> [MessageHeader] {
+            try await backing.search(query)
+        }
+
+        func calendarEvent(from attachmentID: String) async throws -> CalendarEvent {
+            try await backing.calendarEvent(from: attachmentID)
+        }
+
+        func replyToCalendarInvite(messageID: String, response: AttendeeState) async throws {
+            try await backing.replyToCalendarInvite(messageID: messageID, response: response)
+        }
+
+        func subscribeToChanges() -> AsyncStream<MailEvent> { backing.subscribeToChanges() }
+
+        func waitForFirstSavePaused() async { await gate.waitUntilPaused() }
+        func releaseFirstSave() async { await gate.release() }
+        func recordedSavedDrafts() async -> [Draft] { await gate.recorded() }
+    }
+
+    private actor FirstSaveGate {
+        private var didPauseFirst = false
+        private var isPaused = false
+        private var isReleased = false
+        private var pauseWaiter: CheckedContinuation<Void, Never>?
+        private var releaseWaiter: CheckedContinuation<Void, Never>?
+        private var savedDrafts: [Draft] = []
+
+        func pauseIfFirstSave() async {
+            guard !didPauseFirst else { return }
+            didPauseFirst = true
+            isPaused = true
+            pauseWaiter?.resume()
+            pauseWaiter = nil
+            if !isReleased {
+                await withCheckedContinuation { continuation in
+                    releaseWaiter = continuation
+                }
+            }
+        }
+
+        func waitUntilPaused() async {
+            if isPaused { return }
+            await withCheckedContinuation { continuation in
+                pauseWaiter = continuation
+            }
+        }
+
+        func release() {
+            isReleased = true
+            releaseWaiter?.resume()
+            releaseWaiter = nil
+        }
+
+        func record(saved: Draft) {
+            savedDrafts.append(saved)
+        }
+
+        func recorded() -> [Draft] {
+            savedDrafts
+        }
+    }
+
     @MainActor
     private final class ComposeViewHarness {
         var mounted: ComposeView?
         var host: NSHostingView<AnyView>?
         var didUnmountOnClose = false
         var savedDrafts: [Draft] = []
+        private var window: NSWindow?
         private let defaultsName = "ComposeRichTextV2Tests.\(UUID().uuidString)"
         private let defaults: UserDefaults
 
         init(
             backend: any MailBackend,
             existingDraft: Draft? = nil,
-            existingDraftAttachments: [MIMEMessageAttachment] = []
+            existingDraftAttachments: [MIMEMessageAttachment] = [],
+            inWindow: Bool = false
         ) throws {
             defaults = try #require(UserDefaults(suiteName: defaultsName))
             defaults.set("richText", forKey: "compose.messageFormat")
@@ -884,9 +1112,23 @@ struct ComposeRichTextV2Tests {
                 }
             )
             view.inspection = { [weak self] in self?.mounted = $0 }
-            host = NSHostingView(rootView: AnyView(view.defaultAppStorage(defaults)))
-            host?.frame = NSRect(x: 0, y: 0, width: 700, height: 600)
-            host?.layoutSubtreeIfNeeded()
+            let hosting = NSHostingView(rootView: AnyView(view.defaultAppStorage(defaults)))
+            hosting.frame = NSRect(x: 0, y: 0, width: 700, height: 600)
+            if inWindow {
+                let window = NSWindow(
+                    contentRect: hosting.frame,
+                    styleMask: [.titled],
+                    backing: .buffered,
+                    defer: false
+                )
+                window.contentView = hosting
+                self.window = window
+            }
+            hosting.layoutSubtreeIfNeeded()
+            host = hosting
+            if inWindow, let editor = Self.editor(in: hosting) {
+                window?.makeFirstResponder(editor)
+            }
         }
 
         func prepare() async throws {

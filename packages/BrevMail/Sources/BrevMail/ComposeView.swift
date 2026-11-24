@@ -348,12 +348,24 @@ public struct ComposeView: View {
     @State private var pendingUndoSendStartedAt: TimeInterval?
     @State private var pendingUndoSendDuration: TimeInterval = 0
 
-    /// Reference-backed inline-attachment session state so `close()` dismissal
-    /// saves can stage inline images and read them from `currentAttachmentIDs`
-    /// even after SwiftUI tears down `@State` in `.onDisappear`.
+    /// Reference-backed inline-attachment and autosave session state so `close()`
+    /// dismissal saves can serialize behind an in-flight autosave, reuse its
+    /// remote draft ID, and read staged inline IDs even after SwiftUI detaches
+    /// `@State` in `.onDisappear`.
     private final class InlineAttachmentSessionState {
         var isDismissalSaveInFlight = false
         var staged: [String: ComposeStagedInlineAttachment] = [:]
+        var activeAutoSaveTask: Task<Void, Never>?
+        var latestSavedRemoteID: String?
+    }
+
+    /// Synchronously captured editor/draft state at `close()` time so a dismissal
+    /// save that waits for an in-flight autosave still persists the final edits
+    /// even after SwiftUI tears down the mounted editor.
+    private struct DismissalSaveSnapshot {
+        let draft: Draft
+        let cidSourceHTML: String
+        let activeCIDs: Set<String>
     }
 
     // #251 Rich-compose: inline images + link sheet
@@ -3692,7 +3704,11 @@ public struct ComposeView: View {
     }
 
     private var hasPersistedDraft: Bool {
-        hasSavedDraftInSession || savedDraftRemoteID != nil || restoredDraft != nil
+        hasSavedDraftInSession
+            || savedDraftRemoteID != nil
+            || inlineAttachmentSession.latestSavedRemoteID != nil
+            || inlineAttachmentSession.activeAutoSaveTask != nil
+            || restoredDraft != nil
     }
 
     private func cleanupInlineImageSession() {
@@ -3855,6 +3871,7 @@ public struct ComposeView: View {
         }
         ComposeDraftRecoveryStore.clear(matching: draft, accountID: backend.account.id, sourceID: sourceID)
         savedDraftRemoteID = nil
+        inlineAttachmentSession.latestSavedRemoteID = nil
         hasSavedDraftInSession = false
         hasCompletedExplicitOperation = true
         close()
@@ -3918,6 +3935,7 @@ public struct ComposeView: View {
                 remindIfNoReply = draft.followUpRequest != nil
                 draftID = draft.id
                 savedDraftRemoteID = draft.remoteID
+                inlineAttachmentSession.latestSavedRemoteID = draft.remoteID
                 to = draft.to.map(\.email)
                 cc = draft.cc.map(\.email)
                 bcc = draft.bcc.map(\.email)
@@ -4009,6 +4027,7 @@ public struct ComposeView: View {
         isRecoverySession = false
         draftID = UUID().uuidString
         savedDraftRemoteID = nil
+        inlineAttachmentSession.latestSavedRemoteID = nil
         hasSavedDraftInSession = false
         to = []
         cc = []
@@ -4049,6 +4068,12 @@ public struct ComposeView: View {
             isBusy: isBusy,
             hasCompletedExplicitOperation: hasCompletedExplicitOperation
         ) {
+            let dismissalSnapshot = DismissalSaveSnapshot(
+                draft: currentDraft(),
+                cidSourceHTML: fullInlineCIDSourceHTML,
+                activeCIDs: activeInlineContentIDs
+            )
+            let inFlightAutoSave = inlineAttachmentSession.activeAutoSaveTask
             inlineAttachmentSession.isDismissalSaveInFlight = true
             Task { @MainActor in
                 defer {
@@ -4056,7 +4081,10 @@ public struct ComposeView: View {
                     invalidateComposeOperation()
                     cleanupInlineImageSession()
                 }
-                await autoSaveDraftOnDismiss()
+                if let inFlightAutoSave {
+                    await inFlightAutoSave.value
+                }
+                await autoSaveDraftOnDismiss(snapshot: dismissalSnapshot)
                 forgetNewMessageRecovery(draftID: closingDraftID, remoteID: nil)
             }
         } else {
@@ -4070,15 +4098,26 @@ public struct ComposeView: View {
     }
 
     func autoSaveDraftOnDismiss() async {
-        await autoSaveDraft(requireApplicableResponse: false)
+        await autoSaveDraft(requireApplicableResponse: false, dismissalSnapshot: nil)
+    }
+
+    private func autoSaveDraftOnDismiss(snapshot: DismissalSaveSnapshot) async {
+        await autoSaveDraft(requireApplicableResponse: false, dismissalSnapshot: snapshot)
     }
 
     func autoSaveDraftAfterInactivity() async {
-        await autoSaveDraft(requireApplicableResponse: true)
+        await autoSaveDraft(requireApplicableResponse: true, dismissalSnapshot: nil)
     }
 
-    private func autoSaveDraft(requireApplicableResponse: Bool) async {
-        guard canStartComposeOperation(kind: .autoSaveDraft) else { return }
+    private func autoSaveDraft(
+        requireApplicableResponse: Bool,
+        dismissalSnapshot: DismissalSaveSnapshot?
+    ) async {
+        if dismissalSnapshot != nil {
+            guard !isWorkBlocked, !restorationBlocksWork else { return }
+        } else {
+            guard canStartComposeOperation(kind: .autoSaveDraft) else { return }
+        }
         let hasContentToSave = ComposeDraftBuilder.canSave(
             to: resolvedToRecipients,
             cc: resolvedCcRecipients,
@@ -4089,22 +4128,34 @@ public struct ComposeView: View {
             hasPreservedQuotedHTML: restoredBody?.preservedQuotedHTML != nil,
             hasInlineImages: !activeInlineImages.isEmpty
         )
-        guard hasContentToSave || hasPersistedDraft else { return }
+        guard dismissalSnapshot != nil || hasContentToSave || hasPersistedDraft else { return }
         let request = startComposeOperation(kind: .autoSaveDraft)
-        defer { finishComposeOperation(request) }
-        do {
-            let saved = try await persistDraft(for: request)
-            if requireApplicableResponse {
-                guard canApplyComposeOperationResponse(request) else { return }
+        let task = Task { @MainActor in
+            defer {
+                finishComposeOperation(request)
+                if activeComposeOperationRequest == nil {
+                    inlineAttachmentSession.activeAutoSaveTask = nil
+                }
             }
-            savedDraftRemoteID = saved.remoteID
-            hasSavedDraftInSession = true
-            await onCompletion(.savedDraft(saved))
-        } catch is CancellationError {
-            // Composer dismissed during auto-save — acceptable.
-        } catch {
-            errorMessage = ComposePresentation.saveDraftErrorMessage(for: error)
+            do {
+                let saved = try await persistDraft(for: request, dismissalSnapshot: dismissalSnapshot)
+                if requireApplicableResponse {
+                    guard canApplyComposeOperationResponse(request) else { return }
+                }
+                savedDraftRemoteID = saved.remoteID
+                inlineAttachmentSession.latestSavedRemoteID = saved.remoteID
+                hasSavedDraftInSession = true
+                await onCompletion(.savedDraft(saved))
+            } catch is CancellationError {
+                // Composer dismissed during auto-save — acceptable.
+            } catch {
+                errorMessage = ComposePresentation.saveDraftErrorMessage(for: error)
+            }
         }
+        if dismissalSnapshot == nil {
+            inlineAttachmentSession.activeAutoSaveTask = task
+        }
+        await task.value
     }
 
     private func draftForSend(request: ComposeOperationRequest) async throws -> Draft {
@@ -4135,7 +4186,7 @@ public struct ComposeView: View {
     /// `inlineAttachmentSession.staged` for the lifetime of the compose session so
     /// Undo after an autosave still has the image bytes and attachment ID
     /// available; outgoing drafts only include `activeInlineContentIDs`.
-    private func stageInlineImages() async throws {
+    private func stageInlineImages(cidSourceHTML: String? = nil) async throws {
         if restorationBlocksWork {
             throw MailBackendError
                 .backendSpecific(message: draftRestorationError ?? ComposeDraftRestoration.recoveryUnavailableMessage)
@@ -4143,7 +4194,7 @@ public struct ComposeView: View {
         let images = ComposeDraftBuilder.inlineAttachments(
             fromRegistry: inlineImageRegistry,
             draftID: draftID,
-            bodyHTML: fullInlineCIDSourceHTML,
+            bodyHTML: cidSourceHTML ?? fullInlineCIDSourceHTML,
             reconcileRegistry: false
         )
         var remaining = ComposeAttachmentImport.maxAttachmentByteCount
@@ -4192,20 +4243,44 @@ public struct ComposeView: View {
         }
     }
 
-    private func persistDraft(for request: ComposeOperationRequest) async throws -> Draft {
-        htmlPublicationFlushBox.performFlush()
+    private func persistDraft(
+        for request: ComposeOperationRequest,
+        dismissalSnapshot: DismissalSaveSnapshot? = nil
+    ) async throws -> Draft {
+        if dismissalSnapshot == nil {
+            htmlPublicationFlushBox.performFlush()
+        }
         // Save and autosave must persist CID parts too, not only the send path.
         // The staging method is idempotent for already-known Content-IDs.
-        try await stageInlineImages()
-        let draft = currentDraft()
+        try await stageInlineImages(cidSourceHTML: dismissalSnapshot?.cidSourceHTML)
+        let draft: Draft
+        if var snapshotDraft = dismissalSnapshot?.draft, let activeCIDs = dismissalSnapshot?.activeCIDs {
+            snapshotDraft.remoteID = inlineAttachmentSession.latestSavedRemoteID
+                ?? savedDraftRemoteID
+                ?? snapshotDraft.remoteID
+            snapshotDraft.attachmentIDs = ComposeAttachmentUploadState.mergedAttachmentIDs(
+                inline: ComposeAttachmentUploadState.inlineAttachmentIDs(
+                    from: inlineAttachmentSession.staged,
+                    for: activeComposeSourceID,
+                    activeContentIDs: activeCIDs
+                ),
+                regular: ComposeAttachmentUploadState.uploadedAttachmentIDs(from: pendingAttachments)
+            )
+            draft = snapshotDraft
+        } else {
+            draft = currentDraft()
+        }
         var saved = try await save(draft)
         // Record the server-assigned id before any bail-out: if the request was
         // superseded by a newer keystroke, the draft we just saved still exists
         // on the server, so the next save must reuse this id to supersede it
         // rather than orphaning it as a duplicate draft.
         savedDraftRemoteID = saved.remoteID
+        inlineAttachmentSession.latestSavedRemoteID = saved.remoteID
         hasSavedDraftInSession = true
-        guard canApplyComposeOperationResponse(request) else { throw CancellationError() }
+        if dismissalSnapshot == nil {
+            guard canApplyComposeOperationResponse(request) else { throw CancellationError() }
+        }
         let shouldUploadAttachments = ComposeAttachmentUploadState.shouldUploadAttachments(for: request.kind)
         if shouldUploadAttachments,
            ComposeAttachmentUploadState.unresolvedFailureMessage(for: pendingAttachments) != nil {
@@ -4244,6 +4319,7 @@ public struct ComposeView: View {
                 // As above, record the server id before cancellation checks so
                 // a newer operation supersedes the actual latest remote draft.
                 savedDraftRemoteID = saved.remoteID
+                inlineAttachmentSession.latestSavedRemoteID = saved.remoteID
                 guard canApplyComposeOperationResponse(request) else { throw CancellationError() }
             }
         }
@@ -4268,7 +4344,7 @@ public struct ComposeView: View {
     func currentDraft() -> Draft {
         var draft = ComposeDraftBuilder.draft(
             id: draftID,
-            remoteID: savedDraftRemoteID,
+            remoteID: inlineAttachmentSession.latestSavedRemoteID ?? savedDraftRemoteID,
             identityID: selectedAliasID,
             replyingTo: replyingTo,
             forwardingFrom: forwardingFrom,
