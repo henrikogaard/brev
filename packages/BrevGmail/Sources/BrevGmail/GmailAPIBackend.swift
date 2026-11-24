@@ -1138,7 +1138,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         let MIME = try await MIMEMessageBuilder(
             draft: draft,
             from: sender(for: draft),
-            attachments: stagedMIMEAttachments(for: draft)
+            attachments: stagedMIMEAttachments(for: draft),
+            includeBccHeader: true
         ).build()
         try await draftOperations.check(lease)
         let remote: GmailDraft

@@ -14050,6 +14050,40 @@
           }
         }
       }
+    },
+    "Saves a plain-text draft for your review after you click Approve in Brev (never sends mail).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saves a plain-text draft for your review after you click Approve in Brev (never sends mail)."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagrer et utkast i ren tekst til gjennomgang etter at du klikker Godkjenn i Brev (sender aldri e-post)."
+          }
+        }
+      }
+    },
+    "Sending mail, deleting or trashing mail, and credential or settings changes are permanently excluded.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sending mail, deleting or trashing mail, and credential or settings changes are permanently excluded."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sending av e-post, sletting eller flytting til papirkurv, samt endring av påloggingsdata eller innstillinger er permanent utelukket."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

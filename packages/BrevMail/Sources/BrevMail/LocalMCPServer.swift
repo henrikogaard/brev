@@ -32,7 +32,7 @@ public enum MCPApprovalDecision: Equatable, Sendable {
 }
 
 /// Preview metadata shown in Brev's in-app approval dialog before an external MCP
-/// agent archives or moves/labels messages (ADR-0095 §3).
+/// agent archives, moves/labels messages, or saves a draft.
 public struct MCPApprovalRequest: Identifiable, Equatable, Sendable {
     public struct MessagePreview: Identifiable, Equatable, Sendable {
         public let id: String
@@ -46,6 +46,36 @@ public struct MCPApprovalRequest: Identifiable, Equatable, Sendable {
         }
     }
 
+    /// Redacted preview metadata shown before saving an agent-created draft.
+    public struct DraftPreview: Equatable, Sendable {
+        public let to: [String]
+        public let cc: [String]
+        public let bcc: [String]
+        public let subject: String
+        public let bodyPreview: String
+        public let isBodyTruncated: Bool
+        public let inReplyToSubject: String?
+
+        /// Creates a draft preview for the MCP approval sheet.
+        public init(
+            to: [String],
+            cc: [String] = [],
+            bcc: [String] = [],
+            subject: String,
+            bodyPreview: String,
+            isBodyTruncated: Bool = false,
+            inReplyToSubject: String? = nil
+        ) {
+            self.to = to
+            self.cc = cc
+            self.bcc = bcc
+            self.subject = subject
+            self.bodyPreview = bodyPreview
+            self.isBodyTruncated = isBodyTruncated
+            self.inReplyToSubject = inReplyToSubject
+        }
+    }
+
     public let id: UUID
     public let clientName: String
     public let clientPID: Int32?
@@ -55,6 +85,7 @@ public struct MCPApprovalRequest: Identifiable, Equatable, Sendable {
     public let targetFolderName: String?
     public let messageCount: Int
     public let previews: [MessagePreview]
+    public let draftPreview: DraftPreview?
     public let createdAt: Date
 
     public init(
@@ -67,6 +98,7 @@ public struct MCPApprovalRequest: Identifiable, Equatable, Sendable {
         targetFolderName: String? = nil,
         messageCount: Int,
         previews: [MessagePreview],
+        draftPreview: DraftPreview? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -78,6 +110,7 @@ public struct MCPApprovalRequest: Identifiable, Equatable, Sendable {
         self.targetFolderName = targetFolderName
         self.messageCount = messageCount
         self.previews = previews
+        self.draftPreview = draftPreview
         self.createdAt = createdAt
     }
 }
@@ -151,7 +184,8 @@ public final class MCPApprovalCoordinator {
     }
 }
 
-/// In-app approval sheet shown when a local MCP client requests `archive_messages` or `label_messages`.
+/// In-app approval sheet shown when a local MCP client requests `archive_messages`,
+/// `label_messages`, or `create_draft`.
 public struct MCPApprovalSheetView: View {
     @Environment(\.brevTheme) private var theme
     let request: MCPApprovalRequest
@@ -171,7 +205,7 @@ public struct MCPApprovalSheetView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.md) {
             HStack(spacing: BrevSpacing.sm) {
-                Image(systemName: "hand.raised.fill")
+                Image(systemName: request.toolName == "create_draft" ? "square.and.pencil" : "hand.raised.fill")
                     .foregroundStyle(theme.accent.color)
                 Text(actionTitle)
                     .brevFont(.headline)
@@ -182,42 +216,61 @@ public struct MCPApprovalSheetView: View {
                 .brevFont(.body)
                 .foregroundStyle(theme.textSecondary.color)
 
-            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                ForEach(request.previews.prefix(5)) { preview in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(preview.subject.isEmpty ? String(localized: "(No subject)", bundle: .module) : preview.subject)
-                            .brevFont(.subheadline)
-                            .foregroundStyle(theme.textPrimary.color)
-                            .lineLimit(1)
-                        Text(preview.sender)
-                            .brevFont(.caption)
-                            .foregroundStyle(theme.textSecondary.color)
-                            .lineLimit(1)
+            if let draft = request.draftPreview {
+                ViewThatFits(in: .vertical) {
+                    draftPreviewCard(draft)
+                    ScrollView {
+                        draftPreviewCard(draft)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(BrevSpacing.xs)
-                    .background(theme.bgSecondary.color)
-                    .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
                 }
-                let shownPreviewCount = min(request.previews.count, 5)
-                if request.messageCount > shownPreviewCount {
-                    Text(
-                        String(
-                            format: String(localized: "and %d more messages", bundle: .module),
-                            request.messageCount - shownPreviewCount
+                .frame(maxHeight: 260)
+            } else {
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    ForEach(request.previews.prefix(5)) { preview in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(preview.subject.isEmpty ? String(localized: "(No subject)", bundle: .module) : preview.subject)
+                                .brevFont(.subheadline)
+                                .foregroundStyle(theme.textPrimary.color)
+                                .lineLimit(1)
+                            Text(preview.sender)
+                                .brevFont(.caption)
+                                .foregroundStyle(theme.textSecondary.color)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(BrevSpacing.xs)
+                        .background(theme.bgSecondary.color)
+                        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
+                    }
+                    let shownPreviewCount = min(request.previews.count, 5)
+                    if request.messageCount > shownPreviewCount {
+                        Text(
+                            String(
+                                format: String(localized: "and %d more messages", bundle: .module),
+                                request.messageCount - shownPreviewCount
+                            )
                         )
-                    )
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
+                        .brevFont(.caption)
+                        .foregroundStyle(theme.textSecondary.color)
+                    }
                 }
             }
 
-            Text(
-                "Every change requires your explicit approval. Brev never exposes send or delete tools to external agents.",
-                bundle: .module
-            )
-            .brevFont(.caption)
-            .foregroundStyle(theme.textSecondary.color)
+            if request.toolName == "create_draft" {
+                Text(
+                    "This only saves a draft for your manual review. External agents can never send or delete mail.",
+                    bundle: .module
+                )
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+            } else {
+                Text(
+                    "Every change requires your explicit approval. Brev never exposes send or delete tools to external agents.",
+                    bundle: .module
+                )
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+            }
 
             HStack {
                 Spacer()
@@ -235,14 +288,88 @@ public struct MCPApprovalSheetView: View {
         .brevSheetAppearance(theme)
     }
 
-    private var actionTitle: String {
-        if request.toolName == "archive_messages" {
-            return String(localized: "Approve agent archive request?", bundle: .module)
+    private func draftPreviewCard(_ draft: MCPApprovalRequest.DraftPreview) -> some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            draftFieldRow(
+                label: String(localized: "Account", bundle: .module),
+                value: request.accountLabel
+            )
+            draftFieldRow(
+                label: String(localized: "To", bundle: .module),
+                value: draft.to.joined(separator: ", ")
+            )
+            if !draft.cc.isEmpty {
+                draftFieldRow(
+                    label: String(localized: "Cc", bundle: .module),
+                    value: draft.cc.joined(separator: ", ")
+                )
+            }
+            if !draft.bcc.isEmpty {
+                draftFieldRow(
+                    label: String(localized: "Bcc", bundle: .module),
+                    value: draft.bcc.joined(separator: ", ")
+                )
+            }
+            draftFieldRow(
+                label: String(localized: "Subject", bundle: .module),
+                value: draft.subject.isEmpty ? String(localized: "(No subject)", bundle: .module) : draft.subject
+            )
+            if let inReplyToSubject = draft.inReplyToSubject {
+                draftFieldRow(
+                    label: String(localized: "In reply to", bundle: .module),
+                    value: inReplyToSubject.isEmpty ? String(localized: "(No subject)", bundle: .module) : inReplyToSubject
+                )
+            }
+            Divider()
+            Text(draft.bodyPreview)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textPrimary.color)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if draft.isBodyTruncated {
+                Text("Draft preview truncated", bundle: .module)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
         }
-        return String(localized: "Approve agent folder move?", bundle: .module)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(BrevSpacing.sm)
+        .background(theme.bgSecondary.color)
+        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
+    }
+
+    private func draftFieldRow(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
+            Text(label)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+                .frame(minWidth: 62, alignment: .leading)
+            Text(value)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textPrimary.color)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var actionTitle: String {
+        switch request.toolName {
+        case "archive_messages":
+            return String(localized: "Approve agent archive request?", bundle: .module)
+        case "create_draft":
+            return String(localized: "Create draft", bundle: .module)
+        default:
+            return String(localized: "Approve agent folder move?", bundle: .module)
+        }
     }
 
     private var requestSummary: String {
+        if request.toolName == "create_draft" {
+            return String(
+                format: String(localized: "%@ wants to save a draft in %@.", bundle: .module),
+                request.clientName,
+                request.accountLabel
+            )
+        }
         if let folder = request.targetFolderName {
             return String(
                 format: String(localized: "%@ wants to move %d message(s) in %@ to %@.", bundle: .module),
@@ -298,6 +425,26 @@ public final class LocalMCPBroker {
     public static let maxSearchResults = 50
     /// Hard batch cap for `archive_messages` and `label_messages` (ADR-0095 §3).
     public static let maxChangeBatchSize = 25
+    /// Hard UTF-8 byte cap for `create_draft` plain-text bodies (64 KiB).
+    public static let maxDraftBodyBytes = 64 * 1024
+    /// Hard character cap for `create_draft` trimmed subjects.
+    public static let maxDraftSubjectLength = 500
+    /// Hard total recipient cap across `to`, `cc`, and `bcc` for `create_draft`.
+    public static let maxDraftRecipients = 50
+    /// Character cap for the body preview displayed in the in-app draft approval sheet.
+    private static let maxDraftPreviewCharacters = 400
+    /// Line cap for the body preview displayed in the in-app draft approval sheet.
+    private static let maxDraftPreviewLines = 6
+    /// Allowed argument keys for `create_draft` (enforces schema `additionalProperties: false`).
+    private static let createDraftAllowedArgumentKeys: Set<String> = [
+        "account_id",
+        "to",
+        "cc",
+        "bcc",
+        "subject",
+        "body_text",
+        "in_reply_to_message_id"
+    ]
     /// MCP protocol version advertised during `initialize`.
     public static let protocolVersion = "2024-11-05"
 
@@ -430,6 +577,13 @@ public final class LocalMCPBroker {
             return await handleChangeMessages(
                 id: id,
                 toolName: "label_messages",
+                arguments: arguments,
+                settings: settings,
+                client: client
+            )
+        case "create_draft":
+            return await handleCreateDraft(
+                id: id,
                 arguments: arguments,
                 settings: settings,
                 client: client
@@ -1005,6 +1159,449 @@ public final class LocalMCPBroker {
         }
     }
 
+    private func handleCreateDraft(
+        id: Any,
+        arguments: [String: Any],
+        settings: AgentAccessSettings,
+        client: MCPClientContext
+    ) async -> [String: Any] {
+        let toolName = "create_draft"
+        guard let accountID = arguments["account_id"] as? String, !accountID.isEmpty else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: "none",
+                parameterSummary: "missing_account_id",
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32602, message: "Missing required argument 'account_id'.")
+        }
+        guard let backend = resolveOptedInBackend(accountID: accountID, settings: settings) else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: "none",
+                parameterSummary: "account_unavailable",
+                outcome: .blockedAccount
+            )
+            return errorResponse(id: id, code: -32002, message: "Account not found.")
+        }
+
+        let unknownKeys = Set(arguments.keys).subtracting(Self.createDraftAllowedArgumentKeys)
+        guard unknownKeys.isEmpty else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "unknown_arguments count=\(unknownKeys.count)",
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32602, message: "Unsupported argument(s) for 'create_draft'.")
+        }
+
+        let toAddresses: [String]
+        let ccAddresses: [String]
+        let bccAddresses: [String]
+        do {
+            toAddresses = try Self.validatedDraftRecipients(from: arguments["to"], required: true)
+            ccAddresses = try Self.validatedDraftRecipients(from: arguments["cc"], required: false)
+            bccAddresses = try Self.validatedDraftRecipients(from: arguments["bcc"], required: false)
+        } catch let validationError as DraftArgumentValidationError {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: validationError.auditReason,
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32602, message: validationError.message)
+        } catch {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "invalid_recipients",
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32602, message: "Invalid recipient email address.")
+        }
+
+        let totalRecipients = toAddresses.count + ccAddresses.count + bccAddresses.count
+        guard totalRecipients <= Self.maxDraftRecipients else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "too_many_recipients count=\(totalRecipients)",
+                outcome: .denied
+            )
+            return errorResponse(
+                id: id,
+                code: -32602,
+                message: "Total recipients exceed the maximum of \(Self.maxDraftRecipients)."
+            )
+        }
+
+        guard let rawSubject = arguments["subject"] as? String else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "missing_subject",
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32602, message: "Missing required argument 'subject'.")
+        }
+        let subject = rawSubject
+            .replacingOccurrences(of: "\r\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard subject.count <= Self.maxDraftSubjectLength else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "subject_too_long len=\(subject.count)",
+                outcome: .denied
+            )
+            return errorResponse(
+                id: id,
+                code: -32602,
+                message: "Draft subject exceeds the maximum of \(Self.maxDraftSubjectLength) characters."
+            )
+        }
+
+        guard let bodyText = arguments["body_text"] as? String else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "missing_body_text",
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32602, message: "Missing required argument 'body_text'.")
+        }
+        let bodyBytes = bodyText.utf8.count
+        guard bodyBytes <= Self.maxDraftBodyBytes else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "body_too_large bytes=\(bodyBytes)",
+                outcome: .denied
+            )
+            return errorResponse(
+                id: id,
+                code: -32602,
+                message: "Draft body exceeds the maximum size of 64 KiB."
+            )
+        }
+
+        let folders: [Folder]
+        do {
+            folders = try await backend.folders()
+        } catch {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "folders_load_failed",
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32003, message: "Couldn't inspect account folders.")
+        }
+        guard folders.contains(where: { $0.role == .drafts }) else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "no_drafts_folder",
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32005, message: "No Drafts folder available on this account.")
+        }
+
+        var replyHeader: MessageHeader?
+        if let rawReplyArg = arguments["in_reply_to_message_id"], !(rawReplyArg is NSNull) {
+            guard let rawReplyID = rawReplyArg as? String else {
+                recordAudit(
+                    client: client,
+                    toolName: toolName,
+                    accountID: accountID,
+                    parameterSummary: "invalid_in_reply_to",
+                    outcome: .denied
+                )
+                return errorResponse(id: id, code: -32602, message: "'in_reply_to_message_id' must be a string.")
+            }
+            let replyID = rawReplyID.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !replyID.isEmpty {
+                do {
+                    let excludedFolderIDs = Set(folders.filter { $0.role == .trash || $0.role == .spam }.map(\.id))
+                    let excludedIDs = await excludedMessageIDs(in: folders, backend: backend)
+                    if excludedIDs.contains(replyID) {
+                        recordAudit(
+                            client: client,
+                            toolName: toolName,
+                            accountID: accountID,
+                            parameterSummary: "in_reply_to_unavailable",
+                            outcome: .denied
+                        )
+                        return errorResponse(id: id, code: -32004, message: "Referenced message not found in local cache.")
+                    }
+                    let matched = try await findHeaders(
+                        messageIDs: [replyID],
+                        in: backend,
+                        folders: folders,
+                        excludedFolderIDs: excludedFolderIDs,
+                        excludedMessageIDs: excludedIDs
+                    )
+                    guard let resolved = matched[replyID] else {
+                        // Never log unresolved caller-supplied message IDs.
+                        recordAudit(
+                            client: client,
+                            toolName: toolName,
+                            accountID: accountID,
+                            parameterSummary: "in_reply_to_not_found",
+                            outcome: .denied
+                        )
+                        return errorResponse(id: id, code: -32004, message: "Referenced message not found in local cache.")
+                    }
+                    replyHeader = resolved
+                } catch {
+                    recordAudit(
+                        client: client,
+                        toolName: toolName,
+                        accountID: accountID,
+                        parameterSummary: "in_reply_to_lookup_failed",
+                        outcome: .denied
+                    )
+                    return errorResponse(id: id, code: -32004, message: "Referenced message not found in local cache.")
+                }
+            }
+        }
+
+        let safeSubject = Self.redactedForSignInCodes(subject)
+        let (bodyPreview, isBodyTruncated) = Self.draftBodyPreview(from: bodyText)
+        let safeReplySubject = replyHeader.map { Self.redactedForSignInCodes($0.subject) }
+
+        let accountLabel = backend.account.displayName.isEmpty
+            ? backend.account.emailAddress
+            : backend.account.displayName
+        let approvalRequest = MCPApprovalRequest(
+            clientName: client.displayName,
+            clientPID: client.pid,
+            toolName: toolName,
+            accountID: accountID,
+            accountLabel: accountLabel,
+            targetFolderName: nil,
+            messageCount: 0,
+            previews: [],
+            draftPreview: MCPApprovalRequest.DraftPreview(
+                to: toAddresses,
+                cc: ccAddresses,
+                bcc: bccAddresses,
+                subject: safeSubject,
+                bodyPreview: bodyPreview,
+                isBodyTruncated: isBodyTruncated,
+                inReplyToSubject: safeReplySubject
+            ),
+            createdAt: now()
+        )
+
+        let replyTag = replyHeader != nil ? " reply=true" : ""
+        // Never store caller-supplied subject or raw draft body text in audit logs so
+        // bare sign-in codes or private draft content can never hit disk.
+        let paramSummary =
+            "to=\(toAddresses.count) cc=\(ccAddresses.count) bcc=\(bccAddresses.count) subject_len=\(subject.count) body_bytes=\(bodyBytes)\(replyTag)"
+
+        let decision = await approvalCoordinator.requestApproval(
+            approvalRequest,
+            timeoutSeconds: approvalTimeoutSeconds
+        )
+
+        switch decision {
+        case .approved:
+            // Re-verify opt-in before saving in case Settings changed while waiting.
+            guard settingsProvider().isAccountEnabled(accountID) else {
+                recordAudit(
+                    client: client,
+                    toolName: toolName,
+                    accountID: "none",
+                    parameterSummary: "consent_revoked",
+                    outcome: .blockedDisabled
+                )
+                return errorResponse(id: id, code: -32001, message: "Agent access was disabled before execution.")
+            }
+            let draft = Draft(
+                id: UUID().uuidString,
+                threadID: replyHeader?.threadID,
+                inReplyToMessageID: replyHeader?.rfcMessageID,
+                to: toAddresses.map { Correspondent(email: $0) },
+                cc: ccAddresses.map { Correspondent(email: $0) },
+                bcc: bccAddresses.map { Correspondent(email: $0) },
+                subject: subject,
+                htmlBody: ComposeHTMLBodyPolicy.html(fromEditorText: bodyText)
+            )
+            do {
+                let saved = try await backend.save(draft: draft)
+                recordAudit(
+                    client: client,
+                    toolName: toolName,
+                    accountID: accountID,
+                    parameterSummary: paramSummary,
+                    outcome: .approved
+                )
+                return toolSuccessResponse(id: id, payload: [
+                    "draft_id": saved.id,
+                    "account_id": accountID,
+                    "subject": Self.redactedForSignInCodes(saved.subject),
+                    "recipient_count": totalRecipients,
+                    "status": "saved_as_draft"
+                ])
+            } catch {
+                recordAudit(
+                    client: client,
+                    toolName: toolName,
+                    accountID: accountID,
+                    parameterSummary: "save_failed \(paramSummary)",
+                    outcome: .denied
+                )
+                return errorResponse(id: id, code: -32006, message: "Failed to save approved draft.")
+            }
+
+        case .denied:
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: paramSummary,
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32010, message: "User denied the request in Brev.")
+
+        case .timedOut:
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: paramSummary,
+                outcome: .timedOut
+            )
+            return errorResponse(id: id, code: -32011, message: "Approval request timed out in Brev.")
+
+        case .rateLimited:
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "concurrent_approval_rejected \(paramSummary)",
+                outcome: .rateLimited
+            )
+            return errorResponse(
+                id: id,
+                code: -32012,
+                message: "Another approval prompt is already active in Brev. Wait and retry."
+            )
+        }
+    }
+
+    private struct DraftArgumentValidationError: Error {
+        let auditReason: String
+        let message: String
+    }
+
+    private static func validatedDraftRecipients(from rawValue: Any?, required: Bool) throws -> [String] {
+        if rawValue == nil || rawValue is NSNull {
+            if required {
+                throw DraftArgumentValidationError(
+                    auditReason: "missing_to_recipients",
+                    message: "Missing required argument 'to' (non-empty array of valid email addresses)."
+                )
+            }
+            return []
+        }
+        guard let values = rawValue as? [String] else {
+            throw DraftArgumentValidationError(
+                auditReason: "invalid_recipient_type",
+                message: "Recipient fields must be arrays of email address strings."
+            )
+        }
+        if required && values.isEmpty {
+            throw DraftArgumentValidationError(
+                auditReason: "empty_to_recipients",
+                message: "'to' must contain at least one valid email address."
+            )
+        }
+        var validated: [String] = []
+        validated.reserveCapacity(values.count)
+        for raw in values {
+            guard !raw.contains("\r"), !raw.contains("\n") else {
+                throw DraftArgumentValidationError(
+                    auditReason: "invalid_recipient_address",
+                    message: "Recipient email address contains invalid characters."
+                )
+            }
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            guard isValidDraftEmail(trimmed) else {
+                throw DraftArgumentValidationError(
+                    auditReason: "invalid_recipient_address",
+                    message: "One or more recipient email addresses are invalid."
+                )
+            }
+            validated.append(trimmed)
+        }
+        return validated
+    }
+
+    private static let dotAtomAllowedBytes: Set<UInt8> = Set(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-/=?^_`{|}~".utf8
+    )
+
+    private static func isValidDraftEmail(_ address: String) -> Bool {
+        guard !address.isEmpty, address.utf8.count <= 254 else { return false }
+        let parts = address.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return false }
+        let local = String(parts[0])
+        let domain = String(parts[1])
+        guard !local.isEmpty,
+              local.utf8.count <= 64,
+              !local.hasPrefix("."),
+              !local.hasSuffix("."),
+              !local.contains("..")
+        else { return false }
+        for segment in local.split(separator: ".", omittingEmptySubsequences: false) {
+            guard !segment.isEmpty,
+                  segment.utf8.allSatisfy({ dotAtomAllowedBytes.contains($0) })
+            else { return false }
+        }
+        return MailAccountAutodiscovery.isValidServerHost(domain)
+    }
+
+    private static func draftBodyPreview(from bodyText: String) -> (preview: String, isTruncated: Bool) {
+        let redacted = redactedForSignInCodes(bodyText)
+        if redacted != bodyText {
+            return (redacted, false)
+        }
+        let normalized = bodyText
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = normalized.split(separator: "\n", omittingEmptySubsequences: false)
+        var truncated = false
+        let lineBounded: String
+        if lines.count > maxDraftPreviewLines {
+            lineBounded = lines.prefix(maxDraftPreviewLines).joined(separator: "\n")
+            truncated = true
+        } else {
+            lineBounded = normalized
+        }
+        if lineBounded.count > maxDraftPreviewCharacters {
+            return (String(lineBounded.prefix(maxDraftPreviewCharacters)) + "…", true)
+        }
+        return (truncated ? lineBounded + "…" : lineBounded, truncated)
+    }
+
     private func resolveOptedInBackend(
         accountID: String,
         settings: AgentAccessSettings
@@ -1209,6 +1806,40 @@ public final class LocalMCPBroker {
                         "folder_id": ["type": "string"]
                     ],
                     "required": ["account_id", "message_ids", "folder_id"],
+                    "additionalProperties": false
+                ]
+            ],
+            [
+                "name": "create_draft",
+                "description": "Save a plain-text draft for manual review after explicit in-app user approval in Brev. Never sends mail.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "account_id": ["type": "string"],
+                        "to": [
+                            "type": "array",
+                            "items": ["type": "string"],
+                            "minItems": 1,
+                            "maxItems": maxDraftRecipients
+                        ],
+                        "cc": [
+                            "type": "array",
+                            "items": ["type": "string"],
+                            "maxItems": maxDraftRecipients
+                        ],
+                        "bcc": [
+                            "type": "array",
+                            "items": ["type": "string"],
+                            "maxItems": maxDraftRecipients
+                        ],
+                        "subject": ["type": "string", "maxLength": maxDraftSubjectLength],
+                        "body_text": [
+                            "type": "string",
+                            "description": "Plain text draft body. Must not exceed 65,536 bytes when encoded as UTF-8."
+                        ],
+                        "in_reply_to_message_id": ["type": "string"]
+                    ],
+                    "required": ["account_id", "to", "subject", "body_text"],
                     "additionalProperties": false
                 ]
             ]

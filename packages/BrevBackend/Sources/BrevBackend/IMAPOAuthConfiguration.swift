@@ -92,17 +92,20 @@ public struct MIMEMessageBuilder: Sendable {
     private let from: Correspondent
     private let attachments: [MIMEMessageAttachment]
     private let boundary: String
+    private let includeBccHeader: Bool
 
     public init(
         draft: Draft,
         from: Correspondent,
         attachments: [MIMEMessageAttachment] = [],
-        boundary: String = UUID().uuidString
+        boundary: String = UUID().uuidString,
+        includeBccHeader: Bool = false
     ) {
         self.draft = draft
         self.from = from
         self.attachments = attachments
         self.boundary = boundary
+        self.includeBccHeader = includeBccHeader
     }
 
     /// A stable, draft-derived `Message-ID`.
@@ -138,9 +141,12 @@ public struct MIMEMessageBuilder: Sendable {
 
         // Headers
         lines.append("From: \(formatAddress(from))")
-        lines.append("To: \(draft.to.map { formatAddress($0) }.joined(separator: ", "))")
+        lines.append(foldedAddressHeader(name: "To", correspondents: draft.to))
         if !draft.cc.isEmpty {
-            lines.append("Cc: \(draft.cc.map { formatAddress($0) }.joined(separator: ", "))")
+            lines.append(foldedAddressHeader(name: "Cc", correspondents: draft.cc))
+        }
+        if includeBccHeader, !draft.bcc.isEmpty {
+            lines.append(foldedAddressHeader(name: "Bcc", correspondents: draft.bcc))
         }
         lines.append("Subject: \(encodeHeader(draft.subject))")
         lines.append("MIME-Version: 1.0")
@@ -238,6 +244,32 @@ public struct MIMEMessageBuilder: Sendable {
     }
 
     // MARK: - Helpers
+
+    /// Folds comma-separated address headers (`To:`, `Cc:`, `Bcc:`) between complete mailboxes
+    /// using RFC 5322 folding whitespace (`\r\n `) so every physical line stays comfortably under
+    /// the 998-byte RFC 5322 line length limit.
+    private func foldedAddressHeader(
+        name: String,
+        correspondents: [Correspondent],
+        maxLineBytes: Int = 768
+    ) -> String {
+        let formatted = correspondents.map { formatAddress($0) }
+        guard let first = formatted.first else { return "\(name): " }
+        var result = "\(name): \(first)"
+        var currentLineBytes = result.utf8.count
+        for address in formatted.dropFirst() {
+            let additionBytes = 2 + address.utf8.count
+            // Reserve 1 extra byte for a trailing comma if a subsequent address folds.
+            if currentLineBytes + additionBytes + 1 > maxLineBytes {
+                result += ",\r\n \(address)"
+                currentLineBytes = 1 + address.utf8.count
+            } else {
+                result += ", \(address)"
+                currentLineBytes += additionBytes
+            }
+        }
+        return result
+    }
 
     private func formatAddress(_ correspondent: Correspondent) -> String {
         // Sanitize the address too — a CR/LF in an email value would otherwise

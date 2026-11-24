@@ -164,6 +164,14 @@ public struct AgentAccessToolSpec: Identifiable, Equatable, Sendable {
                     localized: "Moves up to 25 messages to a non-Trash, non-Spam folder after you click Approve in Brev.",
                     bundle: .module
                 )
+            ),
+            AgentAccessToolSpec(
+                name: "create_draft",
+                permission: .approvalRequired,
+                summary: String(
+                    localized: "Saves a plain-text draft for your review after you click Approve in Brev (never sends mail).",
+                    bundle: .module
+                )
             )
         ]
     }
