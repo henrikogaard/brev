@@ -136,13 +136,17 @@ and `auth`) with the HTTPS endpoint you configure.
   written to `UserDefaults`, logs, `.brevbackup` exports, or iCloud preference sync.
 - Relay configuration, opaque account token mappings, and per-account opt-ins
   stay strictly device-local and are excluded from backups and iCloud preference sync.
-- JMAP WebPush subscriptions stay in `pendingVerification` until the RFC 8620
-  §7.2.2 verification challenge is completed.
-- Incoming wakes are opaque triggers (device-local opaque account token and
-  optional state token only); Brev reverse-maps the token locally and verifies
+- JMAP WebPush subscriptions stay in `pendingVerification` until you complete
+  the RFC 8620 §7.2.2 verification step, which sends only the subscription ID
+  and the one-time `verificationCode` challenge (plus your optional origin-scoped
+  Bearer header) to your configured JMAP API endpoint in a `PushSubscription/set`
+  `update` request.
+- Incoming wakes are opaque triggers (device-local opaque account tokens and
+  optional state tokens, including RFC 8620 §7.1 `StateChange` maps forwarded by
+  your WebPush delivery bridge); Brev reverse-maps the token locally and verifies
   that closed-app push and the targeted account are opted in on this device
-  before running its normal local sync and notification pipeline directly against
-  your mail server.
+  before running its normal local sync and arrival-diffed notification pipeline
+  directly against your mail server.
 
 **How to disable:** Leave Settings → Notifications → **Closed-App Push (Self-Hosted)**
 turned off, or toggle it off / click **Unregister** to remove the subscription

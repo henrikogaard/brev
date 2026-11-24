@@ -52,14 +52,66 @@ public enum PushWakeHandlingResult: Equatable, Sendable {
     }
 }
 
-/// Handles opaque incoming push wakes and RFC 8620 §7.2.2 JMAP verification
-/// challenges from a user-hosted HTTPS relay or JMAP WebPush server (#11).
+/// Newly arrived unread Inbox message metadata passed to local notification delivery
+/// after a closed-app push wake diffs Inbox headers before and after sync (#11).
+public struct PushWakeArrivedMessage: Equatable, Sendable {
+    /// Local message identifier.
+    public let messageID: String
+    /// Sender address metadata.
+    public let from: Correspondent
+    /// Message subject line.
+    public let subject: String
+    /// Short preview snippet.
+    public let snippet: String
+    /// Message receipt timestamp.
+    public let receivedAt: Date
+    /// Local Brev account identifier.
+    public let accountID: String
+    /// Local Inbox folder identifier.
+    public let folderID: String
+    /// Localized Inbox folder display name.
+    public let folderName: String
+    /// Whether notification policy permits showing message previews.
+    public let showPreviews: Bool
+    /// Whether notification policy permits playing a sound.
+    public let playSound: Bool
+
+    /// Creates an arrived-message notification payload.
+    public init(
+        messageID: String,
+        from: Correspondent,
+        subject: String,
+        snippet: String,
+        receivedAt: Date,
+        accountID: String,
+        folderID: String,
+        folderName: String,
+        showPreviews: Bool,
+        playSound: Bool
+    ) {
+        self.messageID = messageID
+        self.from = from
+        self.subject = subject
+        self.snippet = snippet
+        self.receivedAt = receivedAt
+        self.accountID = accountID
+        self.folderID = folderID
+        self.folderName = folderName
+        self.showPreviews = showPreviews
+        self.playSound = playSound
+    }
+}
+
+/// Handles opaque incoming push wakes, RFC 8620 §7.1 `StateChange` notifications,
+/// and RFC 8620 §7.2.2 JMAP verification challenges from a user-hosted HTTPS relay
+/// or JMAP WebPush delivery bridge (#11).
 ///
-/// Incoming wakes carry only a device-local opaque account token (`acct-<uuid>`),
+/// Incoming wakes carry only device-local opaque account tokens (`acct-<uuid>`),
 /// never email addresses, mail bodies, or credentials. This coordinator resolves
-/// the opaque token to a local opted-in `BrevAccount.ID`, runs a bounded refresh
-/// for that single backend, and invokes the scene-less arrival/notification seam
-/// so new mail alerts can fire even when no SwiftUI scene is mounted.
+/// opaque tokens to local opted-in `BrevAccount.ID`s, snapshots pre-refresh Inbox
+/// message IDs, runs a bounded refresh for each matched backend, and invokes the
+/// scene-less arrival notification pipeline strictly for genuinely newly arrived
+/// unread messages so already-known unread messages are never re-notified.
 @MainActor
 public final class PushWakeCoordinator {
     /// Supplies the currently connected backends when a wake arrives.
@@ -72,36 +124,56 @@ public final class PushWakeCoordinator {
     public var onJMAPVerificationChallenge: (@MainActor (_ subscriptionID: String, _ verificationCode: String) async -> Void)?
 
     private let settingsProvider: () -> PushRelaySettings
+    private let notificationSettingsProvider: () -> NotificationSettings
     private let refreshBackends: @Sendable ([any MailBackend]) async -> String?
-    private let notifyArrivedMail: @MainActor (any MailBackend, PushWakePayload) async -> Void
+    private let customNotifyArrivedMail: (@MainActor (any MailBackend, PushWakePayload) async -> Void)?
+    private let deliverNotification: @MainActor (PushWakeArrivedMessage) async -> Void
 
     /// Creates a wake coordinator with injectable settings, backend, refresh, and notification seams.
     ///
     /// - Parameters:
     ///   - settingsProvider: Reads the current device-local `PushRelaySettings`.
+    ///   - notificationSettingsProvider: Reads the current device-local `NotificationSettings`.
     ///   - backendsProvider: Returns currently connected mail backends.
     ///   - ensureAccountsRestored: Restores accounts on a cold background wake when needed.
     ///   - refreshBackends: Performs a bounded refresh for the matched backend.
-    ///   - notifyArrivedMail: Scene-less arrival notification check invoked after a successful refresh.
+    ///   - notifyArrivedMail: Optional override replacing the default scene-less arrival diff pipeline.
+    ///   - deliverNotification: Injectable delivery sink used by the real arrival-diff pipeline.
     public init(
         settingsProvider: @escaping () -> PushRelaySettings = { PushRelaySettings.load() },
+        notificationSettingsProvider: @escaping () -> NotificationSettings = { NotificationSettings.load() },
         backendsProvider: @escaping @MainActor () -> [any MailBackend] = { [] },
         ensureAccountsRestored: (@MainActor () async -> Void)? = nil,
         refreshBackends: (@Sendable ([any MailBackend]) async -> String?)? = nil,
-        notifyArrivedMail: (@MainActor (any MailBackend, PushWakePayload) async -> Void)? = nil
+        notifyArrivedMail: (@MainActor (any MailBackend, PushWakePayload) async -> Void)? = nil,
+        deliverNotification: (@MainActor (PushWakeArrivedMessage) async -> Void)? = nil
     ) {
         self.settingsProvider = settingsProvider
+        self.notificationSettingsProvider = notificationSettingsProvider
         self.backendsProvider = backendsProvider
         self.ensureAccountsRestored = ensureAccountsRestored
         self.refreshBackends = refreshBackends ?? { backends in
             await MailFetchScheduler.performBackgroundRefresh(backends: backends)
         }
-        self.notifyArrivedMail = notifyArrivedMail ?? { backend, payload in
-            await Self.deliverSceneLessNotificationIfNeeded(for: backend, payload: payload)
+        customNotifyArrivedMail = notifyArrivedMail
+        self.deliverNotification = deliverNotification ?? { arrived in
+            let notificationCenter = BrevLocalNotificationCenter()
+            await notificationCenter.postNewMailNotification(
+                from: arrived.from,
+                subject: arrived.subject,
+                snippet: arrived.snippet,
+                receivedAt: arrived.receivedAt,
+                messageID: arrived.messageID,
+                accountID: arrived.accountID,
+                folderID: arrived.folderID,
+                folderName: arrived.folderName,
+                showPreviews: arrived.showPreviews,
+                playSound: arrived.playSound
+            )
         }
     }
 
-    /// Processes a decoded opaque wake payload or JMAP verification challenge.
+    /// Processes a decoded opaque wake payload, RFC 8620 `StateChange`, or JMAP verification challenge.
     @discardableResult
     public func handleWake(_ payload: PushWakePayload) async -> PushWakeHandlingResult {
         let settings = settingsProvider()
@@ -119,8 +191,21 @@ public final class PushWakeCoordinator {
             )
         }
 
-        guard let resolvedAccountID = settings.resolveAccountID(forOpaqueToken: payload.accountID) else {
-            return .ignoredAccountNotOptedIn(accountID: payload.accountID)
+        let candidateTokens = payload.targetAccountTokens
+        guard !candidateTokens.isEmpty else {
+            return .ignoredInvalidPayload
+        }
+
+        var resolvedAccountIDs: [String] = []
+        var seenAccountIDs: Set<String> = []
+        for token in candidateTokens {
+            if let resolved = settings.resolveAccountID(forOpaqueToken: token),
+               seenAccountIDs.insert(resolved).inserted {
+                resolvedAccountIDs.append(resolved)
+            }
+        }
+        guard !resolvedAccountIDs.isEmpty else {
+            return .ignoredAccountNotOptedIn(accountID: candidateTokens[0])
         }
 
         var backends = backendsProvider()
@@ -129,16 +214,36 @@ public final class PushWakeCoordinator {
             backends = backendsProvider()
         }
 
-        guard let targetBackend = backends.first(where: { $0.account.id == resolvedAccountID }) else {
-            return .ignoredAccountNotConnected(accountID: resolvedAccountID)
+        let matchedBackends = resolvedAccountIDs.compactMap { accountID in
+            backends.first(where: { $0.account.id == accountID })
+        }
+        guard !matchedBackends.isEmpty else {
+            return .ignoredAccountNotConnected(accountID: resolvedAccountIDs[0])
         }
 
-        if let failure = await refreshBackends([targetBackend]) {
-            return .failed(accountID: resolvedAccountID, message: failure)
+        for targetBackend in matchedBackends {
+            let knownInboxIDs: Set<String>? = if customNotifyArrivedMail == nil, payload.eventKind == .newMail {
+                await Self.snapshotInboxMessageIDs(for: targetBackend)
+            } else {
+                nil
+            }
+
+            if let failure = await refreshBackends([targetBackend]) {
+                return .failed(accountID: targetBackend.account.id, message: failure)
+            }
+
+            if let customNotifyArrivedMail {
+                await customNotifyArrivedMail(targetBackend, payload)
+            } else {
+                await deliverSceneLessNotificationIfNeeded(
+                    for: targetBackend,
+                    payload: payload,
+                    previouslyKnownInboxIDs: knownInboxIDs
+                )
+            }
         }
 
-        await notifyArrivedMail(targetBackend, payload)
-        return .synced(accountID: resolvedAccountID)
+        return .synced(accountID: matchedBackends[0].account.id)
     }
 
     /// Decodes an APNs/remote-notification `userInfo` dictionary and handles the wake.
@@ -161,14 +266,30 @@ public final class PushWakeCoordinator {
         return await handleWake(payload)
     }
 
-    /// Evaluates `NewMailNotificationPolicy` and posts a local notification for the
-    /// newest unread Inbox message when woken without a mounted SwiftUI scene.
-    private static func deliverSceneLessNotificationIfNeeded(
+    private static func snapshotInboxMessageIDs(for backend: any MailBackend) async -> Set<String>? {
+        guard let folders = try? await backend.folders(),
+              let inbox = folders.first(where: { $0.role == .inbox }),
+              let page = try? await backend.enumerateMessages(in: inbox, pageToken: nil)
+        else {
+            return nil
+        }
+        return Set(page.headers.map(\.id))
+    }
+
+    /// Evaluates `NewMailNotificationPolicy` and posts local notifications ONLY for
+    /// unread Inbox messages that arrived during this wake refresh (absent from
+    /// `previouslyKnownInboxIDs`), preventing re-notification of already-known unread mail.
+    private func deliverSceneLessNotificationIfNeeded(
         for backend: any MailBackend,
-        payload: PushWakePayload
+        payload: PushWakePayload,
+        previouslyKnownInboxIDs: Set<String>?
     ) async {
-        guard payload.eventKind == .newMail else { return }
-        let notificationSettings = NotificationSettings.load()
+        guard payload.eventKind == .newMail,
+              let previouslyKnownInboxIDs
+        else {
+            return
+        }
+        let notificationSettings = notificationSettingsProvider()
         let decision = NewMailNotificationPolicy.decision(
             settings: notificationSettings,
             accountID: backend.account.id
@@ -176,24 +297,28 @@ public final class PushWakeCoordinator {
         guard decision.shouldDeliver else { return }
         guard let folders = try? await backend.folders(),
               let inbox = folders.first(where: { $0.role == .inbox }),
-              let page = try? await backend.enumerateMessages(in: inbox, pageToken: nil),
-              let newest = page.headers.first,
-              !newest.isRead
+              let page = try? await backend.enumerateMessages(in: inbox, pageToken: nil)
         else {
             return
         }
-        let notificationCenter = BrevLocalNotificationCenter()
-        await notificationCenter.postNewMailNotification(
-            from: newest.from,
-            subject: newest.subject,
-            snippet: newest.snippet,
-            receivedAt: newest.date,
-            messageID: newest.id,
-            accountID: backend.account.id,
-            folderID: inbox.id,
-            folderName: inbox.name,
-            showPreviews: decision.showPreviews,
-            playSound: decision.playSound
-        )
+
+        let newlyArrivedUnread = page.headers.filter { header in
+            !header.isRead && !previouslyKnownInboxIDs.contains(header.id)
+        }
+        for header in newlyArrivedUnread.prefix(5) {
+            let arrived = PushWakeArrivedMessage(
+                messageID: header.id,
+                from: header.from,
+                subject: header.subject,
+                snippet: header.snippet,
+                receivedAt: header.date,
+                accountID: backend.account.id,
+                folderID: inbox.id,
+                folderName: inbox.name,
+                showPreviews: decision.showPreviews,
+                playSound: decision.playSound
+            )
+            await deliverNotification(arrived)
+        }
     }
 }

@@ -338,7 +338,14 @@ struct PushRelaySettingsTests {
         let verifyJSON = Data("""
         {"methodResponses":[["PushSubscription/set",{"updated":{"jmap-1":null}},"c0"]]}
         """.utf8)
-        let transport = SequencedPushTransport(responses: [(createJSON, 200), (verifyJSON, 200)])
+        let refreshUpdateJSON = Data("""
+        {"methodResponses":[["PushSubscription/set",{"updated":{"jmap-1":{"expires":"2027-02-01T00:00:00Z"}}},"c0"]]}
+        """.utf8)
+        let transport = SequencedPushTransport(responses: [
+            (createJSON, 200),
+            (verifyJSON, 200),
+            (refreshUpdateJSON, 200)
+        ])
 
         let controller = PushRelayRegistrationController(
             settingsStore: SettingsPersistenceStore(defaults: defaults),
@@ -359,6 +366,123 @@ struct PushRelaySettingsTests {
         await controller.verifyActiveJMAPSubscription(code: "code-1234")
         #expect(controller.settings.activeRegistration?.state == .active)
         #expect(!controller.isAwaitingJMAPVerification)
+
+        // Repeat Test & Register on the same verified JMAP target sends `update` and preserves `.active`.
+        await controller.register()
+        #expect(controller.settings.activeRegistration?.subscriptionID == "jmap-1")
+        #expect(controller.settings.activeRegistration?.state == .active)
+        #expect(!controller.isAwaitingJMAPVerification)
+
+        let requests = await transport.requests()
+        #expect(requests.count == 3)
+        let refreshBody = try String(decoding: #require(requests[2].httpBody), as: UTF8.self)
+        #expect(refreshBody.contains("\"update\""))
+        #expect(refreshBody.contains("jmap-1"))
+        #expect(!refreshBody.contains("\"create\""))
+    }
+
+    @Test("disabling push mid-JMAP verification or mid-failing register drains deferred disable cleanly")
+    @MainActor
+    func concurrentDisableDuringVerificationAndFailingRegister() async throws {
+        let suite = "PushRelayDisableMidVerify-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsPersistenceStore(defaults: defaults)
+
+        // 1. Disabling mid-verifyActiveJMAPSubscription immediately destroys the active JMAP subscription.
+        let verifyGate = InFlightRequestGate()
+        let verifyJSON = Data("""
+        {"methodResponses":[["PushSubscription/set",{"updated":{"jmap-verify-1":null}},"c0"]]}
+        """.utf8)
+        let destroyJSON = Data("""
+        {"methodResponses":[["PushSubscription/set",{"destroyed":["jmap-verify-1"]},"c0"]]}
+        """.utf8)
+        let verifyTransport = GatedPushTransport(
+            gate: verifyGate,
+            registerResponse: (verifyJSON, 200),
+            unregisterResponse: (destroyJSON, 200)
+        )
+
+        var initialSettings = PushRelaySettings(
+            isEnabled: true,
+            mode: .jmapWebPush,
+            endpointURLString: "https://jmap.example.com/api/",
+            webPushDeliveryURLString: "https://webpush.example.com/push/dev1",
+            enabledAccountIDs: ["acct-jmap"],
+            opaqueAccountTokens: ["acct-jmap": "acct-opaque-jmap"],
+            deviceClientID: "brev-dev-1",
+            activeRegistration: ActivePushRelayRegistration(
+                mode: .jmapWebPush,
+                endpointURLString: "https://jmap.example.com/api/",
+                webPushDeliveryURLString: "https://webpush.example.com/push/dev1",
+                subscriptionID: "jmap-verify-1",
+                state: .pendingVerification
+            )
+        )
+        store.save(initialSettings)
+
+        let verifyController = PushRelayRegistrationController(
+            settingsStore: store,
+            secretStore: InMemoryPushRelaySecretStore(),
+            client: PushRelayClient(transport: verifyTransport)
+        )
+        let verifyTask = Task { await verifyController.verifyActiveJMAPSubscription(code: "code-race") }
+        await verifyGate.waitUntilRequestStarted()
+        await verifyController.setEnabled(false)
+        await verifyGate.release()
+        await verifyTask.value
+
+        #expect(!verifyController.settings.isEnabled)
+        #expect(verifyController.settings.activeRegistration == nil)
+        let verifyRequests = await verifyTransport.requests()
+        #expect(verifyRequests.count == 2)
+        let destroyBody = try String(decoding: #require(verifyRequests[1].httpBody), as: UTF8.self)
+        #expect(destroyBody.contains("\"destroy\""))
+        #expect(destroyBody.contains("jmap-verify-1"))
+
+        // 2. Disabling while a refresh register() is in flight and errors still unregisters the prior subscription.
+        let failGate = InFlightRequestGate()
+        let failTransport = GatedPushTransport(
+            gate: failGate,
+            registerResponse: (Data(), 500),
+            unregisterResponse: (Data(), 200)
+        )
+        initialSettings = PushRelaySettings(
+            isEnabled: true,
+            mode: .userHostedRelay,
+            endpointURLString: "https://relay.example.com/register",
+            enabledAccountIDs: ["acct-1"],
+            opaqueAccountTokens: ["acct-1": "acct-opaque-1"],
+            deviceClientID: "brev-dev-1",
+            activeRegistration: ActivePushRelayRegistration(
+                mode: .userHostedRelay,
+                endpointURLString: "https://relay.example.com/register",
+                subscriptionID: "sub-prior-1",
+                state: .active
+            )
+        )
+        store.save(initialSettings)
+
+        let failController = PushRelayRegistrationController(
+            settingsStore: store,
+            secretStore: InMemoryPushRelaySecretStore(),
+            client: PushRelayClient(transport: failTransport),
+            devicePushTokenProvider: { "apns-token-1" }
+        )
+        let failTask = Task { await failController.register() }
+        await failGate.waitUntilRequestStarted()
+        await failController.setEnabled(false)
+        await failGate.release()
+        await failTask.value
+
+        #expect(!failController.settings.isEnabled)
+        #expect(failController.settings.activeRegistration == nil)
+        let failRequests = await failTransport.requests()
+        #expect(failRequests.count == 2)
+        #expect(failRequests[0].httpMethod == "PUT")
+        #expect(failRequests[1].httpMethod == "DELETE")
+        #expect(failRequests[1].value(forHTTPHeaderField: "X-Brev-Subscription-ID") == "sub-prior-1")
     }
 
     @Test("settings search indexes Closed-App Push and scrolls JMAP/push queries to the always-visible group title")

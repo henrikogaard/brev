@@ -55,6 +55,17 @@ struct PushRelayTests {
         #expect(throws: PushRelayEndpointValidationError.malformedURL) {
             _ = try PushRelayEndpointValidator.validate("not a valid url with spaces")
         }
+
+        // Destination comparison normalizes host case, default port, and empty-vs-root path,
+        // while keeping trailing slashes on non-root paths distinct (/push != /push/).
+        let apiLower = try PushRelayEndpointValidator.validate("https://jmap.example.com/api")
+        let apiUpperPort = try PushRelayEndpointValidator.validate("https://JMAP.EXAMPLE.COM:443/api")
+        let apiTrailingSlash = try PushRelayEndpointValidator.validate("https://jmap.example.com/api/")
+        let rootBare = try PushRelayEndpointValidator.validate("https://example.com")
+        let rootSlash = try PushRelayEndpointValidator.validate("https://example.com/")
+        #expect(PushRelayEndpointValidator.representsSameDestination(apiLower, apiUpperPort))
+        #expect(PushRelayEndpointValidator.representsSameDestination(rootBare, rootSlash))
+        #expect(!PushRelayEndpointValidator.representsSameDestination(apiLower, apiTrailingSlash))
     }
 
     @Test("RFC 8291 P-256 key generation round-trips cleanly and never leaks private key in description")
@@ -156,7 +167,7 @@ struct PushRelayTests {
         let jmapSameURL = PushRelayRegistrationRequest(
             mode: .jmapWebPush,
             deviceClientID: "brev-dev-123",
-            webPushDeliveryURL: "https://JMAP.EXAMPLE.COM:443/api/",
+            webPushDeliveryURL: "https://JMAP.EXAMPLE.COM:443/api",
             accountIDs: ["acct-token-1"]
         )
         await #expect(throws: PushRelayClientError.webPushDeliveryURLMatchesAPIEndpoint) {
@@ -498,6 +509,109 @@ struct PushRelayTests {
         #expect(destroyBody.contains("jmap-sub-99"))
     }
 
+    @Test("JMAP refresh updates existing subscription preserving active state and falls back to create on notFound")
+    func jmapRefreshPreservesVerifiedStateAndFallsBackOnNotFound() async throws {
+        let keys = try PushRelayEncryptionKeyMaterial.generate().publicKeys()
+        let updateOK = """
+        {
+          "methodResponses": [
+            [
+              "PushSubscription/set",
+              {
+                "updated": {
+                  "jmap-sub-1": {
+                    "expires": "2027-02-01T00:00:00Z"
+                  }
+                }
+              },
+              "c0"
+            ]
+          ]
+        }
+        """
+        let updateNotFound = """
+        {
+          "methodResponses": [
+            [
+              "PushSubscription/set",
+              {
+                "notUpdated": {
+                  "jmap-sub-1": {
+                    "type": "notFound"
+                  }
+                }
+              },
+              "c0"
+            ]
+          ]
+        }
+        """
+        let recreateResponse = """
+        {
+          "methodResponses": [
+            [
+              "PushSubscription/set",
+              {
+                "created": {
+                  "brev-push-sub": {
+                    "id": "jmap-sub-2"
+                  }
+                }
+              },
+              "c0"
+            ]
+          ]
+        }
+        """
+        let transport = RecordingPushRelayTransport(responses: [
+            (Data(updateOK.utf8), 200),
+            (Data(updateNotFound.utf8), 200),
+            (Data(recreateResponse.utf8), 200)
+        ])
+        let client = PushRelayClient(transport: transport)
+        let req = PushRelayRegistrationRequest(
+            mode: .jmapWebPush,
+            deviceClientID: "brev-device-42",
+            webPushDeliveryURL: "https://webpush.example.com/push/token123",
+            accountIDs: ["acct-jmap"],
+            keys: keys
+        )
+
+        // 1. Refresh on an already-verified subscription sends `update` and preserves `.active`.
+        let refreshed = try await client.refresh(
+            endpointURLString: "https://jmap.example.com/api/",
+            subscriptionID: "jmap-sub-1",
+            request: req,
+            currentState: .active,
+            bearerToken: "jmap-token"
+        )
+        #expect(refreshed.subscriptionID == "jmap-sub-1")
+        #expect(refreshed.state == .active)
+
+        // 2. If server returns `notFound` for the existing ID, refresh falls back to `create` (.pendingVerification).
+        let recreated = try await client.refresh(
+            endpointURLString: "https://jmap.example.com/api/",
+            subscriptionID: "jmap-sub-1",
+            request: req,
+            currentState: .active,
+            bearerToken: "jmap-token"
+        )
+        #expect(recreated.subscriptionID == "jmap-sub-2")
+        #expect(recreated.state == .pendingVerification)
+
+        let recorded = await transport.recordedRequests()
+        #expect(recorded.count == 3)
+        let firstBody = try String(decoding: #require(recorded[0].httpBody), as: UTF8.self)
+        #expect(firstBody.contains("\"update\""))
+        #expect(firstBody.contains("jmap-sub-1"))
+        #expect(!firstBody.contains("\"create\""))
+
+        let secondBody = try String(decoding: #require(recorded[1].httpBody), as: UTF8.self)
+        #expect(secondBody.contains("\"update\""))
+        let thirdBody = try String(decoding: #require(recorded[2].httpBody), as: UTF8.self)
+        #expect(thirdBody.contains("\"create\""))
+    }
+
     @Test("URLSessionPushRelayTransport blocks HTTP redirects so payloads and tokens never leave the approved origin")
     func transportBlocksRedirects() async {
         RedirectBlockingURLProtocol.reset()
@@ -574,6 +688,39 @@ struct PushRelayTests {
             "accountID": String(repeating: "a", count: 300),
             "eventKind": "new_mail"
         ]) == nil)
+
+        // RFC 8620 §7.1 StateChange payloads with Email vs non-Email changes.
+        let stateChangeEmailJSON = Data("""
+        {
+          "@type": "StateChange",
+          "changed": {
+            "acct-opaque-2": { "Mailbox": "m-9" },
+            "acct-opaque-1": { "Email": "e-42", "Mailbox": "m-7" }
+          }
+        }
+        """.utf8)
+        let emailStateChange = try #require(PushWakePayload(jsonData: stateChangeEmailJSON))
+        #expect(!emailStateChange.isJMAPVerificationChallenge)
+        #expect(emailStateChange.eventKind == .newMail)
+        #expect(emailStateChange.targetAccountTokens == ["acct-opaque-1", "acct-opaque-2"])
+        #expect(emailStateChange.changedAccountStates["acct-opaque-1"] == "e-42")
+        #expect(emailStateChange.changedAccountStates["acct-opaque-2"] == "m-9")
+
+        let stateChangeMailboxOnlyJSON = Data("""
+        {
+          "@type": "StateChange",
+          "changed": {
+            "acct-opaque-2": { "Mailbox": "m-10" }
+          }
+        }
+        """.utf8)
+        let mailboxStateChange = try #require(PushWakePayload(jsonData: stateChangeMailboxOnlyJSON))
+        #expect(mailboxStateChange.eventKind == .mailboxChanged)
+        #expect(mailboxStateChange.targetAccountTokens == ["acct-opaque-2"])
+
+        #expect(PushWakePayload(jsonData: Data("""
+        {"@type":"StateChange","changed":{}}
+        """.utf8)) == nil)
     }
 }
 

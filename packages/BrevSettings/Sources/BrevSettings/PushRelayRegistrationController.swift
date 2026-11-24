@@ -200,7 +200,7 @@ public final class PushRelayRegistrationController {
         settingsStore.save(settings)
 
         if isWorking {
-            // An in-flight register will see `isEnabled == false` upon completion and unregister immediately.
+            // An in-flight register, target-switch cleanup, or JMAP verification will drain this upon completion.
             pendingDisableCleanup = true
             return
         }
@@ -270,11 +270,12 @@ public final class PushRelayRegistrationController {
             )
 
             let response: PushRelayRegistrationResponse
-            if matchesPreviousTarget, let existingID = previousActive?.subscriptionID {
+            if matchesPreviousTarget, let previousActive {
                 response = try await client.refresh(
                     endpointURLString: endpointURL.absoluteString,
-                    subscriptionID: existingID,
+                    subscriptionID: previousActive.subscriptionID,
                     request: request,
+                    currentState: previousActive.state,
                     bearerToken: bearerToken
                 )
             } else {
@@ -296,21 +297,10 @@ public final class PushRelayRegistrationController {
 
             // Reconcile concurrent disable: if the user turned push off while awaiting the server,
             // immediately unregister the newly returned subscription (and any superseded previous one).
-            let stillEnabled = settings.isEnabled && settingsStore.pushRelaySettings().isEnabled && !pendingDisableCleanup
-            if !stillEnabled {
-                pendingDisableCleanup = false
-                do {
-                    try await performUnregister(registration: newRegistration, opaqueTokens: opaqueTokens)
-                    if let previousActive, !matchesPreviousTarget {
-                        try? await performUnregister(registration: previousActive, opaqueTokens: opaqueTokens)
-                    }
-                    settings.activeRegistration = nil
-                    settings.lastRegistrationError = nil
-                } catch {
-                    settings.activeRegistration = newRegistration
-                    settings.lastRegistrationError = error.localizedDescription
-                }
-                settingsStore.save(settings)
+            if hasPendingDisable {
+                settings.activeRegistration = newRegistration
+                let superseded = (!matchesPreviousTarget && previousActive != nil) ? [previousActive!] : []
+                await drainPendingDisableIfNeeded(extraRegistrationsToCleanup: superseded)
                 return
             }
 
@@ -330,9 +320,17 @@ public final class PushRelayRegistrationController {
                 verificationCodeInput = inlineCode
             }
             settingsStore.save(settings)
+
+            // Re-check deferred disable in case the user toggled push off during target-switch cleanup.
+            if hasPendingDisable {
+                await drainPendingDisableIfNeeded()
+            }
         } catch {
             settings.lastRegistrationError = error.localizedDescription
             settingsStore.save(settings)
+            if hasPendingDisable {
+                await drainPendingDisableIfNeeded()
+            }
         }
     }
 
@@ -363,9 +361,16 @@ public final class PushRelayRegistrationController {
             settings.lastRegistrationError = nil
             verificationCodeInput = ""
             settingsStore.save(settings)
+
+            if hasPendingDisable {
+                await drainPendingDisableIfNeeded()
+            }
         } catch {
             settings.lastRegistrationError = error.localizedDescription
             settingsStore.save(settings)
+            if hasPendingDisable {
+                await drainPendingDisableIfNeeded()
+            }
         }
     }
 
@@ -390,6 +395,38 @@ public final class PushRelayRegistrationController {
     }
 
     // MARK: - Private helpers
+
+    private var hasPendingDisable: Bool {
+        pendingDisableCleanup || !settings.isEnabled || !settingsStore.pushRelaySettings().isEnabled
+    }
+
+    /// Drains any deferred disable that arrived while an async operation (`register`,
+    /// target-switch cleanup, or `verifyActiveJMAPSubscription`) was in flight.
+    /// Must be invoked while `isWorking == true` before `defer { isWorking = false }`.
+    private func drainPendingDisableIfNeeded(
+        extraRegistrationsToCleanup: [ActivePushRelayRegistration] = []
+    ) async {
+        guard hasPendingDisable else { return }
+        pendingDisableCleanup = false
+        let opaqueTokens = settings.opaqueTokensForEnabledAccounts()
+
+        if let active = settings.activeRegistration {
+            do {
+                try await performUnregister(registration: active, opaqueTokens: opaqueTokens)
+                settings.activeRegistration = nil
+                settings.lastRegistrationError = nil
+            } catch {
+                settings.lastRegistrationError = error.localizedDescription
+            }
+        }
+
+        for extra in extraRegistrationsToCleanup {
+            if let active = settings.activeRegistration, active == extra { continue }
+            try? await performUnregister(registration: extra, opaqueTokens: opaqueTokens)
+        }
+
+        settingsStore.save(settings)
+    }
 
     private func refreshSavedBearerTokenIndicator() {
         guard let origin = try? PushRelayEndpointValidator.originKey(from: endpointDraft) else {
