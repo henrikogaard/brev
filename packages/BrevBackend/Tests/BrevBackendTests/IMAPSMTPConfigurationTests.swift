@@ -511,4 +511,27 @@ struct MIMEMessageBuilderTests {
         let parsed = IMAPMessageBodyParser().parse(messageID: "m", rawMessage: message)
         #expect(parsed.attachments.first?.name == "résumé.pdf")
     }
+
+    @Test("Bcc header is omitted by default for SMTP submission and included only when opted in for drafts")
+    func bccHeaderOmittedByDefaultAndOptInForDrafts() {
+        let draft = Draft(
+            id: "bcc-1",
+            to: [Correspondent(email: "bob@example.com")],
+            cc: [Correspondent(email: "carol@example.com")],
+            bcc: [Correspondent(name: "Audit", email: "audit@example.com")],
+            subject: "Quarterly plan",
+            htmlBody: "<p>Hello</p>"
+        )
+        let from = Correspondent(email: "alice@example.com")
+
+        let smtpWire = String(data: MIMEMessageBuilder(draft: draft, from: from).build(), encoding: .utf8) ?? ""
+        #expect(!smtpWire.contains("Bcc:"))
+        #expect(!smtpWire.contains("audit@example.com"))
+
+        let draftMIME = String(
+            data: MIMEMessageBuilder(draft: draft, from: from, includeBccHeader: true).build(),
+            encoding: .utf8
+        ) ?? ""
+        #expect(draftMIME.contains("Bcc: Audit <audit@example.com>\r\n"))
+    }
 }

@@ -2078,7 +2078,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             let messageData = MIMEMessageBuilder(
                 draft: draft,
                 from: from,
-                attachments: attachments
+                attachments: attachments,
+                includeBccHeader: true
             ).build()
             let uid = try await withAuthenticatedOAuthRetry { credential in
                 try await appendDraftMessageOperation(

@@ -1018,8 +1018,13 @@ TCP or UDP ports and makes no network requests of its own.
   `label_messages` (at most 25 messages per request), and `create_draft`
   (plain-text draft up to 64 KiB, saved as a Draft for your manual review and
   never sent) require explicit per-call confirmation in Brev with a 60-second
-  automatic deny timeout and no session-wide auto-approve. Sending mail,
-  deleting or trashing mail, emptying Trash, and changing credentials or
+  automatic deny timeout and no session-wide auto-approve. While the MCP socket
+  itself is strictly local-only and opens no network ports, approving
+  `create_draft` saves the draft through the selected account's mail backend,
+  which uploads or appends the draft to that mail provider's Drafts folder (for
+  example Gmail Drafts via `gmail.googleapis.com` or IMAP Drafts on your
+  configured IMAP server), just like saving a draft in Brev's composer. Sending
+  mail, deleting or trashing mail, emptying Trash, and changing credentials or
   settings are not exposed.
 - **External client boundary:** When you enable Agent access and connect a local
   tool such as Claude Code or Codex CLI, mail returned by Brev leaves Brev to

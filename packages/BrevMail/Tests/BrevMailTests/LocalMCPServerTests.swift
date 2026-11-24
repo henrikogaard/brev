@@ -828,6 +828,10 @@ struct LocalMCPServerTests {
         #expect(properties["cc"] != nil)
         #expect(properties["bcc"] != nil)
         #expect(properties["in_reply_to_message_id"] != nil)
+        let bodySchema = try #require(properties["body_text"] as? [String: Any])
+        #expect(bodySchema["maxLength"] == nil)
+        #expect((bodySchema["description"] as? String)?.contains("65,536") == true)
+        #expect((bodySchema["description"] as? String)?.contains("UTF-8") == true)
         #expect(schema["additionalProperties"] as? Bool == false)
     }
 
@@ -939,7 +943,10 @@ struct LocalMCPServerTests {
         let backend = MCPBodyStubBackend(
             wrapped: MockBackend(
                 account: account,
-                folders: [Folder(id: "inbox", name: "Inbox", role: .inbox)],
+                folders: [
+                    Folder(id: "inbox", name: "Inbox", role: .inbox),
+                    Folder(id: "drafts", name: "Drafts", role: .drafts)
+                ],
                 messagesByFolder: [:]
             ),
             bodies: [:]
@@ -1034,6 +1041,7 @@ struct LocalMCPServerTests {
         let allowedAccount = BrevAccount(id: "acct-allowed", displayName: "Allowed", emailAddress: "allowed@example.org")
         let hiddenAccount = BrevAccount(id: "acct-hidden", displayName: "Hidden", emailAddress: "hidden@example.org")
         let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let drafts = Folder(id: "drafts", name: "Drafts", role: .drafts)
         let trash = Folder(id: "trash", name: "Trash", role: .trash)
 
         let trashMsg = MessageHeader(
@@ -1057,8 +1065,8 @@ struct LocalMCPServerTests {
         let allowedBackend = MCPBodyStubBackend(
             wrapped: MockBackend(
                 account: allowedAccount,
-                folders: [inbox, trash],
-                messagesByFolder: ["inbox": [], "trash": [trashMsg]]
+                folders: [inbox, drafts, trash],
+                messagesByFolder: ["inbox": [], "drafts": [], "trash": [trashMsg]]
             ),
             bodies: [:]
         )
@@ -1208,6 +1216,189 @@ struct LocalMCPServerTests {
         #expect(allowedBackend.savedDrafts.isEmpty)
         #expect(hiddenBackend.savedDrafts.isEmpty)
         #expect(allowedBackend.sendCallCount == 0)
+    }
+
+    @Test(
+        "create_draft rejects missing Drafts folder, unknown args, malformed local parts, flags 7-line truncation, keeps all 16 recipients, and never logs bare 6-digit subjects to disk"
+    )
+    func createDraftReviewHardening() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-mcp-audit-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let auditFileURL = tempDir.appendingPathComponent("agent-access-audit.json")
+
+        let noDraftsAccount = BrevAccount(id: "acct-nodrafts", displayName: "NoDrafts", emailAddress: "nodrafts@example.org")
+        let noDraftsBackend = MCPBodyStubBackend(
+            wrapped: MockBackend(
+                account: noDraftsAccount,
+                folders: [Folder(id: "inbox", name: "Inbox", role: .inbox)],
+                messagesByFolder: [:]
+            ),
+            bodies: [:]
+        )
+        let fullAccount = BrevAccount(id: "acct-full", displayName: "Full", emailAddress: "full@example.org")
+        let fullBackend = MCPBodyStubBackend(
+            wrapped: MockBackend(
+                account: fullAccount,
+                folders: [
+                    Folder(id: "inbox", name: "Inbox", role: .inbox),
+                    Folder(id: "drafts", name: "Drafts", role: .drafts)
+                ],
+                messagesByFolder: [:]
+            ),
+            bodies: [:]
+        )
+
+        let settings = AgentAccessSettings(isEnabled: true, enabledAccountIDs: [noDraftsAccount.id, fullAccount.id])
+        let auditStore = AgentAccessAuditLogStore(fileURL: auditFileURL, postsChangeNotification: false)
+        let coordinator = MCPApprovalCoordinator()
+        let broker = LocalMCPBroker(
+            backendsProvider: { [noDraftsBackend, fullBackend] },
+            settingsProvider: { settings },
+            auditStore: auditStore,
+            approvalCoordinator: coordinator,
+            approvalTimeoutSeconds: 2.0
+        )
+
+        // 1. Account without a visible .drafts folder fails closed with -32005 before approval.
+        let noDraftsResp = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 501,
+            "method": "tools/call",
+            "params": [
+                "name": "create_draft",
+                "arguments": [
+                    "account_id": noDraftsAccount.id,
+                    "to": ["alice@example.org"],
+                    "subject": "Hello",
+                    "body_text": "Body"
+                ]
+            ]
+        ])
+        #expect((noDraftsResp["error"] as? [String: Any])?["code"] as? Int == -32005)
+        #expect(auditStore.entries().first?.parameterSummary == "no_drafts_folder")
+        #expect(noDraftsBackend.savedDrafts.isEmpty)
+
+        // 2. Unknown argument keys (e.g. attachments) are rejected at runtime with -32602.
+        let unknownArgResp = try await sendRPC(broker, [
+            "jsonrpc": "2.0",
+            "id": 502,
+            "method": "tools/call",
+            "params": [
+                "name": "create_draft",
+                "arguments": [
+                    "account_id": fullAccount.id,
+                    "to": ["alice@example.org"],
+                    "subject": "Hello",
+                    "body_text": "Body",
+                    "attachments": ["secret.pdf"]
+                ]
+            ]
+        ])
+        #expect((unknownArgResp["error"] as? [String: Any])?["code"] as? Int == -32602)
+        #expect(auditStore.entries().first?.parameterSummary == "unknown_arguments count=1")
+
+        // 3. Strict RFC 5322 unquoted dot-atom local-part validation.
+        let overlongLocal = String(repeating: "a", count: 65) + "@example.org"
+        let malformedLocalParts = [
+            "maya..patel@example.org",
+            ".maya@example.org",
+            "maya.@example.org",
+            "@example.org",
+            overlongLocal,
+            "maya(comment)@example.org",
+            "\"quoted\"@example.org",
+            "maya patel@example.org"
+        ]
+        for (idx, badAddress) in malformedLocalParts.enumerated() {
+            let resp = try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": 510 + idx,
+                "method": "tools/call",
+                "params": [
+                    "name": "create_draft",
+                    "arguments": [
+                        "account_id": fullAccount.id,
+                        "to": [badAddress],
+                        "subject": "Hello",
+                        "body_text": "Body"
+                    ]
+                ]
+            ])
+            #expect((resp["error"] as? [String: Any])?["code"] as? Int == -32602)
+        }
+
+        // 4. Short 7-line body sets isBodyTruncated = true and truncates to 6 lines;
+        //    16 recipients across to/cc/bcc all appear in draftPreview without truncation;
+        //    bare 6-digit subject "482913" never appears in memory or persisted audit file on disk.
+        let toList = (1 ... 10).map { "to\($0).user+tag@northwind.example" }
+        let ccList = (1 ... 3).map { "cc\($0)_name@northwind.example" }
+        let bccList = (1 ... 3).map { "bcc\($0)-audit@northwind.example" }
+        let sevenLineBody = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7"
+
+        let previewTask = Task {
+            try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": 530,
+                "method": "tools/call",
+                "params": [
+                    "name": "create_draft",
+                    "arguments": [
+                        "account_id": fullAccount.id,
+                        "to": toList,
+                        "cc": ccList,
+                        "bcc": bccList,
+                        "subject": "482913",
+                        "body_text": sevenLineBody
+                    ]
+                ]
+            ])
+        }
+        for _ in 0 ..< 100 where coordinator.activeRequest == nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let preview = try #require(coordinator.activeRequest?.draftPreview)
+        #expect(preview.to == toList)
+        #expect(preview.cc == ccList)
+        #expect(preview.bcc == bccList)
+        #expect(preview.isBodyTruncated)
+        #expect(preview.bodyPreview.contains("Line 6"))
+        #expect(!preview.bodyPreview.contains("Line 7"))
+
+        coordinator.approveActiveRequest()
+        let okResp = try await previewTask.value
+        let okPayload = try parseToolTextPayload(okResp)
+        #expect(okPayload["recipient_count"] as? Int == 16)
+        #expect(okPayload["status"] as? String == "saved_as_draft")
+
+        // Also test denied path with bare 6-digit subject.
+        let denyBareTask = Task {
+            try await sendRPC(broker, [
+                "jsonrpc": "2.0",
+                "id": 531,
+                "method": "tools/call",
+                "params": [
+                    "name": "create_draft",
+                    "arguments": [
+                        "account_id": fullAccount.id,
+                        "to": ["maya.patel+work@northwind.example"],
+                        "subject": "482913",
+                        "body_text": "Short body"
+                    ]
+                ]
+            ])
+        }
+        for _ in 0 ..< 100 where coordinator.activeRequest == nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        coordinator.denyActiveRequest()
+        _ = try await denyBareTask.value
+
+        for entry in auditStore.entries() {
+            #expect(!entry.parameterSummary.contains("482913"))
+        }
+        let persistedJSON = try String(contentsOf: auditFileURL, encoding: .utf8)
+        #expect(!persistedJSON.contains("482913"))
     }
 }
 

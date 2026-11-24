@@ -831,6 +831,46 @@ struct GmailLocalDraftLookupTests {
             _ = try await service.localDraftAttachments(for: Draft(id: "not-canonical", attachmentIDs: ["a"]))
         }
     }
+
+    @Test("save(draft:) preserves Bcc header in Gmail createDraft and updateDraft MIME payloads")
+    func saveDraftPreservesBccHeaderInMIME() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-gmail-bcc-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let account = BrevAccount(
+            id: "gmail-api:sub-bcc",
+            displayName: "Primary",
+            emailAddress: "primary@example.com",
+            backendIdentifier: BrevAccount.gmailAPIBackendIdentifier,
+            backendDisplayName: BrevAccount.gmailAPIBackendDisplayName
+        )
+        let transport = DraftBackendTransport()
+        let backend = try GmailAPIBackend(
+            account: account,
+            transport: transport,
+            store: SQLiteGmailAccountStore(databaseURL: url)
+        )
+        try await backend.connect()
+
+        let initial = Draft(
+            id: "draft-bcc",
+            to: [Correspondent(email: "maya@example.org")],
+            cc: [Correspondent(email: "sam@example.org")],
+            bcc: [Correspondent(email: "audit@example.org")],
+            subject: "With Bcc",
+            htmlBody: "<p>Hello</p>"
+        )
+        let saved = try await backend.save(draft: initial)
+        let createdMIME = try #require(await transport.createdRawMIME())
+        #expect(createdMIME.contains("Bcc: audit@example.org\r\n"))
+
+        var updated = saved
+        updated.bcc.append(Correspondent(email: "archive@example.org"))
+        _ = try await backend.save(draft: updated)
+        let updatedMIME = try #require(await transport.createdRawMIME())
+        #expect(updatedMIME.contains("Bcc: audit@example.org, archive@example.org\r\n"))
+        #expect(await transport.updatedDraftID() == saved.remoteID)
+        await backend.disconnect()
+    }
 }
 
 private actor FailingDraftStaging: GmailDraftStagingStore {

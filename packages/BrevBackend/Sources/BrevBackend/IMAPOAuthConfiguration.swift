@@ -92,17 +92,20 @@ public struct MIMEMessageBuilder: Sendable {
     private let from: Correspondent
     private let attachments: [MIMEMessageAttachment]
     private let boundary: String
+    private let includeBccHeader: Bool
 
     public init(
         draft: Draft,
         from: Correspondent,
         attachments: [MIMEMessageAttachment] = [],
-        boundary: String = UUID().uuidString
+        boundary: String = UUID().uuidString,
+        includeBccHeader: Bool = false
     ) {
         self.draft = draft
         self.from = from
         self.attachments = attachments
         self.boundary = boundary
+        self.includeBccHeader = includeBccHeader
     }
 
     /// A stable, draft-derived `Message-ID`.
@@ -141,6 +144,9 @@ public struct MIMEMessageBuilder: Sendable {
         lines.append("To: \(draft.to.map { formatAddress($0) }.joined(separator: ", "))")
         if !draft.cc.isEmpty {
             lines.append("Cc: \(draft.cc.map { formatAddress($0) }.joined(separator: ", "))")
+        }
+        if includeBccHeader, !draft.bcc.isEmpty {
+            lines.append("Bcc: \(draft.bcc.map { formatAddress($0) }.joined(separator: ", "))")
         }
         lines.append("Subject: \(encodeHeader(draft.subject))")
         lines.append("MIME-Version: 1.0")

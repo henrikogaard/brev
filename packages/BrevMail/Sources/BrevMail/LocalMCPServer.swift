@@ -217,7 +217,13 @@ public struct MCPApprovalSheetView: View {
                 .foregroundStyle(theme.textSecondary.color)
 
             if let draft = request.draftPreview {
-                draftPreviewCard(draft)
+                ViewThatFits(in: .vertical) {
+                    draftPreviewCard(draft)
+                    ScrollView {
+                        draftPreviewCard(draft)
+                    }
+                }
+                .frame(maxHeight: 260)
             } else {
                 VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                     ForEach(request.previews.prefix(5)) { preview in
@@ -318,7 +324,7 @@ public struct MCPApprovalSheetView: View {
             Text(draft.bodyPreview)
                 .brevFont(.footnote)
                 .foregroundStyle(theme.textPrimary.color)
-                .lineLimit(6)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if draft.isBodyTruncated {
                 Text("Draft preview truncated", bundle: .module)
@@ -341,7 +347,7 @@ public struct MCPApprovalSheetView: View {
             Text(value)
                 .brevFont(.caption)
                 .foregroundStyle(theme.textPrimary.color)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -427,6 +433,18 @@ public final class LocalMCPBroker {
     public static let maxDraftRecipients = 50
     /// Character cap for the body preview displayed in the in-app draft approval sheet.
     private static let maxDraftPreviewCharacters = 400
+    /// Line cap for the body preview displayed in the in-app draft approval sheet.
+    private static let maxDraftPreviewLines = 6
+    /// Allowed argument keys for `create_draft` (enforces schema `additionalProperties: false`).
+    private static let createDraftAllowedArgumentKeys: Set<String> = [
+        "account_id",
+        "to",
+        "cc",
+        "bcc",
+        "subject",
+        "body_text",
+        "in_reply_to_message_id"
+    ]
     /// MCP protocol version advertised during `initialize`.
     public static let protocolVersion = "2024-11-05"
 
@@ -1169,6 +1187,18 @@ public final class LocalMCPBroker {
             return errorResponse(id: id, code: -32002, message: "Account not found.")
         }
 
+        let unknownKeys = Set(arguments.keys).subtracting(Self.createDraftAllowedArgumentKeys)
+        guard unknownKeys.isEmpty else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "unknown_arguments count=\(unknownKeys.count)",
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32602, message: "Unsupported argument(s) for 'create_draft'.")
+        }
+
         let toAddresses: [String]
         let ccAddresses: [String]
         let bccAddresses: [String]
@@ -1268,6 +1298,30 @@ public final class LocalMCPBroker {
             )
         }
 
+        let folders: [Folder]
+        do {
+            folders = try await backend.folders()
+        } catch {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "folders_load_failed",
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32003, message: "Couldn't inspect account folders.")
+        }
+        guard folders.contains(where: { $0.role == .drafts }) else {
+            recordAudit(
+                client: client,
+                toolName: toolName,
+                accountID: accountID,
+                parameterSummary: "no_drafts_folder",
+                outcome: .denied
+            )
+            return errorResponse(id: id, code: -32005, message: "No Drafts folder available on this account.")
+        }
+
         var replyHeader: MessageHeader?
         if let rawReplyArg = arguments["in_reply_to_message_id"], !(rawReplyArg is NSNull) {
             guard let rawReplyID = rawReplyArg as? String else {
@@ -1283,7 +1337,6 @@ public final class LocalMCPBroker {
             let replyID = rawReplyID.trimmingCharacters(in: .whitespacesAndNewlines)
             if !replyID.isEmpty {
                 do {
-                    let folders = try await backend.folders()
                     let excludedFolderIDs = Set(folders.filter { $0.role == .trash || $0.role == .spam }.map(\.id))
                     let excludedIDs = await excludedMessageIDs(in: folders, backend: backend)
                     if excludedIDs.contains(replyID) {
@@ -1356,11 +1409,11 @@ public final class LocalMCPBroker {
             createdAt: now()
         )
 
-        let auditSubject = String(safeSubject.prefix(48))
         let replyTag = replyHeader != nil ? " reply=true" : ""
-        // Never store raw draft body text in audit logs; keep only redacted metadata.
+        // Never store caller-supplied subject or raw draft body text in audit logs so
+        // bare sign-in codes or private draft content can never hit disk.
         let paramSummary =
-            "to=\(toAddresses.count) cc=\(ccAddresses.count) bcc=\(bccAddresses.count) body_bytes=\(bodyBytes)\(replyTag) subject=\(auditSubject)"
+            "to=\(toAddresses.count) cc=\(ccAddresses.count) bcc=\(bccAddresses.count) subject_len=\(subject.count) body_bytes=\(bodyBytes)\(replyTag)"
 
         let decision = await approvalCoordinator.requestApproval(
             approvalRequest,
@@ -1501,11 +1554,28 @@ public final class LocalMCPBroker {
         return validated
     }
 
+    private static let dotAtomAllowedBytes: Set<UInt8> = Set(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-/=?^_`{|}~".utf8
+    )
+
     private static func isValidDraftEmail(_ address: String) -> Bool {
-        guard !address.isEmpty, address.count <= 254 else { return false }
-        guard !address.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 }) else { return false }
-        guard !address.contains(where: { $0 == "," || $0 == ";" || $0 == "<" || $0 == ">" }) else { return false }
-        return MailAccountAutodiscovery.isValidEmailAddress(address)
+        guard !address.isEmpty, address.utf8.count <= 254 else { return false }
+        let parts = address.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return false }
+        let local = String(parts[0])
+        let domain = String(parts[1])
+        guard !local.isEmpty,
+              local.utf8.count <= 64,
+              !local.hasPrefix("."),
+              !local.hasSuffix("."),
+              !local.contains("..")
+        else { return false }
+        for segment in local.split(separator: ".", omittingEmptySubsequences: false) {
+            guard !segment.isEmpty,
+                  segment.utf8.allSatisfy({ dotAtomAllowedBytes.contains($0) })
+            else { return false }
+        }
+        return MailAccountAutodiscovery.isValidServerHost(domain)
     }
 
     private static func draftBodyPreview(from bodyText: String) -> (preview: String, isTruncated: Bool) {
@@ -1513,11 +1583,23 @@ public final class LocalMCPBroker {
         if redacted != bodyText {
             return (redacted, false)
         }
-        let trimmed = bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count > maxDraftPreviewCharacters else {
-            return (trimmed, false)
+        let normalized = bodyText
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = normalized.split(separator: "\n", omittingEmptySubsequences: false)
+        var truncated = false
+        let lineBounded: String
+        if lines.count > maxDraftPreviewLines {
+            lineBounded = lines.prefix(maxDraftPreviewLines).joined(separator: "\n")
+            truncated = true
+        } else {
+            lineBounded = normalized
         }
-        return (String(trimmed.prefix(maxDraftPreviewCharacters)) + "…", true)
+        if lineBounded.count > maxDraftPreviewCharacters {
+            return (String(lineBounded.prefix(maxDraftPreviewCharacters)) + "…", true)
+        }
+        return (truncated ? lineBounded + "…" : lineBounded, truncated)
     }
 
     private func resolveOptedInBackend(
@@ -1751,7 +1833,10 @@ public final class LocalMCPBroker {
                             "maxItems": maxDraftRecipients
                         ],
                         "subject": ["type": "string", "maxLength": maxDraftSubjectLength],
-                        "body_text": ["type": "string", "maxLength": maxDraftBodyBytes],
+                        "body_text": [
+                            "type": "string",
+                            "description": "Plain text draft body. Must not exceed 65,536 bytes when encoded as UTF-8."
+                        ],
                         "in_reply_to_message_id": ["type": "string"]
                     ],
                     "required": ["account_id", "to", "subject", "body_text"],
