@@ -1,6 +1,6 @@
 # Writing or Updating a Brev Design Document
 
-Use this prompt template when proposing a new subsystem or a major cross-cutting architectural change under `docs/design/`.
+Use this prompt template only when introducing a brand-new subsystem document under `docs/design/` that is not already owned by an existing document. For cross-cutting changes to existing subsystems, update the relevant documents in place.
 
 > Note: Routine feature additions, UI tweaks, and bug fixes do **not** require a new document. Prefer updating the existing subsystem document in `docs/design/` in place.
 

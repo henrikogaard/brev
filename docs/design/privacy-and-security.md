@@ -54,8 +54,8 @@ Every external network call Brev makes is either core to an account the user add
 
 ## Local Store Encryption at Rest
 
-- **Layer A (OS file protection):** SQLite databases, header/body/source caches, local mail folders, and staging files carry complete-until-first-user-authentication file protection (`NSFileProtectionCompleteUntilFirstUserAuthentication` on iOS; `0600`/`0700` owner-only POSIX permissions on macOS) and are excluded from iCloud/Time Machine backups where appropriate.
-- **Layer B (application-level encryption):** Local store encryption keys live in Keychain scoped to the device (`eu.brevmail.brev` / `eu.brevmail.brev.ios`), never shared across platforms or exported in backups.
+- **Layer A (OS file protection — shipped):** `SQLiteSyncStore`, `SQLiteGmailAccountStore`, header/body/source caches, local mail folders, and staging files open standard SQLite/file stores protected by OS file protection (`NSFileProtectionCompleteUntilFirstUserAuthentication` on iOS; `0600`/`0700` owner-only POSIX permissions on macOS alongside FileVault) and are excluded from backups where appropriate.
+- **Layer B (application-level encryption — planned):** Application-level encryption of local SQLite databases and cached payloads using device-scoped Keychain keys (`eu.brevmail.brev` / `eu.brevmail.brev.ios`, never shared across platforms or exported in backups) is planned future work and is not yet implemented in `SQLiteSyncStore` or `SQLiteGmailAccountStore`.
 - **Logs:** Local errors write to `~/Library/Logs/Brev/brev.log` (macOS) or the app container (iOS) with secrets, tokens, message bodies, and sign-in codes strictly redacted; logs are never transmitted automatically.
 
 ## S/MIME Security

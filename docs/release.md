@@ -159,7 +159,7 @@ Cutting a stable release is then: update `CHANGELOG.md` with a
 - Sparkle 2 EdDSA private key stored on the release machine only.
 - A clean checkout of the release commit.
 - Final `CHANGELOG.md` entry under the release version.
-- Updated `PRIVACY.md` and ADR-0006 network-call table.
+- Updated `PRIVACY.md` and `docs/design/privacy-and-security.md` network-calls ledger.
 - Passing desktop smoke checklist in `docs/qa/desktop-smoke.md`.
 
 ## Local Secrets

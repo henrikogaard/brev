@@ -300,7 +300,7 @@ test account once local OAuth and mailbox setup are ready.
 - [ ] The app passes the mock checklist from a clean build directory.
 - [ ] The app passes the live checklist with a real mailbox.
 - [ ] `PRIVACY.md` matches every implemented external network call.
-- [ ] `ADRs/0006-telemetry-and-privacy.md` matches `PRIVACY.md`.
+- [ ] `docs/design/privacy-and-security.md` matches `PRIVACY.md`.
 - [ ] `CHANGELOG.md` has an Unreleased entry for the tested change
       set.
 - [ ] No banned telemetry imports are present.

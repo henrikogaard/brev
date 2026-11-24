@@ -24,4 +24,4 @@ Brev uses **living design documents** instead of append-only ADRs. Each subsyste
 - **Routine changes & UI polish:** No design-doc update required. Code, tests, and snapshots are the source of truth for component defaults, density, colors, and formatting.
 - **Architectural, privacy, or protocol changes:** Update the relevant document in `docs/design/` in the same PR.
 - **New external network calls:** Always update both [privacy-and-security.md](privacy-and-security.md) and [PRIVACY.md](../../PRIVACY.md) and run `scripts/privacy-audit.sh`.
-- **New subsystem or major cross-cutting proposal:** Use [prompts/design-doc.md](../../prompts/design-doc.md).
+- **New subsystem document:** Use [prompts/design-doc.md](../../prompts/design-doc.md) only when introducing a brand-new subsystem not owned by the 10 documents above; for cross-cutting changes to existing subsystems, update the relevant documents in place.

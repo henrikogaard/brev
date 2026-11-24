@@ -25,6 +25,11 @@ Brev is standards-first and multi-provider behind one `MailBackend` contract:
 - **iOS (`iOS` native client):** Uses Google's reversed client ID custom URL scheme callback with PKCE and `state` verification.
 - **Incremental scopes:** Mail sign-in requests minimal mail + OpenID identity scopes first; Google Calendar, Contacts, Tasks, and Drive (`drive.file`) request incremental consent only when the user enables those features.
 
+## Server-Side Filters (ManageSieve — Shipped, Opt-In)
+
+- Optional RFC 5804 ManageSieve support discovered via SRV during setup or configured manually in Settings → Rules for capable accounts.
+- Compiles Brev local rules into a dedicated Brev-managed Sieve script only when the user explicitly chooses to sync rules, preserving existing non-Brev scripts untouched.
+
 ## Future Provider Designs
 
 ### Native Microsoft Graph (`BrevMicrosoftGraph`)
@@ -37,8 +42,3 @@ Brev is standards-first and multi-provider behind one `MailBackend` contract:
 
 - Targets Fastmail, Stalwart, and standards-compliant JMAP servers (RFC 8620 / RFC 8621).
 - Single batched JSON API for mailboxes, threads, fast delta sync (`Email/changes`), server search, submissions, and **JMAP WebPush / EventSource** real-time notifications without needing a Brev-hosted proxy.
-
-### Server-Side Filters (ManageSieve)
-
-- Optional RFC 5804 ManageSieve support discovered via SRV during setup or configured manually in Settings → Rules.
-- Compiles Brev local rules into a dedicated Brev-managed Sieve script only when the user explicitly chooses to sync rules, preserving existing non-Brev scripts untouched.
