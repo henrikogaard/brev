@@ -25,6 +25,21 @@ enum AboutSectionPresentation {
     static let repositoryDisplayName = "henrikogaard/brev"
     static let repositoryURL = URL(string: "https://github.com/henrikogaard/brev")!
 
+    static func displayVersion(
+        bundleIdentifier: String?,
+        infoDictionary: [String: Any]?
+    ) -> String {
+        // Test-runner hosts (e.g. `xcodebuild`'s `xctest`) expose Xcode's own
+        // version in `Bundle.main`, causing snapshot baselines to drift between
+        // `swift test` and `xcodebuild` and across Xcode upgrades.
+        if let bundleIdentifier, bundleIdentifier.hasPrefix("com.apple.dt.xctest") {
+            return "0.0 (0)"
+        }
+        let short = infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
+        let build = infoDictionary?["CFBundleVersion"] as? String ?? "0"
+        return "\(short) (\(build))"
+    }
+
     static func infoRows(version: String) -> [AboutSectionInfoRow] {
         [
             AboutSectionInfoRow(label: String(localized: "Version", bundle: .module), value: version),
@@ -38,10 +53,10 @@ struct AboutSection: View {
     @Environment(\.brevTheme) private var theme
 
     private var version: String {
-        let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "0.0"
-        let build = info?["CFBundleVersion"] as? String ?? "0"
-        return "\(short) (\(build))"
+        AboutSectionPresentation.displayVersion(
+            bundleIdentifier: Bundle.main.bundleIdentifier,
+            infoDictionary: Bundle.main.infoDictionary
+        )
     }
 
     var body: some View {
