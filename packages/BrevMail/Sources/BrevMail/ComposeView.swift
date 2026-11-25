@@ -238,6 +238,7 @@ public struct ComposeView: View {
     @StateObject private var htmlPreviewWebViewStore = HTMLBodyWebViewStore()
     @Environment(\.brevTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dismiss) private var dismiss
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -431,6 +432,7 @@ public struct ComposeView: View {
     #endif
     #if os(macOS)
     @State private var showsHTMLPreview = false
+    @State private var showsFormattingBar = false
     #endif
 
     @AppStorage(ComposeBodyAppearance.storageKey) private var bodyAppearanceRaw = ComposeBodyAppearance.system.rawValue
@@ -742,13 +744,12 @@ public struct ComposeView: View {
 
     public var body: some View {
         _ = inspection?(self)
-        let content = composeContent
+        let content = composeSurfaceContainer
             .brevDesktopSizing()
             .overlay { dropHighlight }
             .onDrop(of: ComposeAttachmentDrop.acceptedContentTypes, isTargeted: $isDropTargeted) { providers in
                 handleDrop(providers)
             }
-            .background(BrevWindowSurfaceBackground(role: .utility).ignoresSafeArea())
             .frame(minWidth: frameMetrics.minWidth, minHeight: frameMetrics.minHeight)
             // On compact iOS, sheet presentations size to the content's
             // *ideal* width. TextField/UITextView adaptors report their
@@ -773,7 +774,7 @@ public struct ComposeView: View {
                             items: [
                                 MacComposeToolbarItemIdentifier.send: AnyView(sendButton),
                                 MacComposeToolbarItemIdentifier.scheduleSend: AnyView(macToolbarScheduleSendButton),
-                                MacComposeToolbarItemIdentifier.format: AnyView(formatMenu),
+                                MacComposeToolbarItemIdentifier.format: AnyView(macWindowFormatToggleButton),
                                 MacComposeToolbarItemIdentifier.attachment: AnyView(
                                     toolbarButton(
                                         label: ComposeToolbarAction.attach.accessibilityLabel,
@@ -975,6 +976,38 @@ public struct ComposeView: View {
 
     // MARK: - Sections
 
+    /// Detached windows/sheets paint the full utility surface; the macOS docked
+    /// inline reply floats as a crisp inset card with continuous 16 pt corners.
+    @ViewBuilder
+    private var composeSurfaceContainer: some View {
+        #if os(macOS)
+        if hostStyle == .inline {
+            let cardShape = RoundedRectangle(cornerRadius: ComposeLayout.inlineCardCornerRadius, style: .continuous)
+            composeContent
+                .background(BrevWindowSurfaceBackground(role: .utility))
+                .clipShape(cardShape)
+                .overlay {
+                    cardShape
+                        .strokeBorder(theme.border.color, lineWidth: 1)
+                }
+                .shadow(
+                    color: theme.textPrimary.color.opacity(theme.mode == .dark ? 0.30 : 0.08),
+                    radius: 10,
+                    x: 0,
+                    y: 3
+                )
+                .padding(.horizontal, BrevSpacing.md)
+                .padding(.vertical, BrevSpacing.sm)
+        } else {
+            composeContent
+                .background(BrevWindowSurfaceBackground(role: .utility).ignoresSafeArea())
+        }
+        #else
+        composeContent
+            .background(BrevWindowSurfaceBackground(role: .utility).ignoresSafeArea())
+        #endif
+    }
+
     @ViewBuilder
     private var composeContent: some View {
         #if os(macOS)
@@ -1038,6 +1071,7 @@ public struct ComposeView: View {
                 .scrollBounceBehavior(.basedOnSize)
                 .clipped()
                 .scrollDismissesKeyboard(.interactively)
+                .modifier(ComposeSoftTopScrollEdgeModifier())
             }
             .trackComposeChromeControl(.scrollArea)
             mobileUtilityToolbar
@@ -1213,42 +1247,111 @@ public struct ComposeView: View {
             canScheduleSend: selectedComposeBackend.extensionService(ScheduledSendManaging.self) != nil,
             offersAIWriter: aiAvailability.providerUnavailableReason == nil
         )
-        return HStack(spacing: BrevSpacing.sm) {
+        let usesGlass = ComposeLiquidGlass.isEnabled(reduceTransparency: reduceTransparency)
+        let leadingItems = items.filter { $0 == .send || $0 == .later || $0 == .write }
+        let trailingItems = items.filter { $0 == .attach || $0 == .format }
+
+        return ComposeLiquidGlass.Container(spacing: BrevSpacing.sm) {
+            HStack(spacing: BrevSpacing.sm) {
+                ForEach(leadingItems, id: \.self) { item in
+                    switch item {
+                    case .send:
+                        inlineSendButton
+                    case .later:
+                        inlineLaterButton(usesGlass: usesGlass)
+                    case .write:
+                        inlineWriteMenu(usesGlass: usesGlass)
+                    case .attach, .format:
+                        EmptyView()
+                    }
+                }
+                Spacer(minLength: BrevSpacing.sm)
+                if !trailingItems.isEmpty {
+                    inlineTrailingToolsGroup(items: trailingItems, usesGlass: usesGlass)
+                }
+            }
+        }
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, usesGlass ? BrevSpacing.sm : BrevSpacing.xs)
+        .overlay(alignment: .top) {
+            if !usesGlass {
+                Rectangle().fill(theme.border.color).frame(height: 0.5)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func inlineLaterButton(usesGlass: Bool) -> some View {
+        let isScheduled = scheduledSendDate != nil
+        let helpText = scheduledSendDate == nil
+            ? ComposeToolbarAction.scheduleSend.accessibilityLabel
+            : String(localized: "Edit scheduled send", bundle: .module)
+        if usesGlass {
+            Button {
+                isScheduleSheetPresented = true
+            } label: {
+                Label(String(localized: "Later", bundle: .module), systemImage: "clock")
+                    .brevFont(.footnote)
+                    .foregroundStyle(isScheduled ? theme.accent.color : theme.textPrimary.color)
+            }
+            .composeGlassButton(
+                prominent: false,
+                tint: isScheduled ? theme.accent.color : nil
+            )
+            .disabled(isInteractionBlocked)
+            .help(helpText)
+        } else {
+            Button {
+                isScheduleSheetPresented = true
+            } label: {
+                Label(String(localized: "Later", bundle: .module), systemImage: "clock")
+                    .brevFont(.footnote)
+                    .brevChip(selected: isScheduled)
+            }
+            .buttonStyle(.plain)
+            .disabled(isInteractionBlocked)
+            .help(helpText)
+        }
+    }
+
+    @ViewBuilder
+    private func inlineWriteMenu(usesGlass: Bool) -> some View {
+        if usesGlass {
+            Menu {
+                aiWriterMenuContent
+            } label: {
+                Label(String(localized: "Write", bundle: .module), systemImage: "sparkles")
+                    .brevFont(.footnote)
+            }
+            .menuStyle(.button)
+            .composeGlassButton(prominent: false, tint: nil)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(aiWriterMenuDisabled)
+            .help(ComposeToolbarAction.aiWriter.accessibilityLabel)
+        } else {
+            Menu {
+                aiWriterMenuContent
+            } label: {
+                Label(String(localized: "Write", bundle: .module), systemImage: "sparkles")
+                    .brevFont(.footnote)
+                    .brevChip(selected: false)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(aiWriterMenuDisabled)
+            .help(ComposeToolbarAction.aiWriter.accessibilityLabel)
+        }
+    }
+
+    @ViewBuilder
+    private func inlineTrailingToolsGroup(items: [InlineReplyBottomBar.Item], usesGlass: Bool) -> some View {
+        let cluster = HStack(spacing: BrevSpacing.xxs) {
             ForEach(items, id: \.self) { item in
                 switch item {
-                case .send:
-                    inlineSendButton
-                case .later:
-                    Button {
-                        isScheduleSheetPresented = true
-                    } label: {
-                        Label(String(localized: "Later", bundle: .module), systemImage: "clock")
-                            .brevFont(.footnote)
-                            .brevChip(selected: scheduledSendDate != nil)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isInteractionBlocked)
-                    .help(
-                        scheduledSendDate == nil
-                            ? ComposeToolbarAction.scheduleSend.accessibilityLabel
-                            : String(localized: "Edit scheduled send", bundle: .module)
-                    )
-                case .write:
-                    Menu {
-                        aiWriterMenuContent
-                    } label: {
-                        Label(String(localized: "Write", bundle: .module), systemImage: "sparkles")
-                            .brevFont(.footnote)
-                            .brevChip(selected: false)
-                    }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .disabled(aiWriterMenuDisabled)
-                    .help(ComposeToolbarAction.aiWriter.accessibilityLabel)
                 case .attach:
-                    Spacer(minLength: BrevSpacing.sm)
                     toolbarButton(
                         label: ComposeToolbarAction.attach.accessibilityLabel,
                         systemImage: "paperclip",
@@ -1258,35 +1361,57 @@ public struct ComposeView: View {
                     }
                 case .format:
                     formatMenu
+                case .send, .later, .write:
+                    EmptyView()
                 }
             }
         }
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.xs)
-        .overlay(alignment: .top) {
-            Rectangle().fill(theme.border.color).frame(height: 0.5)
+        if usesGlass {
+            cluster
+                .padding(.horizontal, BrevSpacing.xxs)
+                .background(Capsule().fill(theme.bgSecondary.color.opacity(0.32)))
+                .overlay(Capsule().strokeBorder(theme.border.color.opacity(0.4), lineWidth: 0.75))
+                .composeGlassCapsule(interactive: true)
+        } else {
+            cluster
         }
     }
 
     /// A labelled Send for the docked reply; the same action, shortcut and
     /// Undo Send as the window's round Send button.
+    @ViewBuilder
     private var inlineSendButton: some View {
         let isDisabled = isSendButtonDisabled
         let title = pendingUndoSendTask != nil
             ? String(localized: "Cancel Send", bundle: .module)
             : sendButtonLabel
-        return Button(action: performSendButtonAction) {
-            Label(title, systemImage: "paperplane.fill")
-                .brevFont(.footnote)
-                .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
-                .padding(.horizontal, BrevSpacing.md)
-                .padding(.vertical, BrevSpacing.xs)
-                .background(Capsule().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
+        if ComposeLiquidGlass.isEnabled(reduceTransparency: reduceTransparency) {
+            Button(action: performSendButtonAction) {
+                Label(title, systemImage: "paperplane.fill")
+                    .brevFont(.footnote)
+                    .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
+            }
+            .composeGlassButton(
+                prominent: !isDisabled,
+                tint: isDisabled ? nil : theme.accent.color
+            )
+            .disabled(isDisabled)
+            .keyboardShortcut(.return, modifiers: .command)
+            .help(title)
+        } else {
+            Button(action: performSendButtonAction) {
+                Label(title, systemImage: "paperplane.fill")
+                    .brevFont(.footnote)
+                    .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
+                    .padding(.horizontal, BrevSpacing.md)
+                    .padding(.vertical, BrevSpacing.xs)
+                    .background(Capsule().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
+            }
+            .buttonStyle(.plain)
+            .disabled(isDisabled)
+            .keyboardShortcut(.return, modifiers: .command)
+            .help(title)
         }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .keyboardShortcut(.return, modifiers: .command)
-        .help(title)
     }
 
     private var showsInlineFieldsAndStarters: Bool {
@@ -1368,27 +1493,33 @@ public struct ComposeView: View {
     }
 
     private var mobileToolbar: some View {
-        HStack(spacing: BrevSpacing.sm) {
-            cancelButton
-                .fixedSize(horizontal: true, vertical: false)
-            #if os(iOS)
-                .trackComposeChromeControl(.cancel)
-            #endif
-            Spacer(minLength: 0)
-            if !isAccessibilityFieldLayout {
-                Text(composeTitle)
-                    .brevFont(.headline)
-                    .foregroundStyle(theme.textPrimary.color)
-                    .lineLimit(1)
-                    .accessibilityAddTraits(.isHeader)
-                    .allowsHitTesting(false)
+        ComposeLiquidGlass.Container(spacing: BrevSpacing.sm) {
+            HStack(spacing: BrevSpacing.sm) {
+                cancelButton
+                    .fixedSize(horizontal: true, vertical: false)
+                #if os(iOS)
+                    .trackComposeChromeControl(.cancel)
+                #endif
+                Spacer(minLength: 0)
+                if !isAccessibilityFieldLayout {
+                    Text(composeTitle)
+                        .brevFont(.headline)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .lineLimit(1)
+                        .accessibilityAddTraits(.isHeader)
+                        .allowsHitTesting(false)
+                }
+                Spacer(minLength: 0)
+                ComposeLiquidGlass.Container(spacing: BrevSpacing.xs) {
+                    HStack(spacing: BrevSpacing.xs) {
+                        scheduleSendButton.fixedSize(horizontal: true, vertical: false)
+                        sendButton
+                        #if os(iOS)
+                        .trackComposeChromeControl(.send)
+                        #endif
+                    }
+                }
             }
-            Spacer(minLength: 0)
-            scheduleSendButton.fixedSize(horizontal: true, vertical: false)
-            sendButton
-            #if os(iOS)
-            .trackComposeChromeControl(.send)
-            #endif
         }
         .padding(.leading, BrevSpacing.sm)
         .padding(.trailing, BrevSpacing.sm)
@@ -1396,22 +1527,39 @@ public struct ComposeView: View {
         .dynamicTypeSize(denseChromeDynamicTypeRange)
     }
 
-    /// iOS Mail's text "Cancel". On a dirty draft it asks Delete Draft / Save
-    /// Draft; a clean draft just closes.
+    /// iOS Mail's Cancel dismiss control (circular Liquid Glass `xmark` on iOS 26+,
+    /// text "Cancel" fallback on earlier OS / Reduce Transparency). On a dirty draft
+    /// it asks Delete Draft / Save Draft; a clean draft just closes.
     private var cancelButton: some View {
         #if os(iOS)
-        Button {
+        let usesGlass = ComposeLiquidGlass.isEnabled(reduceTransparency: reduceTransparency)
+        let circleDiameter = ComposeLayoutPolicy.sendButtonVisualDiameter(for: composeLayoutPlatform)
+        return Button {
             handleCancelRequest(ComposeDismissalPolicy.decision(for: dismissalState))
         } label: {
-            Text("Cancel", bundle: .module)
-                .brevFont(.body)
-                .foregroundStyle(theme.accent.color)
-                .lineLimit(1)
-                .padding(.horizontal, BrevSpacing.xs)
-                .frame(minHeight: toolbarMetrics.hitTargetSize)
-                .contentShape(Rectangle())
+            if usesGlass {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(theme.textPrimary.color)
+                    .frame(width: circleDiameter, height: circleDiameter)
+                    .background(Circle().fill(theme.bgSecondary.color.opacity(0.48)))
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(theme.border.color.opacity(0.45), lineWidth: 0.75))
+                    .composeGlassCircle(interactive: true)
+                    .frame(minWidth: toolbarMetrics.hitTargetSize, minHeight: toolbarMetrics.hitTargetSize)
+                    .contentShape(Rectangle())
+            } else {
+                Text("Cancel", bundle: .module)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.accent.color)
+                    .lineLimit(1)
+                    .padding(.horizontal, BrevSpacing.xs)
+                    .frame(minHeight: toolbarMetrics.hitTargetSize)
+                    .contentShape(Rectangle())
+            }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "Cancel", bundle: .module))
         .disabled(isBusy || pendingUndoSendTask != nil)
         .keyboardShortcut(.cancelAction)
         .confirmationDialog(
@@ -1504,21 +1652,73 @@ public struct ComposeView: View {
 
     #if os(iOS)
     private var mobileUtilityToolbar: some View {
-        HStack(spacing: BrevSpacing.xxs) {
+        let usesGlass = ComposeLiquidGlass.isEnabled(reduceTransparency: reduceTransparency)
+        return ComposeLiquidGlass.Container(spacing: BrevSpacing.sm) {
+            HStack(spacing: BrevSpacing.sm) {
+                mobileUtilityControlsPill(usesGlass: usesGlass)
+                Spacer(minLength: 0)
+                if aiAvailability.providerUnavailableReason == nil {
+                    mobileAIWritePill(usesGlass: usesGlass)
+                }
+            }
+        }
+        .padding(.horizontal, usesGlass ? BrevSpacing.md : BrevSpacing.sm)
+        .padding(.vertical, usesGlass && !isCompactVerticalLayout ? BrevSpacing.xs : 0)
+        .frame(maxWidth: .infinity, minHeight: toolbarMetrics.utilityHeight)
+        .overlay(alignment: .top) {
+            if !usesGlass {
+                BrevDivider()
+            }
+        }
+        .dynamicTypeSize(denseChromeDynamicTypeRange)
+    }
+
+    @ViewBuilder
+    private func mobileUtilityControlsPill(usesGlass: Bool) -> some View {
+        let controls = HStack(spacing: BrevSpacing.xxs) {
             attachMenu
                 .trackComposeChromeControl(.attach)
             formatMenu
                 .trackComposeChromeControl(.format)
             composeActionsMenu
                 .trackComposeChromeControl(.moreActions)
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, BrevSpacing.sm)
-        .frame(maxWidth: .infinity, minHeight: toolbarMetrics.utilityHeight)
-        .overlay(alignment: .top) {
-            BrevDivider()
+        if usesGlass {
+            controls
+                .padding(.horizontal, BrevSpacing.xs)
+                .background(Capsule().fill(theme.bgSecondary.color.opacity(0.45)))
+                .clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(theme.border.color.opacity(0.45), lineWidth: 0.75))
+                .composeGlassCapsule(interactive: true)
+        } else {
+            controls
         }
-        .dynamicTypeSize(denseChromeDynamicTypeRange)
+    }
+
+    @ViewBuilder
+    private func mobileAIWritePill(usesGlass: Bool) -> some View {
+        Menu {
+            aiWriterMenuContent
+        } label: {
+            Label(String(localized: "Write", bundle: .module), systemImage: "sparkles")
+                .brevFont(.footnote)
+                .foregroundStyle(aiWriterMenuDisabled ? theme.textTertiary.color : theme.textPrimary.color)
+                .padding(.horizontal, BrevSpacing.md)
+                .frame(minHeight: toolbarMetrics.hitTargetSize)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .disabled(aiWriterMenuDisabled)
+        .opacity(aiWriterMenuDisabled ? 0.45 : 1)
+        .accessibilityLabel(ComposeToolbarAction.aiWriter.accessibilityLabel)
+        .modifier(
+            ComposeUtilityPillModifier(
+                usesGlass: usesGlass,
+                interactive: !aiWriterMenuDisabled,
+                fallbackFill: theme.bgSecondary.color,
+                fallbackStroke: theme.border.color
+            )
+        )
     }
 
     /// The paperclip: a menu of attachment sources, like iOS Mail. Sources the
@@ -1995,29 +2195,59 @@ public struct ComposeView: View {
 
     private var sendButton: some View {
         let isDisabled = isSendButtonDisabled
+        let usesGlass = ComposeLiquidGlass.isEnabled(reduceTransparency: reduceTransparency)
         return Button(action: performSendButtonAction) {
             #if os(macOS)
-            Image(systemName: "paperplane.fill")
-                .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
-                .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
-                .background(Circle().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
-                .accessibilityHidden(true)
+            if usesGlass {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
+                    .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
+                    .contentShape(Circle())
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: "paperplane.fill")
+                    .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
+                    .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
+                    .background(Circle().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
+                    .accessibilityHidden(true)
+            }
             #else
             let circleDiameter = ComposeLayoutPolicy.sendButtonVisualDiameter(for: composeLayoutPlatform)
-            Image(systemName: "arrow.up")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
-                .frame(width: circleDiameter, height: circleDiameter)
-                .background(Circle().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
-                .frame(minWidth: toolbarMetrics.hitTargetSize, minHeight: toolbarMetrics.hitTargetSize)
-                .contentShape(Rectangle())
+            if usesGlass {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
+                    .frame(width: circleDiameter, height: circleDiameter)
+                    .background(
+                        Circle().fill(
+                            isDisabled
+                                ? theme.bgSecondary.color.opacity(0.48)
+                                : theme.accent.color
+                        )
+                    )
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle().strokeBorder(
+                            theme.border.color.opacity(isDisabled ? 0.45 : 0.15),
+                            lineWidth: 0.75
+                        )
+                    )
+                    .composeGlassCircle(interactive: !isDisabled, clear: !isDisabled)
+                    .frame(minWidth: toolbarMetrics.hitTargetSize, minHeight: toolbarMetrics.hitTargetSize)
+                    .contentShape(Rectangle())
+            } else {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
+                    .frame(width: circleDiameter, height: circleDiameter)
+                    .background(Circle().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
+                    .frame(minWidth: toolbarMetrics.hitTargetSize, minHeight: toolbarMetrics.hitTargetSize)
+                    .contentShape(Rectangle())
+            }
             #endif
         }
-        #if os(macOS)
         .buttonStyle(.plain)
-        #else
-        .buttonStyle(.plain)
-        #endif
         .disabled(isDisabled)
         #if !os(macOS)
             .keyboardShortcut(.return, modifiers: .command)
@@ -2729,6 +2959,12 @@ public struct ComposeView: View {
                         .environment(\.colorScheme, bodyAppearance.colorScheme)
                 }
             }
+            .overlay(alignment: .bottom) {
+                if showsMacFloatingFormattingBar {
+                    macFloatingFormattingBar
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                }
+            }
             .background(contrastingBodyBackground)
             #else
             VStack(spacing: 0) {
@@ -2850,6 +3086,239 @@ public struct ComposeView: View {
         copy._aiPreview = State(initialValue: preview)
         return copy
     }
+
+    #if os(macOS)
+    /// Seeds whether the macOS floating formatting bar starts visible for layout and snapshot tests.
+    func initialFormattingBarVisible(_ isVisible: Bool) -> ComposeView {
+        var copy = self
+        copy._showsFormattingBar = State(initialValue: isVisible)
+        return copy
+    }
+
+    private var showsMacFloatingFormattingBar: Bool {
+        hostStyle == .window
+            && composeBodyFormat == .richTextHTML
+            && showsFormattingBar
+            && !showsHTMLPreview
+    }
+
+    /// Toolbar `Aa` toggle for the detached macOS compose window; shows or hides
+    /// the bottom-floating Liquid Glass formatting pill bar without moving focus
+    /// out of the editor.
+    @ViewBuilder
+    private var macWindowFormatToggleButton: some View {
+        if composeBodyFormat == .richTextHTML {
+            Button {
+                if reduceMotion {
+                    showsFormattingBar.toggle()
+                } else {
+                    withAnimation(.snappy(duration: 0.22)) {
+                        showsFormattingBar.toggle()
+                    }
+                }
+            } label: {
+                Image(systemName: "textformat")
+                    .font(.system(size: 14, weight: showsFormattingBar ? .semibold : .regular))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(showsFormattingBar ? theme.accent.color : theme.textSecondary.color)
+                    .frame(width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize)
+                    .background(
+                        Capsule().fill(
+                            showsFormattingBar ? theme.accent.color.opacity(0.16) : Color.clear
+                        )
+                    )
+                    .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isInteractionBlocked)
+            .opacity(isInteractionBlocked ? 0.45 : 1)
+            .accessibilityLabel(ComposeToolbarAction.format.accessibilityLabel)
+            .accessibilityAddTraits(showsFormattingBar ? .isSelected : [])
+            .help(ComposeToolbarAction.format.accessibilityLabel)
+        }
+    }
+
+    /// Bottom-floating Liquid Glass rich-text formatting pill bar hovering above
+    /// the detached macOS compose canvas alongside an AI `Write` cluster.
+    private var macFloatingFormattingBar: some View {
+        let usesGlass = ComposeLiquidGlass.isEnabled(reduceTransparency: reduceTransparency)
+        return ComposeLiquidGlass.Container(spacing: BrevSpacing.sm) {
+            HStack(spacing: BrevSpacing.sm) {
+                HStack(spacing: BrevSpacing.xxs) {
+                    ForEach(
+                        [ComposeRichTextCommand.bold, .italic, .underline, .strikethrough],
+                        id: \.self
+                    ) { command in
+                        macFormattingBarButton(command)
+                    }
+
+                    macFormattingBarSeparator
+
+                    Menu {
+                        formatMenuSection([.heading1, .heading2, .heading3])
+                    } label: {
+                        Image(systemName: "textformat.size")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(theme.textPrimary.color)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Circle())
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .menuIndicator(.hidden)
+                    .disabled(isInteractionBlocked)
+                    .accessibilityLabel(String(localized: "Heading", bundle: .module))
+                    .help(String(localized: "Heading", bundle: .module))
+
+                    ForEach(
+                        [ComposeRichTextCommand.bulletedList, .numberedList, .insertLink],
+                        id: \.self
+                    ) { command in
+                        macFormattingBarButton(command)
+                    }
+
+                    macFormattingBarSeparator
+
+                    Menu {
+                        formatMenuSection([.inlineCode, .codeBlock, .insertTable, .insertImage])
+                        Divider()
+                        formatMenuSection([.clearFormatting])
+                        Divider()
+                        formatMenuSection([.undo, .redo])
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(theme.textSecondary.color)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Circle())
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .menuIndicator(.hidden)
+                    .disabled(isInteractionBlocked)
+                    .accessibilityLabel(ComposeToolbarAction.format.accessibilityLabel)
+                    .help(ComposeToolbarAction.format.accessibilityLabel)
+                }
+                .padding(.horizontal, BrevSpacing.sm)
+                .padding(.vertical, BrevSpacing.xxs)
+                .background(Capsule().fill(theme.bgSecondary.color.opacity(usesGlass ? 0.36 : 1)))
+                .overlay(Capsule().strokeBorder(theme.border.color.opacity(usesGlass ? 0.45 : 1), lineWidth: 0.75))
+                .composeGlassCapsule(interactive: true)
+                .shadow(
+                    color: theme.textPrimary.color.opacity(theme.mode == .dark ? 0.28 : 0.08),
+                    radius: 8,
+                    x: 0,
+                    y: 3
+                )
+
+                if aiAvailability.providerUnavailableReason == nil {
+                    Menu {
+                        aiWriterMenuContent
+                    } label: {
+                        Label(String(localized: "Write", bundle: .module), systemImage: "sparkles")
+                            .brevFont(.footnote)
+                            .foregroundStyle(aiWriterMenuDisabled ? theme.textTertiary.color : theme.textPrimary.color)
+                            .padding(.horizontal, BrevSpacing.sm)
+                            .frame(height: 36)
+                            .contentShape(Capsule())
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .disabled(aiWriterMenuDisabled)
+                    .help(ComposeToolbarAction.aiWriter.accessibilityLabel)
+                    .background(Capsule().fill(theme.bgSecondary.color.opacity(usesGlass ? 0.36 : 1)))
+                    .overlay(Capsule().strokeBorder(theme.border.color.opacity(usesGlass ? 0.45 : 1), lineWidth: 0.75))
+                    .composeGlassCapsule(interactive: !aiWriterMenuDisabled)
+                    .shadow(
+                        color: theme.textPrimary.color.opacity(theme.mode == .dark ? 0.28 : 0.08),
+                        radius: 8,
+                        x: 0,
+                        y: 3
+                    )
+                }
+
+                Button {
+                    if reduceMotion {
+                        showsFormattingBar = false
+                    } else {
+                        withAnimation(.snappy(duration: 0.22)) {
+                            showsFormattingBar = false
+                        }
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(theme.textSecondary.color)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .background(Circle().fill(theme.bgSecondary.color.opacity(usesGlass ? 0.36 : 1)))
+                .overlay(Circle().strokeBorder(theme.border.color.opacity(usesGlass ? 0.45 : 1), lineWidth: 0.75))
+                .composeGlassCircle(interactive: true)
+                .accessibilityLabel(ComposeToolbarAction.close.accessibilityLabel)
+                .help(ComposeToolbarAction.close.accessibilityLabel)
+            }
+        }
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.bottom, BrevSpacing.md)
+    }
+
+    private var macFormattingBarSeparator: some View {
+        Rectangle()
+            .fill(theme.border.color.opacity(0.6))
+            .frame(width: 1, height: 16)
+            .padding(.horizontal, BrevSpacing.xxs)
+            .accessibilityHidden(true)
+    }
+
+    private func macFormattingBarButton(_ command: ComposeRichTextCommand) -> some View {
+        Button {
+            performMacRichTextCommand(command)
+        } label: {
+            Image(systemName: command.systemImage)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(theme.textPrimary.color)
+                .frame(width: 28, height: 28)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isInteractionBlocked)
+        .accessibilityLabel(command.label)
+        .help(command.label)
+    }
+
+    /// Dispatches a rich-text command through the responder chain first so
+    /// NSTextView keeps first-responder focus, falling back to the mounted
+    /// editor target when focus temporarily moved to a menu or header field.
+    private func performMacRichTextCommand(_ command: ComposeRichTextCommand) {
+        if NSApp.sendAction(command.actionSelector, to: nil, from: nil) {
+            return
+        }
+        guard let target = macRichTextTargetBox.target else { return }
+        switch command {
+        case .bold: target.brevToggleBold(nil)
+        case .italic: target.brevToggleItalic(nil)
+        case .strikethrough: target.brevToggleStrikethrough(nil)
+        case .heading1: target.brevToggleHeading1(nil)
+        case .heading2: target.brevToggleHeading2(nil)
+        case .heading3: target.brevToggleHeading3(nil)
+        case .inlineCode: target.brevToggleInlineCode(nil)
+        case .codeBlock: target.brevToggleCodeBlock(nil)
+        case .insertTable: target.brevInsertTable(nil)
+        case .insertLink: target.brevInsertLink(nil)
+        case .bulletedList: target.brevToggleBulletedList(nil)
+        case .numberedList: target.brevToggleNumberedList(nil)
+        case .insertImage: target.brevInsertImage(nil)
+        case .clearFormatting: target.brevClearFormatting(nil)
+        case .underline, .undo, .redo:
+            break
+        }
+    }
+    #endif
 
     @ViewBuilder
     private var aiPreviewPanel: some View {
@@ -5273,6 +5742,7 @@ private enum ComposeLayout {
     #endif
     static let fieldAccessorySize: CGFloat = 24
     static let aiPreviewMaxHeight: CGFloat = 180
+    static let inlineCardCornerRadius: CGFloat = 16
     /// Ideal width reported for sheet sizing on compact iOS. Matches the
     /// narrowest supported phone viewport so large-type content can never
     /// widen the sheet past the screen (#49).
@@ -5390,5 +5860,256 @@ private struct ComposeWindowTranslucency: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// Self-contained macOS 26 & iOS 26 Liquid Glass helpers for Compose chrome
+/// with clean `< 26` and `accessibilityReduceTransparency` fallbacks.
+enum ComposeLiquidGlass {
+    /// Returns `true` when native Liquid Glass APIs are available at compile
+    /// and runtime and Reduce Transparency is off.
+    static func isEnabled(reduceTransparency: Bool) -> Bool {
+        guard !reduceTransparency else { return false }
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, iOS 26.0, *) {
+            return true
+        }
+        #endif
+        return false
+    }
+
+    /// Groups adjacent Liquid Glass controls into a shared `GlassEffectContainer`
+    /// on macOS 26 / iOS 26, falling back to a plain transparent container on
+    /// earlier OS versions or when Reduce Transparency is enabled.
+    struct Container<Content: View>: View {
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+        let spacing: CGFloat
+        @ViewBuilder let content: () -> Content
+
+        init(spacing: CGFloat = BrevSpacing.sm, @ViewBuilder content: @escaping () -> Content) {
+            self.spacing = spacing
+            self.content = content
+        }
+
+        @ViewBuilder
+        var body: some View {
+            #if compiler(>=6.2)
+            if #available(macOS 26.0, iOS 26.0, *), !reduceTransparency {
+                GlassEffectContainer(spacing: spacing) {
+                    content()
+                }
+            } else {
+                content()
+            }
+            #else
+            content()
+            #endif
+        }
+    }
+}
+
+private struct ComposeGlassButtonStyleModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    let prominent: Bool
+    let tint: Color?
+    let isCircle: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, iOS 26.0, *), !reduceTransparency {
+            if prominent {
+                if let tint {
+                    applyBorderShape(content.buttonStyle(.glassProminent).tint(tint))
+                } else {
+                    applyBorderShape(content.buttonStyle(.glassProminent))
+                }
+            } else {
+                if let tint {
+                    applyBorderShape(content.buttonStyle(.glass).tint(tint))
+                } else {
+                    applyBorderShape(content.buttonStyle(.glass))
+                }
+            }
+        } else {
+            content.buttonStyle(.plain)
+        }
+        #else
+        content.buttonStyle(.plain)
+        #endif
+    }
+
+    @ViewBuilder
+    private func applyBorderShape(_ styled: some View) -> some View {
+        if isCircle {
+            styled.buttonBorderShape(.circle)
+        } else {
+            styled.buttonBorderShape(.capsule)
+        }
+    }
+}
+
+private struct ComposeGlassCapsuleModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    let tint: Color?
+    let interactive: Bool
+    let clear: Bool
+    let fallbackFill: Color?
+    let fallbackStroke: Color?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, iOS 26.0, *), !reduceTransparency {
+            let baseGlass: Glass = {
+                var glass: Glass = clear ? .clear : .regular
+                if let tint {
+                    glass = glass.tint(tint)
+                }
+                if interactive {
+                    glass = glass.interactive()
+                }
+                return glass
+            }()
+            content.glassEffect(baseGlass, in: Capsule())
+        } else {
+            fallbackSurface(content)
+        }
+        #else
+        fallbackSurface(content)
+        #endif
+    }
+
+    @ViewBuilder
+    private func fallbackSurface(_ content: Content) -> some View {
+        if let fallbackFill {
+            content
+                .background(Capsule().fill(fallbackFill))
+                .overlay {
+                    if let fallbackStroke {
+                        Capsule().strokeBorder(fallbackStroke, lineWidth: 1)
+                    }
+                }
+        } else {
+            content
+        }
+    }
+}
+
+private struct ComposeGlassCircleModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    let tint: Color?
+    let interactive: Bool
+    let clear: Bool
+    let fallbackFill: Color?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, iOS 26.0, *), !reduceTransparency {
+            let baseGlass: Glass = {
+                var glass: Glass = clear ? .clear : .regular
+                if let tint {
+                    glass = glass.tint(tint)
+                }
+                if interactive {
+                    glass = glass.interactive()
+                }
+                return glass
+            }()
+            content.glassEffect(baseGlass, in: Circle())
+        } else if let fallbackFill {
+            content.background(Circle().fill(fallbackFill))
+        } else {
+            content
+        }
+        #else
+        if let fallbackFill {
+            content.background(Circle().fill(fallbackFill))
+        } else {
+            content
+        }
+        #endif
+    }
+}
+
+private struct ComposeSoftTopScrollEdgeModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(iOS) && compiler(>=6.2)
+        if #available(iOS 26.0, *), !reduceTransparency {
+            content.scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+private struct ComposeUtilityPillModifier: ViewModifier {
+    let usesGlass: Bool
+    let interactive: Bool
+    let fallbackFill: Color
+    let fallbackStroke: Color
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if usesGlass {
+            content.composeGlassCapsule(
+                interactive: interactive,
+                fallbackFill: fallbackFill,
+                fallbackStroke: fallbackStroke
+            )
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    func composeGlassButton(prominent: Bool, tint: Color?, isCircle: Bool = false) -> some View {
+        modifier(ComposeGlassButtonStyleModifier(prominent: prominent, tint: tint, isCircle: isCircle))
+    }
+
+    func composeGlassCapsule(
+        tint: Color? = nil,
+        interactive: Bool = true,
+        clear: Bool = false,
+        fallbackFill: Color? = nil,
+        fallbackStroke: Color? = nil
+    ) -> some View {
+        modifier(
+            ComposeGlassCapsuleModifier(
+                tint: tint,
+                interactive: interactive,
+                clear: clear,
+                fallbackFill: fallbackFill,
+                fallbackStroke: fallbackStroke
+            )
+        )
+    }
+
+    func composeGlassCircle(
+        tint: Color? = nil,
+        interactive: Bool = true,
+        clear: Bool = false,
+        fallbackFill: Color? = nil
+    ) -> some View {
+        modifier(
+            ComposeGlassCircleModifier(
+                tint: tint,
+                interactive: interactive,
+                clear: clear,
+                fallbackFill: fallbackFill
+            )
+        )
     }
 }

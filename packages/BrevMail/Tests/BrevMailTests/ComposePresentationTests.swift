@@ -303,4 +303,9 @@ struct ComposePresentationTests {
         }
         #expect(ComposeLayoutPolicy.sendButtonVisualDiameter(for: .macOS) == 36)
     }
+
+    @Test("ComposeLiquidGlass respects Reduce Transparency accessibility setting")
+    func composeLiquidGlassRespectsReduceTransparency() {
+        #expect(!ComposeLiquidGlass.isEnabled(reduceTransparency: true))
+    }
 }

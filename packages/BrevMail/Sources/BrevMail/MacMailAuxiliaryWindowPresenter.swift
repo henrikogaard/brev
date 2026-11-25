@@ -267,7 +267,12 @@ enum MacComposeToolbarItemIdentifier {
 final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
     private var contentViews: [NSToolbarItem.Identifier: AnyView] = [:]
     private var theme: BrevTheme = .brevMonoLight
-    var sendAction: (() -> Void)?
+    private weak var observedToolbar: NSToolbar?
+    var sendAction: (() -> Void)? {
+        didSet {
+            updateSendToolbarItemProminence(in: observedToolbar)
+        }
+    }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         MacComposeToolbarItemIdentifier.defaultOrder
@@ -282,6 +287,7 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
+        observedToolbar = toolbar
         guard let action = action(for: itemIdentifier) else { return nil }
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
         item.label = action.accessibilityLabel
@@ -295,6 +301,7 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
         item.view = hostingView
         item.minSize = size
         item.maxSize = size
+        applyToolbarItemStyle(item)
         return item
     }
 
@@ -303,12 +310,14 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
         theme: BrevTheme? = nil,
         in toolbar: NSToolbar?
     ) {
+        observedToolbar = toolbar ?? observedToolbar
         contentViews = views
         if let theme {
             self.theme = theme
         }
         let appearance = NSAppearance(named: self.theme.mode == .dark ? .darkAqua : .aqua)
         for item in toolbar?.items ?? [] {
+            applyToolbarItemStyle(item)
             guard let content = views[item.itemIdentifier],
                   let hostingView = item.view as? NSHostingView<AnyView> else {
                 continue
@@ -318,6 +327,29 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
             hostingView.appearance = appearance
             hostingView.frame = NSRect(x: 0, y: 0, width: width, height: 36)
         }
+    }
+
+    private func updateSendToolbarItemProminence(in toolbar: NSToolbar?) {
+        guard let sendItem = toolbar?.items.first(where: { $0.itemIdentifier == MacComposeToolbarItemIdentifier.send }) else {
+            return
+        }
+        applyToolbarItemStyle(sendItem)
+    }
+
+    private func applyToolbarItemStyle(_ item: NSToolbarItem) {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            if item.itemIdentifier == MacComposeToolbarItemIdentifier.send,
+               sendAction != nil,
+               !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+                item.style = .prominent
+                item.backgroundTintColor = NSColor(theme.accent.color)
+            } else {
+                item.style = .plain
+                item.backgroundTintColor = nil
+            }
+        }
+        #endif
     }
 
     private func themedRootView(_ content: AnyView, width: CGFloat) -> AnyView {

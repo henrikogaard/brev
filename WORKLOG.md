@@ -8839,3 +8839,29 @@ buttons, and package-aware localization.
 - **CI fix (PR #372 — `SheetAppearanceTests`):**
   - Switched `MacComposeToolbarDelegate.themedRootView` in `MacMailAuxiliaryWindowPresenter.swift` from `.brevTheme(theme)` to `.brevSheetAppearance(theme)` (identical on macOS per `RootAppearance.swift`) to satisfy `SheetAppearanceTests.presentedViewsUseTheSharedSheetModifier`.
   - Verified full `BrevMail` non-snapshot suite on `macmini-devbox` (`/tmp/brev-polish-b-ci`, removed afterwards).
+
+## 2026-11-25 — Agent — Native Liquid Glass Wave 3 (Composer)
+
+- **Goal:** Implement Native macOS 26 & iOS 26 Liquid Glass Composer (Wave 3) on `feat/native-liquid-glass-composer` from `origin/main` (`d5d366e9`) covering macOS docked inline reply, detached macOS compose window toolbar + bottom-floating rich-text formatting pill bar, and iOS 26 Compose sheet chrome with strict `#if compiler(>=6.2)` + `if #available(macOS 26.0, iOS 26.0, *)` and `accessibilityReduceTransparency` fallbacks.
+- **Changes:**
+  - `packages/BrevMail/Sources/BrevMail/ComposeView.swift`:
+    - Added self-contained internal `ComposeLiquidGlass` helper (`isEnabled(reduceTransparency:)`, `Container` wrapping `GlassEffectContainer`, button/capsule/circle modifiers, and `ComposeSoftTopScrollEdgeModifier`) so Wave 3 is independent of Wave 2 with zero merge conflicts.
+    - Elevated macOS docked inline reply (`hostStyle == .inline`) into a continuous `16 pt` inset card with hairline `theme.border.color` stroke and soft theme-token shadow; upgraded `inlineBottomBar` into a `GlassEffectContainer` grouping prominent accent-tinted `.buttonStyle(.glassProminent)` Send (`.buttonStyle(.glass)` when disabled), `.buttonStyle(.glass)` `Later` and `Write ✦`, and a trailing interactive glass `(Attach · Format)` capsule with no harsh full-width top divider.
+    - Upgraded detached macOS compose window `Aa` toolbar toggle (`macWindowFormatToggleButton`) to toggle a bottom-floating `GlassEffectContainer` rich-text formatting pill bar (`macFloatingFormattingBar`) with an AI `Write ✦` cluster hovering above the body canvas while preserving `NSTextView` responder-chain focus (`performMacRichTextCommand`).
+    - Upgraded iOS 26 Compose sheet `mobileToolbar` and `mobileUtilityToolbar` with `GlassEffectContainer`-grouped circular glass `✕` Cancel (`accessibilityLabel("Cancel")`, `ComposeDismissalPolicy` confirmation dialog preserved) and `↑` Send (`34 pt` visual circle in `44×44` tap target), `.scrollEdgeEffectStyle(.soft, for: .top)`, and a floating bottom utility glass pill cluster (`Attach`, `Format`, `More`, optional `Write ✦`) with no harsh full-width divider while preserving compact-vertical Landscape heights and `trackComposeChromeControl` bounds.
+  - `packages/BrevMail/Sources/BrevMail/MacMailAuxiliaryWindowPresenter.swift`:
+    - Updated `MacComposeToolbarDelegate` to set macOS 26+ `NSToolbarItem.style = .prominent` + `backgroundTintColor = NSColor(theme.accent.color)` on `send` when `sendAction != nil` (and `!accessibilityDisplayShouldReduceTransparency`), reverting to `.plain` when disabled, while keeping `scheduleSend`, `format`, `attachment`, and `more` `.plain` and `.brevSheetAppearance(theme)` intact.
+  - `packages/BrevMail/Sources/BrevMail/ComposeLaterButtonView.swift`:
+    - Upgraded `Later` pill to theme-backed interactive Liquid Glass capsule on macOS 26 / iOS 26 (preserving `.brevChip` fallback on `< 26` and Reduce Transparency) and strengthened Light/Dark label contrast in macOS toolbar mode.
+  - Tests & Baselines:
+    - Added unit tests in `MacMailAuxiliaryWindowConfigurationTests.swift` (macOS 26+ Send item prominence tracking `sendAction`) and `ComposePresentationTests.swift` (`ComposeLiquidGlass` Reduce Transparency fallback), plus `floatingFormattingBar` Light/Dark macOS snapshots in `ComposeViewMacOSSnapshotTests.swift`.
+    - Refreshed and visually inspected directly affected Compose baselines (`InlineReplySnapshotTests`, `ComposeLaterSnapshotTests`, `ComposeViewMacOSSnapshotTests/floatingFormattingBar-*`, `ComposeViewSnapshotTests/{emptyCompose,replyCompose}`, `BrevMailSnapshotTests/composeViewRendersSignaturePicker`).
+  - Docs: updated `CHANGELOG.md` under `## [Unreleased]`.
+- **Verification:**
+  - Remote `macmini-devbox` (`/tmp/brev-lg-w3`, cleaned up afterwards):
+    - `swift test --package-path packages/BrevMail --filter "Compose|MacMailAuxiliaryWindowConfiguration|SheetAppearance|InlineReply" --skip "ComposeNativeSheetsSnapshotTests|ComposeSecurityWarningSnapshotTests|ComposeUndoSendCountdownSnapshotTests"` — all unit + macOS Compose snapshot tests passed (including 559 non-snapshot Compose tests across 85 suites, `InlineReplySnapshotTests`, `ComposeLaterSnapshotTests`, and `ComposeViewMacOSSnapshotTests`).
+    - iOS 27.2 Simulator (`iPhone 18 Pro`, `B6A6D491-7E97-4A99-95F0-CC29BE01BCAC`): `ComposeAccessibilityBoundsTests`, `ComposeHeaderAlignmentIOSTests`, `ComposeBodyEditorAppearanceIOSTests`, `ComposeViewSnapshotTests/{emptyCompose,replyCompose}`, `BrevMailSnapshotTests/composeViewRendersSignaturePicker` — 14 tests in 5 suites passed (`** TEST SUCCEEDED **`).
+    - `tuist install && tuist generate --no-open`, `BrevMacOS` Debug build (`** BUILD SUCCEEDED **`), and `BrevIOS` Simulator Debug build (`** BUILD SUCCEEDED **`).
+  - Local Mac Studio (headless CLI only): `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+- **Skipped:** None.
+- **Next:** Commit on `feat/native-liquid-glass-composer`, push, and open PR targeting `main`.
