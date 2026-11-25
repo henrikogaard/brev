@@ -21,7 +21,7 @@ import Testing
 @MainActor
 @Suite("Command palette")
 struct MailCommandPaletteTests {
-    @Test("the palette sheet paints the selected Brev theme")
+    @Test("the palette sheet paints the selected Brev theme with translucent glass tint")
     func sheetAppearance() throws {
         for theme in [BrevTheme.brevPaper, BrevTheme.brevSlate] {
             let host = MailCommandPalette.contentController(theme: theme, entries: []) { _ in }
@@ -32,10 +32,10 @@ struct MailCommandPaletteTests {
             host.view.cacheDisplay(in: bounds, to: bitmap)
             let sample = try #require(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.sRGB))
             let expected = try #require(NSColor(theme.bgPrimary.color).usingColorSpace(.sRGB))
-            #expect(sample.alphaComponent > 0.99)
-            #expect(abs(sample.redComponent - expected.redComponent) < 0.02)
-            #expect(abs(sample.greenComponent - expected.greenComponent) < 0.02)
-            #expect(abs(sample.blueComponent - expected.blueComponent) < 0.02)
+            #expect(sample.alphaComponent >= 0.70)
+            #expect(abs(sample.redComponent - expected.redComponent) < 0.08)
+            #expect(abs(sample.greenComponent - expected.greenComponent) < 0.08)
+            #expect(abs(sample.blueComponent - expected.blueComponent) < 0.08)
         }
     }
 

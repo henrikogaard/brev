@@ -761,6 +761,9 @@ public struct MessageDetailView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if let readerFooter {
                 readerFooter
+                    .background {
+                        ReaderQuickReplyBottomFade()
+                    }
             }
         }
         #endif
