@@ -40,11 +40,11 @@ struct IMAPPageState: Equatable {
 
 /// Persistent SQLite-backed implementation of `SyncStoreProtocol` (ADR-0030).
 ///
-/// Schema version 9. All writes use WAL journal mode for concurrent-read safety.
+/// Schema version 11. All writes use WAL journal mode for concurrent-read safety.
 /// The NSLock serialises access from the BrevSyncEngine actor, which is the sole
 /// owner of this store in production.
 final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
-    let currentSchemaVersion = 10
+    let currentSchemaVersion = 11
 
     private let lock = NSLock()
     private let db: OpaquePointer?
@@ -172,10 +172,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         try lock.withLock {
             try execSQL("BEGIN IMMEDIATE;")
             do {
-                try execStmt(
-                    "DELETE FROM message_search WHERE account_id = ?;",
-                    bindings: [.text(id)]
-                )
+                try deleteSearchRowsForAccount(accountID: id)
                 try execStmt(
                     "DELETE FROM attachment_search WHERE account_id = ?;",
                     bindings: [.text(id)]
@@ -209,7 +206,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     func clearIMAPCache(accountID: String) throws {
         try lock.withLock {
             try inTransaction {
-                for table in ["message_search", "attachment_search", "message_bodies", "message_headers", "folder_sync_state"] {
+                try deleteSearchRowsForAccount(accountID: accountID)
+                for table in ["attachment_search", "message_bodies", "message_headers", "folder_sync_state"] {
                     try execStmt("DELETE FROM \(table) WHERE account_id = ?;", bindings: [.text(accountID)])
                 }
                 try execStmt("""
@@ -489,7 +487,13 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             let links = try prepareConversationStatements()
             defer { sqlite3_finalize(links.delete); sqlite3_finalize(links.insert) }
             let searchRow = try prepareSearchRowStatements()
-            defer { sqlite3_finalize(searchRow.delete); sqlite3_finalize(searchRow.insert) }
+            defer { searchRow.finalize() }
+            let recoveryStmt = try prepareRecoveryStateStatement()
+            defer { sqlite3_finalize(recoveryStmt) }
+            let storedHeaderStmt = try prepareStoredHeaderRowStatement()
+            defer { sqlite3_finalize(storedHeaderStmt) }
+            let bodyStmt = try prepareBodyForSearchStatement()
+            defer { sqlite3_finalize(bodyStmt) }
             let sql = """
                 INSERT INTO message_headers
                     (account_id, folder_id, uid, message_id, date_ts, header_json)
@@ -526,14 +530,20 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                                            accountID: accountID)
                 }
                 for header in headers {
-                    if imapPage == nil, try recoveryState(accountID: accountID, messageID: header.id)?.headerConfirmed == false {
+                    let recovery = try recoveryState(
+                        accountID: accountID,
+                        messageID: header.id,
+                        statement: recoveryStmt
+                    )
+                    if imapPage == nil, recovery?.headerConfirmed == false {
                         continue
                     }
                     let uid = Self.uid(from: header.id)
                     let previous = storedHeaderRow(
                         accountID: accountID,
                         folderID: header.folderID,
-                        uid: uid
+                        uid: uid,
+                        statement: storedHeaderStmt
                     )
                     var header = header
                     let storedHeader = previous?.headerJSON
@@ -569,7 +579,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     sqlite3_reset(stmt)
                     sqlite3_clear_bindings(stmt)
                     if headerWasStored {
-                        if imapPage != nil {
+                        if imapPage != nil, recovery != nil {
                             try execStmt(
                                 "UPDATE imap_legacy_recovery SET header_confirmed = 1 WHERE account_id = ? AND message_id = ?;",
                                 bindings: [.text(accountID), .text(header.id)]
@@ -579,19 +589,22 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                         // leaves every field feeding message_search and
                         // conversation_links unchanged; rewriting them is pure
                         // churn, so it is skipped. The search row must still be
-                        // verified to exist — an absent row means this header
-                        // was never indexed and takes the full path below. A
-                        // changed stored message_id likewise takes the full
-                        // path so the stale-row cleanup below still runs.
+                        // verified to exist via the indexed rowid map — an
+                        // absent row means this header was never indexed and
+                        // takes the full path below. A changed stored message_id
+                        // likewise takes the full path so stale-row cleanup runs.
+                        let existingRowID = searchRowID(
+                            accountID: accountID,
+                            messageID: header.id,
+                            statements: searchRow
+                        )
                         let indexedContentUnchanged = storedHeader.map {
                             Self.hasSameIndexedContent($0, header)
                         } ?? false
                         if indexedContentUnchanged,
                            previousMessageID == nil || previousMessageID == header.id,
-                           existingSearchBodyText(
-                               accountID: accountID,
-                               messageID: header.id
-                           ) != nil {
+                           let existingRowID,
+                           searchRowExists(ftsRowID: existingRowID, statements: searchRow) {
                             continue
                         }
                         try upsertConversationLinks(header, accountID: accountID, statements: links)
@@ -600,20 +613,33 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                             try deleteSearchRows(messageIDs: staleMessageIDs, accountID: accountID)
                             try deleteBodies(messageIDs: staleMessageIDs, accountID: accountID)
                         }
-                        // On CONDSTORE refreshes (flag-only updates) the already-indexed
-                        // body text is reused to avoid re-running the full MIME parser
-                        // while the store lock is held. Falls back to bodyTextForSearch
-                        // only when no search row exists yet (e.g. body arrived before
-                        // this header via storeBody, which didn't create the row).
-                        let suppressBody = try recoveryState(accountID: accountID, messageID: header.id)?.sourceConfirmed == false
-                        let bodyText = suppressBody ? nil : existingSearchBodyText(
-                            accountID: accountID,
-                            messageID: header.id
-                        ) ?? bodyTextForSearch(accountID: accountID, messageID: header.id)
+                        // On header refreshes where an FTS row already exists, reuse
+                        // its indexed body text by rowid in O(log N) to avoid
+                        // re-running the full MIME parser while the store lock is held.
+                        // Falls back to bodyTextForSearch only when no search row
+                        // exists yet (e.g. body arrived before this header via storeBody).
+                        let suppressBody = recovery?.sourceConfirmed == false
+                        let bodyText: String?
+                        if suppressBody {
+                            bodyText = nil
+                        } else if let existingRowID,
+                                  let cachedBody = existingSearchBodyText(
+                                      ftsRowID: existingRowID,
+                                      statements: searchRow
+                                  ) {
+                            bodyText = cachedBody
+                        } else {
+                            bodyText = bodyTextForSearch(
+                                accountID: accountID,
+                                messageID: header.id,
+                                statement: bodyStmt
+                            )
+                        }
                         try upsertSearchRow(
                             header,
                             accountID: accountID,
                             bodyText: bodyText,
+                            existingRowID: .some(existingRowID),
                             statements: searchRow
                         )
                     }
@@ -698,7 +724,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         return result == SQLITE_ROW
     }
 
-    private func recoveryState(accountID: String, messageID: String) throws -> (headerConfirmed: Bool, sourceConfirmed: Bool)? {
+    private func prepareRecoveryStateStatement() throws -> OpaquePointer? {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(
             db,
@@ -707,13 +733,34 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             &stmt,
             nil
         ) == SQLITE_OK else { throw SyncStoreError.prepareFailed(errMsg()) }
+        return stmt
+    }
+
+    private func recoveryState(accountID: String, messageID: String) throws -> (headerConfirmed: Bool, sourceConfirmed: Bool)? {
+        let stmt = try prepareRecoveryStateStatement()
         defer { sqlite3_finalize(stmt) }
+        return try recoveryState(accountID: accountID, messageID: messageID, statement: stmt)
+    }
+
+    private func recoveryState(
+        accountID: String,
+        messageID: String,
+        statement stmt: OpaquePointer?
+    ) throws -> (headerConfirmed: Bool, sourceConfirmed: Bool)? {
         sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
         sqlite3_bind_text(stmt, 2, messageID, -1, Self.transient)
         let result = sqlite3_step(stmt)
+        let state: (headerConfirmed: Bool, sourceConfirmed: Bool)?
+        if result == SQLITE_ROW {
+            state = (sqlite3_column_int(stmt, 0) != 0, sqlite3_column_int(stmt, 1) != 0)
+        } else {
+            state = nil
+        }
+        sqlite3_reset(stmt)
+        sqlite3_clear_bindings(stmt)
         if result == SQLITE_DONE { return nil }
         guard result == SQLITE_ROW else { throw SyncStoreError.executeFailed(errMsg()) }
-        return (sqlite3_column_int(stmt, 0) != 0, sqlite3_column_int(stmt, 1) != 0)
+        return state
     }
 
     private func discardRecovery(accountID: String, folderID: String) throws {
@@ -787,9 +834,11 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     }
 
     // CROSS JOIN keeps the selective candidates outermost instead of scanning the folder for ORDER BY.
+    // Both UNION branches pin their selective indexes so SQLite 3.54+'s MERGE (UNION) planner
+    // cannot fall back to a folder-wide primary-key scan just to avoid sorting candidate UIDs.
     static let attachmentOrCachedBodyHeadersSQL = """
     SELECT h.header_json FROM (
-        SELECT uid FROM message_headers
+        SELECT uid FROM message_headers INDEXED BY idx_imap_attachment_headers
         WHERE account_id = ?1 AND folder_id = ?2
           AND json_extract(CAST(header_json AS TEXT), '$.hasAttachments') = 1
         UNION
@@ -994,10 +1043,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 try discardRecovery(accountID: accountID, folderID: folderID)
                 try deleteBodiesForFolder(accountID: accountID, folderID: folderID)
                 try deleteBodiesByMessageIDPrefix(accountID: accountID, folderID: folderID)
-                try execStmt(
-                    "DELETE FROM message_search WHERE account_id = ? AND folder_id = ?;",
-                    bindings: [.text(accountID), .text(folderID)]
-                )
+                try deleteSearchRowsForFolder(accountID: accountID, folderID: folderID)
                 try execStmt(
                     "DELETE FROM message_headers WHERE account_id = ? AND folder_id = ?;",
                     bindings: [.text(accountID), .text(folderID)]
@@ -1019,10 +1065,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 try discardRecovery(accountID: accountID, folderID: folderID)
                 try deleteBodiesForFolder(accountID: accountID, folderID: folderID)
                 try deleteBodiesByMessageIDPrefix(accountID: accountID, folderID: folderID)
-                try execStmt(
-                    "DELETE FROM message_search WHERE account_id = ? AND folder_id = ?;",
-                    bindings: [.text(accountID), .text(folderID)]
-                )
+                try deleteSearchRowsForFolder(accountID: accountID, folderID: folderID)
                 try execStmt(
                     "DELETE FROM message_headers WHERE account_id = ? AND folder_id = ?;",
                     bindings: [.text(accountID), .text(folderID)]
@@ -1256,7 +1299,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         guard !messageIDs.isEmpty else { return }
         try lock.withLock {
             let searchRow = try prepareSearchRowStatements()
-            defer { sqlite3_finalize(searchRow.delete); sqlite3_finalize(searchRow.insert) }
+            defer { searchRow.finalize() }
             try execSQL("BEGIN IMMEDIATE;")
             do {
                 try forEachMessageIDChunk(messageIDs) { chunk in
@@ -1283,7 +1326,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     func deleteBodies(accountID: String, folderID: String) throws {
         try lock.withLock {
             let searchRow = try prepareSearchRowStatements()
-            defer { sqlite3_finalize(searchRow.delete); sqlite3_finalize(searchRow.insert) }
+            defer { searchRow.finalize() }
             try execSQL("BEGIN IMMEDIATE;")
             do {
                 let headers = headersUnlocked(
@@ -1315,7 +1358,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     func deleteBodies(accountID: String, folderID: String, exceptMessageIDs: Set<MessageHeader.ID>) throws {
         try lock.withLock {
             let searchRow = try prepareSearchRowStatements()
-            defer { sqlite3_finalize(searchRow.delete); sqlite3_finalize(searchRow.insert) }
+            defer { searchRow.finalize() }
             try execSQL("BEGIN IMMEDIATE;")
             do {
                 let allHeaders = headersUnlocked(
@@ -1358,7 +1401,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     bindings: [.text(accountID)]
                 ),
                 searchDocumentCount: countRows(
-                    "SELECT COUNT(*) FROM message_search WHERE account_id = ?;",
+                    "SELECT COUNT(*) FROM message_search_index WHERE account_id = ?;",
                     bindings: [.text(accountID)]
                 ),
                 syncedFolderCount: countRows(
@@ -1808,6 +1851,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     try execSQL("PRAGMA user_version = 10;")
                 }
             }
+            if version < 11 {
+                try inTransaction {
+                    try migrateV10ToV11()
+                    try execSQL("PRAGMA user_version = 11;")
+                }
+            }
         default:
             // version > currentSchemaVersion: written by a newer build.
             throw SyncStoreError.unknownSchemaVersion(
@@ -1838,6 +1887,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             try createIMAPLegacyImportSchema()
             try createIMAPAttachmentHeaderIndex()
             try createIMAPRecoverySchema()
+            try createSearchIndexSchema()
         }
     }
 
@@ -1986,6 +2036,28 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         """)
     }
 
+    /// Indexed lookup table mapping `(account_id, message_id)` to the FTS5
+    /// `message_search.rowid` so upserts, flag-only checks, body reads, and
+    /// deletes target FTS5 by `rowid` in O(log N) instead of linearly scanning
+    /// the `UNINDEXED` FTS5 columns, plus a partial covering index on dirty
+    /// headers so `dirtyMessageIDs(accountID:)` never scans clean rows.
+    private func createSearchIndexSchema() throws {
+        try execSQL("""
+            CREATE TABLE IF NOT EXISTS message_search_index (
+                account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                message_id TEXT NOT NULL,
+                folder_id  TEXT NOT NULL,
+                fts_rowid  INTEGER NOT NULL,
+                PRIMARY KEY (account_id, message_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_message_search_folder
+                ON message_search_index (account_id, folder_id);
+            CREATE INDEX IF NOT EXISTS idx_msg_dirty
+                ON message_headers (account_id, message_id)
+                WHERE is_dirty = 1;
+        """)
+    }
+
     private func migrateV1ToV2() throws {
         try createSearchSchema()
         try rebuildSearchRowsFromStoredMessages()
@@ -1997,16 +2069,57 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         try rebuildSearchRowsFromStoredMessages()
     }
 
+    private func migrateV10ToV11() throws {
+        try createSearchIndexSchema()
+        try execSQL("""
+            INSERT OR REPLACE INTO message_search_index (account_id, message_id, folder_id, fts_rowid)
+            SELECT m.account_id, m.message_id, m.folder_id, m.rowid
+            FROM message_search m
+            JOIN accounts a ON a.id = m.account_id
+            ORDER BY m.rowid ASC;
+        """)
+        // If an older DB accumulated duplicate or orphaned FTS rows, prune the
+        // superseded rowids so message_search and message_search_index stay 1:1.
+        let ftsCount = countRows("SELECT COUNT(*) FROM message_search;", bindings: [])
+        let indexCount = countRows("SELECT COUNT(*) FROM message_search_index;", bindings: [])
+        if ftsCount != indexCount {
+            var stmt: OpaquePointer?
+            let sql = """
+                SELECT rowid FROM message_search
+                WHERE rowid NOT IN (SELECT fts_rowid FROM message_search_index);
+            """
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                throw SyncStoreError.prepareFailed(errMsg())
+            }
+            defer { sqlite3_finalize(stmt) }
+            var staleRowIDs: [Int64] = []
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                staleRowIDs.append(sqlite3_column_int64(stmt, 0))
+            }
+            try deleteSearchRowsByRowIDs(staleRowIDs)
+        }
+    }
+
     private func rebuildSearchRowsFromStoredMessages() throws {
+        // Runs during v1->v2 and v2->v3 on a freshly created empty message_search
+        // table before message_search_index exists (v11 backfills it afterward).
         let rows = storedHeaderRows()
-        let searchRow = try prepareSearchRowStatements()
-        defer { sqlite3_finalize(searchRow.delete); sqlite3_finalize(searchRow.insert) }
+        let insertStmt = try prepareSearchInsertStatement()
+        defer { sqlite3_finalize(insertStmt) }
+        let bodyStmt = try prepareBodyForSearchStatement()
+        defer { sqlite3_finalize(bodyStmt) }
+        var seen = Set<String>()
         for row in rows {
-            try upsertSearchRow(
+            guard seen.insert("\(row.accountID)\u{0}\(row.header.id)").inserted else { continue }
+            _ = try insertFTSRow(
                 row.header,
                 accountID: row.accountID,
-                bodyText: bodyTextForSearch(accountID: row.accountID, messageID: row.header.id),
-                statements: searchRow
+                bodyText: bodyTextForSearch(
+                    accountID: row.accountID,
+                    messageID: row.header.id,
+                    statement: bodyStmt
+                ),
+                statement: insertStmt
             )
         }
     }
@@ -2051,33 +2164,53 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         return try? Self.decoder.decode(MessageHeader.self, from: data)
     }
 
-    private func storedHeaderRow(
-        accountID: String,
-        folderID: String,
-        uid: Int
-    ) -> (messageID: MessageHeader.ID, headerJSON: Data?)? {
+    private func prepareStoredHeaderRowStatement() throws -> OpaquePointer? {
         var stmt: OpaquePointer?
         let sql = """
             SELECT message_id, header_json FROM message_headers
             WHERE account_id = ? AND folder_id = ? AND uid = ?
             LIMIT 1;
         """
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
-        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        return stmt
+    }
 
+    private func storedHeaderRow(
+        accountID: String,
+        folderID: String,
+        uid: Int
+    ) -> (messageID: MessageHeader.ID, headerJSON: Data?)? {
+        guard let stmt = try? prepareStoredHeaderRowStatement() else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        return storedHeaderRow(accountID: accountID, folderID: folderID, uid: uid, statement: stmt)
+    }
+
+    private func storedHeaderRow(
+        accountID: String,
+        folderID: String,
+        uid: Int,
+        statement stmt: OpaquePointer?
+    ) -> (messageID: MessageHeader.ID, headerJSON: Data?)? {
         sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
         sqlite3_bind_text(stmt, 2, folderID, -1, Self.transient)
         sqlite3_bind_int64(stmt, 3, Int64(uid))
-        guard sqlite3_step(stmt) == SQLITE_ROW,
-              let ptr = sqlite3_column_text(stmt, 0)
-        else { return nil }
-        let json: Data?
-        if let bytes = sqlite3_column_blob(stmt, 1) {
-            json = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 1)))
+        let result: (messageID: MessageHeader.ID, headerJSON: Data?)?
+        if sqlite3_step(stmt) == SQLITE_ROW, let ptr = sqlite3_column_text(stmt, 0) {
+            let json: Data?
+            if let bytes = sqlite3_column_blob(stmt, 1) {
+                json = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 1)))
+            } else {
+                json = nil
+            }
+            result = (String(cString: ptr), json)
         } else {
-            json = nil
+            result = nil
         }
-        return (String(cString: ptr), json)
+        sqlite3_reset(stmt)
+        sqlite3_clear_bindings(stmt)
+        return result
     }
 
     private func headersUnlocked(
@@ -2112,54 +2245,58 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         return result
     }
 
-    private func bodyTextForSearch(accountID: String, messageID: MessageHeader.ID) -> String? {
+    private func prepareBodyForSearchStatement() throws -> OpaquePointer? {
         var stmt: OpaquePointer?
         let sql = """
             SELECT raw_source FROM message_bodies
             WHERE account_id = ? AND message_id = ?
             LIMIT 1;
         """
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
-        defer { sqlite3_finalize(stmt) }
-
-        sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
-        sqlite3_bind_text(stmt, 2, messageID, -1, Self.transient)
-        guard sqlite3_step(stmt) == SQLITE_ROW,
-              let bytes = sqlite3_column_blob(stmt, 0)
-        else { return nil }
-        let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 0)))
-        return Self.searchableBodyText(from: data, messageID: messageID)
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        return stmt
     }
 
-    /// Returns the already-indexed body text from `message_search.body`, or
-    /// `nil` if no search row exists for this message yet.
-    private func existingSearchBodyText(accountID: String, messageID: MessageHeader.ID) -> String? {
-        var stmt: OpaquePointer?
-        let sql = """
-            SELECT body FROM message_search
-            WHERE account_id = ? AND message_id = ?
-            LIMIT 1;
-        """
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
-        defer { sqlite3_finalize(stmt) }
+    private func bodyTextForSearch(
+        accountID: String,
+        messageID: MessageHeader.ID,
+        statement stmt: OpaquePointer?
+    ) -> String? {
         sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
         sqlite3_bind_text(stmt, 2, messageID, -1, Self.transient)
-        guard sqlite3_step(stmt) == SQLITE_ROW,
-              let ptr = sqlite3_column_text(stmt, 0)
-        else { return nil }
-        return String(cString: ptr)
+        let rawData: Data?
+        if sqlite3_step(stmt) == SQLITE_ROW, let bytes = sqlite3_column_blob(stmt, 0) {
+            rawData = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 0)))
+        } else {
+            rawData = nil
+        }
+        sqlite3_reset(stmt)
+        sqlite3_clear_bindings(stmt)
+        guard let rawData else { return nil }
+        return Self.searchableBodyText(from: rawData, messageID: messageID)
     }
 
-    /// The DELETE+INSERT pair that rewrites one `message_search` row, prepared
-    /// once so a batch of header upserts doesn't recompile it per message.
-    private func prepareSearchRowStatements() throws -> (delete: OpaquePointer?, insert: OpaquePointer?) {
-        var delete: OpaquePointer?
+    private struct SearchRowStatements {
+        let lookupIndex: OpaquePointer?
+        let existsByRowID: OpaquePointer?
+        let readBodyByRowID: OpaquePointer?
+        let deleteFTSByRowID: OpaquePointer?
+        let insertFTS: OpaquePointer?
+        let upsertIndex: OpaquePointer?
+
+        func finalize() {
+            sqlite3_finalize(lookupIndex)
+            sqlite3_finalize(existsByRowID)
+            sqlite3_finalize(readBodyByRowID)
+            sqlite3_finalize(deleteFTSByRowID)
+            sqlite3_finalize(insertFTS)
+            sqlite3_finalize(upsertIndex)
+        }
+    }
+
+    private func prepareSearchInsertStatement() throws -> OpaquePointer? {
         var insert: OpaquePointer?
-        guard sqlite3_prepare_v2(
-            db,
-            "DELETE FROM message_search WHERE account_id = ? AND message_id = ?;",
-            -1, &delete, nil
-        ) == SQLITE_OK else { throw SyncStoreError.prepareFailed(errMsg()) }
         let insertSQL = """
             INSERT INTO message_search
                 (
@@ -2178,37 +2315,135 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         guard sqlite3_prepare_v2(db, insertSQL, -1, &insert, nil) == SQLITE_OK else {
-            sqlite3_finalize(delete)
             throw SyncStoreError.prepareFailed(errMsg())
         }
-        return (delete, insert)
+        return insert
     }
 
-    private func upsertSearchRow(
-        _ header: MessageHeader,
+    /// Prepared statements that look up, read, and rewrite `message_search` rows
+    /// via `message_search_index.fts_rowid` in O(log N) instead of scanning
+    /// `UNINDEXED` FTS5 columns.
+    private func prepareSearchRowStatements() throws -> SearchRowStatements {
+        var lookupIndex: OpaquePointer?
+        var existsByRowID: OpaquePointer?
+        var readBodyByRowID: OpaquePointer?
+        var deleteFTSByRowID: OpaquePointer?
+        var insertFTS: OpaquePointer?
+        var upsertIndex: OpaquePointer?
+
+        func cleanUp() {
+            sqlite3_finalize(lookupIndex)
+            sqlite3_finalize(existsByRowID)
+            sqlite3_finalize(readBodyByRowID)
+            sqlite3_finalize(deleteFTSByRowID)
+            sqlite3_finalize(insertFTS)
+            sqlite3_finalize(upsertIndex)
+        }
+
+        guard sqlite3_prepare_v2(
+            db,
+            "SELECT fts_rowid FROM message_search_index WHERE account_id = ? AND message_id = ? LIMIT 1;",
+            -1, &lookupIndex, nil
+        ) == SQLITE_OK else {
+            cleanUp()
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        guard sqlite3_prepare_v2(
+            db,
+            "SELECT 1 FROM message_search WHERE rowid = ? LIMIT 1;",
+            -1, &existsByRowID, nil
+        ) == SQLITE_OK else {
+            cleanUp()
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        guard sqlite3_prepare_v2(
+            db,
+            "SELECT body FROM message_search WHERE rowid = ? LIMIT 1;",
+            -1, &readBodyByRowID, nil
+        ) == SQLITE_OK else {
+            cleanUp()
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        guard sqlite3_prepare_v2(
+            db,
+            "DELETE FROM message_search WHERE rowid = ?;",
+            -1, &deleteFTSByRowID, nil
+        ) == SQLITE_OK else {
+            cleanUp()
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        do {
+            insertFTS = try prepareSearchInsertStatement()
+        } catch {
+            cleanUp()
+            throw error
+        }
+        let upsertIndexSQL = """
+            INSERT INTO message_search_index (account_id, message_id, folder_id, fts_rowid)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(account_id, message_id) DO UPDATE SET
+                folder_id = excluded.folder_id,
+                fts_rowid = excluded.fts_rowid;
+        """
+        guard sqlite3_prepare_v2(db, upsertIndexSQL, -1, &upsertIndex, nil) == SQLITE_OK else {
+            cleanUp()
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        return SearchRowStatements(
+            lookupIndex: lookupIndex,
+            existsByRowID: existsByRowID,
+            readBodyByRowID: readBodyByRowID,
+            deleteFTSByRowID: deleteFTSByRowID,
+            insertFTS: insertFTS,
+            upsertIndex: upsertIndex
+        )
+    }
+
+    private func searchRowID(
         accountID: String,
-        bodyText: String?
-    ) throws {
-        let statements = try prepareSearchRowStatements()
-        defer { sqlite3_finalize(statements.delete); sqlite3_finalize(statements.insert) }
-        try upsertSearchRow(header, accountID: accountID, bodyText: bodyText, statements: statements)
+        messageID: MessageHeader.ID,
+        statements: SearchRowStatements
+    ) -> Int64? {
+        let stmt = statements.lookupIndex
+        sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+        sqlite3_bind_text(stmt, 2, messageID, -1, Self.transient)
+        let rowID: Int64? = sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int64(stmt, 0) : nil
+        sqlite3_reset(stmt)
+        sqlite3_clear_bindings(stmt)
+        return rowID
     }
 
-    private func upsertSearchRow(
+    private func searchRowExists(ftsRowID: Int64, statements: SearchRowStatements) -> Bool {
+        let stmt = statements.existsByRowID
+        sqlite3_bind_int64(stmt, 1, ftsRowID)
+        let exists = sqlite3_step(stmt) == SQLITE_ROW
+        sqlite3_reset(stmt)
+        sqlite3_clear_bindings(stmt)
+        return exists
+    }
+
+    /// Returns the already-indexed body text from `message_search.body` via
+    /// O(log N) rowid lookup, or `nil` if the FTS row does not exist.
+    private func existingSearchBodyText(ftsRowID: Int64, statements: SearchRowStatements) -> String? {
+        let stmt = statements.readBodyByRowID
+        sqlite3_bind_int64(stmt, 1, ftsRowID)
+        let body: String?
+        if sqlite3_step(stmt) == SQLITE_ROW, let ptr = sqlite3_column_text(stmt, 0) {
+            body = String(cString: ptr)
+        } else {
+            body = nil
+        }
+        sqlite3_reset(stmt)
+        sqlite3_clear_bindings(stmt)
+        return body
+    }
+
+    private func insertFTSRow(
         _ header: MessageHeader,
         accountID: String,
         bodyText: String?,
-        statements: (delete: OpaquePointer?, insert: OpaquePointer?)
-    ) throws {
-        sqlite3_bind_text(statements.delete, 1, accountID, -1, Self.transient)
-        sqlite3_bind_text(statements.delete, 2, header.id, -1, Self.transient)
-        guard sqlite3_step(statements.delete) == SQLITE_DONE else {
-            throw SyncStoreError.executeFailed(errMsg())
-        }
-        sqlite3_reset(statements.delete)
-        sqlite3_clear_bindings(statements.delete)
-
-        let stmt = statements.insert
+        statement stmt: OpaquePointer?
+    ) throws -> Int64 {
         sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
         sqlite3_bind_text(stmt, 2, header.id, -1, Self.transient)
         sqlite3_bind_text(stmt, 3, header.folderID, -1, Self.transient)
@@ -2222,11 +2457,66 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         sqlite3_bind_text(stmt, 9, Self.normalizedSearchText(header.snippet), -1, Self.transient)
         sqlite3_bind_text(stmt, 10, Self.normalizedSearchText(participants), -1, Self.transient)
         sqlite3_bind_text(stmt, 11, Self.normalizedSearchText(body), -1, Self.transient)
-        guard sqlite3_step(stmt) == SQLITE_DONE else {
-            throw SyncStoreError.executeFailed(errMsg())
-        }
+        let step = sqlite3_step(stmt)
+        let rowID = sqlite3_last_insert_rowid(db)
         sqlite3_reset(stmt)
         sqlite3_clear_bindings(stmt)
+        guard step == SQLITE_DONE else {
+            throw SyncStoreError.executeFailed(errMsg())
+        }
+        return rowID
+    }
+
+    private func upsertSearchRow(
+        _ header: MessageHeader,
+        accountID: String,
+        bodyText: String?
+    ) throws {
+        let statements = try prepareSearchRowStatements()
+        defer { statements.finalize() }
+        try upsertSearchRow(header, accountID: accountID, bodyText: bodyText, statements: statements)
+    }
+
+    private func upsertSearchRow(
+        _ header: MessageHeader,
+        accountID: String,
+        bodyText: String?,
+        existingRowID: Int64?? = nil,
+        statements: SearchRowStatements
+    ) throws {
+        let priorRowID: Int64?
+        if let known = existingRowID {
+            priorRowID = known
+        } else {
+            priorRowID = searchRowID(accountID: accountID, messageID: header.id, statements: statements)
+        }
+        if let priorRowID {
+            sqlite3_bind_int64(statements.deleteFTSByRowID, 1, priorRowID)
+            let deleteStep = sqlite3_step(statements.deleteFTSByRowID)
+            sqlite3_reset(statements.deleteFTSByRowID)
+            sqlite3_clear_bindings(statements.deleteFTSByRowID)
+            guard deleteStep == SQLITE_DONE else {
+                throw SyncStoreError.executeFailed(errMsg())
+            }
+        }
+
+        let newRowID = try insertFTSRow(
+            header,
+            accountID: accountID,
+            bodyText: bodyText,
+            statement: statements.insertFTS
+        )
+
+        sqlite3_bind_text(statements.upsertIndex, 1, accountID, -1, Self.transient)
+        sqlite3_bind_text(statements.upsertIndex, 2, header.id, -1, Self.transient)
+        sqlite3_bind_text(statements.upsertIndex, 3, header.folderID, -1, Self.transient)
+        sqlite3_bind_int64(statements.upsertIndex, 4, newRowID)
+        let indexStep = sqlite3_step(statements.upsertIndex)
+        sqlite3_reset(statements.upsertIndex)
+        sqlite3_clear_bindings(statements.upsertIndex)
+        guard indexStep == SQLITE_DONE else {
+            throw SyncStoreError.executeFailed(errMsg())
+        }
     }
 
     /// True when `stored` and `updated` would produce identical
@@ -2251,23 +2541,131 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     }
 
     private func deleteSearchRows(messageIDs: ArraySlice<MessageHeader.ID>, accountID: String) throws {
+        guard !messageIDs.isEmpty else { return }
         let placeholders = messageIDs.map { _ in "?" }.joined(separator: ", ")
-        let sql = """
-            DELETE FROM message_search
+        let selectSQL = """
+            SELECT fts_rowid FROM message_search_index
             WHERE account_id = ? AND message_id IN (\(placeholders));
         """
+        var selectStmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, selectSQL, -1, &selectStmt, nil) == SQLITE_OK else {
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        defer { sqlite3_finalize(selectStmt) }
+
+        sqlite3_bind_text(selectStmt, 1, accountID, -1, Self.transient)
+        for (index, id) in messageIDs.enumerated() {
+            sqlite3_bind_text(selectStmt, Int32(index + 2), id, -1, Self.transient)
+        }
+        var rowIDs: [Int64] = []
+        var step = sqlite3_step(selectStmt)
+        while step == SQLITE_ROW {
+            rowIDs.append(sqlite3_column_int64(selectStmt, 0))
+            step = sqlite3_step(selectStmt)
+        }
+        guard step == SQLITE_DONE else {
+            throw SyncStoreError.executeFailed(errMsg())
+        }
+
+        try deleteSearchRowsByRowIDs(rowIDs)
+
+        let deleteIndexSQL = """
+            DELETE FROM message_search_index
+            WHERE account_id = ? AND message_id IN (\(placeholders));
+        """
+        var deleteStmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, deleteIndexSQL, -1, &deleteStmt, nil) == SQLITE_OK else {
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        defer { sqlite3_finalize(deleteStmt) }
+
+        sqlite3_bind_text(deleteStmt, 1, accountID, -1, Self.transient)
+        for (index, id) in messageIDs.enumerated() {
+            sqlite3_bind_text(deleteStmt, Int32(index + 2), id, -1, Self.transient)
+        }
+        guard sqlite3_step(deleteStmt) == SQLITE_DONE else {
+            throw SyncStoreError.executeFailed(errMsg())
+        }
+    }
+
+    private func deleteSearchRowsForFolder(accountID: String, folderID: String) throws {
+        var selectStmt: OpaquePointer?
+        let selectSQL = """
+            SELECT fts_rowid FROM message_search_index
+            WHERE account_id = ? AND folder_id = ?;
+        """
+        guard sqlite3_prepare_v2(db, selectSQL, -1, &selectStmt, nil) == SQLITE_OK else {
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        defer { sqlite3_finalize(selectStmt) }
+
+        sqlite3_bind_text(selectStmt, 1, accountID, -1, Self.transient)
+        sqlite3_bind_text(selectStmt, 2, folderID, -1, Self.transient)
+        var rowIDs: [Int64] = []
+        var step = sqlite3_step(selectStmt)
+        while step == SQLITE_ROW {
+            rowIDs.append(sqlite3_column_int64(selectStmt, 0))
+            step = sqlite3_step(selectStmt)
+        }
+        guard step == SQLITE_DONE else {
+            throw SyncStoreError.executeFailed(errMsg())
+        }
+
+        try deleteSearchRowsByRowIDs(rowIDs)
+        try execStmt(
+            "DELETE FROM message_search_index WHERE account_id = ? AND folder_id = ?;",
+            bindings: [.text(accountID), .text(folderID)]
+        )
+    }
+
+    private func deleteSearchRowsForAccount(accountID: String) throws {
+        var selectStmt: OpaquePointer?
+        let selectSQL = """
+            SELECT fts_rowid FROM message_search_index
+            WHERE account_id = ?;
+        """
+        guard sqlite3_prepare_v2(db, selectSQL, -1, &selectStmt, nil) == SQLITE_OK else {
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        defer { sqlite3_finalize(selectStmt) }
+
+        sqlite3_bind_text(selectStmt, 1, accountID, -1, Self.transient)
+        var rowIDs: [Int64] = []
+        var step = sqlite3_step(selectStmt)
+        while step == SQLITE_ROW {
+            rowIDs.append(sqlite3_column_int64(selectStmt, 0))
+            step = sqlite3_step(selectStmt)
+        }
+        guard step == SQLITE_DONE else {
+            throw SyncStoreError.executeFailed(errMsg())
+        }
+
+        try deleteSearchRowsByRowIDs(rowIDs)
+        try execStmt(
+            "DELETE FROM message_search_index WHERE account_id = ?;",
+            bindings: [.text(accountID)]
+        )
+    }
+
+    private func deleteSearchRowsByRowIDs(_ rowIDs: [Int64]) throws {
+        guard !rowIDs.isEmpty else { return }
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+        guard sqlite3_prepare_v2(
+            db,
+            "DELETE FROM message_search WHERE rowid = ?;",
+            -1, &stmt, nil
+        ) == SQLITE_OK else {
             throw SyncStoreError.prepareFailed(errMsg())
         }
         defer { sqlite3_finalize(stmt) }
-
-        sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
-        for (index, id) in messageIDs.enumerated() {
-            sqlite3_bind_text(stmt, Int32(index + 2), id, -1, Self.transient)
-        }
-        guard sqlite3_step(stmt) == SQLITE_DONE else {
-            throw SyncStoreError.executeFailed(errMsg())
+        for rowID in rowIDs {
+            sqlite3_bind_int64(stmt, 1, rowID)
+            let step = sqlite3_step(stmt)
+            sqlite3_reset(stmt)
+            sqlite3_clear_bindings(stmt)
+            guard step == SQLITE_DONE else {
+                throw SyncStoreError.executeFailed(errMsg())
+            }
         }
     }
 
@@ -2510,9 +2908,11 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         let bodyColumn = includeBody ? ", message_search.body" : ""
         let joinClause = includeBody
             ? """
+            LEFT JOIN message_search_index msi
+              ON msi.account_id = h.account_id
+             AND msi.message_id = h.message_id
             LEFT JOIN message_search
-              ON message_search.account_id = h.account_id
-             AND message_search.message_id = h.message_id
+              ON message_search.rowid = msi.fts_rowid
             """
             : ""
         let sql = """

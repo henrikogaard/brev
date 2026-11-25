@@ -398,8 +398,8 @@ struct IMAPLegacyRecoveryTests {
             1)
         try sql(fixture.databaseURL, "DROP VIEW imap_legacy_recovery;")
         let upgraded = try SQLiteSyncStore(databaseURL: fixture.databaseURL)
-        #expect(upgraded.currentSchemaVersion == 10)
-        #expect(try scalar(fixture.databaseURL, "PRAGMA user_version;") == 10)
+        #expect(upgraded.currentSchemaVersion == 11)
+        #expect(try scalar(fixture.databaseURL, "PRAGMA user_version;") == 11)
         #expect(try scalar(fixture.databaseURL, "SELECT COUNT(*) FROM imap_legacy_recovery;") == 0)
     }
 

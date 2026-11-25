@@ -23,7 +23,7 @@ struct IMAPPageIndexTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let store: any SyncStoreProtocol = sqlite
             ? try SQLiteSyncStore(databaseURL: root.appendingPathComponent("index.sqlite")) : InMemorySyncStore()
-        #expect(store.currentSchemaVersion == 10)
+        #expect(store.currentSchemaVersion == 11)
         let engine = BrevSyncEngine(store: store)
         let account = BrevAccount(id: "synthetic", displayName: "Synthetic", emailAddress: "reader@example.test")
         let first = page([3, 4], token: nil)
