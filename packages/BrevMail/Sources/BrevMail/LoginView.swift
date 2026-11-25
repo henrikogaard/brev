@@ -21,6 +21,7 @@ public struct LoginView: View {
     @Environment(\.brevTheme) private var theme
     @Bindable private var session: AppSession
     @State private var isShowingIMAPSetup = false
+    @State private var isShowingJMAPSetup = false
     @State private var authenticationTask: Task<Void, Never>?
     @State private var nextAuthenticationTaskRequestID = 0
     @State private var activeAuthenticationTaskRequest: AuthenticationTaskRequest?
@@ -65,12 +66,21 @@ public struct LoginView: View {
         }
         .sheet(isPresented: $isShowingIMAPSetup) {
             if let failedEmail = session.authFailedIMAPAccountEmail {
-                IMAPAccountSetupSheet(
-                    session: session,
-                    initialEmailAddress: failedEmail,
-                    onClose: { isShowingIMAPSetup = false }
-                )
-                .setupSheetAppearance(session: session, theme: theme)
+                if session.authFailureRequiresJMAPTokenUpdate {
+                    JMAPAccountSetupView(
+                        session: session,
+                        initialEmailAddress: failedEmail,
+                        onClose: { isShowingIMAPSetup = false }
+                    )
+                    .setupSheetAppearance(session: session, theme: theme)
+                } else {
+                    IMAPAccountSetupSheet(
+                        session: session,
+                        initialEmailAddress: failedEmail,
+                        onClose: { isShowingIMAPSetup = false }
+                    )
+                    .setupSheetAppearance(session: session, theme: theme)
+                }
             } else {
                 MailAccountSetupSheet(
                     session: session,
@@ -78,6 +88,13 @@ public struct LoginView: View {
                 )
                 .setupSheetAppearance(session: session, theme: theme)
             }
+        }
+        .sheet(isPresented: $isShowingJMAPSetup) {
+            JMAPAccountSetupView(
+                session: session,
+                onClose: { isShowingJMAPSetup = false }
+            )
+            .setupSheetAppearance(session: session, theme: theme)
         }
     }
 
@@ -172,7 +189,10 @@ public struct LoginView: View {
 
     @ViewBuilder
     private var accountSetupSection: some View {
-        if session.canUseIMAPAccountSetup || session.canUseInteractiveSignIn || session.canStartGoogleSignIn {
+        if session.canUseIMAPAccountSetup
+            || session.canUseJMAPAccountSetup
+            || session.canUseInteractiveSignIn
+            || session.canStartGoogleSignIn {
             accountSetupControls
         } else {
             Text(
@@ -249,6 +269,25 @@ public struct LoginView: View {
                 .brevFont(supportingFont)
                 .foregroundStyle(theme.textSecondary.color)
                 .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if session.canUseJMAPAccountSetup {
+                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                    BrevButton(
+                        "Connect with JMAP",
+                        style: .secondary,
+                        bundle: .module
+                    ) {
+                        isShowingJMAPSetup = true
+                    }
+                    .disabled(isAuthenticationActionBlocked)
+                    .loginTouchTarget()
+
+                    Text("For Fastmail, Stalwart, Cyrus, or any JMAP server.", bundle: .module)
+                        .brevFont(supportingFont)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             if isAuthenticationActionBlocked {

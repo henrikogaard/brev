@@ -25,6 +25,7 @@ import AuthenticationServices
 import BrevAI
 import BrevBackend
 import BrevCalendar
+import BrevJMAP
 import BrevSettings
 import Foundation
 
@@ -125,6 +126,15 @@ public enum AppSessionFactory {
         /// Maildir store under `applicationSupportURL/LocalFolders`; tests can
         /// inject a temporary root.
         public let localBackendFactory: (@Sendable () -> LocalMailBackend)?
+        /// Optional override for provisioning a native JMAP account. When nil,
+        /// `AppSessionFactory` uses `JMAPAccountConnector.standard(...)`.
+        public let jmapAccountSetupCoordinator: AppSession.JMAPAccountSetupCoordinator?
+        /// Optional override for restoring stored native JMAP accounts.
+        public let jmapRestoreCoordinator:
+            (@MainActor (BrevAccount) async throws -> AppSession.LoginResult?)?
+        /// Optional override for removing stored native JMAP accounts.
+        public let jmapRemovalCoordinator:
+            (@MainActor (BrevAccount.ID) async throws -> Void)?
 
         /// Creates the platform dependencies for the shared session factory.
         ///
@@ -171,7 +181,12 @@ public enum AppSessionFactory {
             (@Sendable (BrevAccount.ID) async -> GoogleOAuthAccountConfiguration?)? = nil,
             googleDrivePickerDeveloperKey: String = "",
             googleDrivePickerAppID: String = "",
-            localBackendFactory: (@Sendable () -> LocalMailBackend)? = nil
+            localBackendFactory: (@Sendable () -> LocalMailBackend)? = nil,
+            jmapAccountSetupCoordinator: AppSession.JMAPAccountSetupCoordinator? = nil,
+            jmapRestoreCoordinator:
+            (@MainActor (BrevAccount) async throws -> AppSession.LoginResult?)? = nil,
+            jmapRemovalCoordinator:
+            (@MainActor (BrevAccount.ID) async throws -> Void)? = nil
         ) {
             self.applicationSupportURL = applicationSupportURL
             self.oauthPresentationAnchor = oauthPresentationAnchor
@@ -189,6 +204,9 @@ public enum AppSessionFactory {
             self.googleDrivePickerDeveloperKey = googleDrivePickerDeveloperKey
             self.googleDrivePickerAppID = googleDrivePickerAppID
             self.localBackendFactory = localBackendFactory
+            self.jmapAccountSetupCoordinator = jmapAccountSetupCoordinator
+            self.jmapRestoreCoordinator = jmapRestoreCoordinator
+            self.jmapRemovalCoordinator = jmapRemovalCoordinator
         }
     }
 
@@ -422,6 +440,10 @@ public enum AppSessionFactory {
                 .appendingPathComponent("Brev/Drafts")
         )
         let tokenStore = KeychainTokenStore()
+        let jmapConnector = JMAPAccountConnector.standard(
+            configurationStore: UserDefaultsJMAPAccountConfigurationStore(),
+            tokenStore: tokenStore
+        )
         let connector = IMAPAccountConnector.standard(
             accountStore: accountStore,
             configurationStore: configurationStore,
@@ -481,6 +503,13 @@ public enum AppSessionFactory {
             imapAccountValidationCoordinator: { request in
                 try await connector.validate(request)
             },
+            jmapAccountSetupCoordinator: configuration.jmapAccountSetupCoordinator ?? { request in
+                let connected = try await jmapConnector.provision(request)
+                return AppSession.LoginResult(
+                    backend: connected.backend,
+                    account: connected.account
+                )
+            },
             imapOAuthSetupCoordinator: { request in
                 let connected = try await connector.provisionAndConnectOAuth(request)
                 return AppSession.LoginResult(
@@ -509,6 +538,16 @@ public enum AppSessionFactory {
                     }
                     return try await googleOAuthRestoreCoordinator(account)
                 }
+                if account.backendIdentifier == BrevAccount.jmapBackendIdentifier {
+                    if let jmapRestoreCoordinator = configuration.jmapRestoreCoordinator {
+                        return try await jmapRestoreCoordinator(account)
+                    }
+                    guard let connected = try await jmapConnector.restore(account) else { return nil }
+                    return AppSession.LoginResult(
+                        backend: connected.backend,
+                        account: connected.account
+                    )
+                }
                 guard let backend = try await connector.restore(account) else {
                     return nil
                 }
@@ -522,6 +561,14 @@ public enum AppSessionFactory {
                         throw AppSessionFactoryError.missingGoogleOAuthRemovalCoordinator
                     }
                     try await coordinator(account.id)
+                    return
+                }
+                if account.backendIdentifier == BrevAccount.jmapBackendIdentifier {
+                    if let jmapRemovalCoordinator = configuration.jmapRemovalCoordinator {
+                        try await jmapRemovalCoordinator(account.id)
+                    } else {
+                        try await jmapConnector.remove(accountID: account.id)
+                    }
                     return
                 }
                 await connector.removeAccount(account.id)

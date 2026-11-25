@@ -21,6 +21,7 @@ let package = Package(
         .package(path: "../BrevBackend"),
         .package(path: "../BrevCrypto"),
         .package(path: "../BrevDesign"),
+        .package(path: "../BrevJMAP"),
         .package(path: "../BrevPlugins"),
         .package(path: "../BrevSettings"),
         .package(path: "../BrevThemes"),
@@ -37,6 +38,7 @@ let package = Package(
                 "BrevBackend",
                 "BrevCrypto",
                 "BrevDesign",
+                "BrevJMAP",
                 "BrevPlugins",
                 "BrevSettings",
                 "BrevThemes",
@@ -53,6 +55,7 @@ let package = Package(
             dependencies: [
                 "BrevMail",
                 "BrevBackend",
+                "BrevJMAP",
                 "BrevAI",
                 "BrevThemes",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing")

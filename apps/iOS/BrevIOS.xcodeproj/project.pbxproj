@@ -7,12 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		06C0C92DC92AF9E0DE068A2C /* BrevThemes in Frameworks */ = {isa = PBXBuildFile; productRef = 94A2D1BCADDDABB00A65A2A1 /* BrevThemes */; };
 		0FD0126EC049407CD1E79050 /* BrevStoreProtectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1C0D12AB02F942862F9D352 /* BrevStoreProtectionTests.swift */; };
 		116916555C4F4E113D4E1E02 /* BrevGmail in Frameworks */ = {isa = PBXBuildFile; productRef = 0CCBE13672BDC66E6E665F41 /* BrevGmail */; };
-		11C3A6FEBE1F486344885E0A /* BrevDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 0A292870A824C076A4FEC76C /* BrevDesign */; };
+		11C3A6FEBE1F486344885E0A /* BrevJMAP in Frameworks */ = {isa = PBXBuildFile; productRef = 60AD3096618BFC1F353DA815 /* BrevJMAP */; };
 		150FADA96D1575A302C9FDE9 /* BrevNotificationContent.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1C149F622479D42ECA8E905D /* BrevNotificationContent.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		17776064BE137E4A9B717EB8 /* ShareSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 511B79CD0A90461BB1A8EA07 /* ShareSheetView.swift */; };
-		17D6EDC88F20C087885678BB /* BrevMail in Frameworks */ = {isa = PBXBuildFile; productRef = 9EAE3C341A8E00F53D4F605B /* BrevMail */; };
+		17D6EDC88F20C087885678BB /* BrevExamplePlugin in Frameworks */ = {isa = PBXBuildFile; productRef = 322642384F9C085D8E97F9DD /* BrevExamplePlugin */; };
 		19A2EB8C60B75F42C4AA827D /* ShareSheetContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68189831A1DE9637A1D0749B /* ShareSheetContentTests.swift */; };
 		233F398A6EB49C05039B4DFB /* ShareHandoffURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF0CFBC97891A5EA572779B /* ShareHandoffURL.swift */; };
 		29FA637841CC44CD8453F338 /* BrevMailWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C929A89F8235321150CC59 /* BrevMailWidgetsBundle.swift */; };
@@ -22,19 +23,19 @@
 		4025EC3E8AB1F033E994E561 /* BackgroundRefreshCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0432D72B495BC2BC468236F5 /* BackgroundRefreshCoordinatorTests.swift */; };
 		47B5CB8B443FB6B52572E6A8 /* BrevMailWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2DF7D97D906ACC34010FFE99 /* BrevMailWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		48BA7020C02CFD24D4EF1B16 /* BrevWidgets in Frameworks */ = {isa = PBXBuildFile; productRef = 88F11F5EF1A7B58F05A95E81 /* BrevWidgets */; };
-		4E19250133F71999A553AF88 /* BrevPlugins in Frameworks */ = {isa = PBXBuildFile; productRef = 9FD372448E5F001093C2A4AE /* BrevPlugins */; };
-		5E49D6F475B1D2DD830B8D45 /* BrevSyncEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 9871D17448C4E98AA8372ECC /* BrevSyncEngine */; };
+		4E19250133F71999A553AF88 /* BrevMail in Frameworks */ = {isa = PBXBuildFile; productRef = 9EAE3C341A8E00F53D4F605B /* BrevMail */; };
+		5E49D6F475B1D2DD830B8D45 /* BrevSettings in Frameworks */ = {isa = PBXBuildFile; productRef = 88F5D6FCE16020B61D8194DF /* BrevSettings */; };
 		643BA521B97DB2EDE9675FC9 /* BrevCalendar in Frameworks */ = {isa = PBXBuildFile; productRef = 6372421B61EB6DF6BCE5557D /* BrevCalendar */; };
 		64D06B49DDC1916AC0FA1182 /* NotificationViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B003066EF060E98686AC7133 /* NotificationViewController.swift */; };
 		780617CA06183D0FC8B135D3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 38E87C1F2E5629870BB9B263 /* PrivacyInfo.xcprivacy */; };
-		8485C2C64589CB17FDDD8931 /* BrevThemes in Frameworks */ = {isa = PBXBuildFile; productRef = 94A2D1BCADDDABB00A65A2A1 /* BrevThemes */; };
+		8485C2C64589CB17FDDD8931 /* BrevSyncEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 9871D17448C4E98AA8372ECC /* BrevSyncEngine */; };
 		884FDE55C3B99A564E7D5CF1 /* TuistBundle+BrevShareExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81713220D56445E2F44C26CF /* TuistBundle+BrevShareExtension.swift */; };
 		88CE719662746EC1A24F4726 /* TuistBundle+BrevIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A7C6F4C55B3A4C02989F84 /* TuistBundle+BrevIOS.swift */; };
-		88E661C5B67A3B1166923343 /* BrevSettings in Frameworks */ = {isa = PBXBuildFile; productRef = 88F5D6FCE16020B61D8194DF /* BrevSettings */; };
+		88E661C5B67A3B1166923343 /* BrevPlugins in Frameworks */ = {isa = PBXBuildFile; productRef = 9FD372448E5F001093C2A4AE /* BrevPlugins */; };
 		8B6BDAFBD8761D249F089904 /* BrevMail in Frameworks */ = {isa = PBXBuildFile; productRef = 30E0BE43BB0F6F3F2DE86155 /* BrevMail */; };
 		8BC66A835B49BBB01FC86B63 /* ShareHandoffURLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D3EE8D685B58BCA01BA663 /* ShareHandoffURLTests.swift */; };
 		8E9BC2F85342E77B5A3B86A7 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 4A4C4C04CF2DAD5FCB45C594 /* Localizable.xcstrings */; };
-		914EB2AE074C239C4819310B /* BrevExamplePlugin in Frameworks */ = {isa = PBXBuildFile; productRef = 322642384F9C085D8E97F9DD /* BrevExamplePlugin */; };
+		914EB2AE074C239C4819310B /* BrevDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 0A292870A824C076A4FEC76C /* BrevDesign */; };
 		97E8B9A73CE3C49104E9E480 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = F9D32B7AF5A8CA2C3491139F /* Localizable.xcstrings */; };
 		9B50D7400765786055C06C4C /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E2C9F3AD1AA9A3CE9AA027DE /* InfoPlist.xcstrings */; };
 		A837F3710A9902F0D5357D65 /* BrevAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83F0C7EECBA2A83982634351 /* BrevAppIntents.swift */; };
@@ -153,6 +154,7 @@
 		28F5F05C3FA5A7BF5EAB7787 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2DF7D97D906ACC34010FFE99 /* BrevMailWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BrevMailWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		2E1A991BCC8873E581D0CE28 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		372F0D6FE653CA49AE2F6B19 /* BrevJMAP */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevJMAP; path = ../../packages/BrevJMAP; sourceTree = "<group>"; };
 		38E87C1F2E5629870BB9B263 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		47375753181B03AA7742959E /* BrevBackend */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevBackend; path = ../../packages/BrevBackend; sourceTree = "<group>"; };
 		4884F3A5FFB9C3685A65317E /* TuistAssets+BrevIOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TuistAssets+BrevIOS.swift"; sourceTree = "<group>"; };
@@ -205,13 +207,14 @@
 				EFF118F1DA52E1271BA9B4B6 /* BrevBackend in Frameworks */,
 				643BA521B97DB2EDE9675FC9 /* BrevCalendar in Frameworks */,
 				116916555C4F4E113D4E1E02 /* BrevGmail in Frameworks */,
-				11C3A6FEBE1F486344885E0A /* BrevDesign in Frameworks */,
-				914EB2AE074C239C4819310B /* BrevExamplePlugin in Frameworks */,
-				17D6EDC88F20C087885678BB /* BrevMail in Frameworks */,
-				4E19250133F71999A553AF88 /* BrevPlugins in Frameworks */,
-				88E661C5B67A3B1166923343 /* BrevSettings in Frameworks */,
-				5E49D6F475B1D2DD830B8D45 /* BrevSyncEngine in Frameworks */,
-				8485C2C64589CB17FDDD8931 /* BrevThemes in Frameworks */,
+				11C3A6FEBE1F486344885E0A /* BrevJMAP in Frameworks */,
+				914EB2AE074C239C4819310B /* BrevDesign in Frameworks */,
+				17D6EDC88F20C087885678BB /* BrevExamplePlugin in Frameworks */,
+				4E19250133F71999A553AF88 /* BrevMail in Frameworks */,
+				88E661C5B67A3B1166923343 /* BrevPlugins in Frameworks */,
+				5E49D6F475B1D2DD830B8D45 /* BrevSettings in Frameworks */,
+				8485C2C64589CB17FDDD8931 /* BrevSyncEngine in Frameworks */,
+				06C0C92DC92AF9E0DE068A2C /* BrevThemes in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -373,6 +376,7 @@
 				67F7E688A1B82AEA00A3792D /* BrevDesign */,
 				661BFD8D32960BA9040B4864 /* BrevExamplePlugin */,
 				A48CDDD9668A0F1CAF92EBFA /* BrevGmail */,
+				372F0D6FE653CA49AE2F6B19 /* BrevJMAP */,
 				21BECFDD5FDB1B32607E6AF3 /* BrevMail */,
 				89123FA46611EC9E3C3B1012 /* BrevPlugins */,
 				9E3FABD452A8040EA6CFBE6B /* BrevSettings */,
@@ -455,6 +459,7 @@
 				31381B4FB2D52309022C468B /* BrevBackend */,
 				6372421B61EB6DF6BCE5557D /* BrevCalendar */,
 				0CCBE13672BDC66E6E665F41 /* BrevGmail */,
+				60AD3096618BFC1F353DA815 /* BrevJMAP */,
 				0A292870A824C076A4FEC76C /* BrevDesign */,
 				322642384F9C085D8E97F9DD /* BrevExamplePlugin */,
 				9EAE3C341A8E00F53D4F605B /* BrevMail */,
@@ -580,6 +585,7 @@
 				18691BF55AA9E868C252CFDD /* XCLocalSwiftPackageReference "../../packages/BrevCalendar" */,
 				08A5728BFF8CB014C02D8D3F /* XCLocalSwiftPackageReference "../../packages/BrevDesign" */,
 				A7E822AA8DEDF6F212AE2CA3 /* XCLocalSwiftPackageReference "../../packages/BrevGmail" */,
+				EB2DC27A5659BD52465B83AE /* XCLocalSwiftPackageReference "../../packages/BrevJMAP" */,
 				C283711B578BA0BC63538D98 /* XCLocalSwiftPackageReference "../../packages/BrevMail" */,
 				63B1FC915664B6941C600716 /* XCLocalSwiftPackageReference "../../packages/BrevPlugins" */,
 				D88CE7617497AD1A1F0ABC7A /* XCLocalSwiftPackageReference "../../packages/BrevSettings" */,
@@ -1248,6 +1254,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../packages/BrevSettings;
 		};
+		EB2DC27A5659BD52465B83AE /* XCLocalSwiftPackageReference "../../packages/BrevJMAP" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../packages/BrevJMAP;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1270,6 +1280,10 @@
 		322642384F9C085D8E97F9DD /* BrevExamplePlugin */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BrevExamplePlugin;
+		};
+		60AD3096618BFC1F353DA815 /* BrevJMAP */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BrevJMAP;
 		};
 		6372421B61EB6DF6BCE5557D /* BrevCalendar */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -93,4 +93,23 @@ struct BrevAccountTests {
         #expect(decoded.backendIdentifier == BrevAccount.imapSMTPBackendIdentifier)
         #expect(decoded.backendDisplayName == BrevAccount.imapSMTPBackendDisplayName)
     }
+
+    @Test("JMAP account identity normalizes email and derives JMAP display name")
+    func jmapAccountIdentityAndDisplayName() throws {
+        #expect(BrevAccount.jmapAccountID(forEmailAddress: "  Henrik@Fastmail.COM ") == "jmap:henrik@fastmail.com")
+
+        let data = Data("""
+        {
+          "id": "jmap:henrik@fastmail.com",
+          "displayName": "Henrik",
+          "emailAddress": "henrik@fastmail.com",
+          "backendIdentifier": "jmap"
+        }
+        """.utf8)
+
+        let decoded = try JSONDecoder().decode(BrevAccount.self, from: data)
+
+        #expect(decoded.backendIdentifier == BrevAccount.jmapBackendIdentifier)
+        #expect(decoded.backendDisplayName == BrevAccount.jmapBackendDisplayName)
+    }
 }

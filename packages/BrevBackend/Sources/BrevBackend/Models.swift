@@ -23,6 +23,8 @@ public struct BrevAccount: Sendable, Hashable, Identifiable, Codable {
     public static let imapSMTPBackendDisplayName = "IMAP/SMTP"
     public static let gmailAPIBackendIdentifier = "gmail-api"
     public static let gmailAPIBackendDisplayName = "Gmail"
+    public static let jmapBackendIdentifier = "jmap"
+    public static let jmapBackendDisplayName = "JMAP"
     /// Backend identifier of the session-scoped demo/preview mailbox.
     /// Demo accounts are never persisted to the account store — they
     /// cannot be restored, and a persisted record surfaces as a permanent
@@ -52,6 +54,15 @@ public struct BrevAccount: Sendable, Hashable, Identifiable, Codable {
         let normalized = subject
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return "\(gmailAPIBackendIdentifier):\(normalized)"
+    }
+
+    /// Canonical account id for a JMAP account derived from its normalized
+    /// email address.
+    public static func jmapAccountID(forEmailAddress emailAddress: String) -> String {
+        let normalized = emailAddress
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return "\(jmapBackendIdentifier):\(normalized)"
     }
 
     public init(
@@ -127,6 +138,8 @@ public struct BrevAccount: Sendable, Hashable, Identifiable, Codable {
         switch identifier {
         case gmailAPIBackendIdentifier:
             gmailAPIBackendDisplayName
+        case jmapBackendIdentifier:
+            jmapBackendDisplayName
         case imapSMTPBackendIdentifier:
             imapSMTPBackendDisplayName
         default:
