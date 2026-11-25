@@ -16,9 +16,9 @@ import BrevDesign
 import BrevThemes
 import SwiftUI
 
-/// Which theme token tints a sidebar icon or status symbol (#306).
-/// Mailbox roles stay monochrome (`.neutral`) on macOS so unread counts and
-/// selection carry the visual hierarchy; status symbols retain semantic tints.
+/// Which theme token tints a sidebar status symbol or row icon (#306).
+/// Status symbols retain semantic tints; macOS sidebar row icons stay
+/// monochrome via `macOSRowColor(isSelected:in:)`.
 enum FolderSidebarIconTint: Equatable, Sendable {
     case accent
     case info
@@ -26,12 +26,6 @@ enum FolderSidebarIconTint: Equatable, Sendable {
     case success
     case danger
     case neutral
-
-    /// Monochrome tint for mailbox roles in the sidebar.
-    static func tint(for role: FolderRole) -> FolderSidebarIconTint {
-        _ = role
-        return .neutral
-    }
 
     /// Monochrome SF Symbol colour for macOS sidebar rows: muted secondary at
     /// rest, elevated to primary when selected (Apple Mail style).
@@ -55,11 +49,13 @@ enum FolderSidebarIconTint: Equatable, Sendable {
 /// How the macOS sidebar column renders its backing surface inside
 /// `NavigationSplitView`.
 enum FolderSidebarSurfaceStyle: Equatable, Sendable {
-    /// Let macOS 26 `NavigationSplitView` provide its native floating
-    /// Liquid Glass sidebar column without painting a flat slab over it.
-    case nativeFloatingGlass
+    /// Let macOS 26 `NavigationSplitView` provide its native floating Liquid
+    /// Glass sidebar column, optionally tinted by a themed overlay opacity
+    /// (`0` = pure native glass, `1` = opaque `theme.bgSecondary.color`).
+    case nativeFloatingGlass(overlayOpacity: Double)
     /// Render the legacy themed pane surface (`BrevWindowSurfaceBackground`).
-    /// Used on macOS < 26 and whenever Reduce Transparency is enabled.
+    /// Used on macOS < 26, when Reduce Transparency is enabled, or when the
+    /// user explicitly chooses Off (`.solid`) or a legacy vibrancy mode.
     case themedSurface
 }
 
@@ -69,25 +65,63 @@ enum FolderSidebarSurfacePolicy {
     static func style(
         isMacOS26OrLater: Bool,
         reduceTransparency: Bool,
-        translucencyMode: WindowTranslucencyMode
+        hasSavedMode: Bool,
+        preferences: WindowAppearancePreferences,
+        hasSavedSidebarOpacity: Bool = false
     ) -> FolderSidebarSurfaceStyle {
         guard isMacOS26OrLater, !reduceTransparency else {
             return .themedSurface
         }
-        // On macOS 26+, NavigationSplitView renders a native floating
-        // translucent Liquid Glass sidebar across appearance modes unless
-        // Reduce Transparency requests an opaque surface.
-        _ = translucencyMode
-        return .nativeFloatingGlass
+        // Out of the box on macOS 26 (before the user saves an explicit
+        // Window Transparency override), let NavigationSplitView's native
+        // floating Liquid Glass column shine cleanly.
+        if !hasSavedMode {
+            let overlayOpacity = hasSavedSidebarOpacity
+                ? clampedOverlayOpacity(preferences.sidebarOpacity)
+                : 0
+            return .nativeFloatingGlass(overlayOpacity: overlayOpacity)
+        }
+        switch preferences.mode {
+        case .solid, .subtle, .frosted:
+            // Explicit Off (`.solid`) restores the solid themed fill, and
+            // `.subtle`/`.frosted` honor BrevWindowSurfaceBackground + slider.
+            return .themedSurface
+        case .glass:
+            guard preferences.scope.applies(to: .sidebar) else {
+                return .themedSurface
+            }
+            let overlayOpacity = hasSavedSidebarOpacity
+                ? clampedOverlayOpacity(preferences.sidebarOpacity)
+                : 0
+            return .nativeFloatingGlass(overlayOpacity: overlayOpacity)
+        }
     }
 
     /// Uses native macOS 26 soft scroll-edge chrome instead of the legacy
-    /// manual top blur overlay when native floating glass is active.
+    /// manual top blur overlay when translucent native floating glass is active.
     static func usesSoftScrollEdgeEffect(
         isMacOS26OrLater: Bool,
-        reduceTransparency: Bool
+        reduceTransparency: Bool,
+        hasSavedMode: Bool = false,
+        preferences: WindowAppearancePreferences = .defaults,
+        hasSavedSidebarOpacity: Bool = false
     ) -> Bool {
-        isMacOS26OrLater && !reduceTransparency
+        switch style(
+            isMacOS26OrLater: isMacOS26OrLater,
+            reduceTransparency: reduceTransparency,
+            hasSavedMode: hasSavedMode,
+            preferences: preferences,
+            hasSavedSidebarOpacity: hasSavedSidebarOpacity
+        ) {
+        case .nativeFloatingGlass(let overlayOpacity):
+            return overlayOpacity < 1
+        case .themedSurface:
+            return false
+        }
+    }
+
+    private static func clampedOverlayOpacity(_ value: Double) -> Double {
+        min(max(value, 0), 1)
     }
 }
 
@@ -101,17 +135,30 @@ enum FolderSidebarProfileSwitcherPolicy {
     }
 }
 
-/// Controls hover-revealed accessories on macOS sidebar section headers so
-/// resting headers stay quiet while keeping VoiceOver and keyboard access intact.
+/// Controls hover- and focus-revealed accessories on macOS sidebar section
+/// headers so resting headers stay quiet while keeping pointer, keyboard Tab,
+/// and VoiceOver access visible and usable.
 enum FolderSidebarSectionHeaderActionVisibility {
-    /// Trailing opacity for hover-only header actions (`•••`, `+`).
-    static func trailingActionOpacity(isHovered: Bool) -> Double {
-        isHovered ? 1 : 0
+    /// Trailing opacity for header actions (`•••`, `+`).
+    static func trailingActionOpacity(isHovered: Bool, isFocused: Bool = false) -> Double {
+        (isHovered || isFocused) ? 1 : 0
     }
 
     /// Disclosure chevron opacity for collapsible account section headers.
-    static func accountDisclosureChevronOpacity(isHovered: Bool) -> Double {
-        isHovered ? 1 : 0
+    static func accountDisclosureChevronOpacity(isHovered: Bool, isFocused: Bool = false) -> Double {
+        (isHovered || isFocused) ? 1 : 0
+    }
+}
+
+/// Resolves the callback for "Account Settings…" context menu actions,
+/// preferring the Accounts-pane-targeted handler when wired.
+enum FolderSidebarAccountSettingsAction {
+    static func resolve(
+        onOpenAccountSettings: (() -> Void)?,
+        footerOpenSettings: (() -> Void)?,
+        fallbackOpenSettings: (() -> Void)?
+    ) -> (() -> Void)? {
+        onOpenAccountSettings ?? footerOpenSettings ?? fallbackOpenSettings
     }
 }
 
@@ -227,24 +274,47 @@ extension View {
 }
 
 private struct MacSidebarPaneSurfaceModifier: ViewModifier {
+    @Environment(\.brevTheme) private var theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @AppStorage(WindowAppearancePreferenceKey.mode) private var translucencyModeRaw = WindowTranslucencyMode.solid.rawValue
+    @AppStorage(WindowAppearancePreferenceKey.mode) private var savedModeRaw: String?
+    @AppStorage(WindowAppearancePreferenceKey.scope) private var scopeRaw = WindowTranslucencyScope.mainWindow.rawValue
+    @AppStorage(WindowAppearancePreferenceKey.surfaceOpacity)
+    private var surfaceOpacity = WindowAppearancePreferences.defaultSurfaceOpacity
+    @AppStorage(WindowAppearancePreferenceKey.sidebarOpacity) private var savedSidebarOpacity: Double?
 
-    private var translucencyMode: WindowTranslucencyMode {
-        WindowTranslucencyMode(rawValue: translucencyModeRaw) ?? .solid
+    private var preferences: WindowAppearancePreferences {
+        WindowAppearancePreferences(
+            mode: savedModeRaw.flatMap(WindowTranslucencyMode.init(rawValue:)) ?? .solid,
+            scope: WindowTranslucencyScope(rawValue: scopeRaw) ?? .mainWindow,
+            surfaceOpacity: surfaceOpacity,
+            sidebarOpacity: savedSidebarOpacity
+        )
     }
 
     @ViewBuilder
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
-        if #available(macOS 26.0, *),
-           FolderSidebarSurfacePolicy.style(
-               isMacOS26OrLater: true,
-               reduceTransparency: reduceTransparency,
-               translucencyMode: translucencyMode
-           ) == .nativeFloatingGlass {
-            content
+        if #available(macOS 26.0, *) {
+            switch FolderSidebarSurfacePolicy.style(
+                isMacOS26OrLater: true,
+                reduceTransparency: reduceTransparency,
+                hasSavedMode: savedModeRaw != nil,
+                preferences: preferences,
+                hasSavedSidebarOpacity: savedSidebarOpacity != nil
+            ) {
+            case .nativeFloatingGlass(let overlayOpacity):
+                ZStack {
+                    if overlayOpacity > 0 {
+                        theme.bgSecondary.color
+                            .opacity(overlayOpacity)
+                            .ignoresSafeArea()
+                    }
+                    content
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .themedSurface:
+                content.brevMailPaneSurface(.sidebar)
+            }
         } else {
             content.brevMailPaneSurface(.sidebar)
         }
@@ -256,6 +326,20 @@ private struct MacSidebarPaneSurfaceModifier: ViewModifier {
 
 private struct MacSidebarScrollEdgeChromeModifier: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @AppStorage(WindowAppearancePreferenceKey.mode) private var savedModeRaw: String?
+    @AppStorage(WindowAppearancePreferenceKey.scope) private var scopeRaw = WindowTranslucencyScope.mainWindow.rawValue
+    @AppStorage(WindowAppearancePreferenceKey.surfaceOpacity)
+    private var surfaceOpacity = WindowAppearancePreferences.defaultSurfaceOpacity
+    @AppStorage(WindowAppearancePreferenceKey.sidebarOpacity) private var savedSidebarOpacity: Double?
+
+    private var preferences: WindowAppearancePreferences {
+        WindowAppearancePreferences(
+            mode: savedModeRaw.flatMap(WindowTranslucencyMode.init(rawValue:)) ?? .solid,
+            scope: WindowTranslucencyScope(rawValue: scopeRaw) ?? .mainWindow,
+            surfaceOpacity: surfaceOpacity,
+            sidebarOpacity: savedSidebarOpacity
+        )
+    }
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -263,7 +347,10 @@ private struct MacSidebarScrollEdgeChromeModifier: ViewModifier {
         if #available(macOS 26.0, *),
            FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(
                isMacOS26OrLater: true,
-               reduceTransparency: reduceTransparency
+               reduceTransparency: reduceTransparency,
+               hasSavedMode: savedModeRaw != nil,
+               preferences: preferences,
+               hasSavedSidebarOpacity: savedSidebarOpacity != nil
            ) {
             content
         } else {

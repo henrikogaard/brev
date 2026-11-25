@@ -448,6 +448,9 @@ public struct BrevMailRootView: View {
     private let onSignOut: (() async -> Void)?
     private let onChangeTheme: (BrevTheme) -> Void
     private let onOpenSettings: (() -> Void)?
+    /// Opens Settings directly to the Accounts pane from sidebar Account Settings
+    /// context menus; nil falls back to generic `onOpenSettings`.
+    private let onOpenAccountSettings: (() -> Void)?
     /// Asks the host app to start adding a mail account, from the sidebar's
     /// Accounts "+" (#306). Nil hides the button.
     private let onAddAccount: (() -> Void)?
@@ -529,6 +532,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onOpenAccountSettings: (() -> Void)? = nil,
         onRequestReauthentication: ((BrevAccount) -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
@@ -564,6 +568,7 @@ public struct BrevMailRootView: View {
             onSignOut: onSignOut,
             onChangeTheme: onChangeTheme,
             onOpenSettings: onOpenSettings,
+            onOpenAccountSettings: onOpenAccountSettings,
             onRequestReauthentication: onRequestReauthentication,
             onOpenCalendar: onOpenCalendar,
             onOpenContacts: onOpenContacts,
@@ -610,6 +615,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onOpenAccountSettings: (() -> Void)? = nil,
         onRequestReauthentication: ((BrevAccount) -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
@@ -660,6 +666,7 @@ public struct BrevMailRootView: View {
         self.onSignOut = onSignOut
         self.onChangeTheme = onChangeTheme
         self.onOpenSettings = onOpenSettings
+        self.onOpenAccountSettings = onOpenAccountSettings
         self.onRequestReauthentication = onRequestReauthentication
         self.onOpenCalendar = onOpenCalendar
         self.onOpenContacts = onOpenContacts
@@ -2062,6 +2069,7 @@ public struct BrevMailRootView: View {
                 )
             },
             onAddAccount: onAddAccount,
+            onOpenAccountSettings: onOpenAccountSettings,
             footer: FolderSidebarFooter(
                 identity: FolderSidebarFooterIdentity(accounts: backends.map(\.account)),
                 status: FolderSidebarSyncStatus(

@@ -709,4 +709,47 @@ struct FolderSidebarPresentationTests {
         #expect(!state.isExpanded("archive", sourceID: nil, folders: MockBackend.previewFolders))
         #expect(state.isExpanded("mailspring", sourceID: nil, folders: MockBackend.previewFolders))
     }
+
+    @Test("external folder navigation reveals only the selected folder's ancestors while keeping sibling branches collapsed")
+    func externalNavigationRevealsSelectedFolderAncestorsOnly() {
+        let sourceID = MailSourceID(accountID: "acct-1", mailboxID: "primary")
+        let folders = [
+            Folder(id: "inbox", name: "Inbox", role: .inbox),
+            Folder(id: "archive", name: "Archive", role: .archive),
+            Folder(id: "archive-home", name: "Home", role: .custom, parentID: "archive"),
+            Folder(id: "projects", name: "Projects", role: .custom),
+            Folder(id: "projects-2026", name: "2026", role: .custom, parentID: "projects"),
+            Folder(id: "projects-2026-q4", name: "Q4", role: .custom, parentID: "projects-2026"),
+        ]
+        var state = FolderDisclosureState.load(from: Data(), defaultCollapsed: true)
+
+        // Initially both Archive and Projects branches are collapsed.
+        #expect(!state.isExpanded("archive", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("projects", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("projects-2026", sourceID: sourceID, folders: folders))
+
+        // Selecting Projects/2026 expands Projects without expanding Archive or Projects/2026's own children.
+        let changed = state.revealAncestors(of: "projects-2026", sourceID: sourceID, folders: folders)
+        #expect(changed)
+        #expect(state.isExpanded("projects", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("projects-2026", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("archive", sourceID: sourceID, folders: folders))
+
+        let visibleIDs = FolderSidebarPresentation.visibleRows(
+            folders: folders,
+            collapsedFolderIDs: state.collapsedFolderIDs(for: sourceID, folders: folders)
+        ).map(\.folder.id)
+        #expect(visibleIDs == ["inbox", "archive", "projects", "projects-2026"])
+
+        // Deeply nested navigation (Q4) reveals both Projects and 2026, still leaving Archive collapsed.
+        let revealedDeep = state.revealAncestors(of: "projects-2026-q4", sourceID: sourceID, folders: folders)
+        #expect(revealedDeep)
+        #expect(state.isExpanded("projects", sourceID: sourceID, folders: folders))
+        #expect(state.isExpanded("projects-2026", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("archive", sourceID: sourceID, folders: folders))
+
+        // Manual collapse after reveal still works cleanly.
+        state.toggle("projects", sourceID: sourceID)
+        #expect(!state.isExpanded("projects", sourceID: sourceID, folders: folders))
+    }
 }

@@ -957,6 +957,61 @@ struct FolderDisclosureState: Codable, Equatable, Sendable {
         return Set(folders.map(\.id).filter { parentIDs.contains($0) })
     }
 
+    /// Returns all ancestor folder IDs above `folderID` in `folders`,
+    /// stopping safely on missing parents or parent cycles.
+    static func ancestorFolderIDs(
+        of folderID: Folder.ID,
+        in folders: [Folder]
+    ) -> Set<Folder.ID> {
+        var parentByID: [Folder.ID: Folder.ID] = [:]
+        for folder in folders where parentByID[folder.id] == nil {
+            if let parentID = folder.parentID {
+                parentByID[folder.id] = parentID
+            }
+        }
+        var ancestors: Set<Folder.ID> = []
+        var current = parentByID[folderID]
+        while let parentID = current, parentID != folderID, ancestors.insert(parentID).inserted {
+            current = parentByID[parentID]
+        }
+        return ancestors
+    }
+
+    /// Expands only the collapsed ancestors of `folderID` within `sourceID` so
+    /// an externally navigated folder (from All Attachments, search, or
+    /// Assistant) becomes visible in the sidebar and reachable by arrow keys
+    /// without expanding sibling branches. Returns `true` when state changed.
+    @discardableResult
+    mutating func revealAncestors(
+        of folderID: Folder.ID,
+        sourceID: MailSourceID?,
+        folders: [Folder]
+    ) -> Bool {
+        let ancestors = Self.ancestorFolderIDs(of: folderID, in: folders)
+        guard !ancestors.isEmpty else { return false }
+
+        let before = self
+        if usesDefaultCollapsed {
+            if let sourceID {
+                expandedBySource[sourceID, default: []].formUnion(ancestors)
+            } else {
+                expandedWithoutSource.formUnion(ancestors)
+            }
+        } else if let sourceID {
+            if var collapsed = bySource[sourceID] {
+                collapsed.subtract(ancestors)
+                if collapsed.isEmpty {
+                    bySource.removeValue(forKey: sourceID)
+                } else {
+                    bySource[sourceID] = collapsed
+                }
+            }
+        } else {
+            withoutSource.subtract(ancestors)
+        }
+        return self != before
+    }
+
     /// Resolves the set of collapsed folder IDs for `sourceID` against `folders`.
     func collapsedFolderIDs(
         for sourceID: MailSourceID?,

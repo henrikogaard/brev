@@ -18,44 +18,129 @@ import Testing
 
 @Suite("Folder sidebar chrome presentation")
 struct FolderSidebarChromePresentationTests {
-    @Test("mailbox roles stay monochrome neutral so selection and unread counts carry hierarchy")
-    func roleTints() {
-        for role in FolderRole.allCases {
-            #expect(FolderSidebarIconTint.tint(for: role) == .neutral)
+    @Test("macOS row icons use monochrome secondary at rest and primary when selected across light and dark themes")
+    func macOSRowIconColors() {
+        for theme in [BrevTheme.brevMonoDark, .brevMonoLight] {
+            #expect(FolderSidebarIconTint.macOSRowColor(isSelected: false, in: theme) == theme.textSecondary.color)
+            #expect(FolderSidebarIconTint.macOSRowColor(isSelected: true, in: theme) == theme.textPrimary.color)
         }
-        let dark = BrevTheme.brevMonoDark
-        #expect(FolderSidebarIconTint.macOSRowColor(isSelected: false, in: dark) == dark.textSecondary.color)
-        #expect(FolderSidebarIconTint.macOSRowColor(isSelected: true, in: dark) == dark.textPrimary.color)
     }
 
-    @Test("macOS 26 sidebar uses native floating Liquid Glass unless Reduce Transparency or older macOS")
+    @Test("macOS 26 sidebar honors default glass, explicit Off, sidebar opacity endpoints, and Reduce Transparency")
     func surfacePolicy() {
-        for mode in WindowTranslucencyMode.allCases {
+        // Out-of-the-box macOS 26 (no explicit mode saved yet) renders pure native floating Liquid Glass.
+        #expect(
+            FolderSidebarSurfacePolicy.style(
+                isMacOS26OrLater: true,
+                reduceTransparency: false,
+                hasSavedMode: false,
+                preferences: .defaults,
+                hasSavedSidebarOpacity: false
+            ) == .nativeFloatingGlass(overlayOpacity: 0)
+        )
+        #expect(
+            FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(
+                isMacOS26OrLater: true,
+                reduceTransparency: false,
+                hasSavedMode: false,
+                preferences: .defaults,
+                hasSavedSidebarOpacity: false
+            )
+        )
+
+        // Explicit Off (.solid) restores the solid themed surface.
+        let explicitSolid = WindowAppearancePreferences(mode: .solid, scope: .mainWindow)
+        #expect(
+            FolderSidebarSurfacePolicy.style(
+                isMacOS26OrLater: true,
+                reduceTransparency: false,
+                hasSavedMode: true,
+                preferences: explicitSolid
+            ) == .themedSurface
+        )
+        #expect(
+            !FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(
+                isMacOS26OrLater: true,
+                reduceTransparency: false,
+                hasSavedMode: true,
+                preferences: explicitSolid
+            )
+        )
+
+        // Explicit legacy vibrancy modes (.subtle, .frosted) delegate to BrevWindowSurfaceBackground + slider.
+        for legacyMode in [WindowTranslucencyMode.subtle, .frosted] {
+            let prefs = WindowAppearancePreferences(mode: legacyMode, scope: .sidebarOnly, sidebarOpacity: 1.0)
             #expect(
                 FolderSidebarSurfacePolicy.style(
                     isMacOS26OrLater: true,
                     reduceTransparency: false,
-                    translucencyMode: mode
-                ) == .nativeFloatingGlass
-            )
-            #expect(
-                FolderSidebarSurfacePolicy.style(
-                    isMacOS26OrLater: true,
-                    reduceTransparency: true,
-                    translucencyMode: mode
-                ) == .themedSurface
-            )
-            #expect(
-                FolderSidebarSurfacePolicy.style(
-                    isMacOS26OrLater: false,
-                    reduceTransparency: false,
-                    translucencyMode: mode
+                    hasSavedMode: true,
+                    preferences: prefs,
+                    hasSavedSidebarOpacity: true
                 ) == .themedSurface
             )
         }
-        #expect(FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(isMacOS26OrLater: true, reduceTransparency: false))
-        #expect(!FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(isMacOS26OrLater: true, reduceTransparency: true))
-        #expect(!FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(isMacOS26OrLater: false, reduceTransparency: false))
+
+        // Explicit .glass without a custom sidebar opacity keeps pure native Liquid Glass.
+        let glassDefault = WindowAppearancePreferences(mode: .glass, scope: .sidebarOnly)
+        #expect(
+            FolderSidebarSurfacePolicy.style(
+                isMacOS26OrLater: true,
+                reduceTransparency: false,
+                hasSavedMode: true,
+                preferences: glassDefault,
+                hasSavedSidebarOpacity: false
+            ) == .nativeFloatingGlass(overlayOpacity: 0)
+        )
+
+        // Explicit .glass with sidebarOpacity slider endpoints (min translucent vs 100% opaque).
+        let glassMin = WindowAppearancePreferences(mode: .glass, scope: .sidebarOnly, sidebarOpacity: 0.0)
+        #expect(
+            FolderSidebarSurfacePolicy.style(
+                isMacOS26OrLater: true,
+                reduceTransparency: false,
+                hasSavedMode: true,
+                preferences: glassMin,
+                hasSavedSidebarOpacity: true
+            ) == .nativeFloatingGlass(overlayOpacity: WindowAppearancePreferences.sidebarOpacityRange.lowerBound)
+        )
+        let glassOpaque = WindowAppearancePreferences(mode: .glass, scope: .sidebarOnly, sidebarOpacity: 1.0)
+        #expect(
+            FolderSidebarSurfacePolicy.style(
+                isMacOS26OrLater: true,
+                reduceTransparency: false,
+                hasSavedMode: true,
+                preferences: glassOpaque,
+                hasSavedSidebarOpacity: true
+            ) == .nativeFloatingGlass(overlayOpacity: 1.0)
+        )
+        #expect(
+            !FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(
+                isMacOS26OrLater: true,
+                reduceTransparency: false,
+                hasSavedMode: true,
+                preferences: glassOpaque,
+                hasSavedSidebarOpacity: true
+            )
+        )
+
+        // Reduce Transparency and macOS < 26 always fall back to the themed surface.
+        #expect(
+            FolderSidebarSurfacePolicy.style(
+                isMacOS26OrLater: true,
+                reduceTransparency: true,
+                hasSavedMode: false,
+                preferences: glassDefault
+            ) == .themedSurface
+        )
+        #expect(
+            FolderSidebarSurfacePolicy.style(
+                isMacOS26OrLater: false,
+                reduceTransparency: false,
+                hasSavedMode: false,
+                preferences: glassDefault
+            ) == .themedSurface
+        )
     }
 
     @Test("macOS top profile switcher hides for single-profile workspaces and shows for multi-profile")
@@ -66,12 +151,45 @@ struct FolderSidebarChromePresentationTests {
         #expect(FolderSidebarProfileSwitcherPolicy.showsTopBar(profileCount: 5))
     }
 
-    @Test("section header actions and account chevrons stay quiet at rest and reveal on hover")
-    func sectionHeaderHoverVisibility() {
-        #expect(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: false) == 0)
-        #expect(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: true) == 1)
-        #expect(FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(isHovered: false) == 0)
-        #expect(FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(isHovered: true) == 1)
+    @Test("section header actions and account chevrons stay quiet at rest and reveal on hover or keyboard focus")
+    func sectionHeaderHoverAndFocusVisibility() {
+        #expect(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: false, isFocused: false) == 0)
+        #expect(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: true, isFocused: false) == 1)
+        #expect(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: false, isFocused: true) == 1)
+        #expect(FolderSidebarSectionHeaderActionVisibility
+            .accountDisclosureChevronOpacity(isHovered: false, isFocused: false) == 0)
+        #expect(FolderSidebarSectionHeaderActionVisibility
+            .accountDisclosureChevronOpacity(isHovered: true, isFocused: false) == 1)
+        #expect(FolderSidebarSectionHeaderActionVisibility
+            .accountDisclosureChevronOpacity(isHovered: false, isFocused: true) == 1)
+    }
+
+    @Test("account header Account Settings action prefers dedicated Accounts-pane callback and falls back cleanly")
+    func accountSettingsActionResolution() {
+        var invoked: [String] = []
+        let dedicated = FolderSidebarAccountSettingsAction.resolve(
+            onOpenAccountSettings: { invoked.append("accounts") },
+            footerOpenSettings: { invoked.append("footer") },
+            fallbackOpenSettings: { invoked.append("fallback") }
+        )
+        dedicated?()
+        #expect(invoked == ["accounts"])
+
+        let footerFallback = FolderSidebarAccountSettingsAction.resolve(
+            onOpenAccountSettings: nil,
+            footerOpenSettings: { invoked.append("footer") },
+            fallbackOpenSettings: { invoked.append("fallback") }
+        )
+        footerFallback?()
+        #expect(invoked == ["accounts", "footer"])
+
+        let genericFallback = FolderSidebarAccountSettingsAction.resolve(
+            onOpenAccountSettings: nil,
+            footerOpenSettings: nil,
+            fallbackOpenSettings: { invoked.append("fallback") }
+        )
+        genericFallback?()
+        #expect(invoked == ["accounts", "footer", "fallback"])
     }
 
     @Test("footer status says offline before anything else")

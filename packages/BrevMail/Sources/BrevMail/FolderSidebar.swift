@@ -54,7 +54,6 @@ public struct FolderSidebar: View {
 
     @Environment(\.brevTheme) private var theme
     @Environment(\.networkMonitor) private var monitor
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage("folder.disclosureState") private var disclosureStateData = Data()
     @AppStorage("mailbox.disclosureState") private var mailboxDisclosureData = Data()
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
@@ -67,10 +66,26 @@ public struct FolderSidebar: View {
         case account(MailSourceID)
     }
 
+    private enum SidebarFocusedHeaderControl: Hashable {
+        case favoritesActions
+        case smartViewsHeader
+        case smartViewsActions
+        case accountHeader(MailSourceID)
+        case addAccount
+    }
+
     @State private var selectedFavoriteID: MailboxFavoriteID?
     @State private var hoveredSection: SidebarHoveredSection?
     @State private var isSettingsFooterHovered = false
+    @FocusState private var focusedHeaderControl: SidebarFocusedHeaderControl?
     #endif
+
+    private struct SelectedPhysicalFolderTarget: Equatable {
+        let sourceID: MailSourceID?
+        let folderID: Folder.ID
+    }
+
+    @State private var lastRevealedFolderTarget: SelectedPhysicalFolderTarget?
 
     private static var defaultSubfoldersCollapsed: Bool {
         #if os(macOS)
@@ -158,9 +173,12 @@ public struct FolderSidebar: View {
     /// Opens the mail assistant from its row under the account switcher
     /// (#306). Nil hides the row, e.g. when no AI backend is enabled.
     private var onOpenAssistant: (() -> Void)?
-    /// Starts adding an account from the "+" beside the Accounts header.
+    /// Starts adding an account from the "+" beside the first account header.
     /// Nil hides the button.
     private var onAddAccount: (() -> Void)?
+    /// Opens Settings directly to the Accounts pane from Account Settings
+    /// context menus. Nil falls back to generic `onOpenSettings`.
+    private var onOpenAccountSettings: (() -> Void)?
     /// The macOS footer with identity, sync state and Settings. Nil hides it.
     private var footer: FolderSidebarFooter?
 
@@ -248,11 +266,13 @@ public struct FolderSidebar: View {
     func sidebarChrome(
         onOpenAssistant: (() -> Void)?,
         onAddAccount: (() -> Void)?,
+        onOpenAccountSettings: (() -> Void)? = nil,
         footer: FolderSidebarFooter?
     ) -> FolderSidebar {
         var copy = self
         copy.onOpenAssistant = onOpenAssistant
         copy.onAddAccount = onAddAccount
+        copy.onOpenAccountSettings = onOpenAccountSettings
         copy.footer = footer
         return copy
     }
@@ -310,6 +330,7 @@ public struct FolderSidebar: View {
             .onAppear {
                 disclosureState = loadDisclosureState()
                 restoreSourceExpansion()
+                revealSelectedFolderAncestorsIfNeeded()
                 #if os(macOS)
                 // Mail starts cold with the mailbox column as the key view,
                 // so its selection renders in the active tint at launch.
@@ -317,6 +338,15 @@ public struct FolderSidebar: View {
                 #endif
             }
             .onChange(of: disclosureStateData) { disclosureState = loadDisclosureState() }
+            .onChange(of: selectedPhysicalFolderTarget) { _, _ in
+                revealSelectedFolderAncestorsIfNeeded()
+            }
+            .onChange(of: sourceSections.count) { _, _ in
+                revealSelectedFolderAncestorsIfNeeded()
+            }
+            .onChange(of: folders.count) { _, _ in
+                revealSelectedFolderAncestorsIfNeeded()
+            }
             .onChange(of: expandedSourceIDs) {
                 mailboxDisclosureData = (try? JSONEncoder().encode(expandedSourceIDs)) ?? Data()
             }
@@ -431,7 +461,7 @@ public struct FolderSidebar: View {
                     }
                     .padding(sidebarMetrics.sidebarPadding)
                 }
-                .folderSidebarScrollEdgeEffect(reduceTransparency: reduceTransparency)
+                .folderSidebarScrollEdgeEffect()
                 // focusSection puts the sidebar in the Tab key loop so the
                 // keyboard focus ring below can actually engage.
                 .focusSection()
@@ -1214,6 +1244,7 @@ public struct FolderSidebar: View {
 
     private func desktopFavoritesSection(activeFavoriteID: MailboxFavoriteID?) -> some View {
         let isHovered = hoveredSection == .favorites
+        let isActionFocused = focusedHeaderControl == .favoritesActions
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: BrevSpacing.xs) {
                 Text("Favorites", bundle: .module)
@@ -1223,8 +1254,14 @@ public struct FolderSidebar: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: BrevSpacing.xs)
                 favoritesActions
-                    .opacity(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: isHovered))
-                    .animation(.easeOut(duration: 0.14), value: isHovered)
+                    .focused($focusedHeaderControl, equals: .favoritesActions)
+                    .opacity(
+                        FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(
+                            isHovered: isHovered,
+                            isFocused: isActionFocused
+                        )
+                    )
+                    .animation(.easeOut(duration: 0.14), value: isHovered || isActionFocused)
             }
             .padding(.leading, macOSHeaderLeadingInset)
             .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
@@ -1315,6 +1352,9 @@ public struct FolderSidebar: View {
         let inboxUnread = section.folders.first { $0.role == .inbox }?.unreadCount ?? 0
         let hoverKey = SidebarHoveredSection.account(section.id)
         let isHovered = hoveredSection == hoverKey
+        let isHeaderFocused = focusedHeaderControl == .accountHeader(section.id)
+            || (isFirstAccount && focusedHeaderControl == .addAccount)
+        let isAddFocused = isFirstAccount && focusedHeaderControl == .addAccount
         return HStack(spacing: BrevSpacing.xs) {
             Button {
                 expandedSourceIDs = FolderSidebarSourceExpansionPolicy.toggling(section.id, in: expandedSourceIDs)
@@ -1331,10 +1371,11 @@ public struct FolderSidebar: View {
                         .foregroundStyle(theme.textTertiary.color)
                         .opacity(
                             FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(
-                                isHovered: isHovered
+                                isHovered: isHovered,
+                                isFocused: isHeaderFocused
                             )
                         )
-                        .animation(.easeOut(duration: 0.14), value: isHovered)
+                        .animation(.easeOut(duration: 0.14), value: isHovered || isHeaderFocused)
                         .accessibilityHidden(true)
                     Spacer(minLength: BrevSpacing.xs)
                     if section.loadError != nil {
@@ -1349,6 +1390,7 @@ public struct FolderSidebar: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .focused($focusedHeaderControl, equals: .accountHeader(section.id))
             .help("\(section.title)\n\(section.subtitle)")
             .accessibilityLabel("\(section.title), \(section.subtitle)")
             .accessibilityValue(
@@ -1368,8 +1410,14 @@ public struct FolderSidebar: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .opacity(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: isHovered))
-                .animation(.easeOut(duration: 0.14), value: isHovered)
+                .focused($focusedHeaderControl, equals: .addAccount)
+                .opacity(
+                    FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(
+                        isHovered: isHovered,
+                        isFocused: isAddFocused
+                    )
+                )
+                .animation(.easeOut(duration: 0.14), value: isHovered || isAddFocused)
                 .accessibilityLabel(String(localized: "Add account", bundle: .module))
                 .help(String(localized: "Add account", bundle: .module))
             }
@@ -1407,9 +1455,13 @@ public struct FolderSidebar: View {
                     )
                 }
             }
-            if let onOpenSettings = footer?.onOpenSettings ?? onOpenSettings {
+            if let openAccountSettings = FolderSidebarAccountSettingsAction.resolve(
+                onOpenAccountSettings: onOpenAccountSettings,
+                footerOpenSettings: footer?.onOpenSettings,
+                fallbackOpenSettings: onOpenSettings
+            ) {
                 Divider()
-                Button(action: onOpenSettings) {
+                Button(action: openAccountSettings) {
                     Label(String(localized: "Account Settings…", bundle: .module), systemImage: "gearshape")
                 }
             }
@@ -1477,6 +1529,8 @@ public struct FolderSidebar: View {
             hasSelectedSmartView: hasSelectedSmartView
         )
         let isHovered = hoveredSection == .smartViews
+        let isHeaderFocused = focusedHeaderControl == .smartViewsHeader || focusedHeaderControl == .smartViewsActions
+        let isActionsFocused = focusedHeaderControl == .smartViewsActions
         HStack(spacing: BrevSpacing.xs) {
             Button {
                 smartViewsUserExpanded = FolderSidebarSmartViewPresentation.toggled(
@@ -1493,14 +1547,15 @@ public struct FolderSidebar: View {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(theme.textTertiary.color)
-                        .opacity(isHovered ? 1 : (isExpanded ? 0 : 0.75))
-                        .animation(.easeOut(duration: 0.14), value: isHovered)
+                        .opacity((isHovered || isHeaderFocused) ? 1 : (isExpanded ? 0 : 0.75))
+                        .animation(.easeOut(duration: 0.14), value: isHovered || isHeaderFocused)
                         .accessibilityHidden(true)
                 }
                 .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .focused($focusedHeaderControl, equals: .smartViewsHeader)
             .folderSidebarTouchTarget(minHeight: sidebarMetrics.disclosureHitSize)
             .accessibilityLabel(String(localized: "Smart Views", bundle: .module))
             .accessibilityValue(
@@ -1528,8 +1583,14 @@ public struct FolderSidebar: View {
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
-            .opacity(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: isHovered))
-            .animation(.easeOut(duration: 0.14), value: isHovered)
+            .focused($focusedHeaderControl, equals: .smartViewsActions)
+            .opacity(
+                FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(
+                    isHovered: isHovered,
+                    isFocused: isActionsFocused
+                )
+            )
+            .animation(.easeOut(duration: 0.14), value: isHovered || isActionsFocused)
             .accessibilityLabel(String(localized: "Smart View Actions", bundle: .module))
             .help(String(localized: "Smart View Actions", bundle: .module))
         }
@@ -2213,6 +2274,39 @@ public struct FolderSidebar: View {
         FolderDisclosureState.collapsibleFolderIDs(in: contextFolders(sourceID: sourceID))
     }
 
+    private var selectedPhysicalFolderTarget: SelectedPhysicalFolderTarget? {
+        guard navigation.selectedCollectionFolderID == nil else { return nil }
+        if let sourceFolder = navigation.browsingSourceFolderID {
+            return SelectedPhysicalFolderTarget(
+                sourceID: sourceFolder.sourceID,
+                folderID: sourceFolder.folderID
+            )
+        }
+        if let folderID = navigation.selectedFolderID, navigation.selectedSourceID == nil {
+            return SelectedPhysicalFolderTarget(sourceID: nil, folderID: folderID)
+        }
+        return nil
+    }
+
+    /// Expands only the collapsed ancestor chain for an externally navigated
+    /// folder (e.g. opened from All Attachments, search, or Assistant) once
+    /// its folder list is available, without overriding later manual collapses.
+    private func revealSelectedFolderAncestorsIfNeeded() {
+        guard let target = selectedPhysicalFolderTarget else {
+            lastRevealedFolderTarget = nil
+            return
+        }
+        guard target != lastRevealedFolderTarget else { return }
+        let targetFolders = contextFolders(sourceID: target.sourceID)
+        guard targetFolders.contains(where: { $0.id == target.folderID }) else { return }
+        lastRevealedFolderTarget = target
+        var state = disclosureState
+        if state.revealAncestors(of: target.folderID, sourceID: target.sourceID, folders: targetFolders) {
+            disclosureState = state
+            saveDisclosureState(state)
+        }
+    }
+
     private func contextFolders(sourceID: MailSourceID?) -> [Folder] {
         guard let sourceID else { return folders }
         return sourceSections.first(where: { $0.id == sourceID })?.folders ?? []
@@ -2357,12 +2451,17 @@ public struct FolderSidebar: View {
             }
             .disabled(!presentation.isEnabled)
         case .accountSettings:
+            let openAccountSettings = FolderSidebarAccountSettingsAction.resolve(
+                onOpenAccountSettings: onOpenAccountSettings,
+                footerOpenSettings: footer?.onOpenSettings,
+                fallbackOpenSettings: onOpenSettings
+            )
             Button {
-                onOpenSettings?()
+                openAccountSettings?()
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
-            .disabled(!presentation.isEnabled || onOpenSettings == nil)
+            .disabled(!presentation.isEnabled || openAccountSettings == nil)
         case .openInNewWindow, .showInProfile, .properties, .downloadOffline:
             EmptyView()
         }
@@ -2720,17 +2819,9 @@ public struct FolderSidebar: View {
 
 private extension View {
     @ViewBuilder
-    func folderSidebarScrollEdgeEffect(reduceTransparency: Bool) -> some View {
-        #if os(macOS) && compiler(>=6.2)
-        if #available(macOS 26.0, *),
-           FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(
-               isMacOS26OrLater: true,
-               reduceTransparency: reduceTransparency
-           ) {
-            scrollEdgeEffectStyle(.soft, for: .vertical)
-        } else {
-            self
-        }
+    func folderSidebarScrollEdgeEffect() -> some View {
+        #if os(macOS)
+        modifier(FolderSidebarScrollEdgeEffectModifier())
         #else
         self
         #endif
@@ -2756,6 +2847,46 @@ private extension View {
         #endif
     }
 }
+
+#if os(macOS)
+private struct FolderSidebarScrollEdgeEffectModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @AppStorage(WindowAppearancePreferenceKey.mode) private var savedModeRaw: String?
+    @AppStorage(WindowAppearancePreferenceKey.scope) private var scopeRaw = WindowTranslucencyScope.mainWindow.rawValue
+    @AppStorage(WindowAppearancePreferenceKey.surfaceOpacity)
+    private var surfaceOpacity = WindowAppearancePreferences.defaultSurfaceOpacity
+    @AppStorage(WindowAppearancePreferenceKey.sidebarOpacity) private var savedSidebarOpacity: Double?
+
+    private var preferences: WindowAppearancePreferences {
+        WindowAppearancePreferences(
+            mode: savedModeRaw.flatMap(WindowTranslucencyMode.init(rawValue:)) ?? .solid,
+            scope: WindowTranslucencyScope(rawValue: scopeRaw) ?? .mainWindow,
+            surfaceOpacity: surfaceOpacity,
+            sidebarOpacity: savedSidebarOpacity
+        )
+    }
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *),
+           FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(
+               isMacOS26OrLater: true,
+               reduceTransparency: reduceTransparency,
+               hasSavedMode: savedModeRaw != nil,
+               preferences: preferences,
+               hasSavedSidebarOpacity: savedSidebarOpacity != nil
+           ) {
+            content.scrollEdgeEffectStyle(.soft, for: .vertical)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+#endif
 
 #if os(iOS)
 /// One destination row of the iOS Mailboxes list: icon, title, trailing unread
