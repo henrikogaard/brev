@@ -1116,12 +1116,15 @@ enum ComposeRichHTMLAttributedBuilder {
 
         let blockID = UUID().uuidString
         let paraStyle = makeCodeBlockParagraphStyle()
-        let attrs: [NSAttributedString.Key: Any] = [
+        var attrs: [NSAttributedString.Key: Any] = [
             .font: style.monospacedFont,
             .foregroundColor: style.textColor,
             .paragraphStyle: paraStyle,
             ComposeRichTextAttribute.codeBlockID: blockID
         ]
+        #if !os(macOS)
+        attrs[.backgroundColor] = style.surfaceSecondaryColor
+        #endif
 
         let lines = rawCode.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         for (index, line) in lines.enumerated() {
@@ -1397,6 +1400,193 @@ enum ComposeRichHTMLAttributedBuilder {
         paragraphStyle.textBlocks = [block]
     }
     #endif
+
+    // MARK: - Dynamic Appearance Re-resolution
+
+    /// Re-applies theme-derived foreground, surface, and table colors across `storage`
+    /// when Light/Dark compose appearance changes, without clobbering explicit
+    /// user-authored foreground colors or disturbing non-color rich attributes.
+    static func reapplyAppearanceColors(
+        to storage: NSMutableAttributedString,
+        theme: BrevTheme,
+        previousTextColor: PlatformColor? = nil
+    ) {
+        let fullRange = NSRange(location: 0, length: storage.length)
+        guard fullRange.length > 0 else { return }
+
+        #if os(macOS)
+        let textColor = NSColor(theme.textPrimary.color)
+        let surfaceSecondaryColor = NSColor(theme.bgSecondary.color)
+        let borderColor = NSColor(theme.border.color)
+        #else
+        let textColor = UIColor(theme.textPrimary.color)
+        let surfaceSecondaryColor = UIColor(theme.bgSecondary.color)
+        #endif
+
+        var foregroundRangesToUpdate: [NSRange] = []
+        storage.enumerateAttribute(.foregroundColor, in: fullRange, options: []) { value, range, _ in
+            let current = value as? PlatformColor
+            guard isDefaultComposeTextColor(current, previousTextColor: previousTextColor),
+                  !colorsEqual(current, textColor) else {
+                return
+            }
+            foregroundRangesToUpdate.append(range)
+        }
+
+        var surfaceRangesToUpdate: [NSRange] = []
+        storage.enumerateAttribute(ComposeRichTextAttribute.inlineCode, in: fullRange, options: []) { value, range, _ in
+            guard (value as? Bool) == true else { return }
+            let current = storage.attribute(.backgroundColor, at: range.location, effectiveRange: nil) as? PlatformColor
+            if !colorsEqual(current, surfaceSecondaryColor) {
+                surfaceRangesToUpdate.append(range)
+            }
+        }
+        #if !os(macOS)
+        storage.enumerateAttribute(ComposeRichTextAttribute.codeBlockID, in: fullRange, options: []) { value, range, _ in
+            guard value != nil else { return }
+            let current = storage.attribute(.backgroundColor, at: range.location, effectiveRange: nil) as? PlatformColor
+            if !colorsEqual(current, surfaceSecondaryColor) {
+                surfaceRangesToUpdate.append(range)
+            }
+        }
+        #endif
+
+        #if os(macOS)
+        var tableBlocksToUpdate: [(block: NSTextTableBlock, isHeader: Bool)] = []
+        var seenBlocks = Set<ObjectIdentifier>()
+        var changedTableRange: NSRange?
+        storage.enumerateAttribute(.paragraphStyle, in: fullRange, options: []) { value, range, _ in
+            guard let paraStyle = value as? NSParagraphStyle, !paraStyle.textBlocks.isEmpty else { return }
+            let tableCell = storage.attribute(
+                ComposeRichTextAttribute.tableCell,
+                at: range.location,
+                effectiveRange: nil
+            ) as? ComposeTableCellMetadata
+            for case let block as NSTextTableBlock in paraStyle.textBlocks {
+                let isHeader = tableCell?.isHeader ?? (block.startingRow == 0 && block.backgroundColor != nil)
+                let borderMatches = colorsEqual(block.borderColor(for: .minX), borderColor)
+                let backgroundMatches = !isHeader || colorsEqual(block.backgroundColor, surfaceSecondaryColor)
+                guard !borderMatches || !backgroundMatches else { continue }
+                changedTableRange = changedTableRange.map { NSUnionRange($0, range) } ?? range
+                if seenBlocks.insert(ObjectIdentifier(block)).inserted {
+                    tableBlocksToUpdate.append((block: block, isHeader: isHeader))
+                }
+            }
+        }
+        let hasChanges = !foregroundRangesToUpdate.isEmpty
+            || !surfaceRangesToUpdate.isEmpty
+            || !tableBlocksToUpdate.isEmpty
+        #else
+        let hasChanges = !foregroundRangesToUpdate.isEmpty || !surfaceRangesToUpdate.isEmpty
+        #endif
+
+        guard hasChanges else { return }
+
+        storage.beginEditing()
+        for range in foregroundRangesToUpdate {
+            storage.addAttribute(.foregroundColor, value: textColor, range: range)
+        }
+        for range in surfaceRangesToUpdate {
+            storage.addAttribute(.backgroundColor, value: surfaceSecondaryColor, range: range)
+        }
+        #if os(macOS)
+        for entry in tableBlocksToUpdate {
+            entry.block.setBorderColor(borderColor)
+            if entry.isHeader {
+                entry.block.backgroundColor = surfaceSecondaryColor
+            }
+        }
+        if let changedTableRange, let textStorage = storage as? NSTextStorage {
+            textStorage.edited(.editedAttributes, range: changedTableRange, changeInLength: 0)
+        }
+        #endif
+        storage.endEditing()
+    }
+
+    /// True when `color` is absent or represents a default/theme editor text color
+    /// rather than an explicit user-authored foreground color.
+    static func isDefaultComposeTextColor(
+        _ color: PlatformColor?,
+        previousTextColor: PlatformColor? = nil
+    ) -> Bool {
+        guard let color else { return true }
+        if let previousTextColor, colorsEqual(color, previousTextColor) {
+            return true
+        }
+        #if os(macOS)
+        if color == .textColor || color == .labelColor || color == .black {
+            return true
+        }
+        let knownDefaults: [NSColor] = [
+            NSColor(BrevTheme.brevMonoLight.textPrimary.color),
+            NSColor(BrevTheme.brevMonoDark.textPrimary.color),
+            NSColor(BrevTheme.brevMonoGrey.textPrimary.color),
+        ]
+        #else
+        if color == .label || color == .black {
+            return true
+        }
+        let knownDefaults: [UIColor] = [
+            UIColor(BrevTheme.brevMonoLight.textPrimary.color),
+            UIColor(BrevTheme.brevMonoDark.textPrimary.color),
+            UIColor(BrevTheme.brevMonoGrey.textPrimary.color),
+        ]
+        #endif
+        if knownDefaults.contains(where: { colorsEqual(color, $0) }) {
+            return true
+        }
+        // Treat pure opaque black (from unstyled UIKit/AppKit text insertion) as default.
+        if let components = sRGBComponents(of: color),
+           components.red <= 0.005,
+           components.green <= 0.005,
+           components.blue <= 0.005,
+           components.alpha >= 0.995 {
+            return true
+        }
+        return false
+    }
+
+    private static func colorsEqual(_ lhs: PlatformColor?, _ rhs: PlatformColor?) -> Bool {
+        if lhs == nil && rhs == nil { return true }
+        guard let lhs, let rhs else { return false }
+        if lhs == rhs { return true }
+        guard let left = sRGBComponents(of: lhs),
+              let right = sRGBComponents(of: rhs) else {
+            return false
+        }
+        let tolerance: CGFloat = 0.005
+        return abs(left.red - right.red) <= tolerance
+            && abs(left.green - right.green) <= tolerance
+            && abs(left.blue - right.blue) <= tolerance
+            && abs(left.alpha - right.alpha) <= tolerance
+    }
+
+    private static func sRGBComponents(
+        of color: PlatformColor
+    ) -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat)? {
+        #if os(macOS)
+        guard let srgb = color.usingColorSpace(.sRGB) else { return nil }
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        srgb.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return (red, green, blue, alpha)
+        #else
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        if color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            return (red, green, blue, alpha)
+        }
+        var white: CGFloat = 0
+        if color.getWhite(&white, alpha: &alpha) {
+            return (white, white, white, alpha)
+        }
+        return nil
+        #endif
+    }
 
     private static func padded(_ cells: [String], to count: Int) -> [String] {
         if cells.count >= count {

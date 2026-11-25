@@ -4,6 +4,13 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Rich compose Dark Mode contrast (#361): fixed iOS `UITextView` rich compose
+  body text and typing attributes staying dark when switching from Light to Dark
+  Mode (including `UITraitUserInterfaceStyle` updates and Dark Mode draft
+  reopen), and re-resolved macOS `NSTextTableBlock` header backgrounds, table
+  cell borders, and inline-code/code-block surface colors on appearance switches
+  while preserving explicit user-authored colors and formatting traits.
+
 - SQLite sync-store performance and SQLite 3.54 query-plan fixes (#358, #359):
   - Added schema v11 `message_search_index` (`(account_id, message_id) -> fts_rowid`, plus `idx_message_search_folder`) and the partial covering index `idx_msg_dirty` (`WHERE is_dirty = 1`) in `SQLiteSyncStore`, with transactional v10→v11 backfill and duplicate-row pruning. Eliminated O(N²) full FTS5 table scans on `UNINDEXED` columns during bulk `upsertHeaders` and O(N) scans during flag-only updates, body updates, deletes, metrics counts, and tokenless body joins (reducing 50k `IMAPHeaderReadBaselineTests` runtime from 399.4 s to 4.03 s and 50k `flag-persist` median latency from 5.587 ms to 0.176 ms in Release on Apple M6 / macOS 27.0 / SQLite 3.54.0).
   - Pinned `INDEXED BY idx_imap_attachment_headers` on the left `UNION` branch of `SQLiteSyncStore.attachmentOrCachedBodyHeadersSQL` so SQLite 3.54's `MERGE (UNION)` planner cannot regress attachment candidate selection to a folder-wide primary-key scan.
@@ -13,6 +20,7 @@ All notable changes to Brev are documented here.
   - Updated `ComposeView` on iOS compact vertical height (iPhone Landscape) to pin the top navigation bar (`Cancel`, title, `Later`, `Send`) and bottom utility bar (`Attach`, `Aa`, `⋯`) at compact 44 pt heights around a scrollable header + body column (`minHeight: 160`, interactive keyboard dismissal) so software keyboards no longer push the top bar off-screen or occlude the body and formatting controls (#362).
   - Updated `PrivacyOnboardingSheet` at Dynamic Type accessibility sizes (`AXL`+) to scroll header, cards, and full-width wrapping footer actions together, stack card headers above wrapping scope badges (removing rigid single-line horizontal `.fixedSize`), and keep macOS default snapshots unchanged (#362).
   - Replaced the interpolated English verb in `MessageListDateSectionHeader`'s accessibility hint with two complete localized strings (`"Double-tap to expand this section"` / `"Double-tap to collapse this section"`) with full `en` and `nb` (`"Dobbelttrykk for å utvide denne delen"` / `"Dobbelttrykk for å skjule denne delen"`) entries in `BrevMail`'s String Catalog (#363).
+
 - Native JMAP mail backend (`BrevJMAP`, RFC 8620 / RFC 8621): added the MIT-licensed
   `packages/BrevJMAP/` SPM package implementing strict-HTTPS session discovery
   (`/.well-known/jmap` or explicit HTTPS session URL, rejecting non-HTTPS URLs,
