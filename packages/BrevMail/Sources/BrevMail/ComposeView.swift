@@ -757,21 +757,25 @@ public struct ComposeView: View {
                 if hostStyle == .window {
                     ZStack {
                         ComposeWindowTitleBridge(title: windowTitle)
-                        ComposeNativeToolbarContentBridge(items: [
-                            MacComposeToolbarItemIdentifier.send: AnyView(sendButton),
-                            MacComposeToolbarItemIdentifier.scheduleSend: AnyView(scheduleSendButton),
-                            MacComposeToolbarItemIdentifier.format: AnyView(formatMenu),
-                            MacComposeToolbarItemIdentifier.attachment: AnyView(
-                                toolbarButton(
-                                    label: ComposeToolbarAction.attach.accessibilityLabel,
-                                    systemImage: "paperclip",
-                                    isDisabled: isBusy
-                                ) {
-                                    isPickingFile = true
-                                }
-                            ),
-                            MacComposeToolbarItemIdentifier.more: AnyView(composeSecondaryActionsMenu)
-                        ], sendAction: isSendButtonDisabled ? nil : performSendButtonAction)
+                        ComposeNativeToolbarContentBridge(
+                            items: [
+                                MacComposeToolbarItemIdentifier.send: AnyView(sendButton),
+                                MacComposeToolbarItemIdentifier.scheduleSend: AnyView(macToolbarScheduleSendButton),
+                                MacComposeToolbarItemIdentifier.format: AnyView(formatMenu),
+                                MacComposeToolbarItemIdentifier.attachment: AnyView(
+                                    toolbarButton(
+                                        label: ComposeToolbarAction.attach.accessibilityLabel,
+                                        systemImage: "paperclip",
+                                        isDisabled: isBusy
+                                    ) {
+                                        isPickingFile = true
+                                    }
+                                ),
+                                MacComposeToolbarItemIdentifier.more: AnyView(composeSecondaryActionsMenu)
+                            ],
+                            theme: theme,
+                            sendAction: isSendButtonDisabled ? nil : performSendButtonAction
+                        )
                     }
                     .frame(width: 0, height: 0)
                 }
@@ -1944,6 +1948,18 @@ public struct ComposeView: View {
             action: presentScheduleSendSheet
         )
     }
+
+    #if os(macOS)
+    private var macToolbarScheduleSendButton: some View {
+        ComposeLaterButtonView(
+            isScheduled: scheduledSendDate != nil,
+            isEnabled: canPresentScheduleSend,
+            hitTargetSize: toolbarMetrics.hitTargetSize,
+            usesToolbarStyle: true,
+            action: presentScheduleSendSheet
+        )
+    }
+    #endif
 
     private func presentScheduleSendSheet() {
         guard canPresentScheduleSend else { return }
@@ -3758,11 +3774,11 @@ public struct ComposeView: View {
     // MARK: - Focus
 
     /// Moves the keyboard like iOS Mail: new mail opens in To, a reply in the
-    /// body. Runs once, after the sheet has finished presenting. iOS only;
-    /// macOS windows keep their own first-responder behaviour.
+    /// body above the quoted attribution line. Runs once when the compose
+    /// surface appears on iOS or when the docked inline reply opens on macOS.
     private func applyInitialFocusIfNeeded() async {
-        #if os(iOS)
         guard !didApplyInitialFocus else { return }
+        #if os(iOS)
         didApplyInitialFocus = true
         let field = ComposeFocusPolicy.initialField(
             hasRecipients: !to.isEmpty,
@@ -3770,6 +3786,16 @@ public struct ComposeView: View {
         )
         // A focus change made while the sheet is still sliding up is dropped.
         try? await Task.sleep(nanoseconds: 450_000_000)
+        guard !Task.isCancelled else { return }
+        moveFocus(to: field)
+        #else
+        guard hostStyle == .inline else { return }
+        didApplyInitialFocus = true
+        let field = ComposeFocusPolicy.initialField(
+            hasRecipients: !to.isEmpty,
+            hasSubject: !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        )
+        await Task.yield()
         guard !Task.isCancelled else { return }
         moveFocus(to: field)
         #endif
@@ -5115,14 +5141,16 @@ private struct ComposeWindowTitleBridge: NSViewRepresentable {
 
 private struct ComposeNativeToolbarContentBridge: NSViewRepresentable {
     let items: [NSToolbarItem.Identifier: AnyView]
+    let theme: BrevTheme
     let sendAction: (() -> Void)?
 
     func makeNSView(context _: Context) -> ComposeNativeToolbarContentView {
-        ComposeNativeToolbarContentView(items: items, sendAction: sendAction)
+        ComposeNativeToolbarContentView(items: items, theme: theme, sendAction: sendAction)
     }
 
     func updateNSView(_ view: ComposeNativeToolbarContentView, context: Context) {
         view.items = items
+        view.theme = theme
         view.sendAction = sendAction
         view.updateToolbar()
     }
@@ -5131,10 +5159,16 @@ private struct ComposeNativeToolbarContentBridge: NSViewRepresentable {
 @MainActor
 final class ComposeNativeToolbarContentView: NSView {
     var items: [NSToolbarItem.Identifier: AnyView]
+    var theme: BrevTheme
     var sendAction: (() -> Void)?
 
-    init(items: [NSToolbarItem.Identifier: AnyView], sendAction: (() -> Void)?) {
+    init(
+        items: [NSToolbarItem.Identifier: AnyView],
+        theme: BrevTheme = .brevMonoLight,
+        sendAction: (() -> Void)?
+    ) {
         self.items = items
+        self.theme = theme
         self.sendAction = sendAction
         super.init(frame: .zero)
     }
@@ -5160,7 +5194,7 @@ final class ComposeNativeToolbarContentView: NSView {
               let delegate = toolbar.delegate as? MacComposeToolbarDelegate else {
             return
         }
-        delegate.updateContentViews(items, in: toolbar)
+        delegate.updateContentViews(items, theme: theme, in: toolbar)
         delegate.sendAction = sendAction
     }
 }

@@ -774,7 +774,14 @@ final class BrevMacOSAppDelegate: NSObject, NSApplicationDelegate {
         AppSession.cleanupAbandonedLocalAIPromptFiles()
         applyMacOSAppIcon(AppIconPreferences.load())
         UNUserNotificationCenter.current().delegate = notificationDelegate
-        BrevPluginRegistry.shared.register(BrevExamplePlugin())
+        #if DEBUG
+        let isDeveloperBuild = true
+        #else
+        let isDeveloperBuild = false
+        #endif
+        if DeveloperSettings.isExamplePluginEnabled(isDeveloperBuild: isDeveloperBuild) {
+            BrevPluginRegistry.shared.register(BrevExamplePlugin())
+        }
         startBackgroundScheduler()
     }
 

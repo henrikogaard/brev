@@ -48,7 +48,8 @@ struct PrivacySection: View {
     var body: some View {
         SectionScaffold(
             title: String(localized: "Privacy", bundle: .module),
-            subtitle: String(localized: "Control remote images, sender image sources, and trusted senders.", bundle: .module)
+            subtitle: String(localized: "Control remote images, sender image sources, and trusted senders.", bundle: .module),
+            showsTitle: false
         ) {
             SettingsGroupStack {
                 remoteImagesGroup

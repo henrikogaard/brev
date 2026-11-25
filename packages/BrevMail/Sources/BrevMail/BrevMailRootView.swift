@@ -2135,19 +2135,31 @@ public struct BrevMailRootView: View {
                 loaded: threadHeadersForSelection(fallbackHeader: fallbackHeader)
             )
             let usesThreadReader = selectedBackend.groupsMessagesIntoThreads && threadHeaders.count > 1
-            let quickReplySourceID = navigation.selectedSourceID
+            let quickReplyCandidates = usesThreadReader
+                ? threadHeaders
+                : [navigation.selectedHeader ?? fallbackHeader].compactMap { $0 }
+            let initialQuickReplyBackend: (any MailBackend)? = {
+                guard let selectedSourceID = navigation.selectedSourceID else { return selectedBackend }
+                return connectedBackend(forAccountID: selectedSourceID.accountID)
+            }()
+            let quickReplyTarget = MailRootQuickReplyPolicy.target(
+                in: quickReplyCandidates,
+                accountEmail: initialQuickReplyBackend?.account.emailAddress
+                    ?? selectedBackend.account.emailAddress
+            )
+            let quickReplySourceID: MailSourceID? = {
+                guard let quickReplyTarget else { return navigation.selectedSourceID }
+                return ComposeSenderIdentity.replySourceID(
+                    for: quickReplyTarget,
+                    in: sourceSections,
+                    selectedSourceID: navigation.selectedSourceID,
+                    defaultSourceID: preferredDefaultSection(in: visibleSourceSections)?.id
+                )
+            }()
             let quickReplyBackend: (any MailBackend)? = {
                 guard let quickReplySourceID else { return selectedBackend }
                 return connectedBackend(forAccountID: quickReplySourceID.accountID)
             }()
-            let quickReplyCandidates = usesThreadReader
-                ? threadHeaders
-                : [navigation.selectedHeader ?? fallbackHeader].compactMap { $0 }
-            let quickReplyTarget = MailRootQuickReplyPolicy.target(
-                in: quickReplyCandidates,
-                accountEmail: quickReplyBackend?.account.emailAddress
-                    ?? selectedBackend.account.emailAddress
-            )
             let readerFooter: AnyView? = {
                 guard let quickReplyTarget,
                       let quickReplyBackend,
@@ -5245,16 +5257,28 @@ public struct BrevMailRootView: View {
         let dockMailboxID = activeMailboxID
         let selectedSourceID = anchorSourceID
         // A docked reply keeps its account even if a profile switch hides it.
-        let senderSections = (hostStyle == .inline ? sourceSections : visibleSourceSections)
-            .filter { $0.account.id == activeBackend.account.id }
+        let candidateSections = hostStyle == .inline ? sourceSections : visibleSourceSections
+        let matchedReplySourceID = replyingTo.flatMap { header in
+            ComposeSenderIdentity.replySourceID(
+                for: header,
+                in: candidateSections,
+                selectedSourceID: selectedSourceID,
+                defaultSourceID: preferredDefaultSection(in: candidateSections)?.id
+            )
+        }
+        let effectiveSelectedSourceID = matchedReplySourceID ?? selectedSourceID
+        let effectiveAccountID = effectiveSelectedSourceID?.accountID ?? activeBackend.account.id
+        let effectiveAccountBackend = effectiveSelectedSourceID.map { backend(for: $0) } ?? activeBackend
+        let senderSections = candidateSections.filter { $0.account.id == effectiveAccountID }
         let senderResolution = ComposeSenderIdentity.resolution(
             from: senderSections,
-            fallbackAccount: activeBackend.account,
-            selectedSourceID: selectedSourceID,
-            defaultSourceID: preferredDefaultSection(in: senderSections)?.id
+            fallbackAccount: effectiveAccountBackend.account,
+            selectedSourceID: effectiveSelectedSourceID,
+            defaultSourceID: preferredDefaultSection(in: senderSections)?.id,
+            replyingTo: replyingTo
         )
         let sourceID = senderResolution.sourceID
-        let composeBackend = sourceID.map { backend(for: $0) } ?? activeBackend
+        let composeBackend = sourceID.map { backend(for: $0) } ?? effectiveAccountBackend
         // A reopened existing draft must not also seed crash-recovery —
         // the two restore paths seed the same fields.
         let recoveredDraft = existingDraft == nil

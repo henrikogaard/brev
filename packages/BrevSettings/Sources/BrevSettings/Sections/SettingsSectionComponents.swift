@@ -282,24 +282,90 @@ struct SettingsToggleRow: View {
         // A macOS switch hugs its label, so without the greedy frame each
         // row's switch landed just after its own text — every row at a
         // different x, and none lined up with the pickers beside them.
-        Toggle(isOn: $isOn) {
-            SettingsRowLabel(
-                symbolName: symbolName,
-                title: title,
-                subtitle: subtitle
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
+        // Dark monochrome themes use a near-white accent that AppKit's native
+        // NSSwitch clamps to a low-contrast mid-gray (~#9c9c9e) to keep its
+        // white knob legible; switch those themes to a crisp high-contrast
+        // monochrome toggle using theme tokens only.
+        Group {
+            if Self.usesHighContrastMonochromeSwitch(for: theme) {
+                Toggle(isOn: $isOn) {
+                    SettingsRowLabel(
+                        symbolName: symbolName,
+                        title: title,
+                        subtitle: subtitle
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .toggleStyle(SettingsHighContrastSwitchToggleStyle(theme: theme))
+            } else {
+                Toggle(isOn: $isOn) {
+                    SettingsRowLabel(
+                        symbolName: symbolName,
+                        title: title,
+                        subtitle: subtitle
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .toggleStyle(.switch)
+                .tint(theme.accent.color)
+            }
         }
-        .toggleStyle(.switch)
         .accessibilityLabel(title)
         .accessibilityHint(subtitle)
         .help(subtitle)
-        .tint(theme.accent.color)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.55)
         #endif
     }
+
+    #if os(macOS)
+    static func usesHighContrastMonochromeSwitch(for theme: BrevTheme) -> Bool {
+        theme.mode == .dark && theme.accent.relativeLuminance >= 0.65
+    }
+    #endif
 }
+
+#if os(macOS)
+/// High-contrast capsule switch for dark monochrome themes (`Brev Mono Dark`,
+/// `Brev Mono Grey`) where native `NSSwitch` clamps near-white tints to muted
+/// gray behind its white knob.
+private struct SettingsHighContrastSwitchToggleStyle: ToggleStyle {
+    let theme: BrevTheme
+
+    private static let trackWidth: CGFloat = 38
+    private static let trackHeight: CGFloat = 22
+    private static let thumbSize: CGFloat = 18
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .center, spacing: BrevSpacing.md) {
+            configuration.label
+            ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                Capsule()
+                    .fill(configuration.isOn ? theme.accent.color : theme.bgTertiary.color)
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(
+                                configuration.isOn ? theme.accent.color : theme.border.color,
+                                lineWidth: 1
+                            )
+                    }
+                    .frame(width: Self.trackWidth, height: Self.trackHeight)
+
+                Circle()
+                    .fill(configuration.isOn ? theme.bgPrimary.color : theme.textPrimary.color)
+                    .frame(width: Self.thumbSize, height: Self.thumbSize)
+                    .padding(2)
+            }
+            .contentShape(Capsule())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    configuration.isOn.toggle()
+                }
+            }
+        }
+    }
+}
+#endif
 
 struct SettingsPickerRow<Selection: Hashable, Content: View>: View {
     @Environment(\.brevTheme) private var theme

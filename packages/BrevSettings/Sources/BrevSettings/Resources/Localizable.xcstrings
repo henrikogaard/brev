@@ -1,6 +1,40 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Show Example Plugin": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Example Plugin"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis eksempelutvidelse"
+          }
+        }
+      }
+    },
+    "Include the built-in Example Plugin in Settings and mail surfaces for extension development.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Include the built-in Example Plugin in Settings and mail surfaces for extension development."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inkluder den innebygde eksempelutvidelsen i Innstillinger og e-postvisninger for utvikling av utvidelser."
+          }
+        }
+      }
+    },
     "Subscriptions": {
       "extractionState": "manual",
       "localizations": {

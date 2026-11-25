@@ -12,6 +12,7 @@
 
 import BrevBackend
 @testable import BrevMail
+import Foundation
 import Testing
 
 @Suite("ComposeSenderIdentity")
@@ -286,6 +287,118 @@ struct ComposeSenderIdentityTests {
         ])
         #expect(resolution.initialSender?.sourceID == nil)
         #expect(resolution.sourceID == nil)
+    }
+
+    @Test("reply defaults From to the matched addressed mailbox instead of primary")
+    func replyMatchesAddressedMailboxOverPrimary() {
+        let account = Self.account(
+            id: "preview-account",
+            email: "henrik@ogard.example",
+            name: "Henrik Øgård"
+        )
+        let privateSection = Self.section(
+            account: account,
+            mailboxID: "preview-account",
+            email: "henrik@ogard.example",
+            displayName: "Henrik Øgård (private)"
+        )
+        let workSection = Self.section(
+            account: account,
+            mailboxID: "preview-account-work",
+            email: "henrik.work@ogard.example",
+            displayName: "Henrik Øgård (work)"
+        )
+        let messageAddressedToWork = MessageHeader(
+            id: "msg-work-1",
+            threadID: "thread-work-1",
+            folderID: "inbox",
+            from: Correspondent(name: "Sigrid Solberg", email: "sigrid@harbour.example"),
+            to: [Correspondent(name: "Henrik Øgård (work)", email: "HENRIK.WORK@ogard.example")],
+            subject: "Stavanger terminal rollout",
+            snippet: "Can you confirm the berth schedule?",
+            date: Date(timeIntervalSince1970: 1_780_000_000)
+        )
+
+        let resolvedSourceID = ComposeSenderIdentity.replySourceID(
+            for: messageAddressedToWork,
+            in: [privateSection, workSection],
+            selectedSourceID: nil,
+            defaultSourceID: privateSection.id
+        )
+        #expect(resolvedSourceID == workSection.id)
+
+        let resolution = ComposeSenderIdentity.resolution(
+            from: [privateSection, workSection],
+            fallbackAccount: account,
+            selectedSourceID: privateSection.id,
+            defaultSourceID: privateSection.id,
+            replyingTo: messageAddressedToWork
+        )
+        #expect(resolution.sourceID == workSection.id)
+        #expect(resolution.initialSender?.correspondent == Correspondent(
+            name: "Henrik Øgård (work)",
+            email: "henrik.work@ogard.example"
+        ))
+    }
+
+    @Test("reply matches Cc recipient when To has no own identity and falls back when none match")
+    func replyMatchesCcOrFallsBackToDefault() {
+        let personalAccount = Self.account(
+            id: "personal-acct",
+            email: "henrik@personal.example",
+            name: "Henrik"
+        )
+        let workAccount = Self.account(
+            id: "work-acct",
+            email: "henrik@work.example",
+            name: "Henrik (work)"
+        )
+        let personal = Self.section(
+            account: personalAccount,
+            mailboxID: "personal-acct",
+            email: "henrik@personal.example",
+            displayName: "Henrik"
+        )
+        let work = Self.section(
+            account: workAccount,
+            mailboxID: "work-acct",
+            email: "henrik@work.example",
+            displayName: "Henrik (work)"
+        )
+        let ccWorkMessage = MessageHeader(
+            id: "msg-cc-1",
+            threadID: "thread-cc-1",
+            folderID: "inbox",
+            from: Correspondent(name: "Ada", email: "ada@partner.example"),
+            to: [Correspondent(name: "Team", email: "team@partner.example")],
+            cc: [Correspondent(name: "Henrik (work)", email: "henrik@work.example")],
+            subject: "Partner sync",
+            snippet: "Copying you for visibility.",
+            date: Date(timeIntervalSince1970: 1_780_000_100)
+        )
+        let unmatchedMessage = MessageHeader(
+            id: "msg-list-1",
+            threadID: "thread-list-1",
+            folderID: "inbox",
+            from: Correspondent(name: "Digest", email: "digest@list.example"),
+            to: [Correspondent(name: "Subscribers", email: "list@list.example")],
+            subject: "Weekly digest",
+            snippet: "Summary",
+            date: Date(timeIntervalSince1970: 1_780_000_200)
+        )
+
+        #expect(ComposeSenderIdentity.replySourceID(
+            for: ccWorkMessage,
+            in: [personal, work],
+            selectedSourceID: nil,
+            defaultSourceID: personal.id
+        ) == work.id)
+        #expect(ComposeSenderIdentity.replySourceID(
+            for: unmatchedMessage,
+            in: [personal, work],
+            selectedSourceID: nil,
+            defaultSourceID: personal.id
+        ) == personal.id)
     }
 
     private static func account(

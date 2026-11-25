@@ -507,7 +507,11 @@ public struct SettingsView: View {
 
     @ViewBuilder
     private var pluginSettingsGroup: some View {
-        let contributions = BrevPluginRegistry.shared.registeredContributions(for: .settingsPanel)
+        let contributions = SettingsPluginVisibilityPolicy.visibleSettingsContributions(
+            BrevPluginRegistry.shared.registeredContributions(for: .settingsPanel),
+            showsDeveloperSection: navigation.availability.contains(.developer),
+            defaults: settingsStore.defaults
+        )
         if !contributions.isEmpty {
             Section {
                 ForEach(contributions) { contribution in
@@ -983,6 +987,27 @@ private extension View {
         #else
         self
         #endif
+    }
+}
+
+enum SettingsPluginVisibilityPolicy {
+    /// Filters settings panel contributions so the built-in Example Plugin stays
+    /// hidden from default/production Settings unless Developer mode and the
+    /// explicit Example Plugin flag are enabled.
+    static func visibleSettingsContributions(
+        _ contributions: [RegisteredContribution],
+        showsDeveloperSection: Bool,
+        defaults: UserDefaults = .standard,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [RegisteredContribution] {
+        let allowsExamplePlugin = DeveloperSettings.isExamplePluginEnabled(
+            environment: environment,
+            defaults: defaults,
+            isDeveloperBuild: showsDeveloperSection
+        )
+        return contributions.filter { contribution in
+            contribution.pluginID != DeveloperSettings.examplePluginIdentifier || allowsExamplePlugin
+        }
     }
 }
 

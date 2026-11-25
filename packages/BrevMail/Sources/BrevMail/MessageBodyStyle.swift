@@ -45,10 +45,16 @@ struct MessageBodyStyle: Equatable, Sendable {
     let colorSchemeMeta: String
     let forcesOriginalLightCanvas: Bool
 
-    static let defaultLineHeight = 1.5
+    static let defaultLineHeight = 1.55
 
     /// Roughly 72 average-width characters, scaled with the reader's resolved font size.
     var maximumReadingWidth: CGFloat { bodyPointSize * 36 }
+
+    /// Extra line spacing for native SwiftUI plain-text bodies so their
+    /// vertical rhythm aligns with the HTML reader's `line-height`.
+    var swiftUILineSpacing: CGFloat {
+        max(0, (bodyPointSize * CGFloat(lineHeight - 1.25)).rounded())
+    }
 
     static func resolve(
         theme: BrevTheme,
@@ -148,6 +154,7 @@ struct MessageBodyStyle: Equatable, Sendable {
         html,body{margin:0;padding:0;background:\(baseBackground);\
         color:\(bodyTextColor);\
         font:\(Int(bodyPointSize))px \(fontFamily.cssFamily);\
+        font-weight:400;-webkit-font-smoothing:antialiased;\
         line-height:\(lineHeight);-webkit-text-size-adjust:100%;}\
         body{box-sizing:border-box;padding:\(inset)px;}\
         .brev-plain-text{max-width:72ch;overflow-wrap:anywhere;}\

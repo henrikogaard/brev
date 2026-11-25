@@ -291,9 +291,11 @@ public struct ThreadConversationView: View {
                     if hiddenReadCount > 0 {
                         hiddenReadMessagesFooter
                     }
+                    #if !os(macOS)
                     if let readerFooter {
                         readerFooter
                     }
+                    #endif
                 }
                 .padding(.bottom, BrevSpacing.lg)
                 .frame(maxWidth: 840)
@@ -303,6 +305,11 @@ public struct ThreadConversationView: View {
             .scrollContentBackground(.hidden)
             #if os(macOS)
                 .scrollClipDisabled()
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if let readerFooter {
+                        readerFooter
+                    }
+                }
                 .modifier(ReaderSingleKeyShortcutModifier { key in
                     let target = visibleHeaders.first { $0.id == navigation.selectedMessageID }
                     return key.performInReader(navigation: navigation, header: target, sourceID: sourceID) { action, header in

@@ -748,14 +748,21 @@ public struct MessageDetailView: View {
                             driveAvailable: driveFeature?.isEligible(account: backend.account) == true
                         )
                     }
+                    #if !os(macOS)
                     if let readerFooter {
                         readerFooter
                     }
+                    #endif
                 }
             }
         }
         #if os(macOS)
         .scrollClipDisabled()
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let readerFooter {
+                readerFooter
+            }
+        }
         #endif
         .toolbar {
             #if os(iOS)
@@ -2095,6 +2102,8 @@ public struct MessageDetailView: View {
             if segments.count == 1, case .text(let only) = segments[0] {
                 Text(only)
                     .font(messageBodyFont)
+                    .fontWeight(.regular)
+                    .lineSpacing(messageBodyStyle.swiftUILineSpacing)
                     .foregroundStyle(theme.textPrimary.color)
                     .textSelection(.enabled)
             } else {
@@ -2104,6 +2113,8 @@ public struct MessageDetailView: View {
                         case .text(let run):
                             Text(run)
                                 .font(messageBodyFont)
+                                .fontWeight(.regular)
+                                .lineSpacing(messageBodyStyle.swiftUILineSpacing)
                                 .foregroundStyle(theme.textPrimary.color)
                                 .textSelection(.enabled)
                         case .quote(let run):
@@ -2113,6 +2124,8 @@ public struct MessageDetailView: View {
                                     .frame(width: 3)
                                 Text(run)
                                     .font(messageBodyFont)
+                                    .fontWeight(.regular)
+                                    .lineSpacing(messageBodyStyle.swiftUILineSpacing)
                                     .foregroundStyle(theme.textSecondary.color)
                                     .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)

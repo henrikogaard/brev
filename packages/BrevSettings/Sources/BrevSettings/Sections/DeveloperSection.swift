@@ -45,6 +45,16 @@ struct DeveloperSection: View {
                         isOn: demoModeBinding
                     )
 
+                    SettingsToggleRow(
+                        symbolName: "puzzlepiece.extension",
+                        title: String(localized: "Show Example Plugin", bundle: .module),
+                        subtitle: String(
+                            localized: "Include the built-in Example Plugin in Settings and mail surfaces for extension development.",
+                            bundle: .module
+                        ),
+                        isOn: showExamplePluginBinding
+                    )
+
                     SettingsInfoCallout(
                         symbolName: "arrow.clockwise",
                         message: String(
@@ -56,6 +66,17 @@ struct DeveloperSection: View {
                 }
             }
         }
+    }
+
+    private var showExamplePluginBinding: Binding<Bool> {
+        Binding(
+            get: { settings.showExamplePlugin },
+            set: { isEnabled in
+                guard settings.showExamplePlugin != isEnabled else { return }
+                settings.showExamplePlugin = isEnabled
+                settingsStore.save(settings)
+            }
+        )
     }
 
     private var demoModeBinding: Binding<Bool> {

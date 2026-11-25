@@ -718,7 +718,14 @@ final class BrevIOSAppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = notificationDelegate
         Self.sharedSession.installNotificationActionHandlers(on: notificationDelegate)
-        BrevPluginRegistry.shared.register(BrevExamplePlugin())
+        #if DEBUG
+        let isDeveloperBuild = true
+        #else
+        let isDeveloperBuild = false
+        #endif
+        if DeveloperSettings.isExamplePluginEnabled(isDeveloperBuild: isDeveloperBuild) {
+            BrevPluginRegistry.shared.register(BrevExamplePlugin())
+        }
         BrevBackgroundRefreshCoordinator.register()
         return true
     }

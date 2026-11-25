@@ -46,7 +46,10 @@ struct MessageBodyStyleTests {
         #expect(!css.contains("#E5E7EB"))
         #expect(!css.contains("#93C5FD"))
         #expect(css.contains("padding:16px"))
-        #expect(css.contains("line-height:1.5"))
+        #expect(css.contains("font-weight:400"))
+        #expect(css.contains("-webkit-font-smoothing:antialiased"))
+        #expect(css.contains("line-height:1.55"))
+        #expect(style.swiftUILineSpacing > 0)
         #expect(style.backgroundColorHex == normalizedHex(theme.bgPrimary.hex))
         #expect(css.contains("background:\(normalizedHex(theme.bgPrimary.hex))"))
     }
