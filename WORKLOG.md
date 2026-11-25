@@ -8865,3 +8865,8 @@ buttons, and package-aware localization.
   - Local Mac Studio (headless CLI only): `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
 - **Skipped:** None.
 - **Next:** Commit on `feat/native-liquid-glass-composer`, push, and open PR targeting `main`.
+- **Review fixes round 1 (PR #375 — Codex P2 + Devin Review, 7 threads):**
+  - Preserved iOS `ComposeBodyTextView` identity across Reduce Transparency toggles (`PRRT_kwDOUHC-Ds68IOF6`) by applying `.scrollEdgeEffectStyle(effectiveReduceTransparency ? .automatic : .soft, for: .top)` unconditionally on iOS 26+ in `ComposeSoftTopScrollEdgeModifier`, with a live iOS `UIHostingController` identity + formatting regression test in `ComposeAccessibilityBoundsTests`.
+  - Reserved `64 pt` bottom scrollable clearance (`NSScrollView.contentInsets.bottom` with `automaticallyAdjustsContentInsets = false`) in `ComposeBodyEditor` while the macOS `macFloatingFormattingBar` is visible (`PRRT_kwDOUHC-Ds68INWt`, `PRRT_kwDOUHC-Ds68IOHT`), preserving `ComposeRichTextView` identity and selection, with macOS unit coverage in `ComposeBodyEditorAppearanceTests` and `ComposePresentationTests`.
+  - Disabled and dimmed `macWindowFormatToggleButton` (`isInteractionBlocked || showsHTMLPreview`) and cleared its active tint/selection trait while HTML Preview is active (`PRRT_kwDOUHC-Ds68IOI3`), with unit coverage in `ComposePresentationTests`.
+  - Removed dead `isCircle` parameter from `composeGlassButton` / `ComposeGlassButtonStyleModifier` (`PRRT_kwDOUHC-Ds68IOMF`) and removed dead `ComposeUtilityPillModifier` so `mobileAIWritePill` cleanly uses `fallbackFill`/`fallbackStroke` when Liquid Glass is disabled (`PRRT_kwDOUHC-Ds68IOK5`).

@@ -79,6 +79,9 @@ struct ComposeBodyEditor: View {
     /// the sheet left keyboard focus on another field. Unused on iOS.
     var macRichTextTargetBox: ComposeMacRichTextTargetBox?
     var restoredAttributedText: NSAttributedString?
+    /// Extra scrollable bottom inset reserved beneath floating chrome (e.g., the
+    /// macOS bottom-floating formatting pill bar) so the last lines stay clear.
+    var bottomContentInset: CGFloat = 0
 
     var body: some View {
         PlatformComposeBodyEditor(
@@ -101,7 +104,8 @@ struct ComposeBodyEditor: View {
             quoteProtection: quoteProtection,
             focusRequest: focusRequest,
             macRichTextTargetBox: macRichTextTargetBox,
-            restoredAttributedText: restoredAttributedText
+            restoredAttributedText: restoredAttributedText,
+            bottomContentInset: bottomContentInset
         )
     }
 }
@@ -515,6 +519,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
     var focusRequest: ComposeBodyFocusRequest?
     var macRichTextTargetBox: ComposeMacRichTextTargetBox?
     var restoredAttributedText: NSAttributedString?
+    var bottomContentInset: CGFloat
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -536,6 +541,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         let scrollView = NSScrollView()
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: bottomContentInset, right: 0)
 
         let textView = ComposeRichTextView()
         textView.richActionsTarget = context.coordinator
@@ -597,6 +604,12 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? ComposeRichTextView else {
             return
+        }
+        if scrollView.automaticallyAdjustsContentInsets {
+            scrollView.automaticallyAdjustsContentInsets = false
+        }
+        if scrollView.contentInsets.bottom != bottomContentInset {
+            scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: bottomContentInset, right: 0)
         }
         context.coordinator.isUpdatingFromSwiftUI = true
         textView.isEditable = isEnabled
@@ -1787,6 +1800,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     /// Unused on iOS; kept for call-site parity with the macOS representable.
     var macRichTextTargetBox: ComposeMacRichTextTargetBox?
     var restoredAttributedText: NSAttributedString?
+    /// Unused on iOS; kept for call-site parity with the macOS representable.
+    var bottomContentInset: CGFloat
 
     private var isRichText: Bool { bodyFormat == .richTextHTML }
 

@@ -617,6 +617,30 @@ struct ComposeBodyEditorAppearanceTests {
         NSFontManager.shared.convert(NSFont.systemFont(ofSize: 15), toHaveTrait: traits)
     }
 
+    @Test("bottom content inset reserves scrollable space beneath macOS floating formatting bar without recreating the editor")
+    func bottomContentInsetReservesScrollableSpaceWhilePreservingEditorIdentity() throws {
+        let harness = Harness(text: "Line 1\nLine 2\nFinal line", format: .richTextHTML)
+        let host = harness.host()
+        let editor = try #require(Self.editor(in: host))
+        let scrollView = try #require(editor.enclosingScrollView)
+        editor.setSelectedRange(NSRange(location: 7, length: 6))
+
+        #expect(!scrollView.automaticallyAdjustsContentInsets)
+        #expect(scrollView.contentInsets.bottom == 0)
+
+        let reservedInset = ComposeLiquidGlass.macFloatingFormattingBarBottomInset(isVisible: true)
+        #expect(reservedInset > 0)
+        harness.bottomContentInset = reservedInset
+        try harness.rerender(host, editor: editor)
+        #expect(scrollView.contentInsets.bottom == reservedInset)
+        #expect(editor.selectedRange() == NSRange(location: 7, length: 6))
+
+        harness.bottomContentInset = ComposeLiquidGlass.macFloatingFormattingBarBottomInset(isVisible: false)
+        try harness.rerender(host, editor: editor)
+        #expect(scrollView.contentInsets.bottom == 0)
+        #expect(editor.selectedRange() == NSRange(location: 7, length: 6))
+    }
+
     private static func range(_ word: String, in text: String) -> NSRange {
         (text as NSString).range(of: word)
     }
@@ -656,6 +680,7 @@ struct ComposeBodyEditorAppearanceTests {
         var focusRequest: ComposeBodyFocusRequest?
         var family = MailboxFontFamily.system
         var size = MailboxTextSize.medium
+        var bottomContentInset: CGFloat = 0
         var generation = 0
         var deliveredGeneration = -1
 
@@ -686,7 +711,8 @@ struct ComposeBodyEditorAppearanceTests {
                 onFileDragTargetChanged: { _ in self.deliveredGeneration = revision },
                 quoteProtection: quoteProtection,
                 focusRequest: focusRequest,
-                restoredAttributedText: restoredAttributedText
+                restoredAttributedText: restoredAttributedText,
+                bottomContentInset: bottomContentInset
             )
         }
 

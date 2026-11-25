@@ -307,5 +307,20 @@ struct ComposePresentationTests {
     @Test("ComposeLiquidGlass respects Reduce Transparency accessibility setting")
     func composeLiquidGlassRespectsReduceTransparency() {
         #expect(!ComposeLiquidGlass.isEnabled(reduceTransparency: true))
+        #expect(!ComposeLiquidGlass.usesSoftTopScrollEdge(reduceTransparency: true))
+    }
+
+    @Test("macOS floating formatting bar reserves scrollable bottom inset only while visible")
+    func macFloatingFormattingBarBottomInsetTracksVisibility() {
+        #expect(ComposeLiquidGlass.macFloatingFormattingBarBottomInset(isVisible: false) == 0)
+        #expect(ComposeLiquidGlass.macFloatingFormattingBarBottomInset(isVisible: true) > 0)
+    }
+
+    @Test("macOS Format toolbar toggle disables during HTML Preview or blocked interaction")
+    func macFormatToggleDisablesDuringHTMLPreviewAndBlockedInteraction() {
+        #expect(!ComposeLiquidGlass.isMacFormatToggleDisabled(isInteractionBlocked: false, showsHTMLPreview: false))
+        #expect(ComposeLiquidGlass.isMacFormatToggleDisabled(isInteractionBlocked: false, showsHTMLPreview: true))
+        #expect(ComposeLiquidGlass.isMacFormatToggleDisabled(isInteractionBlocked: true, showsHTMLPreview: false))
+        #expect(ComposeLiquidGlass.isMacFormatToggleDisabled(isInteractionBlocked: true, showsHTMLPreview: true))
     }
 }

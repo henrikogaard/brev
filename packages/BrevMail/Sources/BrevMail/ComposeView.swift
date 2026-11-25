@@ -1697,7 +1697,7 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private func mobileAIWritePill(usesGlass: Bool) -> some View {
-        Menu {
+        let menu = Menu {
             aiWriterMenuContent
         } label: {
             Label(String(localized: "Write", bundle: .module), systemImage: "sparkles")
@@ -1711,14 +1711,21 @@ public struct ComposeView: View {
         .disabled(aiWriterMenuDisabled)
         .opacity(aiWriterMenuDisabled ? 0.45 : 1)
         .accessibilityLabel(ComposeToolbarAction.aiWriter.accessibilityLabel)
-        .modifier(
-            ComposeUtilityPillModifier(
-                usesGlass: usesGlass,
-                interactive: !aiWriterMenuDisabled,
-                fallbackFill: theme.bgSecondary.color,
-                fallbackStroke: theme.border.color
-            )
-        )
+
+        if usesGlass {
+            menu
+                .background(Capsule().fill(theme.bgSecondary.color.opacity(0.45)))
+                .clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(theme.border.color.opacity(0.45), lineWidth: 0.75))
+                .composeGlassCapsule(interactive: !aiWriterMenuDisabled)
+        } else {
+            menu
+                .composeGlassCapsule(
+                    interactive: !aiWriterMenuDisabled,
+                    fallbackFill: theme.bgSecondary.color,
+                    fallbackStroke: theme.border.color
+                )
+        }
     }
 
     /// The paperclip: a menu of attachment sources, like iOS Mail. Sources the
@@ -3038,7 +3045,8 @@ public struct ComposeView: View {
             quoteProtection: quoteProtection,
             focusRequest: bodyFocusRequest,
             macRichTextTargetBox: macRichTextTargetBox,
-            restoredAttributedText: restoredBody?.attributedText
+            restoredAttributedText: restoredBody?.attributedText,
+            bottomContentInset: composeBodyBottomContentInset
         )
         .padding(.horizontal, contentHorizontalInset)
         .padding(.vertical, BrevSpacing.lg)
@@ -3087,6 +3095,14 @@ public struct ComposeView: View {
         return copy
     }
 
+    private var composeBodyBottomContentInset: CGFloat {
+        #if os(macOS)
+        ComposeLiquidGlass.macFloatingFormattingBarBottomInset(isVisible: showsMacFloatingFormattingBar)
+        #else
+        0
+        #endif
+    }
+
     #if os(macOS)
     /// Seeds whether the macOS floating formatting bar starts visible for layout and snapshot tests.
     func initialFormattingBarVisible(_ isVisible: Bool) -> ComposeView {
@@ -3108,6 +3124,11 @@ public struct ComposeView: View {
     @ViewBuilder
     private var macWindowFormatToggleButton: some View {
         if composeBodyFormat == .richTextHTML {
+            let isDisabled = ComposeLiquidGlass.isMacFormatToggleDisabled(
+                isInteractionBlocked: isInteractionBlocked,
+                showsHTMLPreview: showsHTMLPreview
+            )
+            let isSelected = showsFormattingBar && !showsHTMLPreview
             Button {
                 if reduceMotion {
                     showsFormattingBar.toggle()
@@ -3118,23 +3139,23 @@ public struct ComposeView: View {
                 }
             } label: {
                 Image(systemName: "textformat")
-                    .font(.system(size: 14, weight: showsFormattingBar ? .semibold : .regular))
+                    .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(showsFormattingBar ? theme.accent.color : theme.textSecondary.color)
+                    .foregroundStyle(isSelected ? theme.accent.color : theme.textSecondary.color)
                     .frame(width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize)
                     .background(
                         Capsule().fill(
-                            showsFormattingBar ? theme.accent.color.opacity(0.16) : Color.clear
+                            isSelected ? theme.accent.color.opacity(0.16) : Color.clear
                         )
                     )
                     .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(isInteractionBlocked)
-            .opacity(isInteractionBlocked ? 0.45 : 1)
+            .disabled(isDisabled)
+            .opacity(isDisabled ? 0.45 : 1)
             .accessibilityLabel(ComposeToolbarAction.format.accessibilityLabel)
-            .accessibilityAddTraits(showsFormattingBar ? .isSelected : [])
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
             .help(ComposeToolbarAction.format.accessibilityLabel)
         }
     }
@@ -5743,6 +5764,9 @@ private enum ComposeLayout {
     static let fieldAccessorySize: CGFloat = 24
     static let aiPreviewMaxHeight: CGFloat = 180
     static let inlineCardCornerRadius: CGFloat = 16
+    /// Scrollable bottom clearance reserved beneath the detached macOS
+    /// bottom-floating formatting pill bar (36 pt pill + 16 pt margin + 12 pt breathing room).
+    static let macFloatingFormattingBarReservedInset: CGFloat = 64
     /// Ideal width reported for sheet sizing on compact iOS. Matches the
     /// narrowest supported phone viewport so large-type content can never
     /// widen the sheet past the screen (#49).
@@ -5878,6 +5902,32 @@ enum ComposeLiquidGlass {
         return false
     }
 
+    /// Bottom scrollable inset reserved for the macOS floating formatting bar
+    /// so the last lines and caret scroll completely clear of the overlay.
+    static func macFloatingFormattingBarBottomInset(isVisible: Bool) -> CGFloat {
+        isVisible ? ComposeLayout.macFloatingFormattingBarReservedInset : 0
+    }
+
+    /// Whether the detached macOS Format (`Aa`) toolbar toggle should be disabled.
+    static func isMacFormatToggleDisabled(
+        isInteractionBlocked: Bool,
+        showsHTMLPreview: Bool
+    ) -> Bool {
+        isInteractionBlocked || showsHTMLPreview
+    }
+
+    /// Whether the iOS 26+ compose scroll view uses `.soft` top scroll-edge
+    /// chrome (`.automatic` when Reduce Transparency is on) without changing
+    /// structural view identity.
+    static func usesSoftTopScrollEdge(reduceTransparency: Bool) -> Bool {
+        #if os(iOS) && compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            return !reduceTransparency
+        }
+        #endif
+        return false
+    }
+
     /// Groups adjacent Liquid Glass controls into a shared `GlassEffectContainer`
     /// on macOS 26 / iOS 26, falling back to a plain transparent container on
     /// earlier OS versions or when Reduce Transparency is enabled.
@@ -5914,7 +5964,6 @@ private struct ComposeGlassButtonStyleModifier: ViewModifier {
 
     let prominent: Bool
     let tint: Color?
-    let isCircle: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -5922,15 +5971,25 @@ private struct ComposeGlassButtonStyleModifier: ViewModifier {
         if #available(macOS 26.0, iOS 26.0, *), !reduceTransparency {
             if prominent {
                 if let tint {
-                    applyBorderShape(content.buttonStyle(.glassProminent).tint(tint))
+                    content
+                        .buttonStyle(.glassProminent)
+                        .tint(tint)
+                        .buttonBorderShape(.capsule)
                 } else {
-                    applyBorderShape(content.buttonStyle(.glassProminent))
+                    content
+                        .buttonStyle(.glassProminent)
+                        .buttonBorderShape(.capsule)
                 }
             } else {
                 if let tint {
-                    applyBorderShape(content.buttonStyle(.glass).tint(tint))
+                    content
+                        .buttonStyle(.glass)
+                        .tint(tint)
+                        .buttonBorderShape(.capsule)
                 } else {
-                    applyBorderShape(content.buttonStyle(.glass))
+                    content
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
                 }
             }
         } else {
@@ -5939,15 +5998,6 @@ private struct ComposeGlassButtonStyleModifier: ViewModifier {
         #else
         content.buttonStyle(.plain)
         #endif
-    }
-
-    @ViewBuilder
-    private func applyBorderShape(_ styled: some View) -> some View {
-        if isCircle {
-            styled.buttonBorderShape(.circle)
-        } else {
-            styled.buttonBorderShape(.capsule)
-        }
     }
 }
 
@@ -6037,14 +6087,21 @@ private struct ComposeGlassCircleModifier: ViewModifier {
     }
 }
 
-private struct ComposeSoftTopScrollEdgeModifier: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+struct ComposeSoftTopScrollEdgeModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var environmentReduceTransparency
+    var reduceTransparencyOverride: Bool?
+
+    private var effectiveReduceTransparency: Bool {
+        reduceTransparencyOverride ?? environmentReduceTransparency
+    }
 
     @ViewBuilder
     func body(content: Content) -> some View {
         #if os(iOS) && compiler(>=6.2)
-        if #available(iOS 26.0, *), !reduceTransparency {
-            content.scrollEdgeEffectStyle(.soft, for: .top)
+        if #available(iOS 26.0, *) {
+            // Keep one unified structural view identity across Reduce Transparency
+            // toggles so the hosted UITextView body editor is never recreated mid-draft.
+            content.scrollEdgeEffectStyle(effectiveReduceTransparency ? .automatic : .soft, for: .top)
         } else {
             content
         }
@@ -6054,29 +6111,9 @@ private struct ComposeSoftTopScrollEdgeModifier: ViewModifier {
     }
 }
 
-private struct ComposeUtilityPillModifier: ViewModifier {
-    let usesGlass: Bool
-    let interactive: Bool
-    let fallbackFill: Color
-    let fallbackStroke: Color
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if usesGlass {
-            content.composeGlassCapsule(
-                interactive: interactive,
-                fallbackFill: fallbackFill,
-                fallbackStroke: fallbackStroke
-            )
-        } else {
-            content
-        }
-    }
-}
-
 extension View {
-    func composeGlassButton(prominent: Bool, tint: Color?, isCircle: Bool = false) -> some View {
-        modifier(ComposeGlassButtonStyleModifier(prominent: prominent, tint: tint, isCircle: isCircle))
+    func composeGlassButton(prominent: Bool, tint: Color?) -> some View {
+        modifier(ComposeGlassButtonStyleModifier(prominent: prominent, tint: tint))
     }
 
     func composeGlassCapsule(
