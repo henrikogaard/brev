@@ -50,6 +50,61 @@ struct ComposeSenderResolution: Equatable {
     let sourceID: MailSourceID?
 }
 
+/// Separates the account/source that owns the original message (for quoted body
+/// retrieval) from the recipient-matched sending source across quick-reply dock
+/// expansion and full compose presentation.
+struct ComposeReplyAccountRouting: Equatable, Sendable {
+    let sendingSourceID: MailSourceID?
+    let quotedMessageSourceID: MailSourceID?
+
+    static func resolve(
+        replyingTo header: MessageHeader?,
+        in sections: [MailSourceSection],
+        messageOwnerSourceID: MailSourceID?,
+        defaultSourceID: MailSourceID?
+    ) -> ComposeReplyAccountRouting {
+        let matchedSendingSourceID: MailSourceID? = if let header {
+            ComposeSenderIdentity.replySourceID(
+                for: header,
+                in: sections,
+                selectedSourceID: messageOwnerSourceID,
+                defaultSourceID: defaultSourceID
+            )
+        } else {
+            messageOwnerSourceID
+        }
+        return ComposeReplyAccountRouting(
+            sendingSourceID: matchedSendingSourceID ?? messageOwnerSourceID ?? defaultSourceID,
+            quotedMessageSourceID: messageOwnerSourceID ?? defaultSourceID
+        )
+    }
+
+    /// Resolves the sending source for `composeEditor`. When expanding a
+    /// quick-reply into the macOS inline dock (`hostStyle == .inline`) with a
+    /// pinned sending source, keeps that source stable instead of rematching
+    /// against accounts hidden by the active profile.
+    static func effectiveComposeSourceID(
+        hostStyle: ComposeHostStyle,
+        anchorSourceID: MailSourceID?,
+        candidateSections: [MailSourceSection],
+        defaultSourceID: MailSourceID?,
+        replyingTo: MessageHeader?
+    ) -> MailSourceID? {
+        if hostStyle == .inline, let anchorSourceID {
+            return anchorSourceID
+        }
+        if let replyingTo {
+            return ComposeSenderIdentity.replySourceID(
+                for: replyingTo,
+                in: candidateSections,
+                selectedSourceID: anchorSourceID,
+                defaultSourceID: defaultSourceID
+            ) ?? anchorSourceID
+        }
+        return anchorSourceID
+    }
+}
+
 enum ComposeSenderIdentity {
     static func senderSections(
         from sourceSections: [MailSourceSection],
@@ -111,8 +166,17 @@ enum ComposeSenderIdentity {
     static func preferredSender(
         from options: [ComposeSenderOption],
         selectedSourceID: MailSourceID?,
-        defaultSourceID: MailSourceID?
+        defaultSourceID: MailSourceID?,
+        replyingTo: MessageHeader? = nil
     ) -> ComposeSenderOption? {
+        if let replyingTo,
+           let matched = matchedReplyOption(
+               for: replyingTo,
+               in: options,
+               preferredSourceID: selectedSourceID
+           ) {
+            return matched
+        }
         let preferredSourceIDs = [selectedSourceID, defaultSourceID].compactMap { $0 }
         for sourceID in preferredSourceIDs {
             if let option = options.first(where: { $0.sourceID == sourceID }) {
@@ -120,6 +184,33 @@ enum ComposeSenderIdentity {
             }
         }
         return options.first
+    }
+
+    /// Resolves the source section to reply from for `header`. Prefers a section
+    /// whose mailbox address appears in `header.to`, then `header.cc` (breaking
+    /// ties with `selectedSourceID` when multiple own identities were addressed),
+    /// before falling back to `selectedSourceID`, `defaultSourceID`, or the first
+    /// available section.
+    static func replySourceID(
+        for header: MessageHeader,
+        in sections: [MailSourceSection],
+        selectedSourceID: MailSourceID?,
+        defaultSourceID: MailSourceID?
+    ) -> MailSourceID? {
+        if let matched = matchedReplySection(
+            for: header,
+            in: sections,
+            preferredSourceID: selectedSourceID
+        ) {
+            return matched.id
+        }
+        let preferredSourceIDs = [selectedSourceID, defaultSourceID].compactMap { $0 }
+        for sourceID in preferredSourceIDs {
+            if sections.contains(where: { $0.id == sourceID }) {
+                return sourceID
+            }
+        }
+        return selectedSourceID ?? defaultSourceID ?? sections.first?.id
     }
 
     /// Resolves the sender options, initial selection, and effective source id
@@ -137,22 +228,68 @@ enum ComposeSenderIdentity {
     ///   - selectedSourceID: The source the user is composing from, if any.
     ///   - defaultSourceID: The account's default source, used when nothing is
     ///     explicitly selected.
+    ///   - replyingTo: Optional message header being replied to; when present,
+    ///     an option matching its addressed recipient takes precedence.
     static func resolution(
         from sections: [MailSourceSection],
         fallbackAccount: BrevAccount,
         selectedSourceID: MailSourceID?,
-        defaultSourceID: MailSourceID?
+        defaultSourceID: MailSourceID?,
+        replyingTo: MessageHeader? = nil
     ) -> ComposeSenderResolution {
         let options = senderOptions(from: sections, fallbackAccount: fallbackAccount)
         let initialSender = preferredSender(
             from: options,
             selectedSourceID: selectedSourceID,
-            defaultSourceID: defaultSourceID
+            defaultSourceID: defaultSourceID,
+            replyingTo: replyingTo
         )
         return ComposeSenderResolution(
             options: options,
             initialSender: initialSender,
             sourceID: initialSender?.sourceID ?? selectedSourceID
         )
+    }
+
+    private static func matchedReplySection(
+        for header: MessageHeader,
+        in sections: [MailSourceSection],
+        preferredSourceID: MailSourceID?
+    ) -> MailSourceSection? {
+        for recipients in [header.to, header.cc] {
+            let recipientEmails = Set(recipients.map { normalizedEmail($0.email) }.filter { !$0.isEmpty })
+            guard !recipientEmails.isEmpty else { continue }
+            let matches = sections.filter { recipientEmails.contains(normalizedEmail($0.mailbox.email)) }
+            guard !matches.isEmpty else { continue }
+            if let preferredSourceID,
+               let preferred = matches.first(where: { $0.id == preferredSourceID }) {
+                return preferred
+            }
+            return matches.first
+        }
+        return nil
+    }
+
+    private static func matchedReplyOption(
+        for header: MessageHeader,
+        in options: [ComposeSenderOption],
+        preferredSourceID: MailSourceID?
+    ) -> ComposeSenderOption? {
+        for recipients in [header.to, header.cc] {
+            let recipientEmails = Set(recipients.map { normalizedEmail($0.email) }.filter { !$0.isEmpty })
+            guard !recipientEmails.isEmpty else { continue }
+            let matches = options.filter { recipientEmails.contains(normalizedEmail($0.email)) }
+            guard !matches.isEmpty else { continue }
+            if let preferredSourceID,
+               let preferred = matches.first(where: { $0.sourceID == preferredSourceID }) {
+                return preferred
+            }
+            return matches.first
+        }
+        return nil
+    }
+
+    private static func normalizedEmail(_ email: String) -> String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

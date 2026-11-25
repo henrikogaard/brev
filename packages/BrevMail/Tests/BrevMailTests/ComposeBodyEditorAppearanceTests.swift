@@ -469,6 +469,99 @@ struct ComposeBodyEditorAppearanceTests {
         }
     }
 
+    @Test("reply body starts with leading blank composing line and places initial caret at offset 0 above attribution")
+    func replyBodyStartsWithBlankLineAndCaretAtOffsetZero() throws {
+        let header = MessageHeader(
+            id: "reply-caret-1",
+            threadID: "thread-caret-1",
+            folderID: "inbox",
+            from: Correspondent(name: "Sigrid Solberg", email: "sigrid@harbour.example"),
+            subject: "Berth schedule",
+            snippet: "Can you confirm the Friday slot?",
+            date: Date(timeIntervalSince1970: 1_779_960_600)
+        )
+        let locale = Locale(identifier: "en_GB")
+        let utc = TimeZone(identifier: "UTC")!
+        let marker = ComposeReplyFormatter.quoteMarker(for: header, locale: locale, timeZone: utc)
+        let replyBody = ComposeReplyFormatter.body(
+            for: header,
+            placement: .belowReply,
+            locale: locale,
+            timeZone: utc
+        )
+        let protection = ComposeQuoteProtection(marker: marker, edge: .bottom)
+
+        #expect(replyBody.hasPrefix("\n\n\(marker)"))
+        let protected = try #require(ComposeQuoteEditGuard.protectedRange(
+            in: replyBody as NSString,
+            protection: protection
+        ))
+        #expect(protected.location == 2)
+
+        let harness = Harness(
+            text: replyBody,
+            format: .richTextHTML,
+            quoteProtection: protection
+        )
+        let host = harness.host()
+        let editor = try #require(Self.editor(in: host))
+
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 0))
+        #expect(harness.insertion?.nsRange == NSRange(location: 0, length: 0))
+
+        // Upgrading the provisional quote snippet with decoded body text must
+        // keep the caret at offset 0 above the attribution line.
+        harness.text = ComposeReplyFormatter.body(
+            for: header,
+            quoteText: "Full decoded message body line 1.\nLine 2.",
+            placement: .belowReply,
+            locale: locale,
+            timeZone: utc
+        )
+        try harness.rerender(host, editor: editor)
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 0))
+        #expect(editor.string.hasPrefix("\n\n\(marker)"))
+
+        // Explicit focus request places caret at offset 0 even if previously moved.
+        editor.setSelectedRange(NSRange(location: 1, length: 0))
+        harness.focusRequest = ComposeBodyFocusRequest(
+            id: 1,
+            selection: ComposeFocusPolicy.initialBodySelection(
+                in: editor.string as NSString,
+                quoteProtection: protection
+            )
+        )
+        try harness.rerender(host, editor: editor)
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 0))
+    }
+
+    @Test("inserted and parsed macOS tables inset trailing edge and draw 1 pt four-sided borders")
+    func macTablesInsetTrailingEdgeForFourSidedBorders() throws {
+        let style = ComposeRichHTMLAttributedBuilder.Style.default(theme: .brevMonoDark)
+        let inserted = ComposeRichHTMLAttributedBuilder.makeTableAttributedString(
+            headers: ["Header 1", "Header 2"],
+            rows: [["Cell 1", "Cell 2"]],
+            style: style
+        )
+        let parsed = try #require(ComposeRichHTMLAttributedBuilder.attributedString(
+            from: "<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>",
+            style: style,
+            strict: true
+        ))
+
+        for attributed in [inserted, parsed] {
+            let paraStyle = try #require(attributed.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+            let block = try #require(paraStyle.textBlocks.compactMap { $0 as? NSTextTableBlock }.first)
+            let table = block.table
+            #expect(table.contentWidth < 100)
+            #expect(table.width(for: .margin, edge: .maxX) >= 1)
+            for edge: NSRectEdge in [.minX, .maxX, .minY, .maxY] {
+                #expect(block.width(for: .border, edge: edge) >= 1)
+                #expect(block.borderColor(for: edge) != nil)
+            }
+        }
+    }
+
     private static func colorsMatch(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
         guard let lhs, let rhs,
               let left = lhs.usingColorSpace(.sRGB),
@@ -559,6 +652,8 @@ struct ComposeBodyEditorAppearanceTests {
         let flush = ComposeHTMLPublicationFlushBox()
         var appearance = ComposeBodyAppearance.light
         var restoredAttributedText: NSAttributedString?
+        var quoteProtection: ComposeQuoteProtection?
+        var focusRequest: ComposeBodyFocusRequest?
         var family = MailboxFontFamily.system
         var size = MailboxTextSize.medium
         var generation = 0
@@ -568,12 +663,14 @@ struct ComposeBodyEditorAppearanceTests {
             text: String,
             format: ComposeBodyFormat,
             appearance: ComposeBodyAppearance = .light,
-            restoredAttributedText: NSAttributedString? = nil
+            restoredAttributedText: NSAttributedString? = nil,
+            quoteProtection: ComposeQuoteProtection? = nil
         ) {
             self.text = text
             self.format = format
             self.appearance = appearance
             self.restoredAttributedText = restoredAttributedText
+            self.quoteProtection = quoteProtection ?? Self.quote
         }
 
         func root() -> ComposeBodyEditor {
@@ -587,7 +684,8 @@ struct ComposeBodyEditorAppearanceTests {
                 textCheckingConfiguration: ComposeTextCheckingPolicy.configuration(isEnabled: false),
                 fontFamily: family, textSize: size,
                 onFileDragTargetChanged: { _ in self.deliveredGeneration = revision },
-                quoteProtection: Self.quote,
+                quoteProtection: quoteProtection,
+                focusRequest: focusRequest,
                 restoredAttributedText: restoredAttributedText
             )
         }

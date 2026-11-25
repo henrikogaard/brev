@@ -610,6 +610,8 @@ struct ThreadMessageCard: View {
         case .plainText(let text):
             Text(text)
                 .font(messageBodyFont)
+                .fontWeight(.regular)
+                .lineSpacing(messageBodyStyle.swiftUILineSpacing)
                 .foregroundStyle(theme.textPrimary.color)
                 .textSelection(.enabled)
                 .modifier(MessageReadingColumn(style: messageBodyStyle))

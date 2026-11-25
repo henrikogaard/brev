@@ -273,6 +273,22 @@ struct AIWriterSectionMacSnapshotTests {
         }
     }
 
+    @Test("DeveloperSection separates demo-mode relaunch callout from Example Plugin toggle", arguments: ["light", "dark"])
+    func developerSection(_ mode: String) throws {
+        guard #available(macOS 26.0, *) else { return }
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let suite = "DeveloperSectionSnapshot-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SettingsPersistenceStore(defaults: defaults)
+        capture(
+            DeveloperSection(settingsStore: store, actions: .unavailable),
+            theme: theme,
+            name: "developer-" + mode,
+            size: CGSize(width: 680, height: 500)
+        )
+    }
+
     @Test("Transparency choices explain window coverage", arguments: [WindowTransparencySelection.off, .sidebars, .fullWindows])
     func windowTransparency(selection: WindowTransparencySelection) {
         var preferences = WindowAppearancePreferences.defaults

@@ -12,6 +12,7 @@
 
 #if os(macOS)
 import AppKit
+import BrevThemes
 import SwiftUI
 
 struct MacMailAuxiliaryWindowConfiguration: Equatable {
@@ -265,6 +266,7 @@ enum MacComposeToolbarItemIdentifier {
 @MainActor
 final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
     private var contentViews: [NSToolbarItem.Identifier: AnyView] = [:]
+    private var theme: BrevTheme = .brevMonoLight
     var sendAction: (() -> Void)?
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -287,7 +289,8 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
         let width = MacComposeToolbarItemIdentifier.itemWidth(for: itemIdentifier)
         let size = NSSize(width: width, height: 36)
         let content = contentViews[itemIdentifier] ?? AnyView(EmptyView())
-        let hostingView = NSHostingView(rootView: AnyView(content.frame(width: width, height: 36)))
+        let hostingView = NSHostingView(rootView: themedRootView(content, width: width))
+        hostingView.appearance = NSAppearance(named: theme.mode == .dark ? .darkAqua : .aqua)
         hostingView.frame = NSRect(origin: .zero, size: size)
         item.view = hostingView
         item.minSize = size
@@ -295,17 +298,35 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
         return item
     }
 
-    func updateContentViews(_ views: [NSToolbarItem.Identifier: AnyView], in toolbar: NSToolbar?) {
+    func updateContentViews(
+        _ views: [NSToolbarItem.Identifier: AnyView],
+        theme: BrevTheme? = nil,
+        in toolbar: NSToolbar?
+    ) {
         contentViews = views
+        if let theme {
+            self.theme = theme
+        }
+        let appearance = NSAppearance(named: self.theme.mode == .dark ? .darkAqua : .aqua)
         for item in toolbar?.items ?? [] {
             guard let content = views[item.itemIdentifier],
                   let hostingView = item.view as? NSHostingView<AnyView> else {
                 continue
             }
             let width = MacComposeToolbarItemIdentifier.itemWidth(for: item.itemIdentifier)
-            hostingView.rootView = AnyView(content.frame(width: width, height: 36))
+            hostingView.rootView = themedRootView(content, width: width)
+            hostingView.appearance = appearance
             hostingView.frame = NSRect(x: 0, y: 0, width: width, height: 36)
         }
+    }
+
+    private func themedRootView(_ content: AnyView, width: CGFloat) -> AnyView {
+        AnyView(
+            content
+                .frame(width: width, height: 36)
+                .brevSheetAppearance(theme)
+                .environment(\.colorScheme, theme.mode.colorScheme)
+        )
     }
 
     private func action(for identifier: NSToolbarItem.Identifier) -> ComposeToolbarAction? {

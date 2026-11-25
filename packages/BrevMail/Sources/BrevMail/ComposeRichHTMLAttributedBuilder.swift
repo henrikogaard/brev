@@ -282,11 +282,7 @@ enum ComposeRichHTMLAttributedBuilder {
 
         let output = NSMutableAttributedString()
         #if os(macOS)
-        let textTable = NSTextTable()
-        textTable.numberOfColumns = columnCount
-        textTable.collapsesBorders = true
-        textTable.hidesEmptyCells = false
-        textTable.layoutAlgorithm = .automaticLayoutAlgorithm
+        let textTable = makeConfiguredMacTextTable(columnCount: columnCount)
         #endif
 
         for (rowIndex, row) in allRows.enumerated() {
@@ -1196,11 +1192,7 @@ enum ComposeRichHTMLAttributedBuilder {
 
         let tableID = UUID().uuidString
         #if os(macOS)
-        let textTable = NSTextTable()
-        textTable.numberOfColumns = columnCount
-        textTable.collapsesBorders = true
-        textTable.hidesEmptyCells = false
-        textTable.layoutAlgorithm = .automaticLayoutAlgorithm
+        let textTable = makeConfiguredMacTextTable(columnCount: columnCount)
         #endif
 
         for (rowIndex, row) in parsedRows.enumerated() {
@@ -1373,6 +1365,20 @@ enum ComposeRichHTMLAttributedBuilder {
     }
 
     #if os(macOS)
+    private static func makeConfiguredMacTextTable(columnCount: Int) -> NSTextTable {
+        let textTable = NSTextTable()
+        textTable.numberOfColumns = columnCount
+        textTable.collapsesBorders = true
+        textTable.hidesEmptyCells = false
+        textTable.layoutAlgorithm = .automaticLayoutAlgorithm
+        // Inset the table slightly from the trailing edge of the zero-padding
+        // NSTextContainer so all four collapsed outer border strokes stay
+        // inside the drawable bounds and never clip on the right edge.
+        textTable.setContentWidth(99.5, type: .percentageValueType)
+        textTable.setWidth(1, type: .absoluteValueType, for: .margin, edge: .maxX)
+        return textTable
+    }
+
     private static func attachMacTableBlock(
         to paragraphStyle: NSMutableParagraphStyle,
         table: NSTextTable,
@@ -1391,7 +1397,7 @@ enum ComposeRichHTMLAttributedBuilder {
         )
         let widthPercent = 100.0 / CGFloat(max(columnCount, 1))
         block.setContentWidth(widthPercent, type: .percentageValueType)
-        block.setWidth(0.5, type: .absoluteValueType, for: .border)
+        block.setWidth(1, type: .absoluteValueType, for: .border)
         block.setWidth(6, type: .absoluteValueType, for: .padding)
         block.setBorderColor(style.borderColor)
         if isHeader {

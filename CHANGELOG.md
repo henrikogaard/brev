@@ -17,6 +17,13 @@ All notable changes to Brev are documented here.
   cell borders, and inline-code/code-block surface colors on appearance switches
   while preserving explicit user-authored colors and formatting traits.
 
+- macOS reader, dark compose, and Settings polish (#302, #306, #281):
+  - Anchored the macOS reader quick-reply bar (`ReaderQuickReplyBar`) to the bottom edge of both single-message (`MessageDetailView`) and thread (`ThreadConversationView`) panes via `safeAreaInset(edge: .bottom)` so short threads no longer float the reply bar mid-pane.
+  - Normalized macOS reader body copy to regular weight (`font-weight: 400`, `-webkit-font-smoothing: antialiased`) with calmer `1.55` line height across HTML and plain-text messages.
+  - Fixed docked inline reply defaults (#302): matched the `From` sender identity to the addressed account in `To`/`Cc` before falling back to the default account, and placed the initial macOS caret at offset `0` on the leading blank line above the `"On <date> ... wrote:"` attribution line.
+  - Unified the macOS Compose Schedule Send (`Later`) toolbar button inside the glass Send capsule across Light and Dark Mode by propagating `BrevTheme` and `NSAppearance` into `MacComposeToolbarDelegate`, and inset macOS rich-compose `NSTextTable` width/trailing margin so all 4 outer borders render crisply in both modes.
+  - De-duplicated the redundant `"Privacy"` section title beneath `Privacy & Security` segmented tabs, lifted ON-switch contrast in dark monochrome themes (`Brev Mono Dark`, `Brev Mono Grey`) with a theme-token high-contrast switch style, and gated the built-in `Example Plugin` behind an opt-in **Show Example Plugin** toggle in Developer Settings (`BREV_SHOW_EXAMPLE_PLUGIN=1`).
+
 - SQLite sync-store performance and SQLite 3.54 query-plan fixes (#358, #359):
   - Added schema v11 `message_search_index` (`(account_id, message_id) -> fts_rowid`, plus `idx_message_search_folder`) and the partial covering index `idx_msg_dirty` (`WHERE is_dirty = 1`) in `SQLiteSyncStore`, with transactional v10→v11 backfill and duplicate-row pruning. Eliminated O(N²) full FTS5 table scans on `UNINDEXED` columns during bulk `upsertHeaders` and O(N) scans during flag-only updates, body updates, deletes, metrics counts, and tokenless body joins (reducing 50k `IMAPHeaderReadBaselineTests` runtime from 399.4 s to 4.03 s and 50k `flag-persist` median latency from 5.587 ms to 0.176 ms in Release on Apple M6 / macOS 27.0 / SQLite 3.54.0).
   - Pinned `INDEXED BY idx_imap_attachment_headers` on the left `UNION` branch of `SQLiteSyncStore.attachmentOrCachedBodyHeadersSQL` so SQLite 3.54's `MERGE (UNION)` planner cannot regress attachment candidate selection to a folder-wide primary-key scan.

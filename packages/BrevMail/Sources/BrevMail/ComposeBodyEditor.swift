@@ -576,8 +576,21 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         scrollView.documentView = textView
         applyQuoteStyling(to: textView)
         applyTextChecking(to: textView)
+        if let quoteProtection {
+            let initialSelection = ComposeFocusPolicy.initialBodySelection(
+                in: textView.string as NSString,
+                quoteProtection: quoteProtection
+            )
+            textView.setSelectedRange(initialSelection)
+        }
         context.coordinator.textView = textView
-        context.coordinator.updateSelection(from: textView)
+        context.coordinator.quoteProtection = quoteProtection
+        if let focusRequest {
+            context.coordinator.lastHandledFocusRequestID = focusRequest.id
+            applyFocusRequest(focusRequest, to: textView, coordinator: context.coordinator)
+        } else {
+            context.coordinator.updateSelection(from: textView)
+        }
         return scrollView
     }
 
@@ -594,10 +607,27 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         applyAppearance(to: scrollView, textView: textView)
         applyTextChecking(to: textView)
         if !(textView.string as NSString).isEqual(to: text) {
+            let previousSelection = textView.selectedRange()
             if shouldUseRichText, let storage = textView.textStorage, storage.length > 0 {
                 updateAttributedEditorText(text, storage: storage)
             } else {
                 textView.string = text
+            }
+            let updatedText = textView.string as NSString
+            if let quoteProtection,
+               !ComposeQuoteEditGuard.allows(
+                   changeRange: previousSelection,
+                   in: updatedText,
+                   protection: quoteProtection
+               ) {
+                textView.setSelectedRange(ComposeFocusPolicy.initialBodySelection(
+                    in: updatedText,
+                    quoteProtection: quoteProtection
+                ))
+            } else {
+                let clampedLocation = min(previousSelection.location, updatedText.length)
+                let clampedLength = min(previousSelection.length, updatedText.length - clampedLocation)
+                textView.setSelectedRange(NSRange(location: clampedLocation, length: clampedLength))
             }
             context.coordinator.updateSelection(from: textView)
         }
@@ -619,7 +649,56 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         textView.onDropFileURLs = onDropFileURLs
         textView.onFileDragTargetChanged = onFileDragTargetChanged
         applyQuoteStyling(to: textView)
+        if let focusRequest,
+           focusRequest.id != context.coordinator.lastHandledFocusRequestID {
+            context.coordinator.lastHandledFocusRequestID = focusRequest.id
+            applyFocusRequest(focusRequest, to: textView, coordinator: context.coordinator)
+        }
         context.coordinator.isUpdatingFromSwiftUI = false
+    }
+
+    private func applyFocusRequest(
+        _ request: ComposeBodyFocusRequest,
+        to textView: ComposeRichTextView,
+        coordinator: Coordinator
+    ) {
+        let length = (textView.string as NSString).length
+        let targetRange: NSRange?
+        if let selection = request.selection {
+            let location = min(max(selection.location, 0), length)
+            let clampedLength = min(max(selection.length, 0), length - location)
+            targetRange = NSRange(location: location, length: clampedLength)
+        } else {
+            targetRange = nil
+        }
+        if let targetRange {
+            textView.setSelectedRange(targetRange)
+            textView.scrollRangeToVisible(targetRange)
+        }
+        coordinator.updateSelection(from: textView)
+        if let window = textView.window {
+            if window.firstResponder !== textView {
+                window.makeFirstResponder(textView)
+            }
+            if let targetRange {
+                textView.setSelectedRange(targetRange)
+            }
+        } else {
+            DispatchQueue.main.async { [weak textView] in
+                guard let textView else { return }
+                if let window = textView.window, window.firstResponder !== textView {
+                    window.makeFirstResponder(textView)
+                }
+                if let targetRange {
+                    let currentLength = (textView.string as NSString).length
+                    let location = min(targetRange.location, currentLength)
+                    let clampedLength = min(targetRange.length, currentLength - location)
+                    let clamped = NSRange(location: location, length: clampedLength)
+                    textView.setSelectedRange(clamped)
+                    textView.scrollRangeToVisible(clamped)
+                }
+            }
+        }
     }
 
     private func applyAppearance(to scrollView: NSScrollView, textView: ComposeRichTextView) {
@@ -747,6 +826,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         var textSize: MailboxTextSize
         /// Read-only quoted-original region; edits inside it are refused.
         var quoteProtection: ComposeQuoteProtection?
+        /// Last handled one-shot focus request id.
+        var lastHandledFocusRequestID: Int?
         private lazy var htmlPublicationController = ComposeHTMLPublicationController<NSAttributedString>(
             serialize: { ComposeRichTextHTMLSerializer.html(from: $0) },
             publish: { [weak self] html in self?.richHTML = html }

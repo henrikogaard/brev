@@ -2153,19 +2153,30 @@ public struct BrevMailRootView: View {
                 loaded: threadHeadersForSelection(fallbackHeader: fallbackHeader)
             )
             let usesThreadReader = selectedBackend.groupsMessagesIntoThreads && threadHeaders.count > 1
-            let quickReplySourceID = navigation.selectedSourceID
+            let quickReplyCandidates = usesThreadReader
+                ? threadHeaders
+                : [navigation.selectedHeader ?? fallbackHeader].compactMap { $0 }
+            let initialQuickReplyBackend: (any MailBackend)? = {
+                guard let selectedSourceID = navigation.selectedSourceID else { return selectedBackend }
+                return connectedBackend(forAccountID: selectedSourceID.accountID)
+            }()
+            let quickReplyTarget = MailRootQuickReplyPolicy.target(
+                in: quickReplyCandidates,
+                accountEmail: initialQuickReplyBackend?.account.emailAddress
+                    ?? selectedBackend.account.emailAddress
+            )
+            let quickReplyRouting = ComposeReplyAccountRouting.resolve(
+                replyingTo: quickReplyTarget,
+                in: visibleSourceSections,
+                messageOwnerSourceID: navigation.selectedSourceID,
+                defaultSourceID: preferredDefaultSection(in: visibleSourceSections)?.id
+            )
+            let quickReplySourceID = quickReplyRouting.sendingSourceID
+            let quickReplyOwnerSourceID = quickReplyRouting.quotedMessageSourceID
             let quickReplyBackend: (any MailBackend)? = {
                 guard let quickReplySourceID else { return selectedBackend }
                 return connectedBackend(forAccountID: quickReplySourceID.accountID)
             }()
-            let quickReplyCandidates = usesThreadReader
-                ? threadHeaders
-                : [navigation.selectedHeader ?? fallbackHeader].compactMap { $0 }
-            let quickReplyTarget = MailRootQuickReplyPolicy.target(
-                in: quickReplyCandidates,
-                accountEmail: quickReplyBackend?.account.emailAddress
-                    ?? selectedBackend.account.emailAddress
-            )
             let readerFooter: AnyView? = {
                 guard let quickReplyTarget,
                       let quickReplyBackend,
@@ -2192,23 +2203,23 @@ public struct BrevMailRootView: View {
                             quickReplyDraftWasSaved = result.draftWasSaved
                             return result.sent
                         },
-                        onExpand: { [quickReplySourceID, quickReplyTarget] text in
+                        onExpand: { [quickReplySourceID, quickReplyOwnerSourceID, quickReplyTarget] text in
                             #if os(macOS)
                             // macOS grows the bar into the full composer in
                             // place (#302); iOS keeps the compose sheet.
                             guard canPresentCompose() else { return }
-                            // Pin the account now: a nil source would follow
-                            // whatever is selected later (#302).
+                            // Pin both sending and message-owner accounts now so
+                            // cross-account replies always quote from the owner.
                             navigation.presentInlineReply(
                                 to: quickReplyTarget,
-                                sourceID: quickReplySourceID
-                                    ?? preferredDefaultSection(in: visibleSourceSections)?.id,
+                                sourceID: quickReplySourceID,
+                                quotedMessageSourceID: quickReplyOwnerSourceID,
                                 prefillBodyText: text
                             )
                             #else
                             presentReply(
                                 to: quickReplyTarget,
-                                sourceID: quickReplySourceID,
+                                sourceID: quickReplyOwnerSourceID,
                                 prefillBodyText: text
                             )
                             #endif
@@ -2360,9 +2371,12 @@ public struct BrevMailRootView: View {
     /// through the composer's own Close or Send, which save or discard the
     /// Draft exactly as the sheet does.
     private func inlineReplyDock(_ context: InlineReplyContext) -> some View {
-        composeEditor(
+        let ownerSourceID = context.quotedMessageSourceID ?? context.sourceID
+        return composeEditor(
             anchorSourceID: context.sourceID,
             activeBackend: backend(for: context.sourceID),
+            quotedMessageSourceID: ownerSourceID,
+            quotedMessageBackend: backend(for: ownerSourceID),
             replyingTo: context.replyTo,
             replyMode: .sender,
             forwardingFrom: nil,
@@ -5246,6 +5260,8 @@ public struct BrevMailRootView: View {
     private func composeEditor(
         anchorSourceID: MailSourceID?,
         activeBackend: any MailBackend,
+        quotedMessageSourceID: MailSourceID? = nil,
+        quotedMessageBackend: (any MailBackend)? = nil,
         replyingTo: MessageHeader?,
         replyMode: ComposeReplyMode,
         forwardingFrom: MessageHeader?,
@@ -5263,16 +5279,27 @@ public struct BrevMailRootView: View {
         let dockMailboxID = activeMailboxID
         let selectedSourceID = anchorSourceID
         // A docked reply keeps its account even if a profile switch hides it.
-        let senderSections = (hostStyle == .inline ? sourceSections : visibleSourceSections)
-            .filter { $0.account.id == activeBackend.account.id }
+        let candidateSections = hostStyle == .inline ? sourceSections : visibleSourceSections
+        let preservesPinnedInlineSender = hostStyle == .inline && selectedSourceID != nil
+        let effectiveSelectedSourceID = ComposeReplyAccountRouting.effectiveComposeSourceID(
+            hostStyle: hostStyle,
+            anchorSourceID: selectedSourceID,
+            candidateSections: candidateSections,
+            defaultSourceID: preferredDefaultSection(in: candidateSections)?.id,
+            replyingTo: replyingTo
+        )
+        let effectiveAccountID = effectiveSelectedSourceID?.accountID ?? activeBackend.account.id
+        let effectiveAccountBackend = effectiveSelectedSourceID.map { backend(for: $0) } ?? activeBackend
+        let senderSections = candidateSections.filter { $0.account.id == effectiveAccountID }
         let senderResolution = ComposeSenderIdentity.resolution(
             from: senderSections,
-            fallbackAccount: activeBackend.account,
-            selectedSourceID: selectedSourceID,
-            defaultSourceID: preferredDefaultSection(in: senderSections)?.id
+            fallbackAccount: effectiveAccountBackend.account,
+            selectedSourceID: effectiveSelectedSourceID,
+            defaultSourceID: preferredDefaultSection(in: senderSections)?.id,
+            replyingTo: preservesPinnedInlineSender ? nil : replyingTo
         )
         let sourceID = senderResolution.sourceID
-        let composeBackend = sourceID.map { backend(for: $0) } ?? activeBackend
+        let composeBackend = sourceID.map { backend(for: $0) } ?? effectiveAccountBackend
         // A reopened existing draft must not also seed crash-recovery —
         // the two restore paths seed the same fields.
         let recoveredDraft = existingDraft == nil
@@ -5283,9 +5310,13 @@ public struct BrevMailRootView: View {
                 forwardingFrom: forwardingFrom
             )
             : nil
+        let resolvedQuotedMessageSourceID = quotedMessageSourceID ?? selectedSourceID
+        let resolvedQuotedMessageBackend = quotedMessageBackend ?? activeBackend
         ComposeView(
             backend: composeBackend,
             sourceID: sourceID,
+            quotedMessageBackend: resolvedQuotedMessageBackend,
+            quotedMessageSourceID: resolvedQuotedMessageSourceID,
             from: senderResolution.initialSender?.correspondent ?? ComposeSenderIdentity.sender(
                 account: composeBackend.account,
                 mailboxes: mailboxes,

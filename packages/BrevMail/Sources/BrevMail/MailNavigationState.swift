@@ -948,12 +948,18 @@ public final class MailNavigationState {
 
     /// Docks a reply to `header` under the reader. Does nothing while a sheet
     /// or another docked reply is open, like the compose sheet.
-    public func presentInlineReply(to header: MessageHeader, sourceID: MailSourceID?, prefillBodyText: String?) {
+    public func presentInlineReply(
+        to header: MessageHeader,
+        sourceID: MailSourceID?,
+        quotedMessageSourceID: MailSourceID? = nil,
+        prefillBodyText: String?
+    ) {
         guard canPresentCompose else { return }
         composePresentationID += 1
         inlineReply = InlineReplyContext(
             replyTo: header,
             sourceID: sourceID,
+            quotedMessageSourceID: quotedMessageSourceID ?? sourceID,
             prefill: prefillBodyText.flatMap { $0.isEmpty ? nil : ComposePrefill(bodyText: $0) },
             presentationID: composePresentationID
         )
@@ -986,8 +992,11 @@ private extension Array {
 public struct InlineReplyContext: Equatable, Sendable {
     /// The message being answered.
     public let replyTo: MessageHeader
-    /// The source the reply was opened from; it decides the sending account.
+    /// The source the reply is sent from (may differ from `quotedMessageSourceID`
+    /// when recipient matching selects another configured account).
     public let sourceID: MailSourceID?
+    /// The source that owns `replyTo` for original-body quote retrieval.
+    public let quotedMessageSourceID: MailSourceID?
     /// Text carried over from the quick reply field.
     public let prefill: ComposePrefill?
     /// The `composePresentationID` this reply was opened with.

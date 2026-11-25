@@ -13,6 +13,7 @@
 #if os(macOS)
 import AppKit
 @testable import BrevMail
+import BrevThemes
 import SwiftUI
 import Testing
 
@@ -289,6 +290,50 @@ struct MacMailAuxiliaryWindowConfigurationTests {
             frame,
             visibleFrame: visibleFrame
         ) == frame)
+    }
+
+    @Test("compose toolbar delegate propagates dark and light theme appearance to hosted toolbar items")
+    @MainActor
+    func composeToolbarDelegatePropagatesThemeAppearance() throws {
+        let fixture = ComposeAcceleratorFixture(action: {})
+        let toolbar = try #require(fixture.window.toolbar)
+        fixture.delegate.updateContentViews(
+            [
+                MacComposeToolbarItemIdentifier.scheduleSend: AnyView(
+                    ComposeLaterButtonView(
+                        isScheduled: false,
+                        isEnabled: true,
+                        hitTargetSize: 28,
+                        usesToolbarStyle: true,
+                        action: {}
+                    )
+                )
+            ],
+            theme: .brevMonoDark,
+            in: toolbar
+        )
+        let scheduleItem = try #require(
+            toolbar.items.first { $0.itemIdentifier == MacComposeToolbarItemIdentifier.scheduleSend }
+        )
+        let darkHostingView = try #require(scheduleItem.view as? NSHostingView<AnyView>)
+        #expect(darkHostingView.appearance?.name == .darkAqua)
+
+        fixture.delegate.updateContentViews(
+            [
+                MacComposeToolbarItemIdentifier.scheduleSend: AnyView(
+                    ComposeLaterButtonView(
+                        isScheduled: false,
+                        isEnabled: true,
+                        hitTargetSize: 28,
+                        usesToolbarStyle: true,
+                        action: {}
+                    )
+                )
+            ],
+            theme: .brevMonoLight,
+            in: toolbar
+        )
+        #expect(darkHostingView.appearance?.name == .aqua)
     }
 }
 
