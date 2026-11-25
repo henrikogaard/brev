@@ -64,6 +64,59 @@ struct ComposeAccessibilityBoundsTests {
         #expect(offenders.isEmpty)
     }
 
+    @Test("landscape compose keeps top bar, scrollable body, and utility bar inside a keyboard-constrained viewport (#362)",
+          arguments: [CGSize(width: 852, height: 393), CGSize(width: 852, height: 185)])
+    func landscapeComposeKeepsChromeAndScrollViewWithinBounds(_ viewport: CGSize) {
+        let backend = MockBackend()
+        let view = ComposeView(
+            backend: backend,
+            from: backend.account,
+            prefill: ComposePrefill(
+                to: ["qa@example.test"],
+                subject: "iOS Rich QA",
+                bodyText: "Testing rich editor"
+            )
+        )
+        .environment(\.horizontalSizeClass, .compact)
+        .environment(\.verticalSizeClass, .compact)
+        .brevTheme(.brevMonoLight)
+        .htmlBodyRenderTarget(.staticSnapshot)
+
+        let host = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: viewport))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        host.view.frame = CGRect(origin: .zero, size: viewport)
+        host.view.layoutIfNeeded()
+        window.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        window.layoutIfNeeded()
+
+        let allViews = descendants(of: host.view)
+        let scrollViews = allViews.compactMap { $0 as? UIScrollView }.filter { !($0 is UITextView) }
+        #expect(!scrollViews.isEmpty, "Landscape compose should wrap header fields and body in a ScrollView")
+
+        if let scrollView = scrollViews.first {
+            let scrollFrame = scrollView.convert(scrollView.bounds, to: window)
+            #expect(scrollFrame.minY >= 40, "Top navigation bar should remain pinned above ScrollView: \(scrollFrame)")
+            #expect(scrollFrame.height > 0, "ScrollView should have positive visible height: \(scrollFrame)")
+            #expect(
+                scrollFrame.maxY <= viewport.height - 40,
+                "Bottom utility bar should remain pinned below ScrollView: \(scrollFrame) in \(viewport)"
+            )
+        }
+
+        let horizontalOffenders = allViews.filter { subview in
+            guard !subview.isHidden, subview.alpha > 0 else { return false }
+            let frame = subview.convert(subview.bounds, to: window)
+            guard frame.width > 0, frame.height > 0 else { return false }
+            return frame.minX < -0.5 || frame.maxX > viewport.width + 0.5
+        }
+        #expect(horizontalOffenders.isEmpty)
+    }
+
     private func descendants(of view: UIView) -> [UIView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
     }

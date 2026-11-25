@@ -272,4 +272,23 @@ struct ComposePresentationTests {
         #expect(ComposeToolbarAction.moreActions.accessibilityLabel == "Compose actions")
         #expect(ComposeToolbarAction.scheduleSend.accessibilityLabel == "Schedule send")
     }
+
+    @Test("iOS landscape compose scrolls headers with body and compacts vertical bars (#362)")
+    func iOSLandscapeComposeUsesScrollableLayoutAndCompactBars() {
+        #expect(ComposeLayoutPolicy.usesScrollableFieldLayout(platform: .compactIOS, isCompactVertical: true))
+        #expect(ComposeLayoutPolicy.usesScrollableFieldLayout(platform: .regularIOS, isCompactVertical: true))
+        #expect(ComposeLayoutPolicy.usesScrollableFieldLayout(platform: .compactIOSAccessibility, isCompactVertical: false))
+        #expect(!ComposeLayoutPolicy.usesScrollableFieldLayout(platform: .compactIOS, isCompactVertical: false))
+        #expect(!ComposeLayoutPolicy.usesScrollableFieldLayout(platform: .macOS, isCompactVertical: true))
+
+        #expect(ComposeLayoutPolicy.scrollableBodyMinHeight(platform: .compactIOS, isCompactVertical: true) == 160)
+        #expect(ComposeLayoutPolicy.scrollableBodyMinHeight(platform: .compactIOSAccessibility, isCompactVertical: false) == 240)
+        #expect(ComposeLayoutPolicy.scrollableBodyMinHeight(platform: .compactIOS, isCompactVertical: false) == nil)
+        #expect(ComposeLayoutPolicy.scrollableBodyMinHeight(platform: .macOS, isCompactVertical: true) == nil)
+
+        let landscapeMetrics = ComposeLayoutPolicy.toolbarMetrics(for: .compactIOS, isCompactVertical: true)
+        #expect(landscapeMetrics.height == 44)
+        #expect(landscapeMetrics.utilityHeight == 44)
+        #expect(landscapeMetrics.hitTargetSize == 44)
+    }
 }

@@ -205,6 +205,7 @@ public struct ComposeView: View {
     @Environment(\.dismiss) private var dismiss
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     // Both follow Dynamic Type: a long label like "Subject" keeps to one line,
     // and rows with and without recipient chips stay equally tall.
@@ -874,8 +875,26 @@ public struct ComposeView: View {
         return ComposeLayoutPolicy.frameMetrics(for: composeLayoutPlatform)
     }
 
+    private var isCompactVerticalLayout: Bool {
+        #if os(iOS)
+        verticalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
+    private var usesScrollableFieldLayout: Bool {
+        ComposeLayoutPolicy.usesScrollableFieldLayout(
+            platform: composeLayoutPlatform,
+            isCompactVertical: isCompactVerticalLayout
+        )
+    }
+
     private var toolbarMetrics: ComposeToolbarMetrics {
-        ComposeLayoutPolicy.toolbarMetrics(for: composeLayoutPlatform)
+        ComposeLayoutPolicy.toolbarMetrics(
+            for: composeLayoutPlatform,
+            isCompactVertical: isCompactVerticalLayout
+        )
     }
 
     private var composeLayoutPlatform: ComposeLayoutPlatform {
@@ -907,14 +926,21 @@ public struct ComposeView: View {
     @ViewBuilder
     private var composeContent: some View {
         VStack(spacing: 0) {
-            if isAccessibilityFieldLayout {
+            if usesScrollableFieldLayout {
                 toolbar
+                    .padding(.top, toolbarMetrics.topInset)
+                    .overlay(alignment: .bottom) {
+                        if isCompactVerticalLayout {
+                            BrevDivider()
+                        }
+                    }
                     .disabled(isBusy)
                 ScrollView {
                     VStack(spacing: 0) {
                         fieldPanel.disabled(isBusy)
                         composeEditorContent
                     }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                     // A vertical ScrollView measures its content at ideal
                     // width; intrinsic text widths (recipient/subject
                     // fields, the body editor) exceed the phone viewport
@@ -922,8 +948,12 @@ public struct ComposeView: View {
                     // scrolling/clipping (#49). Capping the ideal width
                     // keeps the column inside the sheet while finite
                     // proposals still stretch it to the real width.
-                    .frame(idealWidth: ComposeLayout.compactSheetIdealWidth)
+                    .frame(idealWidth: isAccessibilityFieldLayout ? ComposeLayout.compactSheetIdealWidth : nil)
                 }
+                .clipped()
+                #if os(iOS)
+                    .scrollDismissesKeyboard(.interactively)
+                #endif
             } else {
                 #if os(macOS)
                 if hostStyle == .inline {
@@ -961,7 +991,12 @@ public struct ComposeView: View {
                 VStack(spacing: 0) {
                     attachmentsList
                     bodyField
-                        .frame(minHeight: isAccessibilityFieldLayout ? 240 : nil)
+                        .frame(
+                            minHeight: ComposeLayoutPolicy.scrollableBodyMinHeight(
+                                platform: composeLayoutPlatform,
+                                isCompactVertical: isCompactVerticalLayout
+                            )
+                        )
                 }
                 .disabled(isBusy)
                 aiPreviewPanel

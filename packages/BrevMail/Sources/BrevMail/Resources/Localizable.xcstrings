@@ -7190,13 +7190,36 @@
         }
       }
     },
-    "Double-tap to %@ this section": {
+    "Double-tap to collapse this section": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Double-tap to collapse this section"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dobbelttrykk for å %@ denne delen"
+            "value": "Dobbelttrykk for å skjule denne delen"
+          }
+        }
+      }
+    },
+    "Double-tap to expand this section": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Double-tap to expand this section"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dobbelttrykk for å utvide denne delen"
           }
         }
       }

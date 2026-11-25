@@ -2021,7 +2021,11 @@ public struct BrevMailRootView: View {
             onOpenOutbox: {
                 navigation.presentedSheet = .outbox
             },
-            onOpenSettings: nil,
+            onOpenSettings: MailRootSettingsToolbarPolicy.sidebarSettingsAction(
+                platform: toolbarPlatform,
+                hasExternalSettingsHandler: onOpenSettings != nil,
+                presentSettings: { presentSettings() }
+            ),
             onOpenCalendar: onOpenCalendar,
             onOpenContacts: onOpenContacts,
             onOpenTasks: onOpenTasks,

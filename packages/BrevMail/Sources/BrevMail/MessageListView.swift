@@ -5781,10 +5781,9 @@ struct MessageListDateSectionHeader: View {
                     ? String(localized: "\(title), \(count) messages, collapsed", bundle: .module)
                     : String(localized: "\(title), \(count) messages, expanded", bundle: .module)
             )
-            .accessibilityHint(String(
-                localized: "Double-tap to \(isCollapsed ? "expand" : "collapse") this section",
-                bundle: .module
-            ))
+            .accessibilityHint(
+                MessageListPresentation.sectionHeaderToggleHint(isCollapsed: isCollapsed)
+            )
             .onHover { isHovered = $0 }
             .mailDenseListChromeDynamicType()
         } else {

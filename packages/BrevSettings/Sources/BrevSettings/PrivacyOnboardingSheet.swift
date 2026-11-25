@@ -20,6 +20,7 @@ import SwiftUI
 /// without silently enabling any external network call or AI feature.
 public struct PrivacyOnboardingSheet: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var choices: PrivacyOnboardingChoices
 
     private let mode: PrivacyOnboardingMode
@@ -135,18 +136,27 @@ public struct PrivacyOnboardingSheet: View {
                     VStack(alignment: .leading, spacing: BrevSpacing.lg) {
                         headerSection
                         cardsStack
+                        if dynamicTypeSize.isAccessibilitySize {
+                            Divider()
+                                .overlay(theme.border.color)
+                            footerBar
+                        }
                     }
-                    .padding(.horizontal, BrevSpacing.lg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? BrevSpacing.md : BrevSpacing.lg)
                     .padding(.vertical, BrevSpacing.lg)
                 }
 
-                Divider()
-                    .overlay(theme.border.color)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Divider()
+                        .overlay(theme.border.color)
 
-                footerBar
-                    .padding(.horizontal, BrevSpacing.lg)
-                    .padding(.vertical, BrevSpacing.md)
+                    footerBar
+                        .padding(.horizontal, BrevSpacing.lg)
+                        .padding(.vertical, BrevSpacing.md)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(theme.bgPrimary.color.ignoresSafeArea())
             .navigationTitle(Text("Privacy & Convenience", bundle: .module))
             .navigationBarTitleDisplayMode(.inline)
@@ -165,33 +175,52 @@ public struct PrivacyOnboardingSheet: View {
 
     // MARK: - Header & Footer
 
+    @ViewBuilder
     private var headerSection: some View {
-        HStack(alignment: .top, spacing: BrevSpacing.md) {
-            ZStack {
-                RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous)
-                    .fill(theme.bgSecondary.color)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous)
-                            .strokeBorder(theme.border.color, lineWidth: 1)
-                    )
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(theme.accent.color)
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                headerIconBadge
+                headerTextColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(width: 38, height: 38)
-            .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text("Privacy & Convenience Choices", bundle: .module)
-                    .brevFont(.headline)
-                    .foregroundStyle(theme.textPrimary.color)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(headerSubtitle)
-                    .brevFont(.footnote)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(alignment: .top, spacing: BrevSpacing.md) {
+                headerIconBadge
+                headerTextColumn
             }
+        }
+    }
+
+    private var headerIconBadge: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous)
+                .fill(theme.bgSecondary.color)
+                .overlay(
+                    RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous)
+                        .strokeBorder(theme.border.color, lineWidth: 1)
+                )
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(theme.accent.color)
+        }
+        .frame(width: 38, height: 38)
+        .accessibilityHidden(true)
+    }
+
+    private var headerTextColumn: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+            Text("Privacy & Convenience Choices", bundle: .module)
+                .brevFont(.headline)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(headerSubtitle)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -210,18 +239,68 @@ public struct PrivacyOnboardingSheet: View {
         }
     }
 
+    @ViewBuilder
     private var footerBar: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: BrevSpacing.sm) {
-                secondaryActionButton
-                Spacer(minLength: BrevSpacing.md)
-                primaryActionButton
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: BrevSpacing.sm) {
+                accessibilityFooterButton(
+                    title: String(localized: "Save choices", bundle: .module),
+                    isPrimary: true,
+                    action: handleSave
+                )
+                .keyboardShortcut(.defaultAction)
+
+                accessibilityFooterButton(
+                    title: mode == .firstRun
+                        ? String(localized: "Keep defaults (all off)", bundle: .module)
+                        : String(localized: "Cancel", bundle: .module),
+                    isPrimary: false,
+                    action: handleSecondaryAction
+                )
+                .keyboardShortcut(.cancelAction)
             }
-            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                primaryActionButton
-                secondaryActionButton
+            .frame(maxWidth: .infinity)
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: BrevSpacing.sm) {
+                    secondaryActionButton
+                    Spacer(minLength: BrevSpacing.md)
+                    primaryActionButton
+                }
+                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                    primaryActionButton
+                    secondaryActionButton
+                }
             }
         }
+    }
+
+    private func accessibilityFooterButton(
+        title: String,
+        isPrimary: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(verbatim: title)
+                .brevFont(.headline)
+                .multilineTextAlignment(.center)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, BrevSpacing.md)
+                .padding(.vertical, BrevSpacing.sm)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(isPrimary ? theme.accent.color : Color.clear)
+                .foregroundStyle(isPrimary ? theme.onAccent.color : theme.textPrimary.color)
+                .overlay {
+                    if !isPrimary {
+                        RoundedRectangle(cornerRadius: BrevRadius.md)
+                            .stroke(theme.controlBorder.color, lineWidth: 1)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+                .contentShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+        }
+        .buttonStyle(.plain)
     }
 
     private var secondaryActionButton: some View {
@@ -479,6 +558,7 @@ private enum PrivacyOnboardingScopeTone {
 
 private struct PrivacyOnboardingCard<Content: View>: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let symbolName: String
     let title: String
     let scopeBadge: String
@@ -487,33 +567,7 @@ private struct PrivacyOnboardingCard<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-            HStack(alignment: .center, spacing: BrevSpacing.sm) {
-                Image(systemName: symbolName)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(theme.accent.color)
-                    .frame(width: 20, alignment: .center)
-                    .accessibilityHidden(true)
-
-                Text(title)
-                    .brevFont(.subheadline)
-                    .foregroundStyle(theme.textPrimary.color)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer(minLength: BrevSpacing.sm)
-
-                Text(scopeBadge)
-                    .brevFont(.caption)
-                    .foregroundStyle(scopeForegroundColor)
-                    .padding(.horizontal, BrevSpacing.sm)
-                    .padding(.vertical, 3)
-                    .background(theme.bgPrimary.color)
-                    .clipShape(Capsule())
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(scopeBorderColor, lineWidth: 1)
-                    )
-                    .fixedSize(horizontal: true, vertical: true)
-            }
+            cardHeader
 
             VStack(alignment: .leading, spacing: BrevSpacing.sm) {
                 content
@@ -522,6 +576,95 @@ private struct PrivacyOnboardingCard<Content: View>: View {
         .padding(BrevSpacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
         .brevQuietSurface(cornerRadius: BrevRadius.md)
+    }
+
+    @ViewBuilder
+    private var cardHeader: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            stackedCardHeader(allowsBadgeWrapping: true)
+        } else {
+            #if os(iOS)
+            ViewThatFits(in: .horizontal) {
+                inlineCardHeader
+                stackedCardHeader(allowsBadgeWrapping: true)
+            }
+            #else
+            inlineCardHeader
+            #endif
+        }
+    }
+
+    private var inlineCardHeader: some View {
+        HStack(alignment: .center, spacing: BrevSpacing.sm) {
+            Image(systemName: symbolName)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(theme.accent.color)
+                .frame(width: 20, alignment: .center)
+                .accessibilityHidden(true)
+
+            Text(title)
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.textPrimary.color)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: BrevSpacing.sm)
+
+            scopeBadgeView(allowsWrapping: false)
+        }
+    }
+
+    private func stackedCardHeader(allowsBadgeWrapping: Bool) -> some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
+                Image(systemName: symbolName)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(theme.accent.color)
+                    .accessibilityHidden(true)
+
+                Text(title)
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            scopeBadgeView(allowsWrapping: allowsBadgeWrapping)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func scopeBadgeView(allowsWrapping: Bool) -> some View {
+        if allowsWrapping {
+            Text(scopeBadge)
+                .brevFont(.caption)
+                .foregroundStyle(scopeForegroundColor)
+                .multilineTextAlignment(.leading)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, BrevSpacing.sm)
+                .padding(.vertical, 3)
+                .background(theme.bgPrimary.color)
+                .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous)
+                        .strokeBorder(scopeBorderColor, lineWidth: 1)
+                )
+        } else {
+            Text(scopeBadge)
+                .brevFont(.caption)
+                .foregroundStyle(scopeForegroundColor)
+                .padding(.horizontal, BrevSpacing.sm)
+                .padding(.vertical, 3)
+                .background(theme.bgPrimary.color)
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(scopeBorderColor, lineWidth: 1)
+                )
+                .fixedSize(horizontal: true, vertical: true)
+        }
     }
 
     private var scopeForegroundColor: Color {

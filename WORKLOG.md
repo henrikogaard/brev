@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-11-25 — Agent — Issues #360, #362, #363 (iOS Settings Menu, Landscape/AXL Clipping, `nb` AX Hints)
+
+- Goal: fix iOS Settings unreachable from the `Mailboxes` root gear menu (#360), iPhone Landscape compose clipping and `PrivacyOnboardingSheet` Dynamic Type `AXL` clipping (#362), and Norwegian (`nb`) section-header accessibility hint English verb interpolation (#363) on `fix/ios-settings-layout-and-nb-ax` from `origin/main` (`40ca565d`).
+- Changes:
+  - `#360`: added `MailRootSettingsToolbarPolicy.sidebarSettingsAction(platform:hasExternalSettingsHandler:presentSettings:)` in `MailRootComposePresentationPolicy.swift` and wired `FolderSidebar`'s `onOpenSettings` in `BrevMailRootView.swift` so iOS (iPhone + iPad) exposes a working **Settings** entry in the top-left gear menu while macOS keeps its footer-only Settings wiring unchanged; added policy unit tests in `MailRootComposePresentationPolicyTests.swift`.
+  - `#362` (Landscape Compose): extended `ComposeLayoutPolicy` (`usesScrollableFieldLayout`, `scrollableBodyMinHeight`, compact-vertical `toolbarMetrics`) and updated `ComposeView.swift` to read `verticalSizeClass` on iOS so iPhone Landscape pins the 44 pt top bar and 44 pt bottom utility bar around a `.clipped()` scrollable header + body column (`minHeight: 160`, `.scrollDismissesKeyboard(.interactively)`); added policy tests in `ComposePresentationTests.swift` and iOS Simulator bounds tests (`852×393` and keyboard-constrained `852×185`) in `ComposeAccessibilityBoundsTests.swift`.
+  - `#362` (`PrivacyOnboardingSheet` AXL): updated `PrivacyOnboardingSheet.swift` to read `dynamicTypeSize`, scroll `headerSection`, `cardsStack`, and full-width wrapping accessibility footer actions inside `ScrollView` at accessibility sizes, stack header icon/title and card headers above wrapping scope badges (replacing `.fixedSize(horizontal: true, vertical: true)` when wrapping), and keep macOS default-size layout pixel-identical; added `PrivacyOnboardingAXLLayoutIOSTests.swift` verifying zero horizontal overflow and `>= 60%` scroll height at `393×852` and `320×852` under `.accessibilityExtraLarge`.
+  - `#363`: added `MessageListPresentation.sectionHeaderToggleHint(isCollapsed:)` using complete localized keys (`"Double-tap to expand this section"` / `"Double-tap to collapse this section"`), wired it in `MessageListView.swift`, updated `packages/BrevMail/Sources/BrevMail/Resources/Localizable.xcstrings` with explicit `en` and `nb` entries (removing obsolete `"Double-tap to %@ this section"`), and added localization unit tests in `MessageListPresentationTests.swift`.
+  - Documentation sweep: updated `CHANGELOG.md` and `WORKLOG.md`; no subsystem architecture, privacy boundary, or external network call changes, so `docs/design/` and `PRIVACY.md` required no edits.
+- Verification:
+  - Local Mac Studio (headless only): `scripts/format.sh`, `scripts/lint.sh` (`swiftformat --lint`, `swiftlint --strict`, `test-swiftlint-coverage`), `.xcstrings` `en`/`nb` parity check, `git diff --check origin/main`.
+  - Remote `macmini-devbox` (isolated `/tmp/brev-fix-360-362-363`, cleaned up afterwards):
+    - `BrevSettings` macOS `PrivacyOnboardingTests` + `PrivacyOnboardingSnapshotTests` (`en_US`): 19/19 tests in 2 suites passed (all 4 light/dark snapshots pixel-identical).
+    - `BrevSettings` iOS 27.2 Simulator (`iPhone 18 Pro`) `PrivacyOnboardingAXLLayoutIOSTests`: 4/4 cases passed (`.firstRun` & `.reviewFromSettings` at `393×852` and `320×852`, `AXL`).
+    - `BrevMail` macOS `MailRootSettingsToolbarPolicyTests`, `ComposePresentationTests`, `MessageListPresentationTests`: 62/62 tests in 3 suites passed.
+    - `BrevMail` iOS 27.2 Simulator (`iPhone 18 Pro`) `ComposeAccessibilityBoundsTests` + `ComposeHeaderAlignmentIOSTests`: 4/4 tests in 2 suites passed (including Landscape `852×393` & `852×185`, accessibility bounds, and portrait header alignment).
+    - `BrevIOS` Debug Simulator build (`Brev.xcworkspace`, `iPhone 18 Pro`, iOS 27.2): `** BUILD SUCCEEDED **`.
+- Skipped: live interactive Simulator visual inspection / physical device QA (layout geometry and bounds verified via `UIHostingController` tests on iOS 27.2 Simulator; interactive QA remains tracked under #281).
+- Next: open PR targeting `main` linking #360, #362, #363 (and referencing #281), and move #360, #362, #363 to `In review`.
+
 ## 2026-11-25 — Agent — Track 3: Native JMAP Mail Backend (`BrevJMAP`)
 
 - Goal: implement the native RFC 8620 / RFC 8621 JMAP mail backend (`packages/BrevJMAP/`), wire Keychain-only JMAP account setup and persistence into `BrevBackend`, `BrevMail`, `BrevMacOS`, and `BrevIOS`, add `en` + `nb` localization, record and visually verify macOS 26+ light/dark setup snapshots on `macmini-devbox`, update design/privacy/release docs, and open a PR from `feature/jmap-backend` targeting `main`.
