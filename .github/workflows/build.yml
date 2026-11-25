@@ -277,6 +277,7 @@ jobs:
             '-only-testing:BrevMailTests/ComposeAccessibilityBoundsTests' \
             '-only-testing:BrevMailTests/ComposeBodyEditorAppearanceIOSTests' \
             '-only-testing:BrevMailTests/ComposeHeaderAlignmentIOSTests' \
+            '-only-testing:BrevMailTests/ThreadMessageCardHeaderAlignmentIOSTests' \
             '-only-testing:BrevMailTests/ComposeNativeSheetsSnapshotTests' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/noSelectionPlaceholder()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()' \

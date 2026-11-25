@@ -12,6 +12,7 @@
 
 import BrevBackend
 import CoreGraphics
+import Foundation
 
 enum MessageListSearchFieldPlatform: Equatable, Sendable {
     case iOS
@@ -31,6 +32,20 @@ struct MessageListSearchFieldConfiguration: Equatable, Sendable {
 }
 
 enum MessageListSearchFieldPolicy {
+    /// Search placeholder copy for each platform.
+    ///
+    /// Compact iPhone widths truncate the longer desktop example phrase inside
+    /// the floating Liquid Glass search capsule, so iOS uses a concise prompt
+    /// while macOS keeps the wider natural-language hint.
+    static func searchPrompt(platform: MessageListSearchFieldPlatform) -> String {
+        switch platform {
+        case .iOS:
+            String(localized: "Search mail or ask…", bundle: .module)
+        case .macOS:
+            String(localized: "Search, like “from Maya last week”", bundle: .module)
+        }
+    }
+
     static func configuration(platform: MessageListSearchFieldPlatform) -> MessageListSearchFieldConfiguration {
         switch platform {
         case .iOS:

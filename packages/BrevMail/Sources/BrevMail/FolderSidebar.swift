@@ -246,9 +246,38 @@ public struct FolderSidebar: View {
             .scrollContentBackground(.hidden)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         #if os(iOS)
+            .navigationBarTitleDisplayMode(
+                MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
+                    platform: .iOS,
+                    hasProfiles: !profiles.isEmpty,
+                    canManageProfiles: onManageProfiles != nil
+                ) ? .inline : .large
+            )
             .toolbar {
-                if !profiles.isEmpty || onManageProfiles != nil || onOpenSettings != nil {
+                if MailRootSettingsToolbarPolicy.sidebarLeadingControl(
+                    platform: .iOS,
+                    hasSettingsAction: onOpenSettings != nil
+                ) == .directSettingsButton, let onOpenSettings {
                     ToolbarItem(placement: .topBarLeading) {
+                        Button(action: onOpenSettings) {
+                            Label(String(localized: "Settings", bundle: .module), systemImage: "gearshape")
+                                .labelStyle(.iconOnly)
+                                .foregroundStyle(theme.accent.color)
+                                .frame(
+                                    minWidth: sidebarMetrics.profilePickerMinimumHeight,
+                                    minHeight: sidebarMetrics.profilePickerMinimumHeight
+                                )
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityLabel(String(localized: "Settings", bundle: .module))
+                    }
+                }
+                if MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
+                    platform: .iOS,
+                    hasProfiles: !profiles.isEmpty,
+                    canManageProfiles: onManageProfiles != nil
+                ) == .navigationTitleMenu {
+                    ToolbarItem(placement: .principal) {
                         profileSwitcher
                     }
                 }
@@ -1066,16 +1095,6 @@ public struct FolderSidebar: View {
 
     private var profileSwitcher: some View {
         Menu {
-            #if os(iOS)
-            if let onOpenSettings {
-                Button(action: onOpenSettings) {
-                    Label(String(localized: "Settings", bundle: .module), systemImage: "gearshape")
-                }
-                if !profiles.isEmpty || onManageProfiles != nil {
-                    Divider()
-                }
-            }
-            #endif
             ForEach(profiles) { profile in
                 Button { onSelectProfile?(profile.id) } label: {
                     menuChoice(profile.name, isSelected: profile.id == normalizedActiveProfileID)
@@ -1083,18 +1102,29 @@ public struct FolderSidebar: View {
                 .disabled(onSelectProfile == nil)
             }
             if let onManageProfiles {
-                Divider()
+                if !profiles.isEmpty {
+                    Divider()
+                }
                 Button(action: onManageProfiles) {
                     Label(String(localized: "Manage Profiles", bundle: .module), systemImage: "person.crop.rectangle.stack")
                 }
             }
         } label: {
             #if os(iOS)
-            Image(systemName: "gearshape")
-                .foregroundStyle(theme.accent.color)
-                .frame(minWidth: sidebarMetrics.profilePickerMinimumHeight, minHeight: sidebarMetrics.profilePickerMinimumHeight)
-                .contentShape(Rectangle())
-                .accessibilityLabel(String(localized: "Settings", bundle: .module))
+            HStack(spacing: BrevSpacing.xxs) {
+                Text(verbatim: profileHeaderTitle)
+                    .brevFont(.headline)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(theme.textSecondary.color)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, BrevSpacing.xs)
+            .frame(minHeight: sidebarMetrics.profilePickerMinimumHeight)
+            .contentShape(Rectangle())
             #else
             // A real title for the window, not a section caption: the
             // switcher names what the whole sidebar shows (#306).

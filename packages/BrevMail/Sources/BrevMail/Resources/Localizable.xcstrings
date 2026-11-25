@@ -17026,6 +17026,23 @@
         }
       }
     },
+    "Search mail or ask…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search mail or ask…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søk i e-post eller spør…"
+          }
+        }
+      }
+    },
     "Search, like “from Maya last week”": {
       "extractionState": "manual",
       "localizations": {

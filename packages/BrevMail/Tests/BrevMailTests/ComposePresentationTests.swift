@@ -291,4 +291,16 @@ struct ComposePresentationTests {
         #expect(landscapeMetrics.utilityHeight == 44)
         #expect(landscapeMetrics.hitTargetSize == 44)
     }
+
+    @Test("iOS compose Send circle stays proportionate inside a 44 pt tap target")
+    func iOSComposeSendCircleStaysProportionateInsideTapTarget() {
+        for platform in [ComposeLayoutPlatform.compactIOS, .compactIOSAccessibility, .regularIOS] {
+            let diameter = ComposeLayoutPolicy.sendButtonVisualDiameter(for: platform)
+            let metrics = ComposeLayoutPolicy.toolbarMetrics(for: platform, isCompactVertical: true)
+            #expect((34 ... 36).contains(diameter))
+            #expect(metrics.hitTargetSize >= 44)
+            #expect(diameter < metrics.hitTargetSize)
+        }
+        #expect(ComposeLayoutPolicy.sendButtonVisualDiameter(for: .macOS) == 36)
+    }
 }

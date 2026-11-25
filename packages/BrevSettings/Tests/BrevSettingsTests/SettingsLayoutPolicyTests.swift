@@ -62,4 +62,11 @@ struct SettingsLayoutPolicyTests {
         #expect(SettingsDismissButtonPolicy.showsDismissButton(device: .pad))
         #expect(!SettingsDismissButtonPolicy.showsDismissButton(device: .desktop))
     }
+
+    @Test("iOS settings uses a soft top scroll edge while desktop stays untouched")
+    func iOSSettingsUsesSoftTopScrollEdge() {
+        #expect(SettingsScrollEdgePolicy.usesSoftTopScrollEdge(device: .phone))
+        #expect(SettingsScrollEdgePolicy.usesSoftTopScrollEdge(device: .pad))
+        #expect(!SettingsScrollEdgePolicy.usesSoftTopScrollEdge(device: .desktop))
+    }
 }

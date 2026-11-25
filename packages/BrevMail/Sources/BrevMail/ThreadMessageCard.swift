@@ -18,6 +18,53 @@ import BrevThemes
 import QuickLook
 import SwiftUI
 
+#if os(iOS)
+/// Aligns the iOS thread-card trailing metadata cluster (timestamp, collapse
+/// chevron, and optional HTML-mode overflow button) onto one vertical center
+/// line regardless of Dynamic Type size or whether the card is expanded.
+private extension VerticalAlignment {
+    private enum ThreadCardHeaderMetadataAlignment: AlignmentID {
+        static func defaultValue(in context: ViewDimensions) -> CGFloat {
+            context[VerticalAlignment.center]
+        }
+    }
+
+    static let threadCardHeaderMetadata = VerticalAlignment(ThreadCardHeaderMetadataAlignment.self)
+}
+
+enum ThreadCardHeaderControlKey: Hashable, Sendable {
+    case toggleButton
+    case timestamp
+    case chevron
+    case overflowButton
+}
+
+struct ThreadCardHeaderControlFramesKey: PreferenceKey {
+    static let coordinateSpaceName = "BrevThreadCardHeaderChrome"
+    static let defaultValue: [ThreadCardHeaderControlKey: CGRect] = [:]
+
+    static func reduce(
+        value: inout [ThreadCardHeaderControlKey: CGRect],
+        nextValue: () -> [ThreadCardHeaderControlKey: CGRect]
+    ) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+private extension View {
+    func trackThreadCardHeaderControl(_ key: ThreadCardHeaderControlKey) -> some View {
+        background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: ThreadCardHeaderControlFramesKey.self,
+                    value: [key: proxy.frame(in: .named(ThreadCardHeaderControlFramesKey.coordinateSpaceName))]
+                )
+            }
+        )
+    }
+}
+#endif
+
 /// One expandable card in a `ThreadConversationView` conversation stack.
 ///
 /// Body is loaded lazily on first expansion and cached for the view's lifetime.
@@ -144,10 +191,14 @@ struct ThreadMessageCard: View {
         showsAvatar ? 32 + 2 * BrevSpacing.sm : BrevSpacing.md
     }
     #else
-    private var headerLayoutAlignment: VerticalAlignment { .top }
+    private var headerLayoutAlignment: VerticalAlignment { .threadCardHeaderMetadata }
     private var headerLayoutSpacing: CGFloat { 0 }
     private var bodyLeadingInset: CGFloat {
         showsAvatar && !dynamicTypeSize.isAccessibilitySize ? 32 + 2 * BrevSpacing.sm : BrevSpacing.sm
+    }
+
+    private var showsOverflowMenu: Bool {
+        isExpanded && renderedBody?.html?.isEmpty == false
     }
     #endif
 
@@ -162,12 +213,15 @@ struct ThreadMessageCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .modifier(ThreadCardHeaderAffordance(isExpanded: isExpanded))
-                .accessibilityLabel(headerAccessibilityLabel)
-                .accessibilityValue(isExpanded ? String(localized: "Expanded message", bundle: .module) : String(
-                    localized: "Collapsed message",
-                    bundle: .module
-                ))
+                #if os(iOS)
+                    .trackThreadCardHeaderControl(.toggleButton)
+                #endif
+                    .modifier(ThreadCardHeaderAffordance(isExpanded: isExpanded))
+                    .accessibilityLabel(headerAccessibilityLabel)
+                    .accessibilityValue(isExpanded ? String(localized: "Expanded message", bundle: .module) : String(
+                        localized: "Collapsed message",
+                        bundle: .module
+                    ))
                 if isExpanded, renderedBody?.html?.isEmpty == false {
                     Menu {
                         Button(htmlRenderingMode.toggleAccessibilityLabel) { toggleHTMLRenderingMode() }
@@ -176,6 +230,7 @@ struct ThreadMessageCard: View {
                             .foregroundStyle(theme.textSecondary.color)
                         #if os(iOS)
                             .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                         #else
                             .frame(width: 24, height: 28)
                         #endif
@@ -184,9 +239,17 @@ struct ThreadMessageCard: View {
                     .menuIndicator(.hidden)
                     .help(String(localized: "Message display", bundle: .module))
                     .accessibilityLabel(String(localized: "Message display", bundle: .module))
-                    .padding(.trailing, BrevSpacing.md)
+                    #if os(iOS)
+                        .alignmentGuide(.threadCardHeaderMetadata) { $0[VerticalAlignment.center] }
+                        .trackThreadCardHeaderControl(.overflowButton)
+                    #else
+                        .padding(.trailing, BrevSpacing.md)
+                    #endif
                 }
             }
+            #if os(iOS)
+            .coordinateSpace(name: ThreadCardHeaderControlFramesKey.coordinateSpaceName)
+            #endif
 
             if isExpanded {
                 cardBody
@@ -305,9 +368,10 @@ struct ThreadMessageCard: View {
                 BrevAvatarView(email: header.from.email, displayName: header.from.name, size: 32)
             }
             VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                // Apple Mail style: the name and a short date share one line;
+                // Apple Mail style: the name and trailing metadata cluster
+                // (short date + collapse chevron) share one centered baseline;
                 // the date drops beneath at accessibility sizes.
-                HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
+                HStack(alignment: .center, spacing: BrevSpacing.xs) {
                     Text(header.from.displayName)
                         .font(mailboxFontFamily.font(
                             size: (mailboxTextSize.listTitlePointSize + 3) * scaledBodyMetric / 100,
@@ -315,13 +379,19 @@ struct ThreadMessageCard: View {
                         ))
                         .foregroundStyle(theme.textPrimary.color)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                    if !dynamicTypeSize.isAccessibilitySize {
-                        Spacer(minLength: BrevSpacing.xs)
-                        phoneDateText
+                    Spacer(minLength: BrevSpacing.xs)
+                    HStack(alignment: .center, spacing: BrevSpacing.xs) {
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            phoneDateText
+                                .trackThreadCardHeaderControl(.timestamp)
+                        }
+                        phoneChevronIndicator
                     }
+                    .alignmentGuide(.threadCardHeaderMetadata) { $0[VerticalAlignment.center] }
                 }
                 if dynamicTypeSize.isAccessibilitySize {
                     phoneDateText
+                        .trackThreadCardHeaderControl(.timestamp)
                 }
                 if isExpanded {
                     // The single-message reader's phone header shows "to …",
@@ -336,13 +406,19 @@ struct ThreadMessageCard: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption)
-                .foregroundStyle(theme.textTertiary.color)
-                .frame(minHeight: 44)
         }
-        .padding(.horizontal, BrevSpacing.sm)
+        .frame(minHeight: 44, alignment: .topLeading)
+        .padding(.leading, BrevSpacing.sm)
+        .padding(.trailing, showsOverflowMenu ? BrevSpacing.xxs : BrevSpacing.sm)
         .padding(.vertical, BrevSpacing.sm)
+    }
+
+    private var phoneChevronIndicator: some View {
+        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(theme.textTertiary.color)
+            .trackThreadCardHeaderControl(.chevron)
+            .accessibilityHidden(true)
     }
 
     /// Short date for the phone card header; an explicit override (previews,

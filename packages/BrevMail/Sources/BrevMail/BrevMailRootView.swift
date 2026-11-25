@@ -2070,7 +2070,13 @@ public struct BrevMailRootView: View {
                 activeProfileID: normalizedActiveProfileID,
                 profiles: profiles
             )))
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(
+                MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
+                    platform: toolbarPlatform,
+                    hasProfiles: !profiles.isEmpty,
+                    canManageProfiles: true
+                ) ? .inline : .large
+            )
             .safeAreaInset(edge: .top, spacing: 0) {
                 // Compact shows a single column; the message-list copy covers
                 // regular width, so mounting here too would duplicate it.

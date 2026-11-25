@@ -79,6 +79,7 @@ struct SectionScaffold<Content: View>: View {
                 content
             }
             .scrollContentBackground(.hidden)
+            .settingsScrollEdgeChrome()
             .background(theme.bgSecondary.color.ignoresSafeArea())
             .task(id: searchTarget) {
                 guard let searchTarget else { return }
@@ -169,6 +170,21 @@ extension View {
     func settingsFormChrome() -> some View {
         modifier(SettingsFormChrome())
     }
+
+    /// Soft top scroll-edge transition beneath the translucent iOS navigation
+    /// bar so scrolled rows dissolve smoothly rather than clipping abruptly.
+    @ViewBuilder
+    func settingsScrollEdgeChrome() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
 }
 
 private struct SettingsFormChrome: ViewModifier {
@@ -177,6 +193,7 @@ private struct SettingsFormChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
             .scrollContentBackground(.hidden)
+            .settingsScrollEdgeChrome()
             .background(theme.bgSecondary.color.ignoresSafeArea())
     }
 }
