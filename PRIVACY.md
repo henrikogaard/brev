@@ -1081,8 +1081,22 @@ Brev's optional sign-in code and link detection (ADR-0088) runs strictly on
 your device using deterministic local matching — no AI, no third-party service,
 and no new network endpoints. Both one-time codes and sign-in links are **off
 by default** per account and per device, and consent is excluded from backups
-and iCloud preference sync. When enabled on a supported, verified account, Brev
-may read the plain-text body of an eligible freshly arrived Inbox message over
+and iCloud preference sync. When enabled on a supported, verified account (off by default per account under
+Settings → Notifications → Sign-in codes and links), on fresh Inbox arrivals
+Brev requests only the message's raw headers from your configured IMAP server
+via `BODY.PEEK[HEADER]` (when not already cached locally) and never falls back
+to downloading the full raw source (`BODY.PEEK[]`). Generic IMAP support
+applies to public-hostname IMAP providers (such as Fastmail, iCloud IMAP, Gmail
+IMAP, Outlook/Exchange IMAP, Migadu, Mailbox.org, and custom domains); loopback
+or IP-literal IMAP hosts (such as default Proton Bridge on `127.0.0.1`) fail
+closed because receiving-server provenance cannot be verified from a loopback
+host. Brev verifies that the
+receiving server's top-most `Authentication-Results` header matches your
+account's receiving server boundary with no untrusted `Received` hop above it,
+carries `dmarc=pass` matching a single `From` domain plus an aligned
+`dkim=pass` or `spf=pass`, and arrived within the 10-minute server
+`INTERNALDATE` window. Messages that fail, lack authentication headers, or
+cannot be verified are dropped closed before reading the plain-text body over
 that account's own mail connection. Extracted codes and links live in memory
 only while shown, are never written to logs, analytics, or sync payloads, and
 are copied to the macOS clipboard with `org.nspasteboard.ConcealedType` and

@@ -139,4 +139,38 @@ struct SignInCodeSettingsTests {
         #expect(defaults.object(forKey: SignInCodeSettings.Key.accountOverrides) == nil)
         #expect(SignInCodeSettings.load(from: defaults) == .defaults)
     }
+
+    @Test("Generic IMAP accounts default off and opt in independently per account")
+    func genericIMAPAccountsOptInIndependently() throws {
+        let suite = "SignInCodeSettings-imap-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let fastmail = BrevAccount.imapSMTPAccountID(forEmailAddress: "alex@fastmail.example")
+        let icloud = BrevAccount.imapSMTPAccountID(forEmailAddress: "alex@icloud.example")
+        let protonBridge = BrevAccount.imapSMTPAccountID(forEmailAddress: "alex@proton.example")
+        let customDomain = BrevAccount.imapSMTPAccountID(forEmailAddress: "alex@custom-domain.example")
+
+        var settings = SignInCodeSettings.load(from: defaults)
+        #expect(settings.accountOverrides.isEmpty)
+        for accountID in [fastmail, icloud, protonBridge, customDomain] {
+            let override = settings.accountOverride(for: accountID)
+            #expect(!override.codesEnabled)
+            #expect(!override.linksEnabled)
+        }
+
+        settings.setAccountOverride(accountID: fastmail, codesEnabled: true, linksEnabled: false)
+        settings.setAccountOverride(accountID: customDomain, codesEnabled: true, linksEnabled: true)
+        settings.save(to: defaults)
+
+        let reloaded = SignInCodeSettings.load(from: defaults)
+        #expect(reloaded.accountOverride(for: fastmail).codesEnabled)
+        #expect(!reloaded.accountOverride(for: fastmail).linksEnabled)
+        #expect(!reloaded.accountOverride(for: icloud).codesEnabled)
+        #expect(!reloaded.accountOverride(for: icloud).linksEnabled)
+        #expect(!reloaded.accountOverride(for: protonBridge).codesEnabled)
+        #expect(!reloaded.accountOverride(for: protonBridge).linksEnabled)
+        #expect(reloaded.accountOverride(for: customDomain).codesEnabled)
+        #expect(reloaded.accountOverride(for: customDomain).linksEnabled)
+    }
 }

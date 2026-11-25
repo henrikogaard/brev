@@ -1699,6 +1699,9 @@ public final class AppSession {
                 continue
             }
             let task = Task { @MainActor [weak self] in
+                if let assessor = backend as? any SignInTrustAssessing {
+                    await assessor.focusInboxForBackgroundSubscription()
+                }
                 for await event in backend.subscribeToChanges() {
                     guard !Task.isCancelled, let self else { break }
                     if case .messagesAdded = event {

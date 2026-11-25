@@ -4,6 +4,23 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Generic IMAP sign-in code & link detection (#5): added an RFC 8601
+  `Authentication-Results` parser and domain-alignment verifier
+  (`AuthenticationResultsParser`, `IMAPSignInReceiverProvenance`,
+  `AuthenticationResultsSignInTrustAssessor`) in `BrevBackend` and wired
+  `IMAPSMTPBackend` (`SignInTrustAssessing`, `.trustedSignInAssessment`) so
+  opted-in public-hostname IMAP providers (Fastmail, iCloud IMAP, Gmail IMAP,
+  Outlook/Exchange IMAP, Migadu, Mailbox.org, and custom domains) verify the
+  top-most server-prepended `Authentication-Results` header (`dmarc=pass`
+  matching a single `From` domain plus aligned `dkim=pass` or `spf=pass`, with
+  no untrusted `Received` hop above it) via header-only `BODY.PEEK[HEADER]`
+  (never falling back to full `BODY.PEEK[]`) within the 10-minute server
+  `INTERNALDATE` freshness window before reading a fresh Inbox message body.
+  Loopback and IP-literal IMAP hosts (such as default Proton Bridge on
+  `127.0.0.1`) fail closed because receiver provenance cannot be verified from
+  a loopback host. Per-account opt-in remains off by default, and Settings
+  explains the verification rule in English and Norwegian.
+
 - Closed-app push options with zero Brev proxy (#11): added opt-in, device-local
   **Settings → Notifications → Closed-App Push (Self-Hosted)** (off by default,
   excluded from `.brevbackup` and iCloud preference sync) supporting both
@@ -66,6 +83,7 @@ All notable changes to Brev are documented here.
   Approved calls save a draft for manual review via `backend.save(draft:)` and
   never send mail; `send_message`, `delete_message`, `move_to_trash`,
   `empty_trash`, and credential/settings mutations remain permanently excluded.
+
 - Replaced the 95-file `ADRs/` directory and protected-path `adr-required` CI
   gate with 10 living subsystem design documents under `docs/design/`,
   discarding 24 obsolete/micromanagement records and relaxing overly

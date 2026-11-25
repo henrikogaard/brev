@@ -41,6 +41,7 @@ actor IMAPSMTPBackendState {
     private nonisolated let remoteAvailabilityBroadcaster = Broadcaster<Bool>(replaysLatest: true)
     private var connected = false
     private var remoteAvailable = false
+    private var connectionGeneration: UInt64 = 0
     private var lastSuccessfulSyncAt: Date?
     private var lastErrorDescription: String?
     private var lastErrorRequiresReauthentication = false
@@ -105,6 +106,7 @@ actor IMAPSMTPBackendState {
     func disconnect() {
         connected = false
         remoteAvailable = false
+        connectionGeneration &+= 1
         remoteAvailabilityBroadcaster.emit(false)
         folders = []
         folderDelimitersByID = [:]
@@ -122,6 +124,7 @@ actor IMAPSMTPBackendState {
     ) {
         connected = false
         remoteAvailable = false
+        connectionGeneration &+= 1
         remoteAvailabilityBroadcaster.emit(false)
         lastErrorDescription = description
         lastErrorRequiresReauthentication = requiresReauthentication
@@ -135,6 +138,11 @@ actor IMAPSMTPBackendState {
     /// remote work must not run against a cache-restored mailbox (ADR-0074 §7).
     func isRemoteAvailable() -> Bool {
         connected && remoteAvailable
+    }
+
+    /// Returns the active remote connection generation, or `nil` when offline or disconnected.
+    func remoteConnectionGeneration() -> UInt64? {
+        connected && remoteAvailable ? connectionGeneration : nil
     }
 
     func recordBackgroundSyncFailure(
@@ -334,6 +342,16 @@ actor IMAPSMTPBackendState {
         idleFolderBroadcaster.emit(folderID)
     }
 
+    /// Clears explicit UI folder selection so background IDLE watches Inbox
+    /// instead of remaining stuck on a previously viewed folder such as Sent.
+    func resetActiveMessageFolderToInbox() {
+        let inboxID = folders.first(where: { $0.role == .inbox })?.id
+        activeIdleFolderID = nil
+        if let inboxID {
+            idleFolderBroadcaster.emit(inboxID)
+        }
+    }
+
     nonisolated func eventStream() -> AsyncStream<MailEvent> {
         eventBroadcaster.stream()
     }
@@ -365,7 +383,8 @@ actor IMAPSMTPBackendState {
         _ messageIDs: [MessageHeader.ID],
         folderID: Folder.ID,
         isCompleteFolderWindow: Bool = false,
-        emitAddedEvents: Bool = true
+        emitAddedEvents: Bool = true,
+        onFreshlyAdded: (([MessageHeader.ID]) -> Void)? = nil
     ) {
         let currentIDs = Set(messageIDs)
         guard let knownIDs = knownMessageIDsByFolderID[folderID] else {
@@ -377,6 +396,7 @@ actor IMAPSMTPBackendState {
             ? currentIDs
             : knownIDs.union(currentIDs)
         guard emitAddedEvents, !addedIDs.isEmpty else { return }
+        onFreshlyAdded?(addedIDs)
         emit(.messagesAdded(folderID: folderID, messageIDs: addedIDs))
     }
 

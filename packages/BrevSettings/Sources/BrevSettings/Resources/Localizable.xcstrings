@@ -7966,6 +7966,17 @@
         }
       }
     },
+    "Brev checks trusted sender authentication headers (DMARC alignment) before reading a message body and skips messages that fail or lack verification.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kontrollerer pålitelige autentiseringstopptekster for avsenderen (DMARC-samsvar) før meldingsteksten leses, og hopper over meldinger som feiler eller mangler verifisering."
+          }
+        }
+      }
+    },
     "Task lists": {
       "extractionState": "manual",
       "localizations": {

@@ -208,8 +208,9 @@ public struct BackendExtendedCapabilities: OptionSet, Sendable, Hashable {
     public static let localAttachmentIndex = BackendExtendedCapabilities(rawValue: 1 << 16)
 
     /// The backend can assess whether a message is a trusted fresh sign-in
-    /// delivery (ADR-0088, `SignInTrustAssessing`). This stays off until the
-    /// ADR-0088 E1-E5 evidence is recorded — no backend advertises it yet.
+    /// delivery (`SignInTrustAssessing`). Generic IMAP/SMTP backends advertise
+    /// this via RFC 8601 `Authentication-Results` verification; Gmail remains
+    /// gated until live E1-E5 evidence is recorded.
     public static let trustedSignInAssessment = BackendExtendedCapabilities(rawValue: 1 << 17)
 
     /// The backend can sign and/or encrypt outbound drafts via an injected

@@ -12,6 +12,7 @@
 
 import BrevBackend
 import BrevDesign
+import BrevThemes
 import SwiftUI
 
 /// Per-account consent for the sign-in panel (ADR-0088 decision 11).
@@ -27,6 +28,9 @@ struct SignInCodeSettingsGroup: View {
     /// Whether the account's backend advertises
     /// `.trustedSignInAssessment`.
     let isAvailable: (BrevAccount.ID) -> Bool
+    /// Whether to display inline sender authentication verification guidance
+    /// on eligible account cards even before a toggle is enabled.
+    let showsVerificationGuidance: Bool
     /// Called after a consent change so the arrival controller can cancel
     /// pending work for the account.
     var onChange: (BrevAccount.ID) -> Void = { _ in }
@@ -37,10 +41,12 @@ struct SignInCodeSettingsGroup: View {
         accounts: [BrevAccount],
         settingsStore: SettingsPersistenceStore,
         isAvailable: @escaping (BrevAccount.ID) -> Bool,
+        showsVerificationGuidance: Bool = false,
         onChange: @escaping (BrevAccount.ID) -> Void = { _ in }
     ) {
         self.accounts = accounts
         self.isAvailable = isAvailable
+        self.showsVerificationGuidance = showsVerificationGuidance
         self.onChange = onChange
         defaults = settingsStore.defaults
         _settings = State(initialValue: SignInCodeSettings.load(from: settingsStore.defaults))
@@ -94,6 +100,17 @@ struct SignInCodeSettingsGroup: View {
                     subtitle: String(localized: "Open a sign-in link after seeing its real destination.", bundle: .module),
                     isOn: binding(account.id, codes: false)
                 )
+                let current = settings.accountOverride(for: account.id)
+                if showsVerificationGuidance || current.codesEnabled || current.linksEnabled {
+                    SettingsInfoCallout(
+                        symbolName: "checkmark.shield",
+                        message: String(
+                            localized: "Brev checks trusted sender authentication headers (DMARC alignment) before reading a message body and skips messages that fail or lack verification.",
+                            bundle: .module
+                        ),
+                        tone: .info
+                    )
+                }
             } else {
                 SettingsInfoCallout(
                     symbolName: "lock.shield",

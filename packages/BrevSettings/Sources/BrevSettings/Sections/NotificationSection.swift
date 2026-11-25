@@ -82,6 +82,7 @@ struct NotificationSection: View {
                     accounts: accounts,
                     settingsStore: settingsStore,
                     isAvailable: signInAssessmentAvailable,
+                    showsVerificationGuidance: true,
                     onChange: onSignInCodeConsentChanged
                 )
                 if showPushRelaySection {
