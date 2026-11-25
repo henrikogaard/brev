@@ -34,6 +34,12 @@
   - `PRRT_kwDOUHC-Ds68BwfW`: tokenized `inReplyTo`, `references`, and sent `rfcMessageID` via `ConversationMembershipResolver.identifiers(in:)` so Gmail single-element multi-ID `References` headers match across thread IDs.
   - `PRRT_kwDOUHC-Ds68BwhJ`: localized `"I couldn't find any recent cached sent messages without a cached reply yet."` with explicit `en` and `nb` entries in `BrevMail`'s `Localizable.xcstrings`.
   - `PRRT_kwDOUHC-Ds68Bwi0`: skipped the 3rd unfiltered recent-fallback scan for `.needsMeToday` in `MailboxChatController.send` whenever the deduplicated `.cacheOnly` flagged + unread candidates already meet or exceed `maxMessages`.
+- Review fixes round 4 (PR #370 — 5 Devin findings on `734936e1`):
+  - `PRRT_kwDOUHC-Ds68CC1l`: removed folder-suffix heuristics from `isDraftHeader` so custom Gmail labels such as `Projects/Drafts` are preserved while `.drafts` folder IDs and exact provider draft markers (`DRAFT`, `\Draft`, `[Gmail]/Drafts`) remain excluded.
+  - `PRRT_kwDOUHC-Ds68CC3r`: switched Message-ID lookups in `unansweredSentMessages` from `rfcMessageID` to explicit `header.messageID` so same-thread Gmail replies lacking `messageID` are not mistaken for sent copies.
+  - `PRRT_kwDOUHC-Ds68CC5L`: preserved RFC Message-ID case (matching `ConversationMembershipResolver`) in `diversifyByThread` and `messageIdentifiers(_:)`.
+  - `PRRT_kwDOUHC-Ds68CC65`: replaced string fingerprint in `diversifyByThread` with `OwnershipFingerprint` matching `ConversationMembershipResolver`'s typed fields including normalized sorted `To` addresses so true copies unify while reused Message-IDs for different recipients stay separate.
+  - `PRRT_kwDOUHC-Ds68CC8e`: added `needsMeTodayRunsFallbackWhenFlaggedAndUnreadOverlapBelowCap` plus round-4 regression tests in `MailboxChatControllerTests.swift`.
 
 ## 2026-11-25 — Agent — Issues #360, #362, #363 (iOS Settings Menu, Landscape/AXL Clipping, `nb` AX Hints)
 

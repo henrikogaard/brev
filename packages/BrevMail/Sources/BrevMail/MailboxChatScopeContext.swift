@@ -330,6 +330,23 @@ enum MailboxChatStarterCandidateSelector {
         }
     }
 
+    /// Matches `ConversationMembershipResolver`'s ownership fingerprint (including
+    /// normalized sorted `To` recipients) so true physical copies stay unified
+    /// while reused Message-IDs sent to different recipients remain separate (#370).
+    private struct OwnershipFingerprint: Hashable {
+        let sender: String
+        let recipients: [String]
+        let date: Date
+        let subject: String
+
+        init(_ header: MessageHeader) {
+            sender = header.from.email.lowercased()
+            recipients = header.to.map { $0.email.lowercased() }.sorted()
+            date = header.date
+            subject = header.subject
+        }
+    }
+
     /// Groups candidates by conversation using both native `threadID`s and
     /// `ConversationMembershipResolver` RFC link identifiers (so unthreaded
     /// IMAP replies with per-message `threadID`s still group into one
@@ -367,13 +384,13 @@ enum MailboxChatStarterCandidateSelector {
             }
         }
 
-        // Track owners of each own Message-ID so duplicate/reused IDs across
-        // unrelated messages do not bridge unrelated conversations.
-        var ownIDFingerprints: [String: Set<String>] = [:]
+        // Track owners of each own Message-ID (case-preserving, matching
+        // `ConversationMembershipResolver`) so duplicate/reused IDs across
+        // distinct messages do not bridge unrelated conversations.
+        var ownIDFingerprints: [String: Set<OwnershipFingerprint>] = [:]
         for header in headers {
             if let ownID = singleMessageIdentifier(header.rfcMessageID) {
-                let fingerprint = "\(header.from.email.lowercased())|\(header.subject)|\(header.date.timeIntervalSinceReferenceDate)"
-                ownIDFingerprints[ownID, default: []].insert(fingerprint)
+                ownIDFingerprints[ownID, default: []].insert(OwnershipFingerprint(header))
             }
         }
         let unsafeIdentifiers = Set(ownIDFingerprints.filter { $0.value.count > 1 }.map(\.key))
@@ -389,8 +406,7 @@ enum MailboxChatStarterCandidateSelector {
                     firstIndexByThreadID[header.threadID] = index
                 }
             }
-            let linkIDs = (ConversationMembershipResolver.cachedLinkIdentifiers(for: header) ?? [])
-                .map { $0.lowercased() }
+            let linkIDs = ConversationMembershipResolver.cachedLinkIdentifiers(for: header) ?? []
             for linkID in linkIDs where !unsafeIdentifiers.contains(linkID) {
                 if let existing = firstIndexByLinkID[linkID] {
                     union(existing, index)
@@ -433,25 +449,42 @@ enum MailboxChatStarterCandidateSelector {
         return result
     }
 
-    private static func isDraftIdentifier(_ raw: String) -> Bool {
-        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized == "draft"
-            || normalized == "drafts"
-            || normalized == "\\draft"
-            || normalized == "\\drafts"
-            || normalized == "[gmail]/drafts"
-            || normalized.hasSuffix("/drafts")
-            || normalized.hasSuffix(".drafts")
-    }
+    private static let canonicalDraftFolderMarkers: Set<String> = [
+        "draft",
+        "drafts",
+        "\\draft",
+        "\\drafts",
+        "[gmail]/drafts",
+    ]
+
+    private static let exactProviderDraftLabelMarkers: Set<String> = [
+        "draft",
+        "\\draft",
+        "\\drafts",
+        "[gmail]/drafts",
+    ]
 
     private static func isDraftHeader(
         _ header: MessageHeader,
         draftFolderIDs: Set<String>
     ) -> Bool {
-        if draftFolderIDs.contains(header.folderID) || isDraftIdentifier(header.folderID) {
+        if draftFolderIDs.contains(header.folderID) {
             return true
         }
-        return header.labels.contains { draftFolderIDs.contains($0) || isDraftIdentifier($0) }
+        let normalizedFolderID = header.folderID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if draftFolderIDs.isEmpty, canonicalDraftFolderMarkers.contains(normalizedFolderID) {
+            return true
+        }
+        if exactProviderDraftLabelMarkers.contains(normalizedFolderID) {
+            return true
+        }
+        return header.labels.contains { label in
+            if draftFolderIDs.contains(label) { return true }
+            let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return exactProviderDraftLabelMarkers.contains(normalized)
+        }
     }
 
     /// Matches `TodayDigestBuilder` and `NoReplyFollowUpReconciler`:
@@ -494,7 +527,7 @@ enum MailboxChatStarterCandidateSelector {
         var sentMessageIDs = Set<String>()
         for header in eligibleHeaders where isSentHeader(header) {
             sentHeaders.append(header)
-            if let messageID = singleMessageIdentifier(header.rfcMessageID) {
+            if let messageID = singleMessageIdentifier(header.messageID) {
                 sentMessageIDs.insert(messageID)
             }
         }
@@ -516,7 +549,7 @@ enum MailboxChatStarterCandidateSelector {
         var incomingByThread: [String: Date] = [:]
         var repliedSentMessageIDs = Set<String>()
         for header in eligibleHeaders where !isSentHeader(header) {
-            if let id = singleMessageIdentifier(header.rfcMessageID), sentMessageIDs.contains(id) {
+            if let id = singleMessageIdentifier(header.messageID), sentMessageIDs.contains(id) {
                 continue
             }
             if isMine(header.from) { continue }
@@ -533,7 +566,7 @@ enum MailboxChatStarterCandidateSelector {
                 guard !externalRecipients.isEmpty else { return false }
                 let threadKey = header.threadID.isEmpty ? header.id : header.threadID
                 let repliedInThread = (incomingByThread[threadKey] ?? .distantPast) > header.date
-                let repliedByHeader = singleMessageIdentifier(header.rfcMessageID)
+                let repliedByHeader = singleMessageIdentifier(header.messageID)
                     .map(repliedSentMessageIDs.contains) == true
                 return !repliedInThread && !repliedByHeader
             }
@@ -544,8 +577,7 @@ enum MailboxChatStarterCandidateSelector {
     }
 
     private static func messageIdentifiers(_ value: String?) -> [String] {
-        ((try? ConversationMembershipResolver.identifiers(in: value)) ?? [])
-            .map { $0.lowercased() }
+        (try? ConversationMembershipResolver.identifiers(in: value)) ?? []
     }
 
     private static func singleMessageIdentifier(_ value: String?) -> String? {

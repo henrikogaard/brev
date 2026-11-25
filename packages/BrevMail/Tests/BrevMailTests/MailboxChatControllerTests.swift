@@ -769,6 +769,391 @@ struct MailboxChatControllerTests {
         #expect(stubBackend.recordedSearchQueries.allSatisfy { $0.isFlagged == true || $0.isUnread == true })
     }
 
+    @Test("needsMeToday still runs fallback scan when flagged and unread overlap below maxMessages (#370)")
+    @MainActor
+    func needsMeTodayRunsFallbackWhenFlaggedAndUnreadOverlapBelowCap() async throws {
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+
+        // Two items are BOTH flagged and unread: raw hits = 4 (>= maxMessages 3),
+        // but deduplicated hits = 2 (< maxMessages 3), so the 3rd fallback scan must run.
+        let both1 = MessageHeader(
+            id: "both-1",
+            threadID: "t-both-1",
+            folderID: inbox.id,
+            from: Correspondent(name: "Maya", email: "maya@example.com"),
+            subject: "Urgent 1",
+            snippet: "Needs review.",
+            date: now.addingTimeInterval(-1800),
+            isRead: false,
+            isFlagged: true
+        )
+        let both2 = MessageHeader(
+            id: "both-2",
+            threadID: "t-both-2",
+            folderID: inbox.id,
+            from: Correspondent(name: "Daniel", email: "daniel@example.com"),
+            subject: "Urgent 2",
+            snippet: "Needs approval.",
+            date: now.addingTimeInterval(-3600),
+            isRead: false,
+            isFlagged: true
+        )
+        let fallbackRead = MessageHeader(
+            id: "fallback-read",
+            threadID: "t-fallback",
+            folderID: inbox.id,
+            from: Correspondent(name: "Ingrid", email: "ingrid@example.com"),
+            subject: "Recent status",
+            snippet: "FYI update.",
+            date: now.addingTimeInterval(-7200),
+            isRead: true,
+            isFlagged: false
+        )
+
+        let stubBackend = StubCachedSearchBackend(
+            accountEmail: "henrik@example.com",
+            folders: [inbox],
+            cachedMessages: [both1, both2, fallbackRead]
+        )
+        let sourceID = MailSourceID(accountID: stubBackend.account.id, mailboxID: "primary")
+        let aiBackend = RecordingAIBackend(responseText: "Two urgent items plus one recent update.")
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: sourceID,
+            aiBackend: aiBackend,
+            actionFolders: [inbox],
+            maxMessages: 3,
+            search: MailboxChatSearchBridge.makeSearch { _ in stubBackend }
+        )
+
+        await controller.send(
+            userText: "What needs me today?",
+            starterIntent: .needsMeToday,
+            referenceDate: now
+        )
+
+        #expect(stubBackend.recordedSearchQueries.count == 3)
+        guard case .answer(_, let citations, _)? = controller.turns.last else {
+            Issue.record("Expected answer turn including fallback citation")
+            return
+        }
+        #expect(citations.map(\.id) == ["both-1", "both-2", "fallback-read"])
+    }
+
+    @Test(
+        "whoHasntReplied keeps replies tagged Projects/Drafts, excludes \\Draft, and matches nil-Message-ID Gmail replies (#370)"
+    )
+    @MainActor
+    func whoHasntRepliedHandlesCustomDraftLabelsAndNilMessageIDGmailReplies() async throws {
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let day: TimeInterval = 24 * 60 * 60
+        let me = Correspondent(name: "Henrik", email: "henrik@example.com")
+        let maya = Correspondent(name: "Maya Okafor", email: "maya@northwind.example")
+        let daniel = Correspondent(name: "Daniel Reyes", email: "daniel@example.com")
+        let lars = Correspondent(name: "Lars Bjørnstad", email: "lars@acme.example")
+        let inbox = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let sent = Folder(id: "SENT", name: "Sent", role: .sent)
+        let drafts = Folder(id: "DRAFT", name: "Drafts", role: .drafts)
+
+        // 1. Sent to Maya with a reply tagged with custom user label "Projects/Drafts":
+        // must NOT be discarded as a draft, so Maya counts as having replied.
+        let sentToMaya = MessageHeader(
+            id: "sent-maya",
+            threadID: "gmail-t-maya",
+            folderID: sent.id,
+            from: me,
+            to: [maya],
+            subject: "Project draft feedback",
+            snippet: "Can you review?",
+            date: now.addingTimeInterval(-3 * day),
+            isRead: true,
+            messageID: "<sent-maya@example.com>"
+        )
+        let mayaReplyCustomLabel = MessageHeader(
+            id: "reply-maya",
+            threadID: "gmail-t-maya",
+            folderID: inbox.id,
+            from: maya,
+            to: [me],
+            subject: "Re: Project draft feedback",
+            snippet: "Looks solid!",
+            date: now.addingTimeInterval(-2 * day),
+            isRead: true,
+            labels: ["Projects/Drafts"]
+        )
+
+        // 2. Gmail same-thread sent + reply where NEITHER cached header has messageID:
+        // reply must not be mistaken for a sent copy via rfcMessageID fallback to threadID.
+        let sentToDanielNoMID = MessageHeader(
+            id: "sent-daniel-nomid",
+            threadID: "gmail-t-daniel",
+            folderID: sent.id,
+            from: me,
+            to: [daniel],
+            subject: "Quick question",
+            snippet: "Free at 2?",
+            date: now.addingTimeInterval(-3 * day),
+            isRead: true,
+            messageID: nil
+        )
+        let danielReplyNoMID = MessageHeader(
+            id: "reply-daniel-nomid",
+            threadID: "gmail-t-daniel",
+            folderID: inbox.id,
+            from: daniel,
+            to: [me],
+            subject: "Re: Quick question",
+            snippet: "Yes, see you at 2.",
+            date: now.addingTimeInterval(-1 * day),
+            isRead: true,
+            messageID: nil
+        )
+
+        // 3. Real unanswered sent message to Lars + an IMAP \Draft message that must be excluded.
+        let unansweredToLars = MessageHeader(
+            id: "sent-lars",
+            threadID: "gmail-t-lars",
+            folderID: sent.id,
+            from: me,
+            to: [lars],
+            subject: "Contract sign-off",
+            snippet: "Please confirm.",
+            date: now.addingTimeInterval(-4 * day),
+            isRead: true,
+            messageID: "<sent-lars@example.com>"
+        )
+        let imapDraft = MessageHeader(
+            id: "imap-draft-lars",
+            threadID: "gmail-t-lars",
+            folderID: "INBOX",
+            from: me,
+            to: [lars],
+            subject: "Re: Contract sign-off",
+            snippet: "Unfinished follow-up.",
+            date: now.addingTimeInterval(-1 * day),
+            isRead: true,
+            labels: ["\\Draft"]
+        )
+
+        let stubBackend = StubCachedSearchBackend(
+            accountEmail: me.email,
+            folders: [inbox, sent, drafts],
+            cachedMessages: [
+                sentToMaya,
+                mayaReplyCustomLabel,
+                sentToDanielNoMID,
+                danielReplyNoMID,
+                unansweredToLars,
+                imapDraft,
+            ]
+        )
+        let sourceID = MailSourceID(accountID: stubBackend.account.id, mailboxID: "primary")
+        let aiBackend = RecordingAIBackend(responseText: "Only Lars hasn't replied yet.")
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: sourceID,
+            aiBackend: aiBackend,
+            actionFolders: [inbox, sent, drafts],
+            actionSourceScope: MailboxActionAgentSourceScope(
+                sourceID: sourceID,
+                accountName: "Work",
+                mailboxName: "Primary",
+                mailboxAddress: me.email
+            ),
+            search: MailboxChatSearchBridge.makeSearch { _ in stubBackend }
+        )
+
+        await controller.send(
+            userText: "Who hasn't replied?",
+            starterIntent: .whoHasntReplied,
+            referenceDate: now
+        )
+
+        guard case .answer(_, let citations, _)? = controller.turns.last else {
+            Issue.record("Expected answer turn citing only unansweredToLars")
+            return
+        }
+        #expect(citations.map(\.id) == ["sent-lars"])
+    }
+
+    @Test(
+        "summarizeRecentThreads preserves RFC Message-ID case and keeps reused Message-IDs for different recipients separate (#370)"
+    )
+    @MainActor
+    func summarizeRecentThreadsPreservesCaseAndRecipientOwnershipFingerprint() async throws {
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let hour: TimeInterval = 3600
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+
+        // Case-variant Message-IDs whose originals are outside the 14-day window must NOT merge.
+        let upperTicketReply = MessageHeader(
+            id: "reply-upper",
+            threadID: "imap-upper",
+            folderID: inbox.id,
+            from: Correspondent(name: "Ops", email: "ops@example.org"),
+            subject: "Re: TicketA",
+            snippet: "Upper update.",
+            date: now.addingTimeInterval(-1 * hour),
+            isRead: false,
+            messageID: "<reply-upper@example.org>",
+            inReplyTo: "<TicketA@example.org>"
+        )
+        let lowerTicketReply = MessageHeader(
+            id: "reply-lower",
+            threadID: "imap-lower",
+            folderID: inbox.id,
+            from: Correspondent(name: "Support", email: "support@example.org"),
+            subject: "Re: ticketa",
+            snippet: "Lower update.",
+            date: now.addingTimeInterval(-2 * hour),
+            isRead: false,
+            messageID: "<reply-lower@example.org>",
+            inReplyTo: "<ticketa@example.org>"
+        )
+        let caseVariantOther = MessageHeader(
+            id: "case-other-conv",
+            threadID: "t-case-other",
+            folderID: inbox.id,
+            from: Correspondent(name: "Maya", email: "maya@example.org"),
+            subject: "Unrelated topic",
+            snippet: "Checking in.",
+            date: now.addingTimeInterval(-3 * hour),
+            isRead: false,
+            messageID: "<case-other@example.org>"
+        )
+        // With 3 messages and maxMessages: 2, if case-folding wrongly merged upper+lower into one
+        // bucket then case-other-conv would displace reply-lower in round 1.
+        let caseVariantSelection = MailboxChatStarterCandidateSelector.select(
+            headers: [upperTicketReply, lowerTicketReply, caseVariantOther],
+            intent: .summarizeRecentThreads,
+            sentFolderIDs: [],
+            myEmailAddress: nil,
+            maxMessages: 2
+        )
+        #expect(caseVariantSelection.map(\.id) == ["reply-upper", "reply-lower"])
+
+        // Reused Message-ID sent to different To recipients must be treated as unsafe so
+        // their reply branches stay separate, while a true copy (same To) still groups.
+        let reusedDate = now.addingTimeInterval(-10 * hour)
+        let reusedToAlice = MessageHeader(
+            id: "orig-alice",
+            threadID: "t-orig-alice",
+            folderID: inbox.id,
+            from: Correspondent(name: "Mailer", email: "mailer@example.org"),
+            to: [Correspondent(name: "Alice", email: "alice@example.org")],
+            subject: "Notice",
+            snippet: "Hi Alice.",
+            date: reusedDate,
+            isRead: true,
+            messageID: "<reused-1@example.org>"
+        )
+        let reusedToBob = MessageHeader(
+            id: "orig-bob",
+            threadID: "t-orig-bob",
+            folderID: inbox.id,
+            from: Correspondent(name: "Mailer", email: "mailer@example.org"),
+            to: [Correspondent(name: "Bob", email: "bob@example.org")],
+            subject: "Notice",
+            snippet: "Hi Bob.",
+            date: reusedDate,
+            isRead: true,
+            messageID: "<reused-1@example.org>"
+        )
+        let replyAliceBranch = MessageHeader(
+            id: "reply-alice",
+            threadID: "t-reply-alice",
+            folderID: inbox.id,
+            from: Correspondent(name: "Alice", email: "alice@example.org"),
+            subject: "Re: Notice",
+            snippet: "Alice reply.",
+            date: now.addingTimeInterval(-1 * hour),
+            isRead: false,
+            messageID: "<r-alice@example.org>",
+            inReplyTo: "<reused-1@example.org>"
+        )
+        let replyBobBranch = MessageHeader(
+            id: "reply-bob",
+            threadID: "t-reply-bob",
+            folderID: inbox.id,
+            from: Correspondent(name: "Bob", email: "bob@example.org"),
+            subject: "Re: Notice",
+            snippet: "Bob reply.",
+            date: now.addingTimeInterval(-2 * hour),
+            isRead: false,
+            messageID: "<r-bob@example.org>",
+            inReplyTo: "<reused-1@example.org>"
+        )
+        let thirdConversation = MessageHeader(
+            id: "other-conv",
+            threadID: "t-other",
+            folderID: inbox.id,
+            from: Correspondent(name: "Maya", email: "maya@example.org"),
+            subject: "Roadmap",
+            snippet: "Let's sync.",
+            date: now.addingTimeInterval(-3 * hour),
+            isRead: false,
+            messageID: "<other-conv@example.org>"
+        )
+
+        let reusedSelection = MailboxChatStarterCandidateSelector.select(
+            headers: [reusedToAlice, reusedToBob, replyAliceBranch, replyBobBranch, thirdConversation],
+            intent: .summarizeRecentThreads,
+            sentFolderIDs: [],
+            myEmailAddress: nil,
+            maxMessages: 3
+        )
+        // Both reply branches keep separate first-round slots (not collapsed together).
+        #expect(reusedSelection.map(\.id) == ["reply-alice", "reply-bob", "other-conv"])
+
+        // True copy (same sender, sorted To, date, subject) still unifies with its reply.
+        let copyDate = now.addingTimeInterval(-8 * hour)
+        let copyInbox = MessageHeader(
+            id: "copy-inbox",
+            threadID: "t-copy-1",
+            folderID: inbox.id,
+            from: Correspondent(name: "Maya", email: "maya@example.org"),
+            to: [Correspondent(name: "Henrik", email: "henrik@example.org")],
+            subject: "True copy thread",
+            snippet: "Hello.",
+            date: copyDate,
+            isRead: true,
+            messageID: "<copy-1@example.org>"
+        )
+        let copyArchive = MessageHeader(
+            id: "copy-archive",
+            threadID: "t-copy-2",
+            folderID: "archive",
+            from: Correspondent(name: "Maya", email: "maya@example.org"),
+            to: [Correspondent(name: "Henrik", email: "henrik@example.org")],
+            subject: "True copy thread",
+            snippet: "Hello.",
+            date: copyDate,
+            isRead: true,
+            messageID: "<copy-1@example.org>"
+        )
+        let copyReply = MessageHeader(
+            id: "copy-reply",
+            threadID: "t-copy-reply",
+            folderID: inbox.id,
+            from: Correspondent(name: "Henrik", email: "henrik@example.org"),
+            subject: "Re: True copy thread",
+            snippet: "Replying!",
+            date: now.addingTimeInterval(-1 * hour),
+            isRead: false,
+            messageID: "<copy-reply@example.org>",
+            inReplyTo: "<copy-1@example.org>"
+        )
+        let copySelection = MailboxChatStarterCandidateSelector.select(
+            headers: [copyInbox, copyArchive, copyReply, thirdConversation],
+            intent: .summarizeRecentThreads,
+            sentFolderIDs: [],
+            myEmailAddress: nil,
+            maxMessages: 2
+        )
+        #expect(copySelection.map(\.id) == ["copy-reply", "other-conv"])
+    }
+
     @Test("account scope without source id returns a local clarification")
     @MainActor
     func accountScopeWithoutSourceIDReturnsALocalClarification() async throws {
