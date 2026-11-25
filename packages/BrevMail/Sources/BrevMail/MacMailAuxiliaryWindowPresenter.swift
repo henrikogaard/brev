@@ -324,7 +324,7 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
         AnyView(
             content
                 .frame(width: width, height: 36)
-                .brevTheme(theme)
+                .brevSheetAppearance(theme)
                 .environment(\.colorScheme, theme.mode.colorScheme)
         )
     }

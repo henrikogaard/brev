@@ -8773,3 +8773,6 @@ buttons, and package-aware localization.
   - Kept the quick-reply bar's pinned sending source stable when expanding into the macOS inline dock (`PRRT_kwDOUHC-Ds68ClAN`) via `ComposeReplyAccountRouting.effectiveComposeSourceID` in `ComposeSenderIdentity.swift` and `BrevMailRootView.composeEditor`, preventing `.inline` from rematching against accounts hidden by the active profile; added `inlineReplyDockKeepsVisibleCcSenderWhenProfileHidesToAccount` in `ComposeSenderIdentityTests`.
   - Updated `DeveloperSettingsTests` (`PRRT_kwDOUHC-Ds68ClCb`) to send Space `keyDown(isRepeat: false)` → `keyDown(isRepeat: true)` → `keyUp` so key repeat is exercised while Space is held down.
   - Verified on `macmini-devbox` (`/tmp/brev-polish-b-r4`, removed afterwards): `ComposeSenderIdentityTests` and `DeveloperSettingsTests`.
+- **CI fix (PR #372 — `SheetAppearanceTests`):**
+  - Switched `MacComposeToolbarDelegate.themedRootView` in `MacMailAuxiliaryWindowPresenter.swift` from `.brevTheme(theme)` to `.brevSheetAppearance(theme)` (identical on macOS per `RootAppearance.swift`) to satisfy `SheetAppearanceTests.presentedViewsUseTheSharedSheetModifier`.
+  - Verified full `BrevMail` non-snapshot suite on `macmini-devbox` (`/tmp/brev-polish-b-ci`, removed afterwards).
