@@ -564,6 +564,7 @@ struct UnifiedInboxListView: View {
                                 .scrollClipDisabled()
                             #endif
                                 .refreshable { await pullToRefresh() }
+                                .brevBottomBarScrollInset()
                             #if os(macOS)
                                 .onChange(of: [navigation.selectedMessageID, selectedRowID]) { _, _ in
                                     guard let selectedRowID else { return }

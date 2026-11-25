@@ -393,6 +393,59 @@ struct MailRootSettingsToolbarPolicyTests {
             presentSettings: {}
         ) == nil)
     }
+
+    @Test("iOS Mailboxes uses a direct 1-tap Settings gear and separates the profile title menu (#360)")
+    func iOSMailboxesSeparatesDirectSettingsButtonFromProfileTitleMenu() {
+        #expect(MailRootSettingsToolbarPolicy.sidebarLeadingControl(
+            platform: .iOS,
+            hasSettingsAction: true
+        ) == .directSettingsButton)
+        #expect(MailRootSettingsToolbarPolicy.sidebarLeadingControl(
+            platform: .iOS,
+            hasSettingsAction: false
+        ) == .none)
+        #expect(MailRootSettingsToolbarPolicy.sidebarLeadingControl(
+            platform: .macOS,
+            hasSettingsAction: true
+        ) == .none)
+
+        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
+            platform: .iOS,
+            hasProfiles: true,
+            canManageProfiles: true
+        ) == .navigationTitleMenu)
+        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
+            platform: .iOS,
+            hasProfiles: false,
+            canManageProfiles: true
+        ) == .navigationTitleMenu)
+        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
+            platform: .iOS,
+            hasProfiles: false,
+            canManageProfiles: false
+        ) == .none)
+        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
+            platform: .macOS,
+            hasProfiles: true,
+            canManageProfiles: true
+        ) == .sidebarHeader)
+
+        #expect(MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
+            platform: .iOS,
+            hasProfiles: true,
+            canManageProfiles: true
+        ))
+        #expect(!MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
+            platform: .iOS,
+            hasProfiles: false,
+            canManageProfiles: false
+        ))
+        #expect(!MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
+            platform: .macOS,
+            hasProfiles: true,
+            canManageProfiles: true
+        ))
+    }
 }
 
 @Suite("MailboxFilterControlPolicy")

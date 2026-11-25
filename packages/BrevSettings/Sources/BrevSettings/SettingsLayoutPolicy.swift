@@ -58,3 +58,18 @@ enum SettingsDismissButtonPolicy {
         }
     }
 }
+
+enum SettingsScrollEdgePolicy {
+    /// Applies a soft top scroll-edge effect on iOS so scrolled Settings rows
+    /// transition smoothly beneath the translucent navigation bar instead of
+    /// clipping against a flat opaque bar, while keeping macOS Settings
+    /// chrome and snapshots untouched.
+    static func usesSoftTopScrollEdge(device: SettingsDeviceIdiom) -> Bool {
+        switch device {
+        case .phone, .pad:
+            true
+        case .desktop:
+            false
+        }
+    }
+}

@@ -90,6 +90,23 @@ struct MessageListSearchDebouncePolicyTests {
         #expect(configuration.chromeHeight == nil)
     }
 
+    @Test("iOS search uses a concise localized prompt with English and Norwegian nb entries")
+    func iOSSearchUsesConciseLocalizedPrompt() throws {
+        let iosPrompt = MessageListSearchFieldPolicy.searchPrompt(platform: .iOS)
+        let macPrompt = MessageListSearchFieldPolicy.searchPrompt(platform: .macOS)
+        #expect(iosPrompt == "Search mail or ask…")
+        #expect(iosPrompt.count < macPrompt.count)
+        #expect(macPrompt == "Search, like “from Maya last week”")
+
+        let strings = try LocalizationCatalogTestSupport.loadCatalogStrings()
+        let entry = try #require(strings["Search mail or ask…"] as? [String: Any])
+        let localizations = try #require(entry["localizations"] as? [String: Any])
+        let enValue = ((localizations["en"] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+        let nbValue = ((localizations["nb"] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+        #expect(enValue == "Search mail or ask…")
+        #expect(nbValue == "Søk i e-post eller spør…")
+    }
+
     @Test("category chrome preserves native platform density")
     func categoryChromePreservesNativePlatformDensity() {
         #expect(InboxCategoryBarPresentation.height(platform: .iOS) == 44)

@@ -97,6 +97,21 @@ enum ComposeLayoutPolicy {
         }
     }
 
+    /// Visual diameter of the circular Send pill.
+    ///
+    /// On iOS, drawing the filled circle at the full 44 pt hit target makes the
+    /// button oversized in portrait and nearly touch the sheet corner bezel in
+    /// 44 pt landscape. A 34 pt visual circle centered inside the 44 pt tap
+    /// target stays proportionate with Cancel, title, and Later.
+    static func sendButtonVisualDiameter(for platform: ComposeLayoutPlatform) -> CGFloat {
+        switch platform {
+        case .compactIOS, .compactIOSAccessibility, .regularIOS:
+            34
+        case .macOS:
+            36
+        }
+    }
+
     /// Whether header fields and the body share a scrollable column between the
     /// pinned top navigation bar and bottom utility bar (#362).
     ///
