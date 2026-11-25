@@ -226,6 +226,42 @@ struct AIWriterSettingsTests {
         #expect(orphanSummary.hasDownloadedModelMissingRuntime == false)
     }
 
+    @Test("already-enabled proactive triage stays visible and opt-outable when downloaded-model helper is missing")
+    func missingHelperAllowsOptOutWhileBlockingOptIn() {
+        let account = BrevAccount(id: "acct-1", displayName: "Work", emailAddress: "work@example.org")
+        let downloadedDefault = AIProviderConfiguration.onDeviceDownloadedModel(
+            modelID: LocalModelCatalog.defaultModelID,
+            isEnabled: true,
+            isDefault: true
+        )
+        let summary = AIWriterSectionProviderSummary.evaluate(
+            configurations: [downloadedDefault],
+            assignments: AIProviderAccountAssignments(),
+            accounts: [account],
+            appleIntelligenceAvailability: .appleIntelligenceNotEnabled,
+            isLocalInferenceRuntimeInstalled: false
+        )
+
+        // Previously enabled preference remains visible as ON and interactive so the user can opt out.
+        var pausedEnabled = AIWriterSettings(
+            isEnabled: true,
+            consentGiven: true,
+            proactiveOnDeviceTriageEnabled: true
+        )
+        #expect(summary.proactiveTriageSwitchValue(for: pausedEnabled) == true)
+        #expect(summary.isProactiveTriageSwitchInteractive(for: pausedEnabled) == true)
+        #expect(summary.proactiveStatusNote(for: pausedEnabled) != nil)
+
+        // Opting OUT succeeds and persists false; afterward, opting back IN is blocked while helper is absent.
+        #expect(summary.applyProactiveTriageToggle(false, to: &pausedEnabled) == true)
+        #expect(pausedEnabled.proactiveOnDeviceTriageEnabled == false)
+        #expect(summary.proactiveTriageSwitchValue(for: pausedEnabled) == false)
+        #expect(summary.isProactiveTriageSwitchInteractive(for: pausedEnabled) == false)
+
+        #expect(summary.applyProactiveTriageToggle(true, to: &pausedEnabled) == false)
+        #expect(pausedEnabled.proactiveOnDeviceTriageEnabled == false)
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "AIWriterSettingsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

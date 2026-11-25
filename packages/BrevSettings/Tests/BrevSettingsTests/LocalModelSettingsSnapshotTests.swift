@@ -69,6 +69,89 @@ struct LocalModelSettingsSnapshotTests {
         )
     }
 
+    @Test(
+        "AIWriterSection renders downloaded-model missing-helper prerequisite and paused opt-out states",
+        arguments: ["light", "dark"]
+    )
+    func downloadedModelMissingHelperStates(_ mode: String) throws {
+        guard #available(macOS 26.0, *) else { return }
+
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+
+        let offSuite = "LocalModelMissingHelperOff-\(UUID().uuidString)"
+        let offDefaults = try #require(UserDefaults(suiteName: offSuite))
+        defer { offDefaults.removePersistentDomain(forName: offSuite) }
+        let offStore = SettingsPersistenceStore(defaults: offDefaults)
+        offStore.save(AIWriterSettings(
+            isEnabled: true,
+            consentGiven: true,
+            proactiveOnDeviceTriageEnabled: false
+        ))
+        try offStore.saveAIProviderConfigurations([
+            AIProviderConfiguration.onDeviceDownloadedModel(
+                modelID: LocalModelCatalog.defaultModelID,
+                isEnabled: true,
+                isDefault: true
+            )
+        ])
+
+        let pausedSuite = "LocalModelMissingHelperPaused-\(UUID().uuidString)"
+        let pausedDefaults = try #require(UserDefaults(suiteName: pausedSuite))
+        defer { pausedDefaults.removePersistentDomain(forName: pausedSuite) }
+        let pausedStore = SettingsPersistenceStore(defaults: pausedDefaults)
+        pausedStore.save(AIWriterSettings(
+            isEnabled: true,
+            consentGiven: true,
+            proactiveOnDeviceTriageEnabled: true
+        ))
+        try pausedStore.saveAIProviderConfigurations([
+            AIProviderConfiguration.onDeviceDownloadedModel(
+                modelID: LocalModelCatalog.defaultModelID,
+                isEnabled: true,
+                isDefault: true
+            )
+        ])
+
+        let combined = VStack(alignment: .leading, spacing: 20) {
+            AIWriterSection(
+                settingsStore: offStore,
+                providerSecretStore: NoOpLocalModelSecretStore(),
+                appleIntelligenceAvailability: .appleIntelligenceNotEnabled,
+                isLocalModelPlatformSupported: true,
+                isLocalInferenceRuntimeInstalled: false
+            )
+            .frame(height: 296, alignment: .top)
+            .clipped()
+
+            AIWriterSection(
+                settingsStore: pausedStore,
+                providerSecretStore: NoOpLocalModelSecretStore(),
+                appleIntelligenceAvailability: .appleIntelligenceNotEnabled,
+                isLocalModelPlatformSupported: true,
+                isLocalInferenceRuntimeInstalled: false
+            )
+            .frame(height: 296, alignment: .top)
+            .clipped()
+        }
+        .padding(16)
+        .frame(width: 680, height: 648, alignment: .topLeading)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .tint(theme.accent.color)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .environment(\.locale, Locale(identifier: "en_US"))
+        .defaultAppStorage(offDefaults)
+
+        let host = NSHostingController(rootView: combined)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(
+            of: Self.retinaImage(of: host, size: CGSize(width: 680, height: 648)),
+            as: .image(precision: 0.99),
+            named: "local-model-missing-helper-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     private static func retinaImage<Content: View>(
         of host: NSHostingController<Content>,
         size: CGSize
@@ -96,5 +179,11 @@ struct LocalModelSettingsSnapshotTests {
         image.addRepresentation(rep)
         return image
     }
+}
+
+private actor NoOpLocalModelSecretStore: AIProviderSecretStore {
+    func apiKey(for _: AIProviderID) async throws -> String? { nil }
+    func setAPIKey(_: String, for _: AIProviderID) async throws {}
+    func deleteAPIKey(for _: AIProviderID) async throws {}
 }
 #endif

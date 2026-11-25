@@ -69,8 +69,8 @@ struct AIWriterSection: View {
         providerSummary.hasNonOnDeviceAccountOverride
     }
 
-    private var canToggleProactiveOnDeviceTriage: Bool {
-        settings.isAvailable && providerSummary.hasActiveOnDeviceProvider
+    private var canInteractWithProactiveOnDeviceTriage: Bool {
+        providerSummary.isProactiveTriageSwitchInteractive(for: settings)
     }
 
     var body: some View {
@@ -108,7 +108,7 @@ struct AIWriterSection: View {
                         ),
                         isOn: proactiveOnDeviceBinding
                     )
-                    .disabled(!canToggleProactiveOnDeviceTriage)
+                    .disabled(!canInteractWithProactiveOnDeviceTriage)
 
                     if let proactiveStatusNote {
                         Text(proactiveStatusNote)
@@ -179,11 +179,10 @@ struct AIWriterSection: View {
     private var proactiveOnDeviceBinding: Binding<Bool> {
         Binding(
             get: {
-                canToggleProactiveOnDeviceTriage && settings.proactiveOnDeviceTriageEnabled
+                providerSummary.proactiveTriageSwitchValue(for: settings)
             },
             set: { newValue in
-                guard canToggleProactiveOnDeviceTriage || !newValue else { return }
-                settings.proactiveOnDeviceTriageEnabled = newValue
+                guard providerSummary.applyProactiveTriageToggle(newValue, to: &settings) else { return }
                 settingsStore.save(settings)
             }
         )
@@ -292,6 +291,40 @@ struct AIWriterSectionProviderSummary: Equatable {
     let hasActiveOnDeviceProvider: Bool
     let hasNonOnDeviceAccountOverride: Bool
     let hasDownloadedModelMissingRuntime: Bool
+
+    /// Whether the user can turn automatic on-device triage ON.
+    func canEnableProactiveTriage(for settings: AIWriterSettings) -> Bool {
+        settings.isAvailable && hasActiveOnDeviceProvider
+    }
+
+    /// Whether an already-enabled automatic-triage preference remains visible and opt-outable
+    /// while a downloaded local model is waiting for its local inference helper.
+    func canOptOutPausedProactiveTriage(for settings: AIWriterSettings) -> Bool {
+        settings.isAvailable && hasDownloadedModelMissingRuntime && settings.proactiveOnDeviceTriageEnabled
+    }
+
+    /// Switch value shown for automatic on-device triage.
+    func proactiveTriageSwitchValue(for settings: AIWriterSettings) -> Bool {
+        guard settings.proactiveOnDeviceTriageEnabled else { return false }
+        return canEnableProactiveTriage(for: settings) || canOptOutPausedProactiveTriage(for: settings)
+    }
+
+    /// Whether the automatic on-device triage switch accepts user interaction.
+    func isProactiveTriageSwitchInteractive(for settings: AIWriterSettings) -> Bool {
+        canEnableProactiveTriage(for: settings) || canOptOutPausedProactiveTriage(for: settings)
+    }
+
+    /// Applies a toggle interaction, allowing opt-out anytime while gating opt-in on runtime readiness.
+    func applyProactiveTriageToggle(_ newValue: Bool, to settings: inout AIWriterSettings) -> Bool {
+        if newValue {
+            guard canEnableProactiveTriage(for: settings) else { return false }
+            settings.proactiveOnDeviceTriageEnabled = true
+            return true
+        }
+        guard settings.proactiveOnDeviceTriageEnabled else { return false }
+        settings.proactiveOnDeviceTriageEnabled = false
+        return true
+    }
 
     func proactiveStatusNote(for settings: AIWriterSettings) -> String? {
         if !settings.isAvailable {
