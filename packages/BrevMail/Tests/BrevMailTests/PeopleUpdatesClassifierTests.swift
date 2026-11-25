@@ -95,6 +95,33 @@ struct PeopleUpdatesClassifierTests {
             senderOverrideStore: store
         )
         #expect(receiptResult.bucket == .updates)
+
+        let vercelResult = PeopleUpdatesClassifier.classify(
+            header: Self.header(
+                id: "m5",
+                fromName: "Vercel",
+                fromEmail: "deployments@vercel.com",
+                subject: "Production deployment succeeded",
+                snippet: "harbour-data deployed from main with no build warnings."
+            ),
+            repliedSenderEmails: [],
+            senderOverrideStore: store
+        )
+        #expect(vercelResult.bucket == .updates)
+        #expect(vercelResult.signal == .automatedSenderAddress)
+
+        let ciSubjectResult = PeopleUpdatesClassifier.classify(
+            header: Self.header(
+                id: "m6",
+                fromName: "Buildkite",
+                fromEmail: "hello@buildkite.example",
+                subject: "Build failed on main",
+                snippet: "Pipeline failed in integration step."
+            ),
+            repliedSenderEmails: [],
+            senderOverrideStore: store
+        )
+        #expect(ciSubjectResult.bucket == .updates)
     }
 
     @Test("Classifier keeps direct people and senders the user has written to in People")
@@ -111,6 +138,17 @@ struct PeopleUpdatesClassifierTests {
         #expect(directResult.bucket == .people)
         #expect(directResult.signal == .directPerson)
 
+        // Human names whose suffix matches short role tokens (e.g. "ci", "bot") stay in People.
+        for (name, email) in [("Staci", "staci@example.com"), ("Abbot", "abbot@example.com")] {
+            let result = PeopleUpdatesClassifier.classify(
+                header: Self.header(id: email, fromName: name, fromEmail: email, subject: "Quick question"),
+                repliedSenderEmails: [],
+                senderOverrideStore: store
+            )
+            #expect(result.bucket == .people)
+            #expect(result.signal == .directPerson)
+        }
+
         // Even if the subject mentions "invoice", a sender I have written to stays in People.
         let replied = Self.header(id: "m2", fromName: "Sara", fromEmail: "sara@studio.example", subject: "Re: invoice question")
         let repliedResult = PeopleUpdatesClassifier.classify(
@@ -120,6 +158,30 @@ struct PeopleUpdatesClassifierTests {
         )
         #expect(repliedResult.bucket == .people)
         #expect(repliedResult.signal == .repliedToSender)
+    }
+
+    @Test("People tab keeps date section headers while Updates tab stays sender-bundled")
+    func peopleTabUsesDateSectionHeaders() {
+        #expect(PeopleUpdatesListLayoutPolicy.usesDateSectionHeaders(
+            showsPeopleUpdatesBar: true,
+            activeTab: .people,
+            groupByDate: true
+        ))
+        #expect(PeopleUpdatesListLayoutPolicy.usesDateSectionHeaders(
+            showsPeopleUpdatesBar: true,
+            activeTab: .all,
+            groupByDate: true
+        ))
+        #expect(!PeopleUpdatesListLayoutPolicy.usesDateSectionHeaders(
+            showsPeopleUpdatesBar: true,
+            activeTab: .updates,
+            groupByDate: true
+        ))
+        #expect(!PeopleUpdatesListLayoutPolicy.usesDateSectionHeaders(
+            showsPeopleUpdatesBar: true,
+            activeTab: .people,
+            groupByDate: false
+        ))
     }
 
     @Test("Sender overrides persist across reloads and take precedence over heuristics")

@@ -140,7 +140,14 @@ enum InboxClassificationPolicy {
         "comment",
         "mentioned",
         "noreply",
-        "no-reply"
+        "no-reply",
+        "production deployment",
+        "preview deployment",
+        "deployment succeeded",
+        "deployment failed",
+        "build succeeded",
+        "build failed",
+        "deployments@"
     ]
 
     private static func firstMatch(

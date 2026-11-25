@@ -70,44 +70,70 @@ private struct MailCommandPaletteView: View {
     @FocusState private var searching: Bool
 
     var body: some View {
-        let matches = entries.filter { $0.matches(query) }
+        let isUnfiltered = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let matches = MailPaletteEntry.ranked(entries, for: query)
+        let sections = isUnfiltered ? MailPaletteEntry.groupedSections(from: matches) : []
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-            TextField(text: $query) {
-                Text("Search commands, mailboxes, accounts and settings", bundle: .module)
+            HStack(spacing: BrevSpacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.textSecondary.color)
+                    .accessibilityHidden(true)
+                TextField(text: $query) {
+                    Text("Search commands, mailboxes, accounts and settings", bundle: .module)
+                }
+                .textFieldStyle(.plain)
+                .brevFont(.body)
+                .focused($searching)
+                .onSubmit { if matches.indices.contains(cursor) { choose(matches[cursor]) } }
+                .onKeyPress(.downArrow) { cursor = min(max(0, matches.count - 1), cursor + 1); return .handled }
+                .onKeyPress(.upArrow) { cursor = max(0, cursor - 1); return .handled }
             }
-            .textFieldStyle(.roundedBorder)
-            .focused($searching)
-            .onSubmit { if matches.indices.contains(cursor) { choose(matches[cursor]) } }
-            .onKeyPress(.downArrow) { cursor = min(max(0, matches.count - 1), cursor + 1); return .handled }
-            .onKeyPress(.upArrow) { cursor = max(0, cursor - 1); return .handled }
+            .padding(.horizontal, BrevSpacing.sm)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: BrevRadius.md)
+                    .fill(theme.bgSecondary.color)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: BrevRadius.md)
+                    .strokeBorder(theme.border.color, lineWidth: 0.5)
+            )
+
             if matches.isEmpty {
                 Text("No matching commands or destinations", bundle: .module)
+                    .brevFont(.callout)
                     .foregroundStyle(theme.textSecondary.color)
+                    .padding(.horizontal, BrevSpacing.xs)
+                    .padding(.top, BrevSpacing.xs)
                 Spacer()
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(matches.enumerated()), id: \.element.id) { index, row in
-                                Button {
-                                    choose(row)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "chevron.right").opacity(index == cursor ? 1 : 0)
-                                            .accessibilityHidden(true)
-                                        Text(verbatim: row.title)
-                                        Spacer()
-                                        Text(verbatim: row.detail).font(.caption).foregroundStyle(theme.textSecondary.color)
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            if isUnfiltered {
+                                ForEach(Array(sections.enumerated()), id: \.element.id) { sectionOffset, section in
+                                    Text(verbatim: section.title)
+                                        .brevFont(.caption)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(theme.textTertiary.color)
+                                        .padding(.horizontal, BrevSpacing.sm)
+                                        .padding(.top, sectionOffset == 0 ? BrevSpacing.xs : BrevSpacing.sm)
+                                        .padding(.bottom, 2)
+                                        .accessibilityAddTraits(.isHeader)
+
+                                    ForEach(section.rows, id: \.entry.id) { item in
+                                        paletteRow(item.entry, index: item.index)
                                     }
-                                    .padding(.vertical, BrevSpacing.xs)
-                                    .contentShape(Rectangle())
                                 }
-                                .buttonStyle(.plain)
-                                .accessibilityAddTraits(index == cursor ? .isSelected : [])
-                                .id(row.id)
+                            } else {
+                                ForEach(Array(matches.enumerated()), id: \.element.id) { index, row in
+                                    paletteRow(row, index: index)
+                                }
                             }
                         }
                     }
+                    .scrollContentBackground(.hidden)
                     .onChange(of: cursor) { _, i in
                         if matches.indices.contains(i) { proxy.scrollTo(matches[i].id) }
                     }
@@ -122,6 +148,73 @@ private struct MailCommandPaletteView: View {
         .onAppear { searching = true }
         .onChange(of: query) { _, _ in cursor = 0 }
         .onExitCommand { choose(nil) }
+    }
+
+    private func paletteRow(_ row: MailPaletteEntry, index: Int) -> some View {
+        let isSelected = index == cursor
+        return Button {
+            choose(row)
+        } label: {
+            HStack(spacing: BrevSpacing.sm) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(isSelected ? theme.accent.color : Color.clear)
+                    .frame(width: 2.5, height: 14)
+                    .accessibilityHidden(true)
+
+                Text(verbatim: row.title)
+                    .brevFont(.callout)
+                    .fontWeight(isSelected ? .medium : .regular)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .lineLimit(1)
+
+                Spacer(minLength: BrevSpacing.sm)
+
+                if !row.detail.isEmpty {
+                    Text(verbatim: row.detail)
+                        .brevFont(.caption)
+                        .foregroundStyle(isSelected ? theme.textPrimary.color.opacity(0.72) : theme.textSecondary.color)
+                        .lineLimit(1)
+                }
+
+                if !row.shortcutKeycaps.isEmpty {
+                    HStack(spacing: 3) {
+                        ForEach(Array(row.shortcutKeycaps.enumerated()), id: \.offset) { _, cap in
+                            Text(verbatim: cap)
+                                .brevFont(.caption)
+                                .fontWeight(.medium)
+                                .monospacedDigit()
+                                .foregroundStyle(isSelected ? theme.textPrimary.color : theme.textSecondary.color)
+                                .frame(minWidth: 18)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(isSelected ? theme.bgPrimary.color : theme.bgSecondary.color)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .strokeBorder(theme.border.color, lineWidth: 0.5)
+                                )
+                        }
+                    }
+                    .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, BrevSpacing.sm)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: BrevRadius.md)
+                    .fill(isSelected ? theme.selection.color : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: BrevRadius.md)
+                    .strokeBorder(isSelected ? theme.border.color : Color.clear, lineWidth: 0.5)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .id(row.id)
     }
 }
 #endif

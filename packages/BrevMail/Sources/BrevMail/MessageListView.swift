@@ -977,6 +977,23 @@ public struct MessageListView: View {
                     )
                 }
             }
+        } else if PeopleUpdatesListLayoutPolicy.usesDateSectionHeaders(
+            showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+            activeTab: activePeopleUpdatesTab,
+            groupByDate: groupByDate
+        ) {
+            ForEach(presentation.dateSections) { section in
+                dateSectionHeaderRow(section)
+                ForEach(section.visibleHeaders) { header in
+                    messageRow(
+                        for: header,
+                        visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
+                        visibleCount: presentation.headers.count,
+                        threadChildrenByID: presentation.headersByThreadID,
+                        selectedRowID: selectedRowID
+                    )
+                }
+            }
         } else {
             ForEach(presentation.headers) { header in
                 messageRow(

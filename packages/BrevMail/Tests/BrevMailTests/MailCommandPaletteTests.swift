@@ -98,11 +98,17 @@ struct MailCommandPaletteTests {
                 canOpenAssistant: true,
                 canStartTriage: true,
                 openAssistant: { launched.append("assistant") },
+                openToday: { launched.append("today") },
                 startTriage: { launched.append("triage") },
                 openSubscriptions: { launched.append("subscriptions") }
             )
         )
-        for (query, expected) in [("ai", "assistant"), ("queue", "triage"), ("newsletters", "subscriptions")] {
+        for (query, expected) in [
+            ("ai", "assistant"),
+            ("today", "today"),
+            ("queue", "triage"),
+            ("newsletters", "subscriptions")
+        ] {
             let entry = try #require(workspace.first { $0.matches(query) })
             entry.run()
             #expect(launched.last == expected)
@@ -128,6 +134,93 @@ struct MailCommandPaletteTests {
         #expect(nav.assistantSourceID == work.id)
     }
 
+    @Test("empty-query ranking puts contextual Mail Actions and Jump To ahead of macOS app-menu boilerplate")
+    func emptyQueryRankingDemotesAppMenuBoilerplate() throws {
+        _ = NSApplication.shared
+        let root = NSMenu()
+        let target = ActionCounter()
+
+        func addMenu(_ title: String, items: [(String, String, NSEvent.ModifierFlags)]) {
+            let parent = root.addItem(withTitle: title, action: nil, keyEquivalent: "")
+            let submenu = NSMenu(title: title)
+            submenu.autoenablesItems = false
+            for (itemTitle, key, mods) in items {
+                let item = submenu.addItem(
+                    withTitle: itemTitle,
+                    action: #selector(ActionCounter.run(_:)),
+                    keyEquivalent: key
+                )
+                item.keyEquivalentModifierMask = mods
+                item.target = target
+            }
+            root.setSubmenu(submenu, for: parent)
+        }
+
+        addMenu("Brev", items: [
+            ("About Brev", "", []),
+            ("Settings…", ",", .command),
+            ("Hide Brev", "h", .command),
+            ("Hide Others", "h", [.command, .option]),
+            ("Show All", "", []),
+            ("Quit Brev", "q", .command),
+            ("Quit and Keep Windows", "q", [.command, .option]),
+        ])
+        addMenu("File", items: [
+            ("New Message", "n", .command),
+            ("Get New Mail", "r", [.command, .option]),
+        ])
+        addMenu("Message", items: [
+            ("Reply", "r", .command),
+            ("Archive", "e", .command),
+            ("Snooze…", "h", .command),
+        ])
+
+        var entries = MailPaletteEntry.commands(in: root)
+        entries += MailPaletteEntry.workspaceDestinations(
+            MailPaletteWorkspaceDestination.build(
+                canOpenAssistant: true,
+                canStartTriage: true,
+                openAssistant: {},
+                openToday: {},
+                startTriage: {},
+                openSubscriptions: {}
+            )
+        )
+        let ranked = MailPaletteEntry.ranked(entries, for: "")
+        let titles = ranked.map(\.title)
+
+        let newMessageIdx = try #require(titles.firstIndex(of: "New Message"))
+        let replyIdx = try #require(titles.firstIndex(of: "Reply"))
+        let archiveIdx = try #require(titles.firstIndex(of: "Archive"))
+        let snoozeIdx = try #require(titles.firstIndex(of: "Snooze…"))
+        let getMailIdx = try #require(titles.firstIndex(of: "Get New Mail"))
+        let assistantIdx = try #require(titles.firstIndex(of: "Assistant"))
+        let todayIdx = try #require(titles.firstIndex(of: "Today"))
+        let settingsIdx = try #require(titles.firstIndex(of: "Settings…"))
+        let aboutIdx = try #require(titles.firstIndex(of: "About Brev"))
+        let hideIdx = try #require(titles.firstIndex(of: "Hide Brev"))
+        let quitIdx = try #require(titles.firstIndex(of: "Quit Brev"))
+
+        #expect(newMessageIdx == 0)
+        #expect(replyIdx < archiveIdx)
+        #expect(archiveIdx < snoozeIdx)
+        #expect(snoozeIdx < getMailIdx)
+        #expect(getMailIdx < assistantIdx)
+        #expect(assistantIdx < todayIdx)
+        #expect(todayIdx < settingsIdx)
+        #expect(settingsIdx < aboutIdx)
+        #expect(settingsIdx < hideIdx)
+        #expect(settingsIdx < quitIdx)
+
+        let newMessageEntry = ranked[newMessageIdx]
+        #expect(newMessageEntry.shortcutKeycaps == ["⌘", "N"])
+        let getMailEntry = ranked[getMailIdx]
+        #expect(getMailEntry.shortcutKeycaps == ["⌥", "⌘", "R"])
+
+        let sections = MailPaletteEntry.groupedSections(from: ranked)
+        #expect(sections.map(\.category) == [.mailActions, .jumpTo, .appAndWindow])
+    }
+
     @Test("new palette copy has Norwegian translations")
     func copy() throws {
         let strings = try LocalizationCatalogTestSupport.loadCatalogStrings()
@@ -137,7 +230,11 @@ struct MailCommandPaletteTests {
             "No matching commands or destinations",
             "Account",
             "Mailbox",
-            "Settings"
+            "Settings",
+            "Mail Actions",
+            "Jump To",
+            "Commands",
+            "App & Window"
         ] {
             let entry = try #require(strings[key] as? [String: Any])
             let nb = (entry["localizations"] as? [String: Any])?["nb"] as? [String: Any]

@@ -254,5 +254,191 @@ struct PeopleUpdatesSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    @Test(
+        "Subscriptions list keeps Unsubscribe and Archive all untruncated at narrow 3-pane list width",
+        arguments: ["light", "dark"]
+    )
+    func subscriptionsNarrowPane(_ mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let source = MailSourceID(accountID: "acct", mailboxID: "box")
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let header1 = MessageHeader(
+            id: "n1",
+            threadID: "n1",
+            folderID: "inbox",
+            from: Correspondent(name: "The Coastal Post", email: "editors@coastal-post.example"),
+            subject: "Weekend edition",
+            snippet: "Stories from the north",
+            date: now.addingTimeInterval(-3600),
+            isRead: false
+        )
+        let header2 = MessageHeader(
+            id: "n2",
+            threadID: "n2",
+            folderID: "inbox",
+            from: Correspondent(name: "Northwind Energy Weekly Digest", email: "news@northwind.example"),
+            subject: "Weekly market brief",
+            snippet: "Wind capacity report",
+            date: now.addingTimeInterval(-86400 * 3),
+            isRead: true
+        )
+        let options = ListUnsubscribeOptions.parse(
+            listUnsubscribe: "<https://coastal-post.example/unsubscribe>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click"
+        )
+        let groups = [
+            SubscriptionSenderGroup(
+                id: "g1",
+                sourceID: source,
+                senderName: "The Coastal Post",
+                senderEmail: "editors@coastal-post.example",
+                headers: [header1, header1],
+                lastReceived: header1.date,
+                unsubscribeOptions: options
+            ),
+            SubscriptionSenderGroup(
+                id: "g2",
+                sourceID: source,
+                senderName: "Northwind Energy Weekly Digest",
+                senderEmail: "news@northwind.example",
+                headers: [header2],
+                lastReceived: header2.date,
+                unsubscribeOptions: options
+            ),
+        ]
+
+        let view = SubscriptionsView(
+            refreshKey: 0,
+            load: { groups },
+            canArchive: { _ in true },
+            onArchiveAll: { _ in true },
+            onConfirmedUnsubscribe: { _, _ in },
+            onSelectMessage: { _, _ in },
+            preloaded: groups
+        )
+        .frame(width: 320, height: 240)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .environment(\.locale, Locale(identifier: "en_US"))
+
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 320, height: 240)),
+            named: "subscriptions-narrow-" + mode,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    @Test("People filter retains subtle date section headers above message rows", arguments: ["light", "dark"])
+    func peopleTabDateHeaders(_ mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: 15, minute: 0))!
+        let todayMessage = MessageHeader(
+            id: "p1",
+            threadID: "t1",
+            folderID: "inbox",
+            from: Correspondent(name: "Ingrid Solberg", email: "ingrid@northwind.example"),
+            subject: "Stavanger rollout — terminal go-live window",
+            snippet: "Tuesday works. I'll have the rollback plan signed off Monday afternoon.",
+            date: now.addingTimeInterval(-1800),
+            isRead: false
+        )
+        let yesterdayMessage = MessageHeader(
+            id: "p2",
+            threadID: "t2",
+            folderID: "inbox",
+            from: Correspondent(name: "Hale & Reed Legal", email: "contact@hale-reed.example"),
+            subject: "Meridian Media — framework agreement",
+            snippet: "Attached is the redline. Section 7 needs your read.",
+            date: now.addingTimeInterval(-86400),
+            isRead: true
+        )
+
+        let view = VStack(alignment: .leading, spacing: 0) {
+            PeopleUpdatesTabBar(
+                activeTab: .constant(.people),
+                counts: PeopleUpdatesCounts(peopleCount: 4, updatesCount: 5, allCount: 9)
+            )
+            MessageListDateSectionHeader(
+                title: "Today",
+                count: 1,
+                isCollapsed: false,
+                isCollapsible: true,
+                onToggle: {}
+            )
+            MessageListRow(
+                header: todayMessage,
+                threadCount: 1,
+                isSelected: true,
+                isChecked: false,
+                isInSelectionMode: false,
+                isPinned: false,
+                isThreadExpanded: false,
+                showAvatar: true,
+                previewLineCount: 1,
+                fontFamily: .system,
+                textSize: .medium,
+                density: .comfortable,
+                showsAbsoluteArrivalTime: true,
+                sourceContext: nil,
+                isBlockedSender: false,
+                hasFollowUp: false,
+                referenceDate: now,
+                onActivate: {},
+                onToggleCheck: {},
+                onToggleThread: {}
+            )
+            MessageListDateSectionHeader(
+                title: "Yesterday",
+                count: 1,
+                isCollapsed: false,
+                isCollapsible: true,
+                onToggle: {}
+            )
+            MessageListRow(
+                header: yesterdayMessage,
+                threadCount: 1,
+                isSelected: false,
+                isChecked: false,
+                isInSelectionMode: false,
+                isPinned: false,
+                isThreadExpanded: false,
+                showAvatar: true,
+                previewLineCount: 1,
+                fontFamily: .system,
+                textSize: .medium,
+                density: .comfortable,
+                showsAbsoluteArrivalTime: true,
+                sourceContext: nil,
+                isBlockedSender: false,
+                hasFollowUp: false,
+                referenceDate: now,
+                onActivate: {},
+                onToggleCheck: {},
+                onToggleThread: {}
+            )
+            Spacer(minLength: 0)
+        }
+        .frame(width: 420, height: 260)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .environment(\.locale, Locale(identifier: "en_US"))
+        .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
+
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 420, height: 260)),
+            named: "people-date-headers-" + mode,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
 }
 #endif

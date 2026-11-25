@@ -18,6 +18,25 @@ import Foundation
 typealias MailboxChatSearch = @Sendable (SearchQuery, MailSourceID?) async throws -> [MessageHeader]
 typealias MailboxChatActionExecute = @Sendable (MailboxActionAgentPlan) async throws -> String
 
+/// Bridges `@MainActor` backend resolution into a `@Sendable` `MailboxChatSearch`
+/// closure so off-main execution inside `MailboxChatController` never traps with
+/// `_dispatch_assert_queue_fail` (#369).
+enum MailboxChatSearchBridge {
+    static func makeSearch(
+        resolveBackend: @escaping @MainActor @Sendable (MailSourceID?) -> any MailBackend
+    ) -> MailboxChatSearch {
+        { query, sourceID in
+            let targetBackend = await MainActor.run {
+                resolveBackend(sourceID)
+            }
+            if let sourceID {
+                return try await targetBackend.search(query, sourceID: sourceID)
+            }
+            return try await targetBackend.search(query)
+        }
+    }
+}
+
 @MainActor
 final class MailboxChatController: ObservableObject {
     typealias Search = MailboxChatSearch

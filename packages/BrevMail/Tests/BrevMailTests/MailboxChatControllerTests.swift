@@ -43,6 +43,52 @@ struct MailboxChatControllerTests {
         #expect(await recorder.lastSourceID == sourceID)
     }
 
+    @Test("search bridge hops to MainActor when MailboxChatController searches off-main (#369)")
+    @MainActor
+    func searchBridgeHopsToMainActorOffMain() async throws {
+        let primaryBackend = MockBackend()
+        let mailbox = try await primaryBackend.currentMailbox()
+        let sourceID = primaryBackend.sourceID(for: mailbox)
+        let inbox = try #require(try await primaryBackend.folders().first { $0.role == .inbox })
+        let sampleHeader = try #require(try await primaryBackend.messages(in: inbox, pageToken: nil).headers.first)
+        let queryTerm = try #require(sampleHeader.subject.split(whereSeparator: \.isWhitespace).first.map(String.init))
+        let aiBackend = RecordingAIBackend(responseText: "Found matching mail.")
+
+        // Mimic BrevMailRootView's @MainActor currentBackendsProvider lookup:
+        // assert main queue strictly so any off-main call traps immediately (#369).
+        var resolveCallCount = 0
+        let bridgedSearch = MailboxChatSearchBridge.makeSearch { requestedSourceID in
+            dispatchPrecondition(condition: .onQueue(.main))
+            resolveCallCount += 1
+            #expect(requestedSourceID == sourceID)
+            return primaryBackend
+        }
+
+        // Exercise off-main execution directly from a detached task.
+        let detachedHeaders = try await Task.detached(priority: .userInitiated) {
+            try await bridgedSearch(SearchQuery(text: queryTerm, execution: .cacheOnly), sourceID)
+        }.value
+        #expect(!detachedHeaders.isEmpty)
+        #expect(resolveCallCount == 1)
+
+        // Exercise end-to-end through MailboxChatController.send(userText:).
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: sourceID,
+            aiBackend: aiBackend,
+            search: bridgedSearch
+        )
+        await controller.send(userText: queryTerm)
+
+        #expect(resolveCallCount == 2)
+        guard case .answer(let reply, let citations, _)? = controller.turns.last else {
+            Issue.record("Expected grounded answer turn after off-main search bridge")
+            return
+        }
+        #expect(reply == "Found matching mail.")
+        #expect(!citations.isEmpty)
+    }
+
     @Test("account scope without source id returns a local clarification")
     @MainActor
     func accountScopeWithoutSourceIDReturnsALocalClarification() async throws {

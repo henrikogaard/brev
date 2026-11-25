@@ -149,24 +149,57 @@ final class InboxSenderCategoryOverrideStore: Equatable, @unchecked Sendable {
     }
 }
 
+/// Determines whether the message list renders date section headers under
+/// the active People / Updates / All inbox split (#295).
+enum PeopleUpdatesListLayoutPolicy {
+    static func usesDateSectionHeaders(
+        showsPeopleUpdatesBar: Bool,
+        activeTab: InboxSplitTab,
+        groupByDate: Bool
+    ) -> Bool {
+        guard groupByDate else { return false }
+        if showsPeopleUpdatesBar && activeTab == .updates {
+            return false
+        }
+        return true
+    }
+}
+
 /// Deterministic, local-only classifier for the People / Updates inbox split (ADR-0035 amendment).
 enum PeopleUpdatesClassifier {
-    private static let automatedLocalPartPatterns = [
+    private static let automatedLocalPartSubstrings = [
         "noreply",
         "no-reply",
         "donotreply",
         "do-not-reply",
         "mailer-daemon",
-        "notifications@",
-        "notification@",
-        "newsletter@",
-        "newsletters@",
-        "updates@",
-        "notices@",
-        "receipts@",
-        "billing@",
-        "marketing@",
-        "digest@",
+    ]
+
+    private static let automatedExactLocalParts: Set<String> = [
+        "notifications",
+        "notification",
+        "newsletter",
+        "newsletters",
+        "updates",
+        "notices",
+        "receipts",
+        "billing",
+        "marketing",
+        "digest",
+        "deployments",
+        "deploy",
+        "builds",
+        "build",
+        "ci",
+        "alerts",
+        "alert",
+        "status",
+        "releases",
+        "release",
+        "bot",
+        "automated",
+        "devops",
+        "monitoring",
     ]
 
     private static let updateKeywords = [
@@ -187,7 +220,29 @@ enum PeopleUpdatesClassifier {
         "discount",
         "coupon",
         "statement",
+        "production deployment",
+        "preview deployment",
+        "deployment succeeded",
+        "deployment failed",
+        "deployment ready",
+        "deploy succeeded",
+        "deploy failed",
+        "build succeeded",
+        "build failed",
+        "pipeline succeeded",
+        "pipeline failed",
+        "workflow run",
     ]
+
+    private static func isAutomatedSenderEmail(_ senderEmail: String) -> Bool {
+        let localPart = senderEmail.split(separator: "@", maxSplits: 1).first.map(String.init) ?? ""
+        guard !localPart.isEmpty else { return false }
+        if automatedLocalPartSubstrings.contains(where: { localPart.contains($0) }) {
+            return true
+        }
+        let baseLocalPart = localPart.split(separator: "+", maxSplits: 1).first.map(String.init) ?? localPart
+        return automatedExactLocalParts.contains(baseLocalPart)
+    }
 
     static func classify(
         header: MessageHeader,
@@ -218,7 +273,7 @@ enum PeopleUpdatesClassifier {
             )
         }
 
-        if automatedLocalPartPatterns.contains(where: { senderEmail.contains($0) }) {
+        if isAutomatedSenderEmail(senderEmail) {
             return PeopleUpdatesClassificationResult(
                 bucket: .updates,
                 signal: .automatedSenderAddress
