@@ -28,4 +28,25 @@ struct AboutSectionPresentationTests {
         #expect(AboutSectionPresentation.repositoryDisplayName == "henrikogaard/brev")
         #expect(AboutSectionPresentation.repositoryURL.absoluteString == "https://github.com/henrikogaard/brev")
     }
+
+    @Test("About version ignores Xcode xctest runner bundle metadata")
+    func aboutVersionIgnoresXCTestRunnerMetadata() {
+        let xctestVersion = AboutSectionPresentation.displayVersion(
+            bundleIdentifier: "com.apple.dt.xctest.tool",
+            infoDictionary: [
+                "CFBundleShortVersionString": "27.2",
+                "CFBundleVersion": "25435"
+            ]
+        )
+        #expect(xctestVersion == "0.0 (0)")
+
+        let appVersion = AboutSectionPresentation.displayVersion(
+            bundleIdentifier: "no.ogard.brev",
+            infoDictionary: [
+                "CFBundleShortVersionString": "1.2.3",
+                "CFBundleVersion": "45"
+            ]
+        )
+        #expect(appVersion == "1.2.3 (45)")
+    }
 }
