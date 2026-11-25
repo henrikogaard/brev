@@ -66,6 +66,10 @@ public struct SettingsPersistenceStore: Equatable {
         preferences.save(to: defaults)
     }
 
+    func resetWindowAppearancePreferences() {
+        WindowAppearancePreferences.reset(in: defaults)
+    }
+
     func appIconVariant() -> AppIconVariant {
         AppIconPreferences.load(defaults: defaults)
     }

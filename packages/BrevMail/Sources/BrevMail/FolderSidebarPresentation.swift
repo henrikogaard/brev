@@ -433,8 +433,8 @@ enum FolderSidebarPresentation {
         profilePickerMinimumHeight: 28,
         sourceHeaderMinimumHeight: 22,
         folderRowMinimumHeight: 24,
-        // Trailing disclosure controls keep every folder icon on one leading
-        // column while retaining a reliable macOS hit target.
+        // Leading disclosure gutter keeps every folder icon aligned on one
+        // vertical column while retaining a reliable macOS hit target.
         disclosureHitSize: 16,
         iconWidth: 16,
         unreadBadgeMinimumWidth: 18,
@@ -892,5 +892,238 @@ enum FolderSidebarPresentation {
     private static func loadErrorMessage(_ message: String) -> String {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? String(localized: "Couldn't load folders.", bundle: .module) : trimmed
+    }
+}
+
+/// Persisted per-source folder disclosure state.
+///
+/// When `usesDefaultCollapsed` is `true` (the macOS default when no user
+/// disclosure preference exists yet), nested subfolders start collapsed until
+/// explicitly expanded. Legacy persisted payloads that omitted
+/// `usesDefaultCollapsed` decode with `usesDefaultCollapsed == false` so
+/// existing preferences remain intact.
+struct FolderDisclosureState: Codable, Equatable, Sendable {
+    var bySource: [MailSourceID: Set<Folder.ID>] = [:]
+    var withoutSource: Set<Folder.ID> = []
+    var expandedBySource: [MailSourceID: Set<Folder.ID>] = [:]
+    var expandedWithoutSource: Set<Folder.ID> = []
+    var usesDefaultCollapsed = false
+
+    enum CodingKeys: String, CodingKey {
+        case bySource
+        case withoutSource
+        case expandedBySource
+        case expandedWithoutSource
+        case usesDefaultCollapsed
+    }
+
+    init(
+        bySource: [MailSourceID: Set<Folder.ID>] = [:],
+        withoutSource: Set<Folder.ID> = [],
+        expandedBySource: [MailSourceID: Set<Folder.ID>] = [:],
+        expandedWithoutSource: Set<Folder.ID> = [],
+        usesDefaultCollapsed: Bool = false
+    ) {
+        self.bySource = bySource
+        self.withoutSource = withoutSource
+        self.expandedBySource = expandedBySource
+        self.expandedWithoutSource = expandedWithoutSource
+        self.usesDefaultCollapsed = usesDefaultCollapsed
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bySource = try container.decodeIfPresent([MailSourceID: Set<Folder.ID>].self, forKey: .bySource) ?? [:]
+        withoutSource = try container.decodeIfPresent(Set<Folder.ID>.self, forKey: .withoutSource) ?? []
+        expandedBySource = try container.decodeIfPresent([MailSourceID: Set<Folder.ID>].self, forKey: .expandedBySource) ?? [:]
+        expandedWithoutSource = try container.decodeIfPresent(Set<Folder.ID>.self, forKey: .expandedWithoutSource) ?? []
+        usesDefaultCollapsed = try container.decodeIfPresent(Bool.self, forKey: .usesDefaultCollapsed) ?? false
+    }
+
+    /// Loads persisted disclosure state, falling back to `defaultCollapsed`
+    /// when no user preference has been saved yet.
+    static func load(from data: Data, defaultCollapsed: Bool) -> FolderDisclosureState {
+        guard !data.isEmpty,
+              let decoded = try? JSONDecoder().decode(FolderDisclosureState.self, from: data)
+        else {
+            return FolderDisclosureState(usesDefaultCollapsed: defaultCollapsed)
+        }
+        return decoded
+    }
+
+    /// Returns every folder ID in `folders` that owns at least one child folder.
+    static func collapsibleFolderIDs(in folders: [Folder]) -> Set<Folder.ID> {
+        let parentIDs = Set(folders.compactMap(\.parentID))
+        return Set(folders.map(\.id).filter { parentIDs.contains($0) })
+    }
+
+    /// Returns all ancestor folder IDs above `folderID` in `folders`,
+    /// stopping safely on missing parents or parent cycles.
+    static func ancestorFolderIDs(
+        of folderID: Folder.ID,
+        in folders: [Folder]
+    ) -> Set<Folder.ID> {
+        var parentByID: [Folder.ID: Folder.ID] = [:]
+        for folder in folders where parentByID[folder.id] == nil {
+            if let parentID = folder.parentID {
+                parentByID[folder.id] = parentID
+            }
+        }
+        var ancestors: Set<Folder.ID> = []
+        var current = parentByID[folderID]
+        while let parentID = current, parentID != folderID, ancestors.insert(parentID).inserted {
+            current = parentByID[parentID]
+        }
+        return ancestors
+    }
+
+    /// Whether external folder navigation should auto-reveal collapsed
+    /// ancestors on the given platform. macOS defaults nested folders to
+    /// collapsed, whereas iOS/iPadOS defaults branches to expanded and
+    /// preserves manual collapses across external navigation.
+    static func revealsAncestorsOnExternalNavigation(isMacOS: Bool) -> Bool {
+        isMacOS
+    }
+
+    /// Expands collapsed ancestors for external folder navigation only on
+    /// platforms where nested branches default to collapsed (`isMacOS == true`).
+    /// Returns `true` when state changed.
+    @discardableResult
+    mutating func revealAncestorsForExternalNavigation(
+        of folderID: Folder.ID,
+        sourceID: MailSourceID?,
+        folders: [Folder],
+        isMacOS: Bool
+    ) -> Bool {
+        guard Self.revealsAncestorsOnExternalNavigation(isMacOS: isMacOS) else {
+            return false
+        }
+        return revealAncestors(of: folderID, sourceID: sourceID, folders: folders)
+    }
+
+    /// Expands only the collapsed ancestors of `folderID` within `sourceID` so
+    /// an externally navigated folder (from All Attachments, search, or
+    /// Assistant) becomes visible in the sidebar and reachable by arrow keys
+    /// without expanding sibling branches. Returns `true` when state changed.
+    @discardableResult
+    mutating func revealAncestors(
+        of folderID: Folder.ID,
+        sourceID: MailSourceID?,
+        folders: [Folder]
+    ) -> Bool {
+        let ancestors = Self.ancestorFolderIDs(of: folderID, in: folders)
+        guard !ancestors.isEmpty else { return false }
+
+        let before = self
+        if usesDefaultCollapsed {
+            if let sourceID {
+                expandedBySource[sourceID, default: []].formUnion(ancestors)
+            } else {
+                expandedWithoutSource.formUnion(ancestors)
+            }
+        } else if let sourceID {
+            if var collapsed = bySource[sourceID] {
+                collapsed.subtract(ancestors)
+                if collapsed.isEmpty {
+                    bySource.removeValue(forKey: sourceID)
+                } else {
+                    bySource[sourceID] = collapsed
+                }
+            }
+        } else {
+            withoutSource.subtract(ancestors)
+        }
+        return self != before
+    }
+
+    /// Resolves the set of collapsed folder IDs for `sourceID` against `folders`.
+    func collapsedFolderIDs(
+        for sourceID: MailSourceID?,
+        folders: [Folder]
+    ) -> Set<Folder.ID> {
+        if usesDefaultCollapsed {
+            let collapsible = Self.collapsibleFolderIDs(in: folders)
+            let expanded = sourceID.map { expandedBySource[$0] ?? [] } ?? expandedWithoutSource
+            return collapsible.subtracting(expanded)
+        }
+        return sourceID.map { bySource[$0] ?? [] } ?? withoutSource
+    }
+
+    /// Whether `folderID` is currently expanded in `sourceID`.
+    func isExpanded(
+        _ folderID: Folder.ID,
+        sourceID: MailSourceID?,
+        folders: [Folder]
+    ) -> Bool {
+        !collapsedFolderIDs(for: sourceID, folders: folders).contains(folderID)
+    }
+
+    /// Toggles disclosure for `folderID` within `sourceID`.
+    mutating func toggle(_ folderID: Folder.ID, sourceID: MailSourceID?) {
+        if usesDefaultCollapsed {
+            if let sourceID {
+                var ids = expandedBySource[sourceID] ?? []
+                if ids.remove(folderID) == nil {
+                    ids.insert(folderID)
+                }
+                if ids.isEmpty {
+                    expandedBySource.removeValue(forKey: sourceID)
+                } else {
+                    expandedBySource[sourceID] = ids
+                }
+            } else if expandedWithoutSource.remove(folderID) == nil {
+                expandedWithoutSource.insert(folderID)
+            }
+            return
+        }
+
+        if let sourceID {
+            var ids = bySource[sourceID] ?? []
+            if ids.remove(folderID) == nil {
+                ids.insert(folderID)
+            }
+            if ids.isEmpty {
+                bySource.removeValue(forKey: sourceID)
+            } else {
+                bySource[sourceID] = ids
+            }
+        } else if withoutSource.remove(folderID) == nil {
+            withoutSource.insert(folderID)
+        }
+    }
+
+    /// Expands or collapses every collapsible folder in `sourceID`.
+    mutating func setAllExpanded(
+        _ expanded: Bool,
+        sourceID: MailSourceID?,
+        folders: [Folder]
+    ) {
+        let collapsible = Self.collapsibleFolderIDs(in: folders)
+        if usesDefaultCollapsed {
+            if let sourceID {
+                if expanded {
+                    expandedBySource[sourceID] = collapsible
+                } else {
+                    expandedBySource.removeValue(forKey: sourceID)
+                }
+            } else if expanded {
+                expandedWithoutSource = collapsible
+            } else {
+                expandedWithoutSource.removeAll()
+            }
+            return
+        }
+
+        if let sourceID {
+            if expanded {
+                bySource.removeValue(forKey: sourceID)
+            } else {
+                bySource[sourceID] = collapsible
+            }
+        } else if expanded {
+            withoutSource.removeAll()
+        } else {
+            withoutSource = collapsible
+        }
     }
 }

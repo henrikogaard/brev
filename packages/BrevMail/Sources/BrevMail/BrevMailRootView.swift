@@ -448,6 +448,9 @@ public struct BrevMailRootView: View {
     private let onSignOut: (() async -> Void)?
     private let onChangeTheme: (BrevTheme) -> Void
     private let onOpenSettings: (() -> Void)?
+    /// Opens Settings directly to the Accounts pane from sidebar Account Settings
+    /// context menus; nil falls back to generic `onOpenSettings`.
+    private let onOpenAccountSettings: (() -> Void)?
     /// Asks the host app to start adding a mail account, from the sidebar's
     /// Accounts "+" (#306). Nil hides the button.
     private let onAddAccount: (() -> Void)?
@@ -529,6 +532,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onOpenAccountSettings: (() -> Void)? = nil,
         onRequestReauthentication: ((BrevAccount) -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
@@ -564,6 +568,7 @@ public struct BrevMailRootView: View {
             onSignOut: onSignOut,
             onChangeTheme: onChangeTheme,
             onOpenSettings: onOpenSettings,
+            onOpenAccountSettings: onOpenAccountSettings,
             onRequestReauthentication: onRequestReauthentication,
             onOpenCalendar: onOpenCalendar,
             onOpenContacts: onOpenContacts,
@@ -610,6 +615,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onOpenAccountSettings: (() -> Void)? = nil,
         onRequestReauthentication: ((BrevAccount) -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
@@ -660,6 +666,7 @@ public struct BrevMailRootView: View {
         self.onSignOut = onSignOut
         self.onChangeTheme = onChangeTheme
         self.onOpenSettings = onOpenSettings
+        self.onOpenAccountSettings = onOpenAccountSettings
         self.onRequestReauthentication = onRequestReauthentication
         self.onOpenCalendar = onOpenCalendar
         self.onOpenContacts = onOpenContacts
@@ -2062,6 +2069,7 @@ public struct BrevMailRootView: View {
                 )
             },
             onAddAccount: onAddAccount,
+            onOpenAccountSettings: onOpenAccountSettings,
             footer: FolderSidebarFooter(
                 identity: FolderSidebarFooterIdentity(accounts: backends.map(\.account)),
                 status: FolderSidebarSyncStatus(
@@ -2076,30 +2084,38 @@ public struct BrevMailRootView: View {
         #endif
         // Before the toolbar modifiers, so window chrome stays System (ADR-0086).
         .brevFontSection(.sidebar)
-        .brevMailPaneSurface(.sidebar)
-        #if os(iOS)
-            .navigationTitle(Text(verbatim: FolderSidebarPresentation.navigationTitle(
-                activeProfileID: normalizedActiveProfileID,
-                profiles: profiles
-            )))
-            .navigationBarTitleDisplayMode(
-                MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
-                    platform: toolbarPlatform,
-                    hasProfiles: !profiles.isEmpty,
-                    canManageProfiles: true
-                ) ? .inline : .large
-            )
-            .safeAreaInset(edge: .top, spacing: 0) {
-                // Compact shows a single column; the message-list copy covers
-                // regular width, so mounting here too would duplicate it.
-                if horizontalSizeClass == .compact {
-                    animatedTopChromeStatusRail
-                }
-            }
+        #if os(macOS)
+            .brevMacSidebarPaneSurface()
+        #else
+            .brevMailPaneSurface(.sidebar)
         #endif
-            .brevDesktopSizing()
-            .brevMailFallbackToolbar { toolbarSidebar }
+        #if os(iOS)
+        .navigationTitle(Text(verbatim: FolderSidebarPresentation.navigationTitle(
+            activeProfileID: normalizedActiveProfileID,
+            profiles: profiles
+        )))
+        .navigationBarTitleDisplayMode(
+            MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
+                platform: toolbarPlatform,
+                hasProfiles: !profiles.isEmpty,
+                canManageProfiles: true
+            ) ? .inline : .large
+        )
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // Compact shows a single column; the message-list copy covers
+            // regular width, so mounting here too would duplicate it.
+            if horizontalSizeClass == .compact {
+                animatedTopChromeStatusRail
+            }
+        }
+        #endif
+        .brevDesktopSizing()
+        .brevMailFallbackToolbar { toolbarSidebar }
+        #if os(macOS)
+            .brevMacSidebarScrollEdgeChrome()
+        #else
             .brevMailPaneScrollEdgeBlur()
+        #endif
             // Outermost, after the surface wrapper. `navigationSplitViewColumnWidth`
             // configures the enclosing `NSSplitViewItem`, and the surface wrapper
             // puts the column inside a `.frame(maxWidth: .infinity)` — applied

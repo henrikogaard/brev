@@ -4,6 +4,14 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- macOS 26 Native Liquid Glass sidebar declutter (Wave 1):
+  - Let macOS 26 `NavigationSplitView`'s native floating Liquid Glass sidebar column shine cleanly (`FolderSidebarSurfacePolicy`, `brevMacSidebarPaneSurface()`, `scrollEdgeEffectStyle(.soft, for: .vertical)`) without painting an opaque flat slab over it, while falling back to the themed surface when Reduce Transparency is enabled or on macOS < 26.
+  - Hid the top macOS profile switcher banner when only a single profile (or All Mailboxes) exists (`FolderSidebarProfileSwitcherPolicy`), keeping `Manage Profiles` accessible in section context menus and Settings, and refined multi-profile switching into a compact native capsule pill.
+  - Replaced permanent trailing `•••` and `+` section-header clutter with hover-revealed actions plus full right-click context menus while preserving VoiceOver and keyboard accessibility.
+  - Promoted each macOS account directly to its own calm `11 pt` semibold collapsible section header (removing the redundant `Accounts` wrapper and trailing `count >` collisions).
+  - Updated macOS sidebar rows to calm regular weight (medium when selected), monochrome muted SF Symbols (`theme.textSecondary.color` unselected, `theme.textPrimary.color` selected), leading subfolder disclosure chevrons aligned to one shared icon rail, and default-collapsed nested subfolders on fresh mailboxes (`FolderDisclosureState`).
+  - Replaced the bordered macOS sidebar footer card with a borderless whisper strip showing quiet sync status and a hover-responsive Settings gear button.
+
 - macOS Assistant crash fix and UI/UX Polish Wave A (#369, #294, #295, #300):
   - Fixed P1 macOS Assistant `_dispatch_assert_queue_fail` crash on prompt submit (#369) by routing backend resolution through `MailboxChatSearchBridge` on `@MainActor` before running off-main local searches (and removing `@MainActor` `View` captures from iOS `MailboxChatPanel` and macOS `MailContextColumn` search closures).
   - Polished the macOS Assistant empty state (#294) into a centered hero with a subtle provider trust badge (`"On this Mac"`), concise headline and subtitle, a 2×2 grid of four grounded localized starter prompt cards (`en` + `nb`), and an inline composer that docks to the bottom once conversation turns exist.

@@ -118,6 +118,10 @@ struct BrevApp: App {
                         onOpenSettings: {
                             openWindow(id: BrevWindowID.settings)
                         },
+                        onOpenAccountSettings: {
+                            settingsSectionRequest = settingsSectionAvailability.fallback(for: .accounts)
+                            openWindow(id: BrevWindowID.settings)
+                        },
                         onRequestReauthentication: { account in
                             guard session.reauthenticate(account: account) == .credentialsRequired else {
                                 return

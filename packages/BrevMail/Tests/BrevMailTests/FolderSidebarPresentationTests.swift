@@ -13,6 +13,7 @@
 import BrevBackend
 import BrevDesign
 @testable import BrevMail
+import Foundation
 import Testing
 
 @Suite("FolderSidebarPresentation")
@@ -638,5 +639,146 @@ struct FolderSidebarPresentationTests {
         #expect(FolderSidebarPresentation.navigationTitle(
             activeProfileID: "focused", profiles: []
         ) == "Mailboxes")
+    }
+
+    @Test("fresh macOS disclosure state collapses nested subfolders by default")
+    func freshDisclosureStateDefaultsNestedSubfoldersCollapsed() throws {
+        let sourceID = MailSourceID(accountID: "acct-1", mailboxID: "personal")
+        let folders = MockBackend.previewFolders
+        var state = FolderDisclosureState.load(from: Data(), defaultCollapsed: true)
+
+        let collapsed = state.collapsedFolderIDs(for: sourceID, folders: folders)
+        #expect(collapsed == ["archive", "archive-receipts", "mailspring"])
+
+        let initialRows = FolderSidebarPresentation.visibleRows(
+            folders: folders,
+            collapsedFolderIDs: collapsed
+        )
+        #expect(initialRows.map { $0.folder.id } == [
+            "inbox",
+            "drafts",
+            "sent",
+            "archive",
+            "mailspring",
+            "promotions",
+            "social-networks",
+            "spam",
+            "trash",
+        ])
+
+        // Expanding Archive reveals direct children while keeping nested Receipts collapsed.
+        state.toggle("archive", sourceID: sourceID)
+        #expect(state.isExpanded("archive", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("archive-receipts", sourceID: sourceID, folders: folders))
+        let afterArchiveExpand = FolderSidebarPresentation.visibleRows(
+            folders: folders,
+            collapsedFolderIDs: state.collapsedFolderIDs(for: sourceID, folders: folders)
+        )
+        #expect(afterArchiveExpand.contains { $0.folder.id == "archive-receipts" })
+        #expect(!afterArchiveExpand.contains { $0.folder.id == "archive-receipts-licenses" })
+
+        // Round-trip persistence preserves the default-collapsed mode and expanded set.
+        let encoded = try JSONEncoder().encode(state)
+        let restored = FolderDisclosureState.load(from: encoded, defaultCollapsed: true)
+        #expect(restored == state)
+
+        // Expand All and Collapse All cover every collapsible folder in the source.
+        state.setAllExpanded(true, sourceID: sourceID, folders: folders)
+        #expect(state.collapsedFolderIDs(for: sourceID, folders: folders).isEmpty)
+        state.setAllExpanded(false, sourceID: sourceID, folders: folders)
+        #expect(state.collapsedFolderIDs(for: sourceID, folders: folders) == [
+            "archive",
+            "archive-receipts",
+            "mailspring",
+        ])
+    }
+
+    @Test("legacy persisted disclosure payloads preserve open-by-default semantics")
+    func legacyDisclosurePayloadPreservesExplicitCollapsedSet() throws {
+        struct LegacyDisclosurePayload: Encodable {
+            let bySource: [MailSourceID: Set<Folder.ID>]
+            let withoutSource: Set<Folder.ID>
+        }
+        let legacyJSON = try JSONEncoder().encode(
+            LegacyDisclosurePayload(bySource: [:], withoutSource: ["archive"])
+        )
+        let state = FolderDisclosureState.load(from: legacyJSON, defaultCollapsed: true)
+
+        #expect(!state.usesDefaultCollapsed)
+        #expect(state.collapsedFolderIDs(for: nil, folders: MockBackend.previewFolders) == ["archive"])
+        #expect(!state.isExpanded("archive", sourceID: nil, folders: MockBackend.previewFolders))
+        #expect(state.isExpanded("mailspring", sourceID: nil, folders: MockBackend.previewFolders))
+    }
+
+    @Test("external folder navigation reveals only the selected folder's ancestors while keeping sibling branches collapsed")
+    func externalNavigationRevealsSelectedFolderAncestorsOnly() {
+        let sourceID = MailSourceID(accountID: "acct-1", mailboxID: "primary")
+        let folders = [
+            Folder(id: "inbox", name: "Inbox", role: .inbox),
+            Folder(id: "archive", name: "Archive", role: .archive),
+            Folder(id: "archive-home", name: "Home", role: .custom, parentID: "archive"),
+            Folder(id: "projects", name: "Projects", role: .custom),
+            Folder(id: "projects-2026", name: "2026", role: .custom, parentID: "projects"),
+            Folder(id: "projects-2026-q4", name: "Q4", role: .custom, parentID: "projects-2026"),
+        ]
+        var state = FolderDisclosureState.load(from: Data(), defaultCollapsed: true)
+
+        // Initially both Archive and Projects branches are collapsed.
+        #expect(!state.isExpanded("archive", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("projects", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("projects-2026", sourceID: sourceID, folders: folders))
+
+        // Selecting Projects/2026 expands Projects without expanding Archive or Projects/2026's own children.
+        let changed = state.revealAncestors(of: "projects-2026", sourceID: sourceID, folders: folders)
+        #expect(changed)
+        #expect(state.isExpanded("projects", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("projects-2026", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("archive", sourceID: sourceID, folders: folders))
+
+        let visibleIDs = FolderSidebarPresentation.visibleRows(
+            folders: folders,
+            collapsedFolderIDs: state.collapsedFolderIDs(for: sourceID, folders: folders)
+        ).map(\.folder.id)
+        #expect(visibleIDs == ["inbox", "archive", "projects", "projects-2026"])
+
+        // Deeply nested navigation (Q4) reveals both Projects and 2026, still leaving Archive collapsed.
+        let revealedDeep = state.revealAncestors(of: "projects-2026-q4", sourceID: sourceID, folders: folders)
+        #expect(revealedDeep)
+        #expect(state.isExpanded("projects", sourceID: sourceID, folders: folders))
+        #expect(state.isExpanded("projects-2026", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("archive", sourceID: sourceID, folders: folders))
+
+        // Manual collapse after reveal still works cleanly.
+        state.toggle("projects", sourceID: sourceID)
+        #expect(!state.isExpanded("projects", sourceID: sourceID, folders: folders))
+    }
+
+    @Test("iOS/iPadOS external folder navigation preserves manually collapsed parent folders")
+    func nonMacOSExternalNavigationPreservesManualCollapse() throws {
+        let sourceID = MailSourceID(accountID: "acct-1", mailboxID: "primary")
+        let folders = [
+            Folder(id: "inbox", name: "Inbox", role: .inbox),
+            Folder(id: "projects", name: "Projects", role: .custom),
+            Folder(id: "projects-2026", name: "2026", role: .custom, parentID: "projects"),
+        ]
+        // On iOS/iPadOS branches default to expanded and the user manually collapses Projects.
+        var state = FolderDisclosureState.load(from: Data(), defaultCollapsed: false)
+        state.toggle("projects", sourceID: sourceID)
+        let stateBefore = state
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let persistedBefore = try encoder.encode(state)
+        #expect(!state.isExpanded("projects", sourceID: sourceID, folders: folders))
+
+        let changed = state.revealAncestorsForExternalNavigation(
+            of: "projects-2026",
+            sourceID: sourceID,
+            folders: folders,
+            isMacOS: false
+        )
+        #expect(!changed)
+        #expect(state == stateBefore)
+        #expect(!state.isExpanded("projects", sourceID: sourceID, folders: folders))
+        #expect(try encoder.encode(state) == persistedBefore)
     }
 }

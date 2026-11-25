@@ -207,6 +207,17 @@ public struct WindowAppearancePreferences: Equatable, Sendable, Codable {
         defaults.set(messageContentOpacity, forKey: WindowAppearancePreferenceKey.messageContentOpacity)
     }
 
+    /// Clears persisted window-appearance override keys so callers return to
+    /// the unset platform default rather than an explicit `.solid` override.
+    public static func reset(in defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: WindowAppearancePreferenceKey.mode)
+        defaults.removeObject(forKey: WindowAppearancePreferenceKey.scope)
+        defaults.removeObject(forKey: WindowAppearancePreferenceKey.surfaceOpacity)
+        defaults.removeObject(forKey: WindowAppearancePreferenceKey.sidebarOpacity)
+        defaults.removeObject(forKey: WindowAppearancePreferenceKey.messageContentOpacityMode)
+        defaults.removeObject(forKey: WindowAppearancePreferenceKey.messageContentOpacity)
+    }
+
     public func effectiveMode(reduceTransparency: Bool) -> WindowTranslucencyMode {
         reduceTransparency ? .solid : mode
     }
