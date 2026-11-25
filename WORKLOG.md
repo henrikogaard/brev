@@ -8705,3 +8705,20 @@ buttons, and package-aware localization.
     - `IMAPPersistentAcceptanceTests`: passed in 0.672 s (`archive_duration=0.239 s`).
     - `SearchIndexRowIDTests`: 3/3 passed in 0.091 s.
 - **Next / Handoff:** Open PR targeting `main` linking `Fixes #358` and `Fixes #359` (referencing `#269`) and move both issues to `In review` (parent thread watches CI and merges).
+
+## 2026-11-25 — Agent — Issue #361 (Rich compose Dark Mode contrast)
+
+- **Goal:** Fix GitHub issue #361 (iOS `UITextView` rich compose body text staying black in Dark Mode and macOS `NSTextTableBlock` table headers turning white-on-white in Dark Mode) on `fix/compose-dark-mode-contrast` from `origin/main` (`40ca565d`), verify exclusively on `macmini-devbox`, and open one PR targeting `main`.
+- **Changes:**
+  - `packages/BrevMail/Sources/BrevMail/ComposeRichHTMLAttributedBuilder.swift`: added `reapplyAppearanceColors(to:theme:previousTextColor:)` and `isDefaultComposeTextColor(_:previousTextColor:)` to re-resolve default/theme foreground colors (preserving explicit user-authored colors), inline-code (and iOS code-block) `.backgroundColor`, and macOS `NSTextTableBlock` border + header `backgroundColor` with `NSTextStorage.edited(.editedAttributes, ...)` invalidation; added iOS code-block `.backgroundColor` in `emitCodeBlock`.
+  - `packages/BrevMail/Sources/BrevMail/ComposeBodyEditor.swift`: wired `reapplyAppearanceColors` into macOS `applyAppearance` (updating default text, `NSTextTableBlock` header/border colors, inline-code runs, and pending `typingAttributes` while preserving custom foreground colors and selection) and refactored iOS `makeUIView`/`updateUIView`/`ComposeBodyTextView` to resolve `ComposeBodyAppearance` via `overrideUserInterfaceStyle`, `registerForTraitChanges([UITraitUserInterfaceStyle.self])`, and `Coordinator.applyAppearance(to:)` so non-empty rich text, `typingAttributes`, inline code, code blocks, table cells, and quotes adapt across Light ↔ Dark transitions.
+  - Added macOS unit tests in `ComposeBodyEditorAppearanceTests.swift` (live table header `NSTextTableBlock` + border + inline code + code block + explicit custom color across Light → Dark → Light with WCAG contrast > 4.5:1, and Dark Mode restored-draft table/inline-code resolution) and new iOS unit test suite `ComposeBodyEditorAppearanceIOSTests.swift` (Light → Dark → Light rich body/typingAttributes/surfaces/quote/custom-color preservation, `.system` UIKit trait-change adaptation, and Dark Mode restored-draft resolution).
+  - Updated `CHANGELOG.md` under `## [Unreleased]`. No `docs/design/` or `PRIVACY.md` updates needed (bug fix within existing compose architecture with zero network or privacy changes).
+- **Verification:**
+  - Local (headless only): `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+  - Remote `macmini-devbox` (`/tmp/brev-fix-361`, cleaned up afterwards):
+    - `swift test --package-path packages/BrevMail --filter "Compose" --skip "SnapshotTests"` — 510 tests in 81 suites passed (including both new macOS Dark Mode contrast tests).
+    - `xcodebuild -scheme BrevMail -destination "platform=macOS,arch=arm64" -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevMailTests/ComposeViewMacOSSnapshotTests test` — passed.
+    - `xcodebuild -scheme BrevMail -destination "platform=iOS Simulator,id=B6A6D491-7E97-4A99-95F0-CC29BE01BCAC" -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevMailTests/ComposeBodyEditorAppearanceIOSTests test` — 3/3 tests passed on iOS 27.2 Simulator (`iPhone 18 Pro`).
+    - `tuist install && tuist generate --no-open`, `BrevMacOS` Debug build (`** BUILD SUCCEEDED **`), and `BrevIOS` Simulator Debug build (`** BUILD SUCCEEDED **`).
+- **Next:** Open PR targeting `main` linking `Fixes #361` and move issue #361 to `In review`.

@@ -12,6 +12,7 @@
 
 import BrevBackend
 import BrevDesign
+import BrevThemes
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -198,6 +199,9 @@ final class ComposeRichTextView: NSTextView, ComposeBodyEditorRichActions {
 
     /// Distinguishes untouched empty-editor defaults from authored typing fonts.
     fileprivate var lastAppearanceFont: NSFont?
+    /// Tracks the last theme-derived foreground color applied to this editor so
+    /// appearance switches update default text without clobbering custom colors.
+    fileprivate var lastAppliedTextColor: NSColor?
 
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
@@ -632,8 +636,12 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         textView.appearance = appKitAppearance
         textView.drawsBackground = false
         textView.backgroundColor = .clear
+        let theme = appearance.editorTheme
         let font = ComposeEditorTypography.nsFont(family: fontFamily, textSize: textSize)
-        let textColor = NSColor(appearance.editorTheme.textPrimary.color)
+        let textColor = NSColor(theme.textPrimary.color)
+        let surfaceSecondaryColor = NSColor(theme.bgSecondary.color)
+        let borderColor = NSColor(theme.border.color)
+        let previousTextColor = textView.lastAppliedTextColor
         let typingFont = textView.typingAttributes[.font] as? NSFont
         let usesDefaultTypingFont = textView.lastAppearanceFont == nil || typingFont == nil
             || typingFont == textView.lastAppearanceFont
@@ -641,17 +649,42 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         if !textView.isRichText || (textView.string.isEmpty && usesDefaultTypingFont) {
             textView.font = font
         }
-        textView.textColor = textColor
+        if !textView.isRichText || textView.string.isEmpty {
+            textView.textColor = textColor
+        } else if let storage = textView.textStorage {
+            let savedSelection = textView.selectedRange()
+            ComposeRichHTMLAttributedBuilder.reapplyAppearanceColors(
+                to: storage,
+                theme: theme,
+                previousTextColor: previousTextColor
+            )
+            if textView.selectedRange() != savedSelection,
+               NSMaxRange(savedSelection) <= storage.length {
+                textView.setSelectedRange(savedSelection)
+            }
+        }
         textView.lastAppearanceFont = font
-        textView.insertionPointColor = NSColor(appearance.editorTheme.accent.color)
-        textView.codeBlockBackgroundColor = NSColor(appearance.editorTheme.bgSecondary.color)
-        textView.codeBlockBorderColor = NSColor(appearance.editorTheme.border.color)
+        textView.lastAppliedTextColor = textColor
+        textView.insertionPointColor = NSColor(theme.accent.color)
+        textView.codeBlockBackgroundColor = surfaceSecondaryColor
+        textView.codeBlockBorderColor = borderColor
         var typing = textView.typingAttributes
         if typing[.font] == nil || !textView.isRichText {
             typing[.font] = font
         }
-        typing[.foregroundColor] = textColor
+        let currentTypingColor = typing[.foregroundColor] as? NSColor
+        if !textView.isRichText
+            || ComposeRichHTMLAttributedBuilder.isDefaultComposeTextColor(
+                currentTypingColor,
+                previousTextColor: previousTextColor
+            ) {
+            typing[.foregroundColor] = textColor
+        }
+        if (typing[ComposeRichTextAttribute.inlineCode] as? Bool) == true {
+            typing[.backgroundColor] = surfaceSecondaryColor
+        }
         textView.typingAttributes = typing
+        textView.needsDisplay = true
     }
 
     private func applyTextChecking(to textView: NSTextView) {
@@ -1690,23 +1723,6 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         // Dynamic Type: the font is a `UIFontMetrics` body font, so the text
         // view rescales it when the content size category changes.
         textView.adjustsFontForContentSizeCategory = true
-        // Font and colour go on before the text so the initial body (a reply's
-        // quote, a restored draft) is not left in UIKit's fixed default font.
-        let baseFont = ComposeEditorTypography.uiFont(
-            family: fontFamily,
-            textSize: textSize,
-            compatibleWith: textView.traitCollection
-        )
-        textView.font = baseFont
-        textView.textColor = UIColor(appearance.editorTheme.textPrimary.color)
-        textView.text = text
-        if let restoredAttributedText, isRichText {
-            textView.attributedText = restoredAttributedText
-            ComposeEditorTypography.applyBaseFont(baseFont, to: textView.textStorage)
-            textView.textColor = UIColor(appearance.editorTheme.textPrimary.color)
-        }
-        textView.accessibilityLabel = String(localized: "Message body", bundle: .module)
-        applyTextChecking(to: textView)
         context.coordinator.textView = textView
         context.coordinator.isRichText = isRichText
         context.coordinator.inlineImageRegistry = inlineImageRegistry
@@ -1715,11 +1731,32 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         context.coordinator.targetBox = iosRichTextTargetBox
         iosRichTextTargetBox?.target = context.coordinator
         context.coordinator.quoteProtection = quoteProtection
+        textView.onUserInterfaceStyleDidChange = { [weak coordinator = context.coordinator, weak textView] in
+            guard let coordinator, let textView else { return }
+            coordinator.applyAppearance(to: textView)
+            coordinator.applyQuoteStyling(to: textView)
+        }
+        // Font and colour go on before the text so the initial body (a reply's
+        // quote, a restored draft) is not left in UIKit's fixed default font.
+        context.coordinator.applyAppearance(to: textView)
+        let baseFont = ComposeEditorTypography.uiFont(
+            family: fontFamily,
+            textSize: textSize,
+            compatibleWith: textView.traitCollection
+        )
+        textView.text = text
+        if let restoredAttributedText, isRichText {
+            textView.attributedText = restoredAttributedText
+            ComposeEditorTypography.applyBaseFont(baseFont, to: textView.textStorage)
+        }
+        context.coordinator.applyAppearance(to: textView)
+        textView.accessibilityLabel = String(localized: "Message body", bundle: .module)
+        applyTextChecking(to: textView)
         context.coordinator.publishRichHTML(from: textView)
         // The selection bindings are SwiftUI state; writing them while the
         // view is being made logs "Modifying state during view update".
         context.coordinator.updateSelection(from: textView, deferringStateWrite: true)
-        applyQuoteStyling(to: textView)
+        context.coordinator.applyQuoteStyling(to: textView)
         return textView
     }
 
@@ -1756,30 +1793,11 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             let richHTMLBinding = $richHTML
             DispatchQueue.main.async { richHTMLBinding.wrappedValue = nil }
         }
-        let font = ComposeEditorTypography.uiFont(
-            family: fontFamily,
-            textSize: textSize,
-            compatibleWith: textView.traitCollection
-        )
-        let textColor = UIColor(appearance.editorTheme.textPrimary.color)
-        textView.tintColor = UIColor(appearance.editorTheme.accent.color)
-        textView.backgroundColor = .clear
-        // Setting UITextView.font replaces fonts across attributed runs — only
-        // apply the mailbox chrome font in plain mode (or when the body is empty).
-        if !isRichText || textView.text.isEmpty {
-            textView.font = font
-            textView.textColor = textColor
+        if let composeTextView = textView as? ComposeBodyTextView {
+            context.coordinator.applyAppearance(to: composeTextView)
         }
-        var typing = textView.typingAttributes
-        if typing[.font] == nil || !isRichText {
-            typing[.font] = font
-        }
-        if typing[.foregroundColor] == nil || !isRichText {
-            typing[.foregroundColor] = textColor
-        }
-        textView.typingAttributes = typing
         applyTextChecking(to: textView)
-        applyQuoteStyling(to: textView)
+        context.coordinator.applyQuoteStyling(to: textView)
         context.coordinator.isUpdatingFromSwiftUI = false
         if let focusRequest, focusRequest.id != context.coordinator.handledFocusRequestID {
             context.coordinator.handledFocusRequestID = focusRequest.id
@@ -1796,22 +1814,6 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     private func applyTextChecking(to textView: UITextView) {
         textView.spellCheckingType = textCheckingConfiguration.spellChecking == .native ? .default : .no
         textView.autocorrectionType = textCheckingConfiguration.autocorrection == .native ? .default : .no
-    }
-
-    /// Mutes the read-only quoted-original region so the quote reads as a
-    /// quote block instead of blending into the reply text.
-    private func applyQuoteStyling(to textView: UITextView) {
-        guard let quoteProtection,
-              let protected = ComposeQuoteEditGuard.protectedRange(
-                  in: textView.textStorage.string as NSString,
-                  protection: quoteProtection
-              ),
-              protected.length > 0 else { return }
-        textView.textStorage.addAttribute(
-            .foregroundColor,
-            value: UIColor(appearance.editorTheme.textTertiary.color),
-            range: protected
-        )
     }
 
     final class Coordinator: NSObject, UITextViewDelegate, ComposeIOSRichTextTarget {
@@ -1882,6 +1884,88 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 publishRichHTML(from: textView)
             }
             htmlPublicationController.flush()
+        }
+
+        func applyAppearance(to textView: ComposeBodyTextView) {
+            let targetStyle = appearance.uiUserInterfaceStyle
+            if textView.overrideUserInterfaceStyle != targetStyle {
+                textView.overrideUserInterfaceStyle = targetStyle
+            }
+            let theme = appearance.resolvedEditorTheme(for: textView.traitCollection)
+            let font = ComposeEditorTypography.uiFont(
+                family: fontFamily,
+                textSize: textSize,
+                compatibleWith: textView.traitCollection
+            )
+            let textColor = UIColor(theme.textPrimary.color)
+            let surfaceSecondaryColor = UIColor(theme.bgSecondary.color)
+            let previousTextColor = textView.lastAppliedTextColor
+
+            textView.tintColor = UIColor(theme.accent.color)
+            textView.backgroundColor = .clear
+
+            let typingFont = textView.typingAttributes[.font] as? UIFont
+            let usesDefaultTypingFont = textView.lastAppearanceFont == nil
+                || typingFont == nil
+                || typingFont == textView.lastAppearanceFont
+            // Setting UITextView.font replaces fonts across attributed runs — only
+            // apply the mailbox chrome font in plain mode or an untouched empty editor.
+            if !isRichText || (textView.textStorage.length == 0 && usesDefaultTypingFont) {
+                textView.font = font
+            }
+            if !isRichText || textView.textStorage.length == 0 {
+                textView.textColor = textColor
+            } else {
+                let savedSelection = textView.selectedRange
+                ComposeRichHTMLAttributedBuilder.reapplyAppearanceColors(
+                    to: textView.textStorage,
+                    theme: theme,
+                    previousTextColor: previousTextColor
+                )
+                if textView.selectedRange != savedSelection,
+                   NSMaxRange(savedSelection) <= textView.textStorage.length {
+                    textView.selectedRange = savedSelection
+                }
+            }
+
+            textView.lastAppearanceFont = font
+            textView.lastAppliedTextColor = textColor
+
+            var typing = textView.typingAttributes
+            if typing[.font] == nil || !isRichText {
+                typing[.font] = font
+            }
+            let currentTypingColor = typing[.foregroundColor] as? UIColor
+            if !isRichText
+                || ComposeRichHTMLAttributedBuilder.isDefaultComposeTextColor(
+                    currentTypingColor,
+                    previousTextColor: previousTextColor
+                ) {
+                typing[.foregroundColor] = textColor
+            }
+            if (typing[ComposeRichTextAttribute.inlineCode] as? Bool) == true
+                || typing[ComposeRichTextAttribute.codeBlockID] != nil {
+                typing[.backgroundColor] = surfaceSecondaryColor
+            }
+            textView.typingAttributes = typing
+            textView.setNeedsDisplay()
+        }
+
+        /// Mutes the read-only quoted-original region so the quote reads as a
+        /// quote block instead of blending into the reply text.
+        func applyQuoteStyling(to textView: UITextView) {
+            guard let quoteProtection,
+                  let protected = ComposeQuoteEditGuard.protectedRange(
+                      in: textView.textStorage.string as NSString,
+                      protection: quoteProtection
+                  ),
+                  protected.length > 0 else { return }
+            let theme = appearance.resolvedEditorTheme(for: textView.traitCollection)
+            textView.textStorage.addAttribute(
+                .foregroundColor,
+                value: UIColor(theme.textTertiary.color),
+                range: protected
+            )
         }
 
         func textView(
@@ -2144,7 +2228,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 textSize: textSize,
                 compatibleWith: textView.traitCollection
             )
-            let bg = UIColor(appearance.editorTheme.bgSecondary.color)
+            let bg = UIColor(appearance.resolvedEditorTheme(for: textView.traitCollection).bgSecondary.color)
             if range.length == 0 {
                 var typing = textView.typingAttributes
                 if (typing[ComposeRichTextAttribute.inlineCode] as? Bool) == true {
@@ -2193,7 +2277,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 textSize: textSize,
                 compatibleWith: textView.traitCollection
             )
-            let bg = UIColor(appearance.editorTheme.bgSecondary.color)
+            let bg = UIColor(appearance.resolvedEditorTheme(for: textView.traitCollection).bgSecondary.color)
             let paragraphs = selectedParagraphRanges(in: textStorage, selectedRange: selected)
             guard !paragraphs.isEmpty else {
                 var typing = textView.typingAttributes
@@ -2248,7 +2332,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             let style = ComposeRichHTMLAttributedBuilder.Style.default(
                 fontFamily: fontFamily,
                 textSize: textSize,
-                theme: appearance.editorTheme
+                theme: appearance.resolvedEditorTheme(for: textView.traitCollection)
             )
             let tableAttr = ComposeRichHTMLAttributedBuilder.makeTableAttributedString(
                 headers: [
@@ -2304,7 +2388,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             let style = ComposeRichHTMLAttributedBuilder.Style.default(
                 fontFamily: fontFamily,
                 textSize: textSize,
-                theme: appearance.editorTheme
+                theme: appearance.resolvedEditorTheme(for: textView.traitCollection)
             )
             guard let attributed = ComposeRichHTMLAttributedBuilder.attributedString(
                 from: sanitized,
@@ -2660,6 +2744,30 @@ private extension UIFont {
     }
 }
 
+private extension ComposeBodyAppearance {
+    var uiUserInterfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .system:
+            return .unspecified
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        }
+    }
+
+    func resolvedEditorTheme(for traitCollection: UITraitCollection) -> BrevTheme {
+        switch self {
+        case .system:
+            return traitCollection.userInterfaceStyle == .dark ? .brevMonoDark : .brevMonoLight
+        case .light:
+            return .brevMonoLight
+        case .dark:
+            return .brevMonoDark
+        }
+    }
+}
+
 /// The compose body text view. It can be asked to take focus before it is in a
 /// window (the sheet is still presenting when SwiftUI first updates it), and
 /// carries that request over until it is.
@@ -2667,6 +2775,26 @@ final class ComposeBodyTextView: UITextView {
     private var pendingFocus: (selection: NSRange?, isPending: Bool) = (nil, false)
     weak var richPasteTarget: ComposeIOSRichTextTarget?
     var isRichTextMode = false
+    /// Distinguishes untouched empty-editor defaults from authored typing fonts.
+    fileprivate var lastAppearanceFont: UIFont?
+    /// Tracks the last theme-derived foreground color applied to this editor so
+    /// appearance switches update default text without clobbering custom colors.
+    fileprivate var lastAppliedTextColor: UIColor?
+    /// Invoked whenever `UITraitUserInterfaceStyle` changes so `.system` editors
+    /// re-resolve attributed colors immediately.
+    var onUserInterfaceStyleDidChange: (() -> Void)?
+
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame: frame, textContainer: textContainer)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: ComposeBodyTextView, _) in
+            self.onUserInterfaceStyleDidChange?()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     override func paste(_ sender: Any?) {
         if isRichTextMode, let target = richPasteTarget {

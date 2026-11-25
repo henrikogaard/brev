@@ -12,8 +12,10 @@
 
 #if os(macOS)
 import AppKit
+import BrevBackend
 import BrevDesign
 @testable import BrevMail
+import BrevThemes
 import SwiftUI
 import Testing
 
@@ -267,6 +269,185 @@ struct ComposeBodyEditorAppearanceTests {
         #expect(harness.html?.contains("<em>") == traits.contains(.italicFontMask))
     }
 
+    @Test("table header NSTextTableBlock, borders, inline code, and code blocks adapt across Light -> Dark -> Light")
+    func tableHeadersInlineCodeAndExplicitColorsAdaptAcrossDarkMode() throws {
+        let harness = Harness(text: "Intro CustomColor ", format: .richTextHTML)
+        let host = harness.host()
+        let editor = try #require(Self.editor(in: host))
+        let storage = try #require(editor.textStorage)
+
+        // Apply an explicit user-authored color that appearance switches must never clobber.
+        let customColor = NSColor.systemRed
+        storage.addAttribute(.foregroundColor, value: customColor, range: Self.range("CustomColor", in: editor.string))
+
+        // Insert inline code, a code block, and a semantic table via the live editor actions in Light mode.
+        editor.setSelectedRange(NSRange(location: storage.length, length: 0))
+        #expect(editor.brevInsertSanitizedHTML("<code>inlineCode()</code><pre><code>let x = 1</code></pre>"))
+        editor.setSelectedRange(NSRange(location: storage.length, length: 0))
+        try #require(editor.tryToPerform(#selector(ComposeBodyEditorRichActions.brevInsertTable(_:)), with: nil))
+        harness.flush.performFlush()
+        let originalHTML = try #require(harness.html)
+        #expect(originalHTML.contains("<table><thead><tr><th>"))
+
+        // Activate inline-code typing attributes to ensure pending background color updates too.
+        editor.typingAttributes[ComposeRichTextAttribute.inlineCode] = true
+        editor.typingAttributes[.backgroundColor] = NSColor(ComposeBodyAppearance.light.editorTheme.bgSecondary.color)
+
+        let header1Range = Self.range("Header 1", in: editor.string)
+        let header2Range = Self.range("Header 2", in: editor.string)
+        let cell1Range = Self.range("Cell 1", in: editor.string)
+        let inlineCodeRange = Self.range("inlineCode()", in: editor.string)
+        let customColorRange = Self.range("CustomColor", in: editor.string)
+        let introRange = Self.range("Intro", in: editor.string)
+
+        for appearance in [ComposeBodyAppearance.light, .dark, .light] {
+            harness.appearance = appearance
+            try harness.rerender(host, editor: editor)
+            harness.flush.performFlush()
+
+            let expectedText = NSColor(appearance.editorTheme.textPrimary.color)
+            let expectedSurface = NSColor(appearance.editorTheme.bgSecondary.color)
+            let expectedBorder = NSColor(appearance.editorTheme.border.color)
+
+            // Table headers: background + border + text must adapt and preserve > 4.5:1 contrast.
+            for headerRange in [header1Range, header2Range] {
+                let paraStyle = try #require(
+                    storage.attribute(.paragraphStyle, at: headerRange.location, effectiveRange: nil) as? NSParagraphStyle
+                )
+                let block = try #require(paraStyle.textBlocks.compactMap { $0 as? NSTextTableBlock }.first)
+                let headerBG = try #require(block.backgroundColor)
+                let headerFG = try #require(
+                    storage.attribute(.foregroundColor, at: headerRange.location, effectiveRange: nil) as? NSColor
+                )
+                #expect(Self.colorsMatch(headerBG, expectedSurface))
+                #expect(Self.colorsMatch(block.borderColor(for: .minX), expectedBorder))
+                #expect(Self.colorsMatch(headerFG, expectedText))
+                #expect(Self.contrastRatio(between: headerFG, and: headerBG) > 4.5)
+            }
+
+            // Table body cells: stay transparent over canvas while borders and text adapt.
+            let bodyParaStyle = try #require(
+                storage.attribute(.paragraphStyle, at: cell1Range.location, effectiveRange: nil) as? NSParagraphStyle
+            )
+            let bodyBlock = try #require(bodyParaStyle.textBlocks.compactMap { $0 as? NSTextTableBlock }.first)
+            #expect(bodyBlock.backgroundColor == nil)
+            #expect(Self.colorsMatch(bodyBlock.borderColor(for: .minX), expectedBorder))
+            let bodyFG = try #require(
+                storage.attribute(.foregroundColor, at: cell1Range.location, effectiveRange: nil) as? NSColor
+            )
+            #expect(Self.colorsMatch(bodyFG, expectedText))
+
+            // Inline code run & pending typingAttributes background color adapt with > 4.5:1 contrast.
+            let inlineCodeBG = try #require(
+                storage.attribute(.backgroundColor, at: inlineCodeRange.location, effectiveRange: nil) as? NSColor
+            )
+            let inlineCodeFG = try #require(
+                storage.attribute(.foregroundColor, at: inlineCodeRange.location, effectiveRange: nil) as? NSColor
+            )
+            #expect(Self.colorsMatch(inlineCodeBG, expectedSurface))
+            #expect(Self.colorsMatch(inlineCodeFG, expectedText))
+            #expect(Self.contrastRatio(between: inlineCodeFG, and: inlineCodeBG) > 4.5)
+            #expect(Self.colorsMatch(editor.typingAttributes[.backgroundColor] as? NSColor, expectedSurface))
+            #expect(Self.colorsMatch(editor.typingAttributes[.foregroundColor] as? NSColor, expectedText))
+
+            // Code block backdrop colors update cleanly.
+            #expect(Self.colorsMatch(editor.codeBlockBackgroundColor, expectedSurface))
+            #expect(Self.colorsMatch(editor.codeBlockBorderColor, expectedBorder))
+
+            // Default body text adapts while explicit user-authored color is preserved.
+            let introFG = try #require(
+                storage.attribute(.foregroundColor, at: introRange.location, effectiveRange: nil) as? NSColor
+            )
+            #expect(Self.colorsMatch(introFG, expectedText))
+            let preservedCustomFG = try #require(
+                storage.attribute(.foregroundColor, at: customColorRange.location, effectiveRange: nil) as? NSColor
+            )
+            #expect(Self.colorsMatch(preservedCustomFG, customColor))
+
+            // Semantic HTML remains lossless across appearance switches.
+            #expect(harness.html == originalHTML)
+        }
+    }
+
+    @Test("restored rich draft with table headers and inline code resolves Dark Mode colors on open")
+    func restoredRichDraftWithTableAndInlineCodeAdaptsWhenOpenedInDarkMode() async throws {
+        let html = """
+        <p>Use <code>git status</code></p>\
+        <table><thead><tr><th>Task</th><th>Status</th></tr></thead>\
+        <tbody><tr><td>Contrast</td><td>Pass</td></tr></tbody></table>
+        """
+        let restored = try await ComposeDraftBodyRestoration.prepare(
+            draft: Draft(id: "dark-table-draft", htmlBody: html),
+            format: .richTextHTML
+        )
+        let harness = Harness(
+            text: restored.attributedText.string,
+            format: .richTextHTML,
+            appearance: .dark,
+            restoredAttributedText: restored.attributedText
+        )
+        let host = harness.host()
+        let editor = try #require(Self.editor(in: host))
+        let storage = try #require(editor.textStorage)
+
+        let darkText = NSColor(ComposeBodyAppearance.dark.editorTheme.textPrimary.color)
+        let darkSurface = NSColor(ComposeBodyAppearance.dark.editorTheme.bgSecondary.color)
+        let darkBorder = NSColor(ComposeBodyAppearance.dark.editorTheme.border.color)
+
+        let taskRange = Self.range("Task", in: editor.string)
+        let paraStyle = try #require(
+            storage.attribute(.paragraphStyle, at: taskRange.location, effectiveRange: nil) as? NSParagraphStyle
+        )
+        let headerBlock = try #require(paraStyle.textBlocks.compactMap { $0 as? NSTextTableBlock }.first)
+        let headerBG = try #require(headerBlock.backgroundColor)
+        let headerFG = try #require(
+            storage.attribute(.foregroundColor, at: taskRange.location, effectiveRange: nil) as? NSColor
+        )
+        #expect(Self.colorsMatch(headerBG, darkSurface))
+        #expect(Self.colorsMatch(headerBlock.borderColor(for: .minX), darkBorder))
+        #expect(Self.colorsMatch(headerFG, darkText))
+        #expect(Self.contrastRatio(between: headerFG, and: headerBG) > 4.5)
+
+        let codeRange = Self.range("git status", in: editor.string)
+        let codeBG = try #require(
+            storage.attribute(.backgroundColor, at: codeRange.location, effectiveRange: nil) as? NSColor
+        )
+        let codeFG = try #require(
+            storage.attribute(.foregroundColor, at: codeRange.location, effectiveRange: nil) as? NSColor
+        )
+        #expect(Self.colorsMatch(codeBG, darkSurface))
+        #expect(Self.colorsMatch(codeFG, darkText))
+        #expect(Self.contrastRatio(between: codeFG, and: codeBG) > 4.5)
+    }
+
+    private static func colorsMatch(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
+        guard let lhs, let rhs,
+              let left = lhs.usingColorSpace(.sRGB),
+              let right = rhs.usingColorSpace(.sRGB) else {
+            return false
+        }
+        return abs(left.redComponent - right.redComponent) <= 0.005
+            && abs(left.greenComponent - right.greenComponent) <= 0.005
+            && abs(left.blueComponent - right.blueComponent) <= 0.005
+            && abs(left.alphaComponent - right.alphaComponent) <= 0.005
+    }
+
+    private static func contrastRatio(between first: NSColor, and second: NSColor) -> Double {
+        let l1 = relativeLuminance(of: first)
+        let l2 = relativeLuminance(of: second)
+        return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
+    }
+
+    private static func relativeLuminance(of color: NSColor) -> Double {
+        guard let srgb = color.usingColorSpace(.sRGB) else { return 0 }
+        func linearize(_ channel: Double) -> Double {
+            channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        return linearize(Double(srgb.redComponent)) * 0.2126
+            + linearize(Double(srgb.greenComponent)) * 0.7152
+            + linearize(Double(srgb.blueComponent)) * 0.0722
+    }
+
     private static func richFixture() -> NSMutableAttributedString {
         let value = NSMutableAttributedString(
             string: "Regular Bold Italic Both Link\n",
@@ -328,14 +509,22 @@ struct ComposeBodyEditorAppearanceTests {
         let format: ComposeBodyFormat
         let flush = ComposeHTMLPublicationFlushBox()
         var appearance = ComposeBodyAppearance.light
+        var restoredAttributedText: NSAttributedString?
         var family = MailboxFontFamily.system
         var size = MailboxTextSize.medium
         var generation = 0
         var deliveredGeneration = -1
 
-        init(text: String, format: ComposeBodyFormat) {
+        init(
+            text: String,
+            format: ComposeBodyFormat,
+            appearance: ComposeBodyAppearance = .light,
+            restoredAttributedText: NSAttributedString? = nil
+        ) {
             self.text = text
             self.format = format
+            self.appearance = appearance
+            self.restoredAttributedText = restoredAttributedText
         }
 
         func root() -> ComposeBodyEditor {
@@ -349,7 +538,8 @@ struct ComposeBodyEditorAppearanceTests {
                 textCheckingConfiguration: ComposeTextCheckingPolicy.configuration(isEnabled: false),
                 fontFamily: family, textSize: size,
                 onFileDragTargetChanged: { _ in self.deliveredGeneration = revision },
-                quoteProtection: Self.quote
+                quoteProtection: Self.quote,
+                restoredAttributedText: restoredAttributedText
             )
         }
 
