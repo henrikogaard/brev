@@ -950,7 +950,7 @@ public final class JMAPBackend: MailBackend,
                 )
             }
 
-            let matchedIdentityID = try await resolveIdentityID(
+            let matchedIdentityID = await resolveIdentityID(
                 forFromAddress: email.from?.first,
                 session: session,
                 accountId: accountId
@@ -1998,7 +1998,7 @@ public final class JMAPBackend: MailBackend,
         forFromAddress fromAddress: JMAPEmailAddress?,
         session: JMAPSession,
         accountId: String
-    ) async throws -> String? {
+    ) async -> String? {
         guard let rawEmail = fromAddress?.email.trimmingCharacters(in: .whitespacesAndNewlines),
               !rawEmail.isEmpty
         else {
@@ -2008,10 +2008,15 @@ public final class JMAPBackend: MailBackend,
         let candidates: [JMAPIdentity]
         if !cached.isEmpty {
             candidates = cached
-        } else if session.supportsSubmission {
-            let response = try await client.getIdentities(session: session, accountId: accountId)
-            lock.withLock { identities = response.list }
-            candidates = response.list
+        } else if session.supportsSubmission(forAccountID: accountId) {
+            // Best-effort alias restoration: never block opening a draft if Identity/get is unavailable.
+            do {
+                let response = try await client.getIdentities(session: session, accountId: accountId)
+                lock.withLock { identities = response.list }
+                candidates = response.list
+            } catch {
+                return nil
+            }
         } else {
             candidates = []
         }

@@ -439,6 +439,7 @@ public final class URLSessionJMAPHTTPTransport: NSObject, JMAPHTTPTransport, @un
             throw JMAPError.untrustedRedirect
         }
         try Self.throwIfNonSuccessStatus(http.statusCode, retryAfter: nil)
+        try Self.validateEventSourceContentType(http.value(forHTTPHeaderField: "Content-Type"))
 
         return AsyncThrowingStream { continuation in
             let task = Task {
@@ -496,6 +497,22 @@ public final class URLSessionJMAPHTTPTransport: NSObject, JMAPHTTPTransport, @un
             continuation.onTermination = { _ in
                 task.cancel()
             }
+        }
+    }
+
+    /// Validates that an EventSource 2xx HTTP response advertises the `text/event-stream` media type
+    /// (case-insensitive, ignoring parameters such as `; charset=utf-8`).
+    public static func validateEventSourceContentType(_ contentTypeHeader: String?) throws {
+        guard let raw = contentTypeHeader else {
+            throw JMAPError.invalidResponse
+        }
+        let mediaType = raw
+            .split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard mediaType == "text/event-stream" else {
+            throw JMAPError.invalidResponse
         }
     }
 

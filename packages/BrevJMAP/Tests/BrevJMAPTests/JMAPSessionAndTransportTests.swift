@@ -267,6 +267,101 @@ struct JMAPSessionAndTransportTests {
         #expect(backend.capabilities.isEmpty)
         #expect(await counter.count == 0)
     }
+
+    @Test("openEventStream rejects 200 non-SSE Content-Type and accepts text/event-stream with parameters")
+    func openEventStreamValidatesSSEContentType() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubEventSourceURLProtocol.self]
+        let transport = URLSessionJMAPHTTPTransport(configuration: config)
+
+        let htmlURL = URL(string: "https://sse-test.example.org/html")!
+        let sseURL = URL(string: "https://sse-test.example.org/events")!
+        StubEventSourceURLProtocol.register(
+            url: htmlURL,
+            statusCode: 200,
+            headers: ["Content-Type": "text/html; charset=utf-8"],
+            body: Data("<html>Not an SSE stream</html>".utf8)
+        )
+        StubEventSourceURLProtocol.register(
+            url: sseURL,
+            statusCode: 200,
+            headers: ["Content-Type": "Text/Event-Stream; charset=utf-8"],
+            body: Data("event: state\nid: 7\ndata: {\"changed\":{}}\n\n".utf8)
+        )
+        defer {
+            StubEventSourceURLProtocol.unregister(url: htmlURL)
+            StubEventSourceURLProtocol.unregister(url: sseURL)
+        }
+
+        await #expect(throws: JMAPError.invalidResponse) {
+            _ = try await transport.openEventStream(
+                JMAPHTTPRequest(url: htmlURL, method: "GET", allowCrossOriginRedirects: false)
+            )
+        }
+
+        let stream = try await transport.openEventStream(
+            JMAPHTTPRequest(url: sseURL, method: "GET", allowCrossOriginRedirects: false)
+        )
+        var events: [JMAPEventSourceEvent] = []
+        for try await event in stream {
+            events.append(event)
+        }
+        #expect(events.count == 1)
+        #expect(events.first?.event == "state")
+        #expect(events.first?.id == "7")
+    }
+}
+
+private final class StubEventSourceURLProtocol: URLProtocol, @unchecked Sendable {
+    private struct StubResponse {
+        let statusCode: Int
+        let headers: [String: String]
+        let body: Data
+    }
+
+    private static let lock = NSLock()
+    private static var responses: [URL: StubResponse] = [:]
+
+    static func register(url: URL, statusCode: Int, headers: [String: String], body: Data) {
+        lock.withLock {
+            responses[url] = StubResponse(statusCode: statusCode, headers: headers, body: body)
+        }
+    }
+
+    static func unregister(url: URL) {
+        lock.withLock {
+            _ = responses.removeValue(forKey: url)
+        }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        guard let url = request.url else { return false }
+        return lock.withLock { responses[url] != nil }
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let url = request.url,
+              let stub = Self.lock.withLock({ Self.responses[url] }),
+              let http = HTTPURLResponse(
+                  url: url,
+                  statusCode: stub.statusCode,
+                  httpVersion: "HTTP/1.1",
+                  headerFields: stub.headers
+              )
+        else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+        client?.urlProtocol(self, didReceive: http, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: stub.body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 // MARK: - Test Support

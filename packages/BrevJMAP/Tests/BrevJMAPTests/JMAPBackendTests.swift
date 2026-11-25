@@ -3074,6 +3074,126 @@ struct JMAPBackendTests {
         #expect(await timeline.values == ["stream-ready", "delta-sync"])
         await backend.disconnect()
     }
+
+    @Test(
+        "reopening a remote draft with a From address succeeds when server advertises submission globally but account is mail-only"
+    )
+    func reopeningDraftSucceedsWhenAccountLacksSubmissionCapability() async throws {
+        let mailOnlyAccountSessionJSON = Data("""
+        {
+          "capabilities": {
+            "urn:ietf:params:jmap:core": {},
+            "urn:ietf:params:jmap:mail": {},
+            "urn:ietf:params:jmap:submission": {}
+          },
+          "accounts": {
+            "u-mail-only": {
+              "name": "mail-only@example.org",
+              "isPersonal": true,
+              "isReadOnly": false,
+              "accountCapabilities": {
+                "urn:ietf:params:jmap:mail": {}
+              }
+            }
+          },
+          "primaryAccounts": {
+            "urn:ietf:params:jmap:mail": "u-mail-only"
+          },
+          "username": "mail-only@example.org",
+          "apiUrl": "https://api.fastmail.com/jmap/api/",
+          "downloadUrl": "https://api.fastmail.com/jmap/download/{accountId}/{blobId}/{name}?accept={type}",
+          "uploadUrl": "https://api.fastmail.com/jmap/upload/{accountId}/",
+          "state": "sess-1"
+        }
+        """.utf8)
+
+        let identityGetAttempts = RequestCounter()
+        let transport = MockJMAPHTTPTransport { request in
+            if request.url == Self.sessionURL {
+                return JMAPHTTPResponse(statusCode: 200, body: mailOnlyAccountSessionJSON, finalURL: request.url)
+            }
+            let decoded = try JSONDecoder().decode(JMAPRequest.self, from: request.body ?? Data())
+            if decoded.methodCalls.contains(where: { $0.name == "Identity/get" }) {
+                await identityGetAttempts.increment()
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "error",
+                                arguments: ["type": .string("accountNotSupportedByMethod")],
+                                callID: "i0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            if decoded.methodCalls.first?.name == "Mailbox/get" {
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Mailbox/get",
+                                arguments: [
+                                    "accountId": .string("u-mail-only"),
+                                    "state": .string("mb-1"),
+                                    "list": .array([
+                                        .object([
+                                            "id": .string("mb-drafts"),
+                                            "name": .string("Drafts"),
+                                            "role": .string("drafts")
+                                        ])
+                                    ])
+                                ],
+                                callID: "m0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            return try Self.jsonResponse(
+                JMAPResponse(
+                    methodResponses: [
+                        JMAPInvocation(
+                            name: "Email/get",
+                            arguments: [
+                                "accountId": .string("u-mail-only"),
+                                "state": .string("es-1"),
+                                "list": .array([
+                                    .object([
+                                        "id": .string("e-mail-only-draft"),
+                                        "mailboxIds": .object(["mb-drafts": .bool(true)]),
+                                        "keywords": .object(["$draft": .bool(true)]),
+                                        "from": .array([.object(["email": .string("mail-only@example.org")])]),
+                                        "to": .array([.object(["email": .string("bob@example.org")])]),
+                                        "subject": .string("Mail-only draft"),
+                                        "textBody": .array([.object(["partId": .string("t1"), "type": .string("text/plain")])]),
+                                        "bodyValues": .object(["t1": .object(["value": .string("Hello")])])
+                                    ])
+                                ])
+                            ],
+                            callID: "g0"
+                        )
+                    ],
+                    sessionState: "sess-1"
+                )
+            )
+        }
+
+        let backend = JMAPBackend(
+            account: Self.makeAccount(email: "mail-only@example.org"),
+            sessionURL: Self.sessionURL,
+            tokenProvider: StaticJMAPAccessTokenProvider(token: "tok-123"),
+            transport: transport
+        )
+        try await backend.connect()
+        let restored = try #require(try await backend.draft(for: "e-mail-only-draft"))
+        #expect(restored.remoteID == "e-mail-only-draft")
+        #expect(restored.identityID == nil)
+        #expect(restored.subject == "Mail-only draft")
+        #expect(await identityGetAttempts.count == 0)
+    }
 }
 
 private actor RecordedStrings {

@@ -24,7 +24,11 @@
   - Raised `search(_:)` page sizing up to `min(500, maxObjectsInGet)` and removed the artificial 100-page truncation ceiling while guarding against non-advancing servers.
   - Added explicit `"en"` localizations alongside `"nb"` for all 28 keys in `BrevJMAP`'s `Localizable.xcstrings`.
   - Added 6 targeted regression tests (33/33 `BrevJMAPTests` passing).
-- Next: push review round 2 commit to `feature/jmap-backend`, reply to and resolve all 9 PR #357 review threads.
+- Review fixes round 3 (PR #357 — 2 Devin findings strictly inside `packages/BrevJMAP/`):
+  - Added per-account `JMAPSession.supportsSubmission(forAccountID:)` check in `JMAPClient.fetchInitialState` and `JMAPBackend.resolveIdentityID`, treating unavailable/unsupported `Identity/get` during draft restoration as `nil` (no alias match) so mail-only accounts never block reopening drafts with a `From` address.
+  - Enforced `Content-Type: text/event-stream` media-type validation (case-insensitive, ignoring parameters) in `URLSessionJMAPHTTPTransport.openEventStream` before accepting a 2xx response as a live EventSource stream.
+  - Added `reopeningDraftSucceedsWhenAccountLacksSubmissionCapability` and `openEventStreamValidatesSSEContentType` (`URLProtocol` test against real `URLSessionJMAPHTTPTransport`) — 35/35 `BrevJMAPTests` passing.
+- Next: push review round 3 commit to `feature/jmap-backend`, reply to and resolve both PR #357 review threads.
 
 ## 2026-11-24 — Agent — Issue #304 (Slice 2: Downloaded Local Models)
 

@@ -126,7 +126,7 @@ public struct JMAPClient: Sendable {
                 callID: "m0"
             )
         ]
-        let fetchIdentities = session.supportsSubmission
+        let fetchIdentities = session.supportsSubmission(forAccountID: accountId)
         if fetchIdentities {
             using.append(JMAPCapability.submission)
             calls.append(

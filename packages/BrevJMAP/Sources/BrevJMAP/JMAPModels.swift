@@ -474,6 +474,15 @@ public struct JMAPSession: Codable, Equatable, Sendable {
         capabilities[JMAPCapability.submission] != nil || primaryAccounts[JMAPCapability.submission] != nil
     }
 
+    /// Whether both the session and `accountID` advertise `urn:ietf:params:jmap:submission`.
+    public func supportsSubmission(forAccountID accountID: String) -> Bool {
+        guard supportsSubmission else { return false }
+        if let accountInfo = accounts[accountID] {
+            return accountInfo.accountCapabilities[JMAPCapability.submission] != nil
+        }
+        return primaryAccounts[JMAPCapability.submission] == accountID
+    }
+
     /// Maximum single-blob upload size in bytes advertised in core capabilities, if present.
     public var maxSizeUpload: Int? {
         capabilities[JMAPCapability.core]?.objectValue?["maxSizeUpload"]?.intValue
