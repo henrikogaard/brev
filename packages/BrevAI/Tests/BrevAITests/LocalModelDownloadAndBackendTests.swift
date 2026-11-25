@@ -524,7 +524,6 @@ struct LocalModelDownloadAndBackendTests {
         #expect(backend.transparencyLabel == OnDeviceAIPlatformLabel.transparencyLabel)
         #expect(backend.contextBudget == .onDevice)
         #expect(backend.isOnDeviceZeroNetwork)
-        #expect(backend.isOnDeviceZeroNetwork)
 
         // Per-account override routes specifically to the assigned account.
         let hostedDefault = try #require(AIProviderConfiguration(
@@ -755,6 +754,88 @@ struct LocalModelDownloadAndBackendTests {
         #expect(!FileManager.default.fileExists(atPath: abandonedDir.path))
         #expect(FileManager.default.fileExists(atPath: activeDir.path))
         #expect(FileManager.default.fileExists(atPath: activeDir.appendingPathComponent("prompt.txt").path))
+    }
+
+    @Test("Downloaded local model with stub helper script produces parsed ThreadTriageInsight via ProactiveOnDeviceTriageEngine")
+    func downloadedLocalModelProducesParsedProactiveTriageInsight() async throws {
+        let tempRoot = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let promptRoot = tempRoot.appendingPathComponent("prompts", isDirectory: true)
+        let helperScript = try Self.makeExecutableScript(
+            in: tempRoot,
+            name: "stub-llama-cli.sh",
+            body: """
+            #!/bin/sh
+            set -e
+            MODEL=""
+            SYS=""
+            PROMPT=""
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    -m) MODEL="$2"; shift 2 ;;
+                    --system-prompt-file) SYS="$2"; shift 2 ;;
+                    -f) PROMPT="$2"; shift 2 ;;
+                    *) shift ;;
+                esac
+            done
+            test -f "$MODEL"
+            test -f "$SYS"
+            test -f "$PROMPT"
+            printf '{"summary":"Alex needs budget approval before Friday afternoon.","priority":"urgent"}\\n'
+            """
+        )
+
+        let payload = Data("verified-triage-model-weights".utf8)
+        let descriptor = Self.makeDescriptor(id: "triage-model", payload: payload)
+        let manager = LocalModelDownloadManager(
+            storageDirectory: tempRoot.appendingPathComponent("models", isDirectory: true),
+            catalog: [descriptor],
+            transport: CountingDownloadTransport(mode: .chunks([payload]))
+        )
+        _ = try await manager.download(modelID: descriptor.id)
+
+        let installedRuntime = DefaultLocalModelInferenceRuntime(
+            executableSearchPaths: [helperScript.path],
+            promptTempRoot: promptRoot
+        )
+        #expect(installedRuntime.isInferenceRuntimeInstalled)
+        #expect(!DefaultLocalModelInferenceRuntime(executableSearchPaths: ["/nonexistent/brev-llama-cli"])
+            .isInferenceRuntimeInstalled)
+
+        let backend = LocalDownloadedModelAIBackend(
+            modelID: descriptor.id,
+            downloadManager: manager,
+            runtime: installedRuntime
+        )
+        #expect(backend.isOnDeviceZeroNetwork)
+
+        let engine = ProactiveOnDeviceTriageEngine()
+        let settings = AIWriterSettings(
+            isEnabled: true,
+            consentGiven: true,
+            proactiveOnDeviceTriageEnabled: true
+        )
+        let thread = ProactiveTriageThreadInput(
+            cacheKey: "acct:triage-thread",
+            sourceFingerprint: "fp-v1",
+            isExcludedFolder: false,
+            messages: [
+                ProactiveTriageMessageInput(
+                    sender: "Alex <alex@example.org>",
+                    subject: "Q4 Budget Approval",
+                    text: "Please approve the updated Q4 budget before Friday afternoon so finance can lock it.",
+                    date: Date(timeIntervalSince1970: 1_760_000_000),
+                    isRead: false
+                )
+            ]
+        )
+
+        let insight = try #require(await engine.insight(for: thread, settings: settings, backend: backend))
+        #expect(insight.summary == "Alex needs budget approval before Friday afternoon.")
+        #expect(insight.priority == .urgent)
+        #expect(insight.attribution == OnDeviceAIPlatformLabel.transparencyLabel)
+        #expect(insight.sourceFingerprint == "fp-v1")
     }
     #endif
 

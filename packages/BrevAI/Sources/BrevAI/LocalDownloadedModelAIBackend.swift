@@ -97,6 +97,23 @@ public struct DefaultLocalModelInferenceRuntime: LocalModelInferenceRuntime {
         #endif
     }
 
+    /// Returns whether a compatible local inference helper executable is currently installed on disk.
+    public static func isInferenceRuntimeInstalled(
+        in searchPaths: [String] = defaultExecutableSearchPaths()
+    ) -> Bool {
+        #if os(macOS)
+        return searchPaths.contains { FileManager.default.isExecutableFile(atPath: $0) }
+        #else
+        _ = searchPaths
+        return false
+        #endif
+    }
+
+    /// Whether this runtime instance finds a compatible local inference executable on disk.
+    public var isInferenceRuntimeInstalled: Bool {
+        Self.isInferenceRuntimeInstalled(in: executableSearchPaths)
+    }
+
     public func generate(
         modelURL: URL,
         descriptor _: LocalModelDescriptor,
@@ -553,6 +570,11 @@ public struct LocalDownloadedModelAIBackend: AIBackend {
 
     /// Stable machine backend identifier.
     public static let backendIdentifier = "on-device-local-model"
+
+    /// Returns whether a compatible local inference helper executable is installed in the default search paths.
+    public static var isInferenceRuntimeInstalled: Bool {
+        DefaultLocalModelInferenceRuntime.isInferenceRuntimeInstalled()
+    }
 
     public let identifier = LocalDownloadedModelAIBackend.backendIdentifier
     public let displayName: String

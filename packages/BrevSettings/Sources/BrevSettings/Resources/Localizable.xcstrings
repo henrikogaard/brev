@@ -16085,6 +16085,23 @@
           }
         }
       }
+    },
+    "Install a compatible local inference helper (such as llama-cli) to run automatic summaries with a downloaded model.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install a compatible local inference helper (such as llama-cli) to run automatic summaries with a downloaded model."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installer en kompatibel lokal inferenshjelper (for eksempel llama-cli) for å kjøre automatiske sammendrag med en nedlastet modell."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
