@@ -1,6 +1,23 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Optional built-in plugins for local extension development.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional built-in plugins for local extension development."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valgfrie innebygde utvidelser for lokal utvikling av utvidelser."
+          }
+        }
+      }
+    },
     "Show Example Plugin": {
       "extractionState": "manual",
       "localizations": {
@@ -18,19 +35,19 @@
         }
       }
     },
-    "Include the built-in Example Plugin in Settings and mail surfaces for extension development.": {
+    "Include the built-in Example Plugin in Settings and mail surfaces for extension development. Takes effect on the next relaunch of Brev.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Include the built-in Example Plugin in Settings and mail surfaces for extension development."
+            "value": "Include the built-in Example Plugin in Settings and mail surfaces for extension development. Takes effect on the next relaunch of Brev."
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Inkluder den innebygde eksempelutvidelsen i Innstillinger og e-postvisninger for utvikling av utvidelser."
+            "value": "Inkluder den innebygde eksempelutvidelsen i Innstillinger og e-postvisninger for utvikling av utvidelser. Trer i kraft ved neste omstart av Brev."
           }
         }
       }

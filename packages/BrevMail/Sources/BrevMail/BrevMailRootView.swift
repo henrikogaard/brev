@@ -5292,6 +5292,8 @@ public struct BrevMailRootView: View {
         ComposeView(
             backend: composeBackend,
             sourceID: sourceID,
+            quotedMessageBackend: activeBackend,
+            quotedMessageSourceID: selectedSourceID,
             from: senderResolution.initialSender?.correspondent ?? ComposeSenderIdentity.sender(
                 account: composeBackend.account,
                 mailboxes: mailboxes,

@@ -331,6 +331,7 @@ struct SettingsToggleRow: View {
 /// gray behind its white knob.
 private struct SettingsHighContrastSwitchToggleStyle: ToggleStyle {
     let theme: BrevTheme
+    @Environment(\.isEnabled) private var isEnabled
 
     private static let trackWidth: CGFloat = 38
     private static let trackHeight: CGFloat = 22
@@ -339,29 +340,38 @@ private struct SettingsHighContrastSwitchToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(alignment: .center, spacing: BrevSpacing.md) {
             configuration.label
-            ZStack(alignment: configuration.isOn ? .trailing : .leading) {
-                Capsule()
-                    .fill(configuration.isOn ? theme.accent.color : theme.bgTertiary.color)
-                    .overlay {
-                        Capsule()
-                            .strokeBorder(
-                                configuration.isOn ? theme.accent.color : theme.border.color,
-                                lineWidth: 1
-                            )
-                    }
-                    .frame(width: Self.trackWidth, height: Self.trackHeight)
-
-                Circle()
-                    .fill(configuration.isOn ? theme.bgPrimary.color : theme.textPrimary.color)
-                    .frame(width: Self.thumbSize, height: Self.thumbSize)
-                    .padding(2)
-            }
-            .contentShape(Capsule())
-            .onTapGesture {
+            Button {
                 withAnimation(.easeInOut(duration: 0.15)) {
                     configuration.isOn.toggle()
                 }
+            } label: {
+                ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                    Capsule()
+                        .fill(configuration.isOn ? theme.accent.color : theme.bgTertiary.color)
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(
+                                    configuration.isOn ? theme.accent.color : theme.border.color,
+                                    lineWidth: 1
+                                )
+                        }
+                        .frame(width: Self.trackWidth, height: Self.trackHeight)
+
+                    Circle()
+                        .fill(configuration.isOn ? theme.bgPrimary.color : theme.textPrimary.color)
+                        .frame(width: Self.thumbSize, height: Self.thumbSize)
+                        .padding(2)
+                }
+                .contentShape(Capsule())
             }
+            .buttonStyle(.plain)
+            .disabled(!isEnabled)
+        }
+        .accessibilityRepresentation {
+            Toggle(isOn: configuration.$isOn) {
+                configuration.label
+            }
+            .disabled(!isEnabled)
         }
     }
 }

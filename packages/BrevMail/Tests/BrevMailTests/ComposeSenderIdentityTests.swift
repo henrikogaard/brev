@@ -401,6 +401,92 @@ struct ComposeSenderIdentityTests {
         ) == personal.id)
     }
 
+    @Test("cross-account reply switches sending identity to B while fetching quoted body from A")
+    @MainActor
+    func crossAccountReplyFetchesQuotedBodyFromOriginalAccountBackend() async {
+        let personalAccount = Self.account(
+            id: "personal-acct",
+            email: "henrik@personal.example",
+            name: "Henrik (personal)"
+        )
+        let workAccount = Self.account(
+            id: "work-acct",
+            email: "henrik@work.example",
+            name: "Henrik (work)"
+        )
+        let personal = Self.section(
+            account: personalAccount,
+            mailboxID: "personal-acct",
+            email: "henrik@personal.example",
+            displayName: "Henrik (personal)"
+        )
+        let work = Self.section(
+            account: workAccount,
+            mailboxID: "work-acct",
+            email: "henrik@work.example",
+            displayName: "Henrik (work)"
+        )
+        // Colliding folder+UID message ID that exists in both accounts.
+        let collidingID = "INBOX:42"
+        let originalHeaderInPersonal = MessageHeader(
+            id: collidingID,
+            threadID: "thread-42",
+            folderID: "INBOX",
+            from: Correspondent(name: "Sigrid", email: "sigrid@partner.example"),
+            to: [Correspondent(name: "Henrik (work)", email: "henrik@work.example")],
+            subject: "Forwarded contract",
+            snippet: "Short snippet",
+            date: Date(timeIntervalSince1970: 1_780_000_500)
+        )
+
+        let matchedReplySourceID = ComposeSenderIdentity.replySourceID(
+            for: originalHeaderInPersonal,
+            in: [personal, work],
+            selectedSourceID: personal.id,
+            defaultSourceID: personal.id
+        )
+        #expect(matchedReplySourceID == work.id)
+
+        let personalBackend = QuoteRecordingMailBackend(
+            account: personalAccount,
+            bodies: [collidingID: MessageBody(messageID: collidingID, plainText: "Original body from account A.")]
+        )
+        let workBackend = QuoteRecordingMailBackend(
+            account: workAccount,
+            bodies: [collidingID: MessageBody(messageID: collidingID, plainText: "UNRELATED secret body in account B!")]
+        )
+
+        let senderResolution = ComposeSenderIdentity.resolution(
+            from: [work],
+            fallbackAccount: workAccount,
+            selectedSourceID: work.id,
+            defaultSourceID: work.id,
+            replyingTo: originalHeaderInPersonal
+        )
+        let composeView = ComposeView(
+            backend: workBackend,
+            sourceID: senderResolution.sourceID,
+            quotedMessageBackend: personalBackend,
+            quotedMessageSourceID: personal.id,
+            from: senderResolution.initialSender?.correspondent
+                ?? Correspondent(name: workAccount.displayName, email: workAccount.emailAddress),
+            senderOptions: senderResolution.options,
+            initialSenderOption: senderResolution.initialSender,
+            backendForSenderSource: { sourceID in
+                sourceID == personal.id ? personalBackend : workBackend
+            },
+            replyingTo: originalHeaderInPersonal
+        )
+
+        let loadedBody = await composeView.loadQuotedOriginalBody(for: originalHeaderInPersonal)
+
+        #expect(loadedBody?.plainText == "Original body from account A.")
+        #expect(personalBackend.bodyLookups.count == 1)
+        #expect(personalBackend.bodyLookups.first?.messageID == collidingID)
+        #expect(personalBackend.bodyLookups.first?.sourceID == personal.id)
+        #expect(workBackend.bodyLookups.isEmpty)
+    }
+
     private static func account(
         id: BrevAccount.ID = "account-1",
         email: String = "henrik@example.org",
@@ -434,4 +520,65 @@ struct ComposeSenderIdentityTests {
             folders: []
         )
     }
+}
+
+private final class QuoteRecordingMailBackend: MailBackend, @unchecked Sendable {
+    struct BodyLookup: Equatable {
+        let messageID: String
+        let sourceID: MailSourceID?
+    }
+
+    let account: BrevAccount
+    let capabilities: BackendCapabilities = []
+    private let bodies: [String: MessageBody]
+    private(set) var bodyLookups: [BodyLookup] = []
+
+    init(account: BrevAccount, bodies: [String: MessageBody]) {
+        self.account = account
+        self.bodies = bodies
+    }
+
+    func connect() async throws {}
+    func disconnect() async {}
+    func folders() async throws -> [Folder] { [] }
+    func refresh(folder _: Folder) async throws {}
+    func messages(in _: Folder, pageToken _: String?) async throws -> (headers: [MessageHeader], nextPageToken: String?) {
+        ([], nil)
+    }
+
+    func body(for messageID: String) async throws -> MessageBody {
+        bodyLookups.append(BodyLookup(messageID: messageID, sourceID: nil))
+        guard let body = bodies[messageID] else { throw MailBackendError.notFound(id: messageID) }
+        return body
+    }
+
+    func body(for messageID: String, sourceID: MailSourceID) async throws -> MessageBody {
+        bodyLookups.append(BodyLookup(messageID: messageID, sourceID: sourceID))
+        guard let body = bodies[messageID] else { throw MailBackendError.notFound(id: messageID) }
+        return body
+    }
+
+    func setRead(_: Bool, for _: [String]) async throws {}
+    func setFlagged(_: Bool, for _: [String]) async throws {}
+    func move(messageIDs _: [String], to _: Folder) async throws {}
+    func delete(messageIDs _: [String]) async throws {}
+    func save(draft: Draft) async throws -> Draft { draft }
+    func discard(draftID _: String) async throws {}
+    func send(draft _: Draft) async throws -> SendResult { SendResult(sentMessageID: "sent") }
+    func search(_: SearchQuery) async throws -> [MessageHeader] { [] }
+    func calendarEvent(from attachmentID: String) async throws -> CalendarEvent {
+        CalendarEvent(
+            id: attachmentID,
+            title: "Event",
+            start: Date(),
+            end: Date(),
+            location: nil,
+            organizer: nil,
+            attendees: [],
+            description: nil
+        )
+    }
+
+    func replyToCalendarInvite(messageID _: String, response _: AttendeeState) async throws {}
+    func subscribeToChanges() -> AsyncStream<MailEvent> { AsyncStream { $0.finish() } }
 }

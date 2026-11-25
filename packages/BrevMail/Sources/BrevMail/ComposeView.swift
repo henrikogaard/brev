@@ -250,6 +250,12 @@ public struct ComposeView: View {
     #endif
 
     private let sourceID: MailSourceID?
+    /// Backend and source that own `replyingTo` / `forwardingFrom`. Kept
+    /// separate from `selectedComposeBackend` so cross-account recipient
+    /// matching (or switching From:) never fetches the original message ID
+    /// from the wrong account.
+    private let quotedMessageBackend: any MailBackend
+    private let quotedMessageSourceID: MailSourceID?
     private let senderOptions: [ComposeSenderOption]
     private let fallbackSenderOption: ComposeSenderOption
     private let backendForSenderSource: @MainActor (MailSourceID?) -> any MailBackend
@@ -546,6 +552,8 @@ public struct ComposeView: View {
     init(
         backend: any MailBackend,
         sourceID: MailSourceID? = nil,
+        quotedMessageBackend: (any MailBackend)? = nil,
+        quotedMessageSourceID: MailSourceID? = nil,
         from: Correspondent,
         senderOptions: [ComposeSenderOption],
         initialSenderOption: ComposeSenderOption? = nil,
@@ -594,6 +602,10 @@ public struct ComposeView: View {
             ?? fallbackSenderOption
 
         self.sourceID = sourceID
+        self.quotedMessageBackend = quotedMessageBackend ?? backend
+        self.quotedMessageSourceID = quotedMessageBackend != nil
+            ? quotedMessageSourceID
+            : (quotedMessageSourceID ?? sourceID)
         self.senderOptions = resolvedSenderOptions
         self.fallbackSenderOption = fallbackSenderOption
         defaultSenderOptionID = selectedSenderOption.id
@@ -4950,18 +4962,8 @@ public struct ComposeView: View {
             return
         }
 
-        let messageBody: MessageBody?
-        do {
-            messageBody = try await selectedComposeBackend.body(
-                for: header.id,
-                sourceID: activeComposeSourceID
-            )
-        } catch {
-            do {
-                messageBody = try await selectedComposeBackend.body(for: header.id)
-            } catch {
-                return
-            }
+        guard let messageBody = await loadQuotedOriginalBody(for: header) else {
+            return
         }
 
         let quoteText = ComposeQuoteTextPolicy.quoteText(
@@ -4981,6 +4983,23 @@ public struct ComposeView: View {
         insertedSignatureBody = ComposeSignatureBodyPolicy.managedSignatureBody(
             from: selectedSignature?.body
         )
+    }
+
+    /// Loads the original message body for reply/forward quoting strictly from
+    /// the backend/source that owns the original message, never from a switched
+    /// sending account.
+    func loadQuotedOriginalBody(for header: MessageHeader) async -> MessageBody? {
+        if let quotedMessageSourceID {
+            do {
+                return try await quotedMessageBackend.body(
+                    for: header.id,
+                    sourceID: quotedMessageSourceID
+                )
+            } catch {
+                return try? await quotedMessageBackend.body(for: header.id)
+            }
+        }
+        return try? await quotedMessageBackend.body(for: header.id)
     }
 
     /// Fetches the server-side alias list once per compose session.

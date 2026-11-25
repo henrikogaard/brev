@@ -10,10 +10,14 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+#if os(macOS)
+import AppKit
+#endif
 import BrevPlugins
 @testable import BrevSettings
 import BrevThemes
 import Foundation
+import SwiftUI
 import Testing
 
 @Suite("Developer settings")
@@ -90,7 +94,7 @@ struct DeveloperSettingsTests {
 
         let defaultVisible = SettingsPluginVisibilityPolicy.visibleSettingsContributions(
             [exampleContribution, customContribution],
-            showsDeveloperSection: true,
+            isDebugBuild: true,
             defaults: freshDefaults,
             environment: [:]
         )
@@ -98,7 +102,7 @@ struct DeveloperSettingsTests {
 
         let enabledVisible = SettingsPluginVisibilityPolicy.visibleSettingsContributions(
             [exampleContribution, customContribution],
-            showsDeveloperSection: true,
+            isDebugBuild: true,
             defaults: defaults,
             environment: [:]
         )
@@ -106,6 +110,28 @@ struct DeveloperSettingsTests {
             DeveloperSettings.examplePluginIdentifier,
             "com.thirdparty.plugin"
         ])
+
+        // iOS default availability omits the Developer section, yet a DEBUG
+        // launch with BREV_SHOW_EXAMPLE_PLUGIN=1 must still surface the panel.
+        #expect(SettingsSectionAvailability.v1Default.contains(.developer) == false)
+        let iosDebugOptedIn = SettingsPluginVisibilityPolicy.visibleSettingsContributions(
+            [exampleContribution, customContribution],
+            isDebugBuild: true,
+            defaults: freshDefaults,
+            environment: ["BREV_SHOW_EXAMPLE_PLUGIN": "1"]
+        )
+        #expect(iosDebugOptedIn.map(\.pluginID) == [
+            DeveloperSettings.examplePluginIdentifier,
+            "com.thirdparty.plugin"
+        ])
+
+        let releaseOptedIn = SettingsPluginVisibilityPolicy.visibleSettingsContributions(
+            [exampleContribution, customContribution],
+            isDebugBuild: false,
+            defaults: defaults,
+            environment: ["BREV_SHOW_EXAMPLE_PLUGIN": "1"]
+        )
+        #expect(releaseOptedIn.map(\.pluginID) == ["com.thirdparty.plugin"])
     }
 
     #if os(macOS)
@@ -116,6 +142,66 @@ struct DeveloperSettingsTests {
         #expect(SettingsToggleRow.usesHighContrastMonochromeSwitch(for: .brevMonoLight) == false)
         #expect(SettingsToggleRow.usesHighContrastMonochromeSwitch(for: .brevSlate) == false)
         #expect(SettingsToggleRow.usesHighContrastMonochromeSwitch(for: .brevPaper) == false)
+    }
+
+    @Test("dark monochrome high-contrast switch installs a keyboard-focusable key-view control when enabled")
+    @MainActor
+    func highContrastMonochromeSwitchKeyboardFocusability() {
+        let enabledHost = makeHostedToggleRow(isEnabled: true)
+        let disabledHost = makeHostedToggleRow(isEnabled: false)
+
+        #expect(containsKeyViewProxy(in: enabledHost.host))
+        #expect(containsKeyViewProxy(in: disabledHost.host) == false)
+
+        enabledHost.cleanup()
+        disabledHost.cleanup()
+    }
+
+    @MainActor
+    private func makeHostedToggleRow(isEnabled: Bool) -> (host: NSHostingView<AnyView>, cleanup: () -> Void) {
+        let view = AnyView(
+            SettingsToggleRow(
+                symbolName: "eye.slash",
+                title: "Remove tracking pixels",
+                subtitle: "Strip hidden tracking beacons before displaying messages.",
+                isOn: .constant(false),
+                isEnabled: isEnabled
+            )
+            .frame(width: 480, height: 60)
+            .brevTheme(.brevMonoDark)
+            .environment(\.colorScheme, .dark)
+        )
+        _ = NSApplication.shared
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(x: 0, y: 0, width: 480, height: 60)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderBack(nil)
+        window.layoutIfNeeded()
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+        if let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+        }
+        return (host, {
+            window.contentView = nil
+            window.close()
+        })
+    }
+
+    @MainActor
+    private func containsKeyViewProxy(in view: NSView) -> Bool {
+        let typeName = String(describing: type(of: view))
+        if typeName.contains("KeyViewProxy") {
+            return true
+        }
+        return view.subviews.contains { containsKeyViewProxy(in: $0) }
     }
     #endif
 

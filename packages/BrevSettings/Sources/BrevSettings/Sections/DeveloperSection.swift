@@ -29,40 +29,53 @@ struct DeveloperSection: View {
 
     var body: some View {
         SectionScaffold(title: String(localized: "Developer", bundle: .module)) {
-            SettingsGroup(
-                title: String(localized: "Runtime", bundle: .module),
-                subtitle: String(localized: "Debug-build controls for local development.", bundle: .module),
-                symbolName: "hammer"
-            ) {
-                SettingsRowStack(spacing: BrevSpacing.md) {
-                    SettingsToggleRow(
-                        symbolName: "shippingbox",
-                        title: String(localized: "Demo mailbox mode", bundle: .module),
-                        subtitle: String(
-                            localized: "Restart Brev with the local demo mailbox instead of restored accounts.",
-                            bundle: .module
-                        ),
-                        isOn: demoModeBinding
-                    )
+            SettingsGroupStack {
+                SettingsGroup(
+                    title: String(localized: "Runtime", bundle: .module),
+                    subtitle: String(localized: "Debug-build controls for local development.", bundle: .module),
+                    symbolName: "hammer"
+                ) {
+                    SettingsRowStack(spacing: BrevSpacing.md) {
+                        SettingsToggleRow(
+                            symbolName: "shippingbox",
+                            title: String(localized: "Demo mailbox mode", bundle: .module),
+                            subtitle: String(
+                                localized: "Restart Brev with the local demo mailbox instead of restored accounts.",
+                                bundle: .module
+                            ),
+                            isOn: demoModeBinding
+                        )
 
-                    SettingsToggleRow(
-                        symbolName: "puzzlepiece.extension",
-                        title: String(localized: "Show Example Plugin", bundle: .module),
-                        subtitle: String(
-                            localized: "Include the built-in Example Plugin in Settings and mail surfaces for extension development.",
-                            bundle: .module
-                        ),
-                        isOn: showExamplePluginBinding
-                    )
+                        SettingsInfoCallout(
+                            symbolName: "arrow.clockwise",
+                            message: String(
+                                localized: "Changing this setting relaunches Brev so startup uses the selected runtime.",
+                                bundle: .module
+                            ),
+                            tone: .info
+                        )
+                    }
+                }
 
-                    SettingsInfoCallout(
-                        symbolName: "arrow.clockwise",
-                        message: String(
-                            localized: "Changing this setting relaunches Brev so startup uses the selected runtime.",
-                            bundle: .module
-                        ),
-                        tone: .info
-                    )
+                SettingsGroup(
+                    title: String(localized: "Extensions", bundle: .module),
+                    subtitle: String(
+                        localized: "Optional built-in plugins for local extension development.",
+                        bundle: .module
+                    ),
+                    symbolName: "puzzlepiece.extension"
+                ) {
+                    SettingsRowStack(spacing: BrevSpacing.md) {
+                        SettingsToggleRow(
+                            symbolName: "puzzlepiece.extension",
+                            title: String(localized: "Show Example Plugin", bundle: .module),
+                            subtitle: String(
+                                localized: "Include the built-in Example Plugin in Settings and mail surfaces for extension development. Takes effect on the next relaunch of Brev.",
+                                bundle: .module
+                            ),
+                            isOn: showExamplePluginBinding
+                        )
+                    }
                 }
             }
         }

@@ -509,7 +509,6 @@ public struct SettingsView: View {
     private var pluginSettingsGroup: some View {
         let contributions = SettingsPluginVisibilityPolicy.visibleSettingsContributions(
             BrevPluginRegistry.shared.registeredContributions(for: .settingsPanel),
-            showsDeveloperSection: navigation.availability.contains(.developer),
             defaults: settingsStore.defaults
         )
         if !contributions.isEmpty {
@@ -991,19 +990,28 @@ private extension View {
 }
 
 enum SettingsPluginVisibilityPolicy {
+    static let defaultIsDebugBuild: Bool = {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }()
+
     /// Filters settings panel contributions so the built-in Example Plugin stays
-    /// hidden from default/production Settings unless Developer mode and the
-    /// explicit Example Plugin flag are enabled.
+    /// hidden from default/production Settings unless running a debug build with
+    /// an explicit opt-in (`BREV_SHOW_EXAMPLE_PLUGIN=1` or Developer → Show
+    /// Example Plugin).
     static func visibleSettingsContributions(
         _ contributions: [RegisteredContribution],
-        showsDeveloperSection: Bool,
+        isDebugBuild: Bool = defaultIsDebugBuild,
         defaults: UserDefaults = .standard,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> [RegisteredContribution] {
         let allowsExamplePlugin = DeveloperSettings.isExamplePluginEnabled(
             environment: environment,
             defaults: defaults,
-            isDeveloperBuild: showsDeveloperSection
+            isDeveloperBuild: isDebugBuild
         )
         return contributions.filter { contribution in
             contribution.pluginID != DeveloperSettings.examplePluginIdentifier || allowsExamplePlugin
