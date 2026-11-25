@@ -26,6 +26,42 @@ import PhotosUI
 import UIKit
 #endif
 
+#if os(iOS)
+enum ComposeChromeControlKey: Hashable, Sendable {
+    case cancel
+    case send
+    case scrollArea
+    case attach
+    case format
+    case moreActions
+}
+
+struct ComposeChromeControlFramesKey: PreferenceKey {
+    static let coordinateSpaceName = "compose.chrome"
+    static let defaultValue: [ComposeChromeControlKey: CGRect] = [:]
+
+    static func reduce(
+        value: inout [ComposeChromeControlKey: CGRect],
+        nextValue: () -> [ComposeChromeControlKey: CGRect]
+    ) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private extension View {
+    func trackComposeChromeControl(_ key: ComposeChromeControlKey) -> some View {
+        background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: ComposeChromeControlFramesKey.self,
+                    value: [key: proxy.frame(in: .named(ComposeChromeControlFramesKey.coordinateSpaceName))]
+                )
+            }
+        )
+    }
+}
+#endif
+
 private struct ComposeAutoSaveFingerprint: Equatable {
     let senderID: String
     let identityID: String?
@@ -925,22 +961,48 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var composeContent: some View {
+        #if os(macOS)
         VStack(spacing: 0) {
-            if usesScrollableFieldLayout {
-                toolbar
-                    .padding(.top, toolbarMetrics.topInset)
-                    .overlay(alignment: .bottom) {
-                        if isCompactVerticalLayout {
-                            BrevDivider()
-                        }
+            if hostStyle == .inline {
+                inlineActionBar
+            }
+            if showsInlineFieldsAndStarters {
+                fieldPanel
+                if showsInlineReplyStarters {
+                    inlineReplyStarters
+                }
+            }
+            composeEditorContent
+            if hostStyle == .inline {
+                inlineBottomBar
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        #else
+        // Keep one structural view tree across portrait, landscape, and
+        // accessibility layouts so rotation never destroys/recreates the live
+        // PlatformComposeBodyEditor (UITextView) or drops rich formatting (#366).
+        VStack(spacing: 0) {
+            toolbar
+                .padding(.top, toolbarMetrics.topInset)
+                .overlay(alignment: .bottom) {
+                    if isCompactVerticalLayout {
+                        BrevDivider()
                     }
-                    .disabled(isBusy)
+                }
+                .disabled(isBusy)
+            GeometryReader { scrollArea in
                 ScrollView {
                     VStack(spacing: 0) {
                         fieldPanel.disabled(isBusy)
                         composeEditorContent
                     }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: usesScrollableFieldLayout ? nil : scrollArea.size.height,
+                        maxHeight: usesScrollableFieldLayout ? nil : scrollArea.size.height,
+                        alignment: .topLeading
+                    )
                     // A vertical ScrollView measures its content at ideal
                     // width; intrinsic text widths (recipient/subject
                     // fields, the body editor) exceed the phone viewport
@@ -950,37 +1012,17 @@ public struct ComposeView: View {
                     // proposals still stretch it to the real width.
                     .frame(idealWidth: isAccessibilityFieldLayout ? ComposeLayout.compactSheetIdealWidth : nil)
                 }
+                .scrollDisabled(!usesScrollableFieldLayout)
                 .clipped()
-                #if os(iOS)
-                    .scrollDismissesKeyboard(.interactively)
-                #endif
-            } else {
-                #if os(macOS)
-                if hostStyle == .inline {
-                    inlineActionBar
-                }
-                if showsInlineFieldsAndStarters {
-                    fieldPanel
-                    if showsInlineReplyStarters {
-                        inlineReplyStarters
-                    }
-                }
-                #else
-                header
-                #endif
-                composeEditorContent
-                #if os(macOS)
-                if hostStyle == .inline {
-                    inlineBottomBar
-                }
-                #endif
+                .scrollDismissesKeyboard(.interactively)
             }
-            #if os(iOS)
+            .trackComposeChromeControl(.scrollArea)
             mobileUtilityToolbar
                 .disabled(isBusy)
-            #endif
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .coordinateSpace(name: ComposeChromeControlFramesKey.coordinateSpaceName)
+        #endif
     }
 
     private var composeEditorContent: some View {
@@ -1109,19 +1151,6 @@ public struct ComposeView: View {
                 )
             }
         }
-    }
-
-    @ViewBuilder
-    private var header: some View {
-        VStack(spacing: 0) {
-            toolbar
-            fieldPanel
-        }
-        .padding(.top, toolbarMetrics.topInset)
-        // No opaque chrome background: the toolbar and fields sit directly on the
-        // window's shared (opacity-aware) surface, so the whole compose window is
-        // one continuous colour rather than a header band split off from the body.
-        .disabled(isBusy)
     }
 
     #if os(macOS)
@@ -1317,7 +1346,11 @@ public struct ComposeView: View {
 
     private var mobileToolbar: some View {
         HStack(spacing: BrevSpacing.sm) {
-            cancelButton.fixedSize(horizontal: true, vertical: false)
+            cancelButton
+                .fixedSize(horizontal: true, vertical: false)
+            #if os(iOS)
+                .trackComposeChromeControl(.cancel)
+            #endif
             Spacer(minLength: 0)
             if !isAccessibilityFieldLayout {
                 Text(composeTitle)
@@ -1330,6 +1363,9 @@ public struct ComposeView: View {
             Spacer(minLength: 0)
             scheduleSendButton.fixedSize(horizontal: true, vertical: false)
             sendButton
+            #if os(iOS)
+            .trackComposeChromeControl(.send)
+            #endif
         }
         .padding(.leading, BrevSpacing.sm)
         .padding(.trailing, BrevSpacing.sm)
@@ -1447,8 +1483,11 @@ public struct ComposeView: View {
     private var mobileUtilityToolbar: some View {
         HStack(spacing: BrevSpacing.xxs) {
             attachMenu
+                .trackComposeChromeControl(.attach)
             formatMenu
+                .trackComposeChromeControl(.format)
             composeActionsMenu
+                .trackComposeChromeControl(.moreActions)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, BrevSpacing.sm)

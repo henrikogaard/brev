@@ -24,35 +24,72 @@ import UIKit
 @Suite("Privacy onboarding sheet iOS AXL layout", .serialized)
 @MainActor
 struct PrivacyOnboardingAXLLayoutIOSTests {
+    struct LayoutCase: Sendable, CustomTestStringConvertible {
+        let label: String
+        let mode: PrivacyOnboardingMode
+        let viewport: CGSize
+        let dynamicTypeSize: DynamicTypeSize
+        let contentSizeCategory: UIContentSizeCategory
+
+        var testDescription: String { label }
+
+        static let all: [Self] = {
+            let modes: [(String, PrivacyOnboardingMode)] = [
+                ("firstRun", .firstRun),
+                ("reviewFromSettings", .reviewFromSettings)
+            ]
+            let viewports: [(String, CGSize)] = [
+                ("393x852", CGSize(width: 393, height: 852)),
+                ("320x852", CGSize(width: 320, height: 852))
+            ]
+            let sizes: [(String, DynamicTypeSize, UIContentSizeCategory)] = [
+                ("AXL(.accessibility3)", .accessibility3, .accessibilityExtraLarge),
+                ("AX5(.accessibility5)", .accessibility5, .accessibilityExtraExtraExtraLarge)
+            ]
+            return modes.flatMap { modeName, mode in
+                viewports.flatMap { viewportName, viewport in
+                    sizes.map { sizeName, dynamicTypeSize, category in
+                        Self(
+                            label: "\(modeName) \(viewportName) \(sizeName)",
+                            mode: mode,
+                            viewport: viewport,
+                            dynamicTypeSize: dynamicTypeSize,
+                            contentSizeCategory: category
+                        )
+                    }
+                }
+            }
+        }()
+    }
+
     @Test(
-        "PrivacyOnboardingSheet stays within phone width with generous scroll area at AXL (#362)",
-        arguments: [PrivacyOnboardingMode.firstRun, .reviewFromSettings],
-        [CGSize(width: 393, height: 852), CGSize(width: 320, height: 852)]
+        "PrivacyOnboardingSheet stays within phone width with generous scroll area at AXL and AX5 (#362)",
+        arguments: LayoutCase.all
     )
-    func staysWithinPhoneBoundsAtAXL(mode: PrivacyOnboardingMode, viewport: CGSize) throws {
+    func staysWithinPhoneBoundsAtAXL(_ layoutCase: LayoutCase) throws {
         let suite = "PrivacyOnboardingAXL-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let view = PrivacyOnboardingSheet(
-            mode: mode,
+            mode: layoutCase.mode,
             settingsStore: SettingsPersistenceStore(defaults: defaults),
             appleIntelligenceAvailability: .available,
             onAvatarPreferencesChanged: { _ in }
         )
         .brevTheme(.brevMonoLight)
         .environment(\.colorScheme, .light)
-        .environment(\.dynamicTypeSize, .accessibility2)
+        .environment(\.dynamicTypeSize, layoutCase.dynamicTypeSize)
         .defaultAppStorage(defaults)
 
         let host = UIHostingController(rootView: view)
-        let window = UIWindow(frame: CGRect(origin: .zero, size: viewport))
+        let window = UIWindow(frame: CGRect(origin: .zero, size: layoutCase.viewport))
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
 
-        host.view.traitOverrides.preferredContentSizeCategory = .accessibilityExtraLarge
-        host.view.frame = CGRect(origin: .zero, size: viewport)
+        host.view.traitOverrides.preferredContentSizeCategory = layoutCase.contentSizeCategory
+        host.view.frame = CGRect(origin: .zero, size: layoutCase.viewport)
         host.view.layoutIfNeeded()
         window.layoutIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.4))
@@ -63,15 +100,15 @@ struct PrivacyOnboardingAXLLayoutIOSTests {
         let mainScroll = try #require(scrollViews.max(by: { $0.bounds.height < $1.bounds.height }))
         let scrollFrame = mainScroll.convert(mainScroll.bounds, to: window)
         #expect(
-            scrollFrame.height >= viewport.height * 0.6,
-            "Scroll area should fill most of the sheet at AXL: \(scrollFrame) in \(viewport)"
+            scrollFrame.height >= layoutCase.viewport.height * 0.6,
+            "Scroll area should fill most of the sheet at \(layoutCase.label): \(scrollFrame) in \(layoutCase.viewport)"
         )
 
         let horizontalOffenders = allViews.filter { subview in
             guard !subview.isHidden, subview.alpha > 0 else { return false }
             let frame = subview.convert(subview.bounds, to: window)
             guard frame.width > 0, frame.height > 0 else { return false }
-            return frame.minX < -0.5 || frame.maxX > viewport.width + 0.5
+            return frame.minX < -0.5 || frame.maxX > layoutCase.viewport.width + 0.5
         }
         for offender in horizontalOffenders {
             let frame = offender.convert(offender.bounds, to: window)

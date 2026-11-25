@@ -18,7 +18,12 @@
     - `BrevMail` iOS 27.2 Simulator (`iPhone 18 Pro`) `ComposeAccessibilityBoundsTests` + `ComposeHeaderAlignmentIOSTests`: 4/4 tests in 2 suites passed (including Landscape `852×393` & `852×185`, accessibility bounds, and portrait header alignment).
     - `BrevIOS` Debug Simulator build (`Brev.xcworkspace`, `iPhone 18 Pro`, iOS 27.2): `** BUILD SUCCEEDED **`.
 - Skipped: live interactive Simulator visual inspection / physical device QA (layout geometry and bounds verified via `UIHostingController` tests on iOS 27.2 Simulator; interactive QA remains tracked under #281).
-- Next: open PR targeting `main` linking #360, #362, #363 (and referencing #281), and move #360, #362, #363 to `In review`.
+- Review fixes round 1 (PR #366 — Codex P1 + Devin 🔴 + 5 🔍 findings):
+  - Unified iOS `ComposeView.composeContent` into one single structural view tree (`VStack` + `GeometryReader` + `ScrollView` with `.scrollDisabled(!usesScrollableFieldLayout)`) so rotating between portrait and landscape never destroys/recreates `PlatformComposeBodyEditor` (`ComposeBodyTextView`) or loses rich formatting/inline images; removed now-unused `header` helper.
+  - Added `ComposeChromeControlFramesKey` preference tracking for `.cancel`, `.send`, `.scrollArea`, `.attach`, `.format`, and `.moreActions`, extended `ComposeAccessibilityBoundsTests.landscapeComposeKeepsChromeAndScrollViewWithinBounds` to assert all five controls' live frames (`>= 44×44` inside `852×393` and `852×185`), and added `landscapeRotationPreservesRichBodyEditorIdentityAndFormatting` verifying the same `ComposeBodyTextView` instance and bold formatting survive `.regular → .compact → .regular`.
+  - Updated `PrivacyOnboardingAXLLayoutIOSTests` to test true `AXL` (`.accessibility3` / `.accessibilityExtraLarge`) and `AX5` (`.accessibility5` / `.accessibilityExtraExtraExtraLarge`) across `.firstRun`/`.reviewFromSettings` and `393×852`/`320×852` (8 cases), and registered `PrivacyOnboardingAXLLayoutIOSTests` in `.github/workflows/build.yml`'s iOS settings job.
+  - Re-verified locally (`scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`) and on `macmini-devbox` (`/tmp/brev-fix-366-r1`, cleaned up afterwards): `PrivacyOnboardingTests` + `PrivacyOnboardingSnapshotTests` (19/19 macOS), `PrivacyOnboardingAXLLayoutIOSTests` (8/8 iOS 27.2 Simulator), and `ComposePresentationTests` + `ComposeAccessibilityBoundsTests` + `ComposeHeaderAlignmentIOSTests` (29/29 iOS 27.2 Simulator).
+- Next: push review round 1 commit to `fix/ios-settings-layout-and-nb-ax`, reply to and resolve all 7 review threads on PR #366.
 
 ## 2026-11-25 — Agent — Track 3: Native JMAP Mail Backend (`BrevJMAP`)
 

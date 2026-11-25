@@ -64,10 +64,13 @@ struct ComposeAccessibilityBoundsTests {
         #expect(offenders.isEmpty)
     }
 
-    @Test("landscape compose keeps top bar, scrollable body, and utility bar inside a keyboard-constrained viewport (#362)",
-          arguments: [CGSize(width: 852, height: 393), CGSize(width: 852, height: 185)])
-    func landscapeComposeKeepsChromeAndScrollViewWithinBounds(_ viewport: CGSize) {
+    @Test(
+        "landscape compose keeps top bar, scrollable body, and utility bar inside a keyboard-constrained viewport (#362)",
+        arguments: [CGSize(width: 852, height: 393), CGSize(width: 852, height: 185)]
+    )
+    func landscapeComposeKeepsChromeAndScrollViewWithinBounds(_ viewport: CGSize) throws {
         let backend = MockBackend()
+        var controlFrames: [ComposeChromeControlKey: CGRect] = [:]
         let view = ComposeView(
             backend: backend,
             from: backend.account,
@@ -77,18 +80,26 @@ struct ComposeAccessibilityBoundsTests {
                 bodyText: "Testing rich editor"
             )
         )
+        .frame(width: viewport.width, height: viewport.height)
         .environment(\.horizontalSizeClass, .compact)
         .environment(\.verticalSizeClass, .compact)
         .brevTheme(.brevMonoLight)
         .htmlBodyRenderTarget(.staticSnapshot)
+        .onPreferenceChange(ComposeChromeControlFramesKey.self) { frames in
+            controlFrames = frames
+        }
 
         let host = UIHostingController(rootView: view)
-        let window = UIWindow(frame: CGRect(origin: .zero, size: viewport))
+        // Host inside a window taller than the simulator's portrait safe-area
+        // insets so `ComposeView` receives the exact `viewport` height (full
+        // landscape `393 pt` and keyboard-constrained `185 pt`).
+        let windowSize = CGSize(width: viewport.width, height: max(viewport.height + 160, 600))
+        let window = UIWindow(frame: CGRect(origin: .zero, size: windowSize))
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
 
-        host.view.frame = CGRect(origin: .zero, size: viewport)
+        host.view.frame = CGRect(origin: .zero, size: windowSize)
         host.view.layoutIfNeeded()
         window.layoutIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.4))
@@ -98,13 +109,45 @@ struct ComposeAccessibilityBoundsTests {
         let scrollViews = allViews.compactMap { $0 as? UIScrollView }.filter { !($0 is UITextView) }
         #expect(!scrollViews.isEmpty, "Landscape compose should wrap header fields and body in a ScrollView")
 
-        if let scrollView = scrollViews.first {
-            let scrollFrame = scrollView.convert(scrollView.bounds, to: window)
-            #expect(scrollFrame.minY >= 40, "Top navigation bar should remain pinned above ScrollView: \(scrollFrame)")
-            #expect(scrollFrame.height > 0, "ScrollView should have positive visible height: \(scrollFrame)")
+        let scrollFrame = try #require(
+            controlFrames[.scrollArea],
+            "Expected scrollable body region frame; captured: \(controlFrames)"
+        )
+        #expect(scrollFrame.minY >= 43.5, "Top navigation bar should remain pinned above ScrollView: \(scrollFrame)")
+        #expect(scrollFrame.height >= 90, "ScrollView should leave generous scrollable height: \(scrollFrame)")
+        #expect(
+            scrollFrame.maxY <= viewport.height - 43.5,
+            "Bottom utility bar should remain pinned below ScrollView: \(scrollFrame) in \(viewport)"
+        )
+
+        // Verify the actual rendered top-bar and bottom utility controls sit
+        // inside the visible viewport bounds with tappable dimensions (#366).
+        for key in [ComposeChromeControlKey.cancel, .send] {
+            let frame = try #require(
+                controlFrames[key],
+                "Expected top toolbar control \(key) frame; captured: \(controlFrames)"
+            )
+            #expect(frame.width >= 44 && frame.height >= 44, "Top control \(key) below 44pt target: \(frame)")
+            #expect(frame.minY >= -0.5 && frame.maxY <= scrollFrame.minY + 1.5, "Top control \(key) clipped: \(frame)")
             #expect(
-                scrollFrame.maxY <= viewport.height - 40,
-                "Bottom utility bar should remain pinned below ScrollView: \(scrollFrame) in \(viewport)"
+                frame.minX >= -0.5 && frame.maxX <= viewport.width + 0.5,
+                "Top control \(key) horizontal overflow: \(frame)"
+            )
+        }
+
+        for key in [ComposeChromeControlKey.attach, .format, .moreActions] {
+            let frame = try #require(
+                controlFrames[key],
+                "Expected bottom utility control \(key) frame; captured: \(controlFrames)"
+            )
+            #expect(frame.width >= 44 && frame.height >= 44, "Bottom control \(key) below 44pt target: \(frame)")
+            #expect(
+                frame.minY >= scrollFrame.maxY - 1.5 && frame.maxY <= viewport.height + 0.5,
+                "Bottom control \(key) clipped: \(frame)"
+            )
+            #expect(
+                frame.minX >= -0.5 && frame.maxX <= viewport.width + 0.5,
+                "Bottom control \(key) horizontal overflow: \(frame)"
             )
         }
 
@@ -117,8 +160,123 @@ struct ComposeAccessibilityBoundsTests {
         #expect(horizontalOffenders.isEmpty)
     }
 
+    @Test("rotating between portrait and landscape preserves live rich body editor identity and formatting (#366)")
+    func landscapeRotationPreservesRichBodyEditorIdentityAndFormatting() throws {
+        let backend = MockBackend()
+        let model = ComposeRotationHarnessModel(verticalSizeClass: .regular)
+        let host = UIHostingController(rootView: ComposeRotationHarnessView(backend: backend, model: model))
+        let portraitSize = CGSize(width: 393, height: 852)
+        let landscapeSize = CGSize(width: 852, height: 393)
+
+        let window = UIWindow(frame: CGRect(origin: .zero, size: portraitSize))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        host.view.frame = CGRect(origin: .zero, size: portraitSize)
+        host.view.layoutIfNeeded()
+        window.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        window.layoutIfNeeded()
+
+        let initialTextView = try #require(
+            descendants(of: host.view).compactMap { $0 as? ComposeBodyTextView }.first,
+            "Expected live ComposeBodyTextView in portrait compose"
+        )
+        let initialIdentity = ObjectIdentifier(initialTextView)
+
+        // Apply live bold formatting inside the rich UITextView session.
+        let boldRange = NSRange(location: 0, length: 7) // "Testing"
+        initialTextView.selectedRange = boldRange
+        let richTarget = try #require(
+            initialTextView.delegate as? ComposeIOSRichTextTarget,
+            "Expected ComposeBodyTextView delegate to conform to ComposeIOSRichTextTarget"
+        )
+        richTarget.toggleBold()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+
+        let fontBeforeRotation = try #require(
+            initialTextView.textStorage.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+        )
+        #expect(fontBeforeRotation.fontDescriptor.symbolicTraits.contains(.traitBold))
+
+        // Rotate portrait -> landscape (.regular -> .compact).
+        model.verticalSizeClass = .compact
+        window.frame = CGRect(origin: .zero, size: landscapeSize)
+        host.view.frame = CGRect(origin: .zero, size: landscapeSize)
+        host.view.layoutIfNeeded()
+        window.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        window.layoutIfNeeded()
+
+        let landscapeTextView = try #require(
+            descendants(of: host.view).compactMap { $0 as? ComposeBodyTextView }.first
+        )
+        #expect(
+            ObjectIdentifier(landscapeTextView) == initialIdentity,
+            "Rotating to landscape must not recreate ComposeBodyTextView"
+        )
+        #expect(landscapeTextView.text == "Testing rich editor")
+        let fontInLandscape = try #require(
+            landscapeTextView.textStorage.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+        )
+        #expect(fontInLandscape.fontDescriptor.symbolicTraits.contains(.traitBold))
+
+        // Rotate landscape -> portrait (.compact -> .regular).
+        model.verticalSizeClass = .regular
+        window.frame = CGRect(origin: .zero, size: portraitSize)
+        host.view.frame = CGRect(origin: .zero, size: portraitSize)
+        host.view.layoutIfNeeded()
+        window.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        window.layoutIfNeeded()
+
+        let portraitTextView = try #require(
+            descendants(of: host.view).compactMap { $0 as? ComposeBodyTextView }.first
+        )
+        #expect(
+            ObjectIdentifier(portraitTextView) == initialIdentity,
+            "Rotating back to portrait must not recreate ComposeBodyTextView"
+        )
+        #expect(portraitTextView.text == "Testing rich editor")
+        let fontBackInPortrait = try #require(
+            portraitTextView.textStorage.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+        )
+        #expect(fontBackInPortrait.fontDescriptor.symbolicTraits.contains(.traitBold))
+    }
+
     private func descendants(of view: UIView) -> [UIView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+}
+
+@MainActor
+private final class ComposeRotationHarnessModel: ObservableObject {
+    @Published var verticalSizeClass: UserInterfaceSizeClass
+
+    init(verticalSizeClass: UserInterfaceSizeClass) {
+        self.verticalSizeClass = verticalSizeClass
+    }
+}
+
+private struct ComposeRotationHarnessView: View {
+    let backend: MockBackend
+    @ObservedObject var model: ComposeRotationHarnessModel
+
+    var body: some View {
+        ComposeView(
+            backend: backend,
+            from: backend.account,
+            prefill: ComposePrefill(
+                to: ["qa@example.test"],
+                subject: "iOS Rich QA",
+                bodyText: "Testing rich editor"
+            )
+        )
+        .environment(\.horizontalSizeClass, .compact)
+        .environment(\.verticalSizeClass, model.verticalSizeClass)
+        .brevTheme(.brevMonoLight)
+        .htmlBodyRenderTarget(.staticSnapshot)
     }
 }
 #endif
