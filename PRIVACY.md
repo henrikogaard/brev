@@ -791,6 +791,24 @@ you configure; it does not proxy AI requests, sell credits, meter token usage,
 or silently select another provider. You'll never be in doubt about the
 destination, whether you use compose help, thread summaries, or mailbox chat.
 
+**Downloaded local models (user-initiated, offline inference)**
+
+Brev ships with zero bundled model weights and never downloads model files in
+the background. In **Settings → Writing → AI Writer**, you may optionally choose
+**On this Mac (download a model)** / **On this iPhone / iPad (download a model)**
+and click **Download** on a curated open-weights model after reviewing its name,
+parameter count, download size, SPDX license, and source host. Only that explicit
+Download action contacts the model host over HTTPS (non-HTTPS redirects are
+blocked; no cookies or account credentials are sent). Downloaded bytes stream to
+a temporary file, are verified against the catalog's SHA-256 digest before
+activation (any mismatch or cancellation immediately deletes the temporary file),
+and are stored in a backup-excluded folder
+(`~/Library/Application Support/Brev/LocalModels/<model-id>/`). Once installed,
+local model inference runs strictly offline on your device with zero external
+network calls, requires no API key, and displays `"On this Mac"` (or `"On this
+iPhone"` / `"On this iPad"`). You can cancel an in-flight download or delete
+downloaded weights at any time in **Settings → Writing → AI Writer**.
+
 **How to disable:** Settings → Writing → AI Writer → "Use AI Writer". Defaults to
 off. You can also decline the first-use consent prompt in compose or
 mailbox chat.

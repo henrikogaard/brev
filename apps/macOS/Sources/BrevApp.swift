@@ -771,10 +771,15 @@ final class BrevMacOSAppDelegate: NSObject, NSApplicationDelegate {
     let notificationDelegate = BrevNotificationDelegate()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppSession.cleanupAbandonedLocalAIPromptFiles()
         applyMacOSAppIcon(AppIconPreferences.load())
         UNUserNotificationCenter.current().delegate = notificationDelegate
         BrevPluginRegistry.shared.register(BrevExamplePlugin())
         startBackgroundScheduler()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        AppSession.terminateLocalAIAndCleanupPromptFiles()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

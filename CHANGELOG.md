@@ -4,6 +4,16 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- On-device AI downloaded local models (#304, Slice 2): added
+  `LocalModelCatalog` (curated open-weights models with parameter count,
+  quantization, size, SPDX license, HTTPS URL, RAM note, and SHA-256 digest),
+  `LocalModelDownloadManager` (strictly user-initiated HTTPS streaming downloads
+  with live progress, cancel/delete, streaming SHA-256 verification that deletes
+  partial files on mismatch or cancellation, and backup-excluded storage under
+  `Application Support/Brev/LocalModels/`), `LocalDownloadedModelAIBackend` and
+  `AIProviderKind.onDeviceDownloadedModel` (`"On this Mac (download a model)"`)
+  with zero bundled weights, zero network during inference, and `"On this Mac"`
+  attribution, plus the Local Models management card in Settings → AI Writer.
 - Generic IMAP sign-in code & link detection (#5): added an RFC 8601
   `Authentication-Results` parser and domain-alignment verifier
   (`AuthenticationResultsParser`, `IMAPSignInReceiverProvenance`,
@@ -20,7 +30,6 @@ All notable changes to Brev are documented here.
   `127.0.0.1`) fail closed because receiver provenance cannot be verified from
   a loopback host. Per-account opt-in remains off by default, and Settings
   explains the verification rule in English and Norwegian.
-
 - Closed-app push options with zero Brev proxy (#11): added opt-in, device-local
   **Settings → Notifications → Closed-App Push (Self-Hosted)** (off by default,
   excluded from `.brevbackup` and iCloud preference sync) supporting both

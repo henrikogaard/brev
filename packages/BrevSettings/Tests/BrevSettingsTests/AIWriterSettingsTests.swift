@@ -80,6 +80,7 @@ struct AIWriterSettingsTests {
             "Automatic on-device summaries & priority",
             "Generates short thread summaries and Urgent or Needs reply badges automatically only when an on-device AI provider is active. Never sends mail to cloud providers.",
             "Turn on AI Writer above and choose an on-device provider to enable automatic summaries.",
+            "Install a compatible local inference helper (such as llama-cli) to run automatic summaries with a downloaded model.",
             "Only available when an on-device AI provider is active. Cloud and BYOK providers require an explicit click.",
             "Runs automatically only for accounts using on-device AI. Accounts with a cloud or BYOK override stay manual."
         ] {
@@ -149,6 +150,116 @@ struct AIWriterSettingsTests {
             appleIntelligenceAvailability: .available
         )
         #expect(overriddenSummary.hasActiveOnDeviceProvider == false)
+    }
+
+    @Test("provider summary gates downloaded-model proactive triage on local inference runtime readiness")
+    func providerSummaryGatesDownloadedModelOnInferenceRuntimeReadiness() {
+        let account = BrevAccount(id: "acct-1", displayName: "Work", emailAddress: "work@example.org")
+        let secondAccount = BrevAccount(id: "acct-2", displayName: "Personal", emailAddress: "me@example.org")
+        let downloadedDefault = AIProviderConfiguration.onDeviceDownloadedModel(
+            modelID: LocalModelCatalog.defaultModelID,
+            isEnabled: true,
+            isDefault: true
+        )
+        let enabledSettings = AIWriterSettings(
+            isEnabled: true,
+            consentGiven: true,
+            proactiveOnDeviceTriageEnabled: false
+        )
+
+        // Installed local inference helper makes the downloaded-model route usable for proactive triage.
+        let readySummary = AIWriterSectionProviderSummary.evaluate(
+            configurations: [downloadedDefault],
+            assignments: AIProviderAccountAssignments(),
+            accounts: [account],
+            appleIntelligenceAvailability: .appleIntelligenceNotEnabled,
+            isLocalInferenceRuntimeInstalled: true
+        )
+        #expect(readySummary.hasActiveOnDeviceProvider == true)
+        #expect(readySummary.hasDownloadedModelMissingRuntime == false)
+        #expect(readySummary.proactiveStatusNote(for: enabledSettings) == nil)
+
+        // Missing local inference helper disables proactive triage and surfaces the localized prerequisite note.
+        let missingRuntimeSummary = AIWriterSectionProviderSummary.evaluate(
+            configurations: [downloadedDefault],
+            assignments: AIProviderAccountAssignments(),
+            accounts: [account],
+            appleIntelligenceAvailability: .appleIntelligenceNotEnabled,
+            isLocalInferenceRuntimeInstalled: false
+        )
+        #expect(missingRuntimeSummary.hasActiveOnDeviceProvider == false)
+        #expect(missingRuntimeSummary.hasDownloadedModelMissingRuntime == true)
+        let expectedNote = String(
+            localized: "Install a compatible local inference helper (such as llama-cli) to run automatic summaries with a downloaded model.",
+            bundle: PrivacySection.resourceBundle
+        )
+        #expect(missingRuntimeSummary.proactiveStatusNote(for: enabledSettings) == expectedNote)
+
+        // When another account has a usable Apple Intelligence override, proactive triage stays enabled.
+        let appleOverride = AIProviderConfiguration.appleIntelligence(isEnabled: true, isDefault: false)
+        var assignments = AIProviderAccountAssignments()
+        assignments.assign(providerID: appleOverride.id, toAccountID: secondAccount.id)
+        let mixedSummary = AIWriterSectionProviderSummary.evaluate(
+            configurations: [downloadedDefault, appleOverride],
+            assignments: assignments,
+            accounts: [account, secondAccount],
+            appleIntelligenceAvailability: .available,
+            isLocalInferenceRuntimeInstalled: false
+        )
+        #expect(mixedSummary.hasActiveOnDeviceProvider == true)
+        #expect(mixedSummary.hasDownloadedModelMissingRuntime == false)
+
+        // Unassigned non-default downloaded model does not trigger the missing-runtime note.
+        let orphanDownloaded = AIProviderConfiguration.onDeviceDownloadedModel(
+            modelID: LocalModelCatalog.defaultModelID,
+            isEnabled: true,
+            isDefault: false
+        )
+        let orphanSummary = AIWriterSectionProviderSummary.evaluate(
+            configurations: [orphanDownloaded],
+            assignments: AIProviderAccountAssignments(),
+            accounts: [account],
+            appleIntelligenceAvailability: .appleIntelligenceNotEnabled,
+            isLocalInferenceRuntimeInstalled: false
+        )
+        #expect(orphanSummary.hasActiveOnDeviceProvider == false)
+        #expect(orphanSummary.hasDownloadedModelMissingRuntime == false)
+    }
+
+    @Test("already-enabled proactive triage stays visible and opt-outable when downloaded-model helper is missing")
+    func missingHelperAllowsOptOutWhileBlockingOptIn() {
+        let account = BrevAccount(id: "acct-1", displayName: "Work", emailAddress: "work@example.org")
+        let downloadedDefault = AIProviderConfiguration.onDeviceDownloadedModel(
+            modelID: LocalModelCatalog.defaultModelID,
+            isEnabled: true,
+            isDefault: true
+        )
+        let summary = AIWriterSectionProviderSummary.evaluate(
+            configurations: [downloadedDefault],
+            assignments: AIProviderAccountAssignments(),
+            accounts: [account],
+            appleIntelligenceAvailability: .appleIntelligenceNotEnabled,
+            isLocalInferenceRuntimeInstalled: false
+        )
+
+        // Previously enabled preference remains visible as ON and interactive so the user can opt out.
+        var pausedEnabled = AIWriterSettings(
+            isEnabled: true,
+            consentGiven: true,
+            proactiveOnDeviceTriageEnabled: true
+        )
+        #expect(summary.proactiveTriageSwitchValue(for: pausedEnabled) == true)
+        #expect(summary.isProactiveTriageSwitchInteractive(for: pausedEnabled) == true)
+        #expect(summary.proactiveStatusNote(for: pausedEnabled) != nil)
+
+        // Opting OUT succeeds and persists false; afterward, opting back IN is blocked while helper is absent.
+        #expect(summary.applyProactiveTriageToggle(false, to: &pausedEnabled) == true)
+        #expect(pausedEnabled.proactiveOnDeviceTriageEnabled == false)
+        #expect(summary.proactiveTriageSwitchValue(for: pausedEnabled) == false)
+        #expect(summary.isProactiveTriageSwitchInteractive(for: pausedEnabled) == false)
+
+        #expect(summary.applyProactiveTriageToggle(true, to: &pausedEnabled) == false)
+        #expect(pausedEnabled.proactiveOnDeviceTriageEnabled == false)
     }
 
     private static func makeDefaults() throws -> UserDefaults {

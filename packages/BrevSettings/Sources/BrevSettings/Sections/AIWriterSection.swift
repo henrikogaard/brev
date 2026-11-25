@@ -20,11 +20,16 @@ struct AIWriterSection: View {
     @Environment(\.brevTheme) private var theme
     @State private var settings: AIWriterSettings
     @State private var providerSummary: AIWriterSectionProviderSummary
+    @State private var providerRefreshRevision = 0
+    @State private var installedModelsRevision = 0
 
     private let settingsStore: SettingsPersistenceStore
     private let providerSecretStore: any AIProviderSecretStore
     private let accounts: [BrevAccount]
     private let appleIntelligenceAvailability: AppleIntelligenceAvailability
+    private let localModelDownloadManager: LocalModelDownloadManager
+    private let isLocalModelPlatformSupported: Bool
+    private let isLocalInferenceRuntimeInstalled: Bool
     private let onProviderConfigurationChanged: () async -> Void
 
     init(
@@ -32,19 +37,26 @@ struct AIWriterSection: View {
         providerSecretStore: any AIProviderSecretStore = AIProviderKeychainSecretStore(),
         accounts: [BrevAccount] = [],
         appleIntelligenceAvailability: AppleIntelligenceAvailability = .current(),
+        localModelDownloadManager: LocalModelDownloadManager = .shared,
+        isLocalModelPlatformSupported: Bool = DefaultLocalModelInferenceRuntime.isPlatformSupported,
+        isLocalInferenceRuntimeInstalled: Bool = LocalDownloadedModelAIBackend.isInferenceRuntimeInstalled,
         onProviderConfigurationChanged: @escaping () async -> Void = {}
     ) {
         self.settingsStore = settingsStore
         self.providerSecretStore = providerSecretStore
         self.accounts = accounts
         self.appleIntelligenceAvailability = appleIntelligenceAvailability
+        self.localModelDownloadManager = localModelDownloadManager
+        self.isLocalModelPlatformSupported = isLocalModelPlatformSupported
+        self.isLocalInferenceRuntimeInstalled = isLocalInferenceRuntimeInstalled
         self.onProviderConfigurationChanged = onProviderConfigurationChanged
         _settings = State(initialValue: settingsStore.aiWriterSettings())
         _providerSummary = State(
             initialValue: AIWriterSectionProviderSummary.load(
                 from: settingsStore,
                 accounts: accounts,
-                appleIntelligenceAvailability: appleIntelligenceAvailability
+                appleIntelligenceAvailability: appleIntelligenceAvailability,
+                isLocalInferenceRuntimeInstalled: isLocalInferenceRuntimeInstalled
             )
         )
     }
@@ -57,8 +69,8 @@ struct AIWriterSection: View {
         providerSummary.hasNonOnDeviceAccountOverride
     }
 
-    private var canToggleProactiveOnDeviceTriage: Bool {
-        settings.isAvailable && providerSummary.hasActiveOnDeviceProvider
+    private var canInteractWithProactiveOnDeviceTriage: Bool {
+        providerSummary.isProactiveTriageSwitchInteractive(for: settings)
     }
 
     var body: some View {
@@ -96,7 +108,7 @@ struct AIWriterSection: View {
                         ),
                         isOn: proactiveOnDeviceBinding
                     )
-                    .disabled(!canToggleProactiveOnDeviceTriage)
+                    .disabled(!canInteractWithProactiveOnDeviceTriage)
 
                     if let proactiveStatusNote {
                         Text(proactiveStatusNote)
@@ -110,9 +122,28 @@ struct AIWriterSection: View {
                     secretStore: providerSecretStore,
                     accounts: accounts,
                     appleIntelligenceAvailability: appleIntelligenceAvailability,
+                    localModelDownloadManager: localModelDownloadManager,
+                    isLocalModelPlatformSupported: isLocalModelPlatformSupported,
+                    refreshRevision: providerRefreshRevision,
+                    installedModelsRevision: installedModelsRevision,
                     onProviderConfigurationChanged: {
                         await refreshConfiguredProvider()
                         await onProviderConfigurationChanged()
+                    }
+                )
+
+                LocalModelsSettingsGroup(
+                    downloadManager: localModelDownloadManager,
+                    activeModelID: activeDownloadedModelID,
+                    isPlatformSupported: isLocalModelPlatformSupported,
+                    onSelectModel: { descriptor in
+                        await selectDownloadedLocalModel(descriptor)
+                    },
+                    onModelDeleted: { descriptor in
+                        await handleDeletedLocalModel(descriptor)
+                    },
+                    onInstalledModelsChanged: {
+                        installedModelsRevision += 1
                     }
                 )
 
@@ -148,36 +179,17 @@ struct AIWriterSection: View {
     private var proactiveOnDeviceBinding: Binding<Bool> {
         Binding(
             get: {
-                canToggleProactiveOnDeviceTriage && settings.proactiveOnDeviceTriageEnabled
+                providerSummary.proactiveTriageSwitchValue(for: settings)
             },
             set: { newValue in
-                guard canToggleProactiveOnDeviceTriage || !newValue else { return }
-                settings.proactiveOnDeviceTriageEnabled = newValue
+                guard providerSummary.applyProactiveTriageToggle(newValue, to: &settings) else { return }
                 settingsStore.save(settings)
             }
         )
     }
 
     private var proactiveStatusNote: String? {
-        if !settings.isAvailable {
-            return String(
-                localized: "Turn on AI Writer above and choose an on-device provider to enable automatic summaries.",
-                bundle: .module
-            )
-        }
-        if !providerSummary.hasActiveOnDeviceProvider {
-            return String(
-                localized: "Only available when an on-device AI provider is active. Cloud and BYOK providers require an explicit click.",
-                bundle: .module
-            )
-        }
-        if hasNonOnDeviceAccountOverride, settings.proactiveOnDeviceTriageEnabled {
-            return String(
-                localized: "Runs automatically only for accounts using on-device AI. Accounts with a cloud or BYOK override stay manual.",
-                bundle: .module
-            )
-        }
-        return nil
+        providerSummary.proactiveStatusNote(for: settings)
     }
 
     @ViewBuilder
@@ -221,12 +233,55 @@ struct AIWriterSection: View {
         )
     }
 
+    private var activeDownloadedModelID: String? {
+        guard let configuredProvider,
+              configuredProvider.kind == .onDeviceDownloadedModel,
+              configuredProvider.isEnabled
+        else { return nil }
+        return configuredProvider.modelID
+    }
+
+    @MainActor
+    private func selectDownloadedLocalModel(_ descriptor: LocalModelDescriptor) async {
+        guard isLocalModelPlatformSupported else { return }
+        let existing = ((try? settingsStore.aiProviderConfigurations()) ?? [])
+            .first { $0.id == LocalDownloadedModelAIBackend.providerID }
+        let configuration = AIProviderConfiguration.onDeviceDownloadedModel(
+            modelID: descriptor.id,
+            isEnabled: true,
+            isDefault: true,
+            assignedAccountID: existing?.assignedAccountID
+        )
+        let draft = AIProviderSettingsDraft(configuration: configuration, hasSavedAPIKey: false)
+        _ = try? await AIProviderSettingsPersistence.save(
+            draft,
+            settingsStore: settingsStore,
+            secretStore: providerSecretStore
+        )
+        providerRefreshRevision += 1
+        await refreshConfiguredProvider()
+        await onProviderConfigurationChanged()
+    }
+
+    @MainActor
+    private func handleDeletedLocalModel(_ descriptor: LocalModelDescriptor) async {
+        guard activeDownloadedModelID == descriptor.id else { return }
+        try? AIProviderSettingsPersistence.disable(
+            providerID: LocalDownloadedModelAIBackend.providerID,
+            settingsStore: settingsStore
+        )
+        providerRefreshRevision += 1
+        await refreshConfiguredProvider()
+        await onProviderConfigurationChanged()
+    }
+
     @MainActor
     private func refreshConfiguredProvider() async {
         providerSummary = AIWriterSectionProviderSummary.load(
             from: settingsStore,
             accounts: accounts,
-            appleIntelligenceAvailability: appleIntelligenceAvailability
+            appleIntelligenceAvailability: appleIntelligenceAvailability,
+            isLocalInferenceRuntimeInstalled: isLocalInferenceRuntimeInstalled
         )
     }
 }
@@ -235,11 +290,75 @@ struct AIWriterSectionProviderSummary: Equatable {
     let configuredProvider: AIProviderConfiguration?
     let hasActiveOnDeviceProvider: Bool
     let hasNonOnDeviceAccountOverride: Bool
+    let hasDownloadedModelMissingRuntime: Bool
+
+    /// Whether the user can turn automatic on-device triage ON.
+    func canEnableProactiveTriage(for settings: AIWriterSettings) -> Bool {
+        settings.isAvailable && hasActiveOnDeviceProvider
+    }
+
+    /// Whether an already-enabled automatic-triage preference remains visible and opt-outable
+    /// while a downloaded local model is waiting for its local inference helper.
+    func canOptOutPausedProactiveTriage(for settings: AIWriterSettings) -> Bool {
+        settings.isAvailable && hasDownloadedModelMissingRuntime && settings.proactiveOnDeviceTriageEnabled
+    }
+
+    /// Switch value shown for automatic on-device triage.
+    func proactiveTriageSwitchValue(for settings: AIWriterSettings) -> Bool {
+        guard settings.proactiveOnDeviceTriageEnabled else { return false }
+        return canEnableProactiveTriage(for: settings) || canOptOutPausedProactiveTriage(for: settings)
+    }
+
+    /// Whether the automatic on-device triage switch accepts user interaction.
+    func isProactiveTriageSwitchInteractive(for settings: AIWriterSettings) -> Bool {
+        canEnableProactiveTriage(for: settings) || canOptOutPausedProactiveTriage(for: settings)
+    }
+
+    /// Applies a toggle interaction, allowing opt-out anytime while gating opt-in on runtime readiness.
+    func applyProactiveTriageToggle(_ newValue: Bool, to settings: inout AIWriterSettings) -> Bool {
+        if newValue {
+            guard canEnableProactiveTriage(for: settings) else { return false }
+            settings.proactiveOnDeviceTriageEnabled = true
+            return true
+        }
+        guard settings.proactiveOnDeviceTriageEnabled else { return false }
+        settings.proactiveOnDeviceTriageEnabled = false
+        return true
+    }
+
+    func proactiveStatusNote(for settings: AIWriterSettings) -> String? {
+        if !settings.isAvailable {
+            return String(
+                localized: "Turn on AI Writer above and choose an on-device provider to enable automatic summaries.",
+                bundle: .module
+            )
+        }
+        if hasDownloadedModelMissingRuntime {
+            return String(
+                localized: "Install a compatible local inference helper (such as llama-cli) to run automatic summaries with a downloaded model.",
+                bundle: .module
+            )
+        }
+        if !hasActiveOnDeviceProvider {
+            return String(
+                localized: "Only available when an on-device AI provider is active. Cloud and BYOK providers require an explicit click.",
+                bundle: .module
+            )
+        }
+        if hasNonOnDeviceAccountOverride, settings.proactiveOnDeviceTriageEnabled {
+            return String(
+                localized: "Runs automatically only for accounts using on-device AI. Accounts with a cloud or BYOK override stay manual.",
+                bundle: .module
+            )
+        }
+        return nil
+    }
 
     static func load(
         from settingsStore: SettingsPersistenceStore,
         accounts: [BrevAccount],
-        appleIntelligenceAvailability: AppleIntelligenceAvailability
+        appleIntelligenceAvailability: AppleIntelligenceAvailability,
+        isLocalInferenceRuntimeInstalled: Bool = LocalDownloadedModelAIBackend.isInferenceRuntimeInstalled
     ) -> AIWriterSectionProviderSummary {
         let configurations = (try? settingsStore.aiProviderConfigurations()) ?? []
         let assignments = (try? settingsStore.aiProviderAssignments()) ?? AIProviderAccountAssignments()
@@ -247,7 +366,8 @@ struct AIWriterSectionProviderSummary: Equatable {
             configurations: configurations,
             assignments: assignments,
             accounts: accounts,
-            appleIntelligenceAvailability: appleIntelligenceAvailability
+            appleIntelligenceAvailability: appleIntelligenceAvailability,
+            isLocalInferenceRuntimeInstalled: isLocalInferenceRuntimeInstalled
         )
     }
 
@@ -255,7 +375,8 @@ struct AIWriterSectionProviderSummary: Equatable {
         configurations: [AIProviderConfiguration],
         assignments: AIProviderAccountAssignments,
         accounts: [BrevAccount],
-        appleIntelligenceAvailability: AppleIntelligenceAvailability
+        appleIntelligenceAvailability: AppleIntelligenceAvailability,
+        isLocalInferenceRuntimeInstalled: Bool = LocalDownloadedModelAIBackend.isInferenceRuntimeInstalled
     ) -> AIWriterSectionProviderSummary {
         let configuredProvider = configurations.first(where: \.isDefault)
             ?? configurations.first
@@ -274,13 +395,32 @@ struct AIWriterSectionProviderSummary: Equatable {
             if provider.kind == .appleIntelligence {
                 return appleIntelligenceAvailability.isSelectable
             }
+            if provider.kind == .onDeviceDownloadedModel {
+                return isLocalInferenceRuntimeInstalled
+            }
             return true
+        }
+
+        func isConfiguredDownloadedModel(_ provider: AIProviderConfiguration) -> Bool {
+            provider.isEnabled
+                && provider.kind == .onDeviceDownloadedModel
+                && provider.validationIssues.isEmpty
         }
 
         // Mirror `AIProviderResolver` routing strictly: only an explicit default provider
         // (`isDefault == true`) or an explicit account assignment can make an account active.
         let usableDefaultProvider = configurations.first {
             $0.isDefault && $0.isEnabled && $0.validationIssues.isEmpty
+        }
+
+        func activeProvider(forAccountID accountID: String) -> AIProviderConfiguration? {
+            if let assignedProviderID = assignments.providerID(forAccountID: accountID) {
+                return providersByID[assignedProviderID]
+            }
+            if let legacyProvider = legacyOverrideByAccountID[accountID] {
+                return legacyProvider
+            }
+            return usableDefaultProvider
         }
 
         let hasNonOnDeviceAccountOverride = allAccountIDs.contains { accountID in
@@ -293,25 +433,26 @@ struct AIWriterSectionProviderSummary: Equatable {
         }
 
         let hasActiveOnDeviceRoute: Bool
+        let hasActiveDownloadedModelRoute: Bool
         if allAccountIDs.isEmpty {
             hasActiveOnDeviceRoute = usableDefaultProvider.map(isUsableOnDevice) ?? false
+            hasActiveDownloadedModelRoute = usableDefaultProvider.map(isConfiguredDownloadedModel) ?? false
         } else {
             hasActiveOnDeviceRoute = allAccountIDs.contains { accountID in
-                if let assignedProviderID = assignments.providerID(forAccountID: accountID) {
-                    guard let provider = providersByID[assignedProviderID] else { return false }
-                    return isUsableOnDevice(provider)
-                }
-                if let legacyProvider = legacyOverrideByAccountID[accountID] {
-                    return isUsableOnDevice(legacyProvider)
-                }
-                return usableDefaultProvider.map(isUsableOnDevice) ?? false
+                activeProvider(forAccountID: accountID).map(isUsableOnDevice) ?? false
+            }
+            hasActiveDownloadedModelRoute = allAccountIDs.contains { accountID in
+                activeProvider(forAccountID: accountID).map(isConfiguredDownloadedModel) ?? false
             }
         }
 
         return AIWriterSectionProviderSummary(
             configuredProvider: configuredProvider,
             hasActiveOnDeviceProvider: hasActiveOnDeviceRoute,
-            hasNonOnDeviceAccountOverride: hasNonOnDeviceAccountOverride
+            hasNonOnDeviceAccountOverride: hasNonOnDeviceAccountOverride,
+            hasDownloadedModelMissingRuntime: !hasActiveOnDeviceRoute
+                && !isLocalInferenceRuntimeInstalled
+                && hasActiveDownloadedModelRoute
         )
     }
 }

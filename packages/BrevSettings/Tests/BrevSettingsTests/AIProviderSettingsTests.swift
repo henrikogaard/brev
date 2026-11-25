@@ -295,6 +295,258 @@ struct AIProviderSettingsTests {
         #expect(await secrets.apiKeyValue(for: savedHosted.id) == "sk-test-secret")
     }
 
+    @Test("Downloaded local model draft requires no API key or URL, reports On this Mac, and preserves AI off-by-default")
+    func downloadedLocalModelDraftRequiresNoKeyAndPreservesDefaultOff() async throws {
+        let defaults = try Self.makeDefaults()
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let secrets = InMemoryProviderSecretStore()
+
+        let draft = AIProviderSettingsDraft.new(kind: .onDeviceDownloadedModel)
+        #expect(draft.id == LocalDownloadedModelAIBackend.providerID)
+        #expect(draft.requiresAPIKey == false)
+        #expect(draft.validationIssues.isEmpty)
+        #expect(draft.modelID == LocalModelCatalog.defaultModelID)
+        #expect(draft.transparencyPreview == OnDeviceAIPlatformLabel.transparencyLabel)
+        #expect(draft.apiKeyStatusText.contains("no API key"))
+
+        var enabledDraft = draft
+        enabledDraft.isEnabled = true
+        let saved = try await AIProviderSettingsPersistence.save(
+            enabledDraft,
+            settingsStore: store,
+            secretStore: secrets
+        )
+
+        #expect(saved.kind == .onDeviceDownloadedModel)
+        #expect(saved.id == LocalDownloadedModelAIBackend.providerID)
+        #expect(saved.transparencyLabel == OnDeviceAIPlatformLabel.transparencyLabel)
+        #expect(await secrets.apiKeyValue(for: saved.id) == nil)
+        #expect(store.aiWriterSettings() == AIWriterSettings.defaults)
+
+        var edited = AIProviderSettingsDraft(configuration: saved, hasSavedAPIKey: false)
+        edited.displayName = "Custom Local Name"
+        edited.applyPreset(.appleIntelligence)
+        #expect(edited.kind == .onDeviceDownloadedModel)
+        #expect(edited.displayName == "Custom Local Name")
+        edited.applyPreset(.onDeviceDownloadedModel)
+        #expect(edited.displayName == AIProviderKind.onDeviceDownloadedModel.settingsDisplayName)
+    }
+
+    @Test("Editor validation blocks enabling an uninstalled local model and allows installed or disabled drafts")
+    func editorValidationBlocksUninstalledLocalModel() {
+        var enabledDraft = AIProviderSettingsDraft.new(kind: .onDeviceDownloadedModel)
+        enabledDraft.isEnabled = true
+
+        // Blocked when weights are not yet downloaded.
+        let missingWeightsReason = AIProviderEditorValidation.blockingReason(
+            for: enabledDraft,
+            appleIntelligenceAvailability: .available,
+            isLocalModelPlatformSupported: true,
+            installedLocalModelIDs: []
+        )
+        #expect(missingWeightsReason != nil)
+        #expect(missingWeightsReason?.contains("Local Models") == true)
+
+        // Blocked on unsupported platforms (e.g. iOS).
+        let unsupportedPlatformReason = AIProviderEditorValidation.blockingReason(
+            for: enabledDraft,
+            appleIntelligenceAvailability: .available,
+            isLocalModelPlatformSupported: false,
+            installedLocalModelIDs: [enabledDraft.modelID]
+        )
+        #expect(unsupportedPlatformReason == DefaultLocalModelInferenceRuntime.platformUnsupportedMessage)
+
+        // Allowed once installed on a supported platform.
+        #expect(
+            AIProviderEditorValidation.blockingReason(
+                for: enabledDraft,
+                appleIntelligenceAvailability: .available,
+                isLocalModelPlatformSupported: true,
+                installedLocalModelIDs: [enabledDraft.modelID]
+            ) == nil
+        )
+
+        // Saving a disabled draft remains allowed even if weights were deleted.
+        var disabledDraft = enabledDraft
+        disabledDraft.isEnabled = false
+        #expect(
+            AIProviderEditorValidation.blockingReason(
+                for: disabledDraft,
+                appleIntelligenceAvailability: .available,
+                isLocalModelPlatformSupported: true,
+                installedLocalModelIDs: []
+            ) == nil
+        )
+    }
+
+    @Test("Local model row action policy gates Download and Use model on platform support while keeping Delete enabled")
+    func localModelRowActionPolicyGatesUnsupportedPlatforms() {
+        let installedState = LocalModelDownloadState.installed(
+            installedAt: Date(timeIntervalSince1970: 1_760_000_000),
+            fileSizeBytes: 1024
+        )
+
+        let unsupportedNotDownloaded = LocalModelRowActionPolicy(
+            state: .notDownloaded,
+            isPlatformSupported: false,
+            isActive: false
+        )
+        #expect(!unsupportedNotDownloaded.canDownload)
+        #expect(!unsupportedNotDownloaded.canUseModel)
+        #expect(!unsupportedNotDownloaded.canDelete)
+
+        let unsupportedInstalled = LocalModelRowActionPolicy(
+            state: installedState,
+            isPlatformSupported: false,
+            isActive: false
+        )
+        #expect(!unsupportedInstalled.canDownload)
+        #expect(!unsupportedInstalled.canUseModel)
+        #expect(unsupportedInstalled.canDelete)
+
+        let supportedInstalled = LocalModelRowActionPolicy(
+            state: installedState,
+            isPlatformSupported: true,
+            isActive: false
+        )
+        #expect(!supportedInstalled.canDownload)
+        #expect(supportedInstalled.canUseModel)
+        #expect(supportedInstalled.canDelete)
+    }
+
+    @Test("External provider refresh performs field-level three-way rebase across demoted defaults and replaced local models")
+    func externalRefreshThreeWayRebasePreservesEditsAndPullsUntouchedChanges() throws {
+        // (a) Hosted default demoted by "Use model" while its displayName is being edited.
+        let hostedBefore = try #require(AIProviderConfiguration(
+            id: AIProviderID("hosted-1"),
+            kind: .openAICompatible,
+            displayName: "OpenAI",
+            endpointURL: URL(string: "https://api.openai.com/v1"),
+            modelID: "gpt-4.1-mini",
+            isEnabled: true,
+            isDefault: true,
+            assignedAccountID: nil
+        ))
+        var hostedAfter = hostedBefore
+        hostedAfter.isDefault = false
+
+        let localModel = AIProviderConfiguration.onDeviceDownloadedModel(isEnabled: true, isDefault: true)
+        let updatedList = [hostedAfter, localModel]
+
+        let hostedBaseline = AIProviderSettingsDraft(configuration: hostedBefore, hasSavedAPIKey: true)
+        var hostedEdited = hostedBaseline
+        hostedEdited.displayName = "Unsaved Work Name"
+        hostedEdited.pendingAPIKey = "sk-unsaved-key"
+
+        let demotedOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: true,
+            selectedProviderID: hostedBefore.id,
+            currentDraft: hostedEdited,
+            baselineDraft: hostedBaseline,
+            updatedConfigurations: updatedList
+        )
+        #expect(demotedOutcome.selectedProviderID == hostedBefore.id)
+        #expect(demotedOutcome.shouldReloadDraft == false)
+        #expect(demotedOutcome.shouldExitEditing == false)
+        let rebasedHosted = try #require(demotedOutcome.rebasedDraft)
+        #expect(rebasedHosted.displayName == "Unsaved Work Name")
+        #expect(rebasedHosted.pendingAPIKey == "sk-unsaved-key")
+        #expect(rebasedHosted.isDefault == false)
+        #expect(demotedOutcome.updatedBaselineDraft?.isDefault == false)
+        #expect(demotedOutcome.updatedBaselineDraft?.displayName == "OpenAI")
+
+        // (b) Installed local model replaced while its provider is open for editing.
+        let localBefore = AIProviderConfiguration.onDeviceDownloadedModel(
+            modelID: "qwen2.5-3b-instruct-q4km",
+            isEnabled: true,
+            isDefault: true
+        )
+        let localAfter = AIProviderConfiguration.onDeviceDownloadedModel(
+            modelID: "llama-3.2-3b-instruct-q4km",
+            isEnabled: true,
+            isDefault: true
+        )
+        let localBaseline = AIProviderSettingsDraft(configuration: localBefore, hasSavedAPIKey: false)
+        var localEdited = localBaseline
+        localEdited.displayName = "Offline Mac Model"
+
+        let replacedOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: true,
+            selectedProviderID: localBefore.id,
+            currentDraft: localEdited,
+            baselineDraft: localBaseline,
+            updatedConfigurations: [hostedAfter, localAfter]
+        )
+        let rebasedLocal = try #require(replacedOutcome.rebasedDraft)
+        #expect(rebasedLocal.displayName == "Offline Mac Model")
+        #expect(rebasedLocal.modelID == "llama-3.2-3b-instruct-q4km")
+        #expect(replacedOutcome.updatedBaselineDraft?.modelID == "llama-3.2-3b-instruct-q4km")
+
+        // Adding a brand-new unsaved provider: keep selection nil and do not clobber draft.
+        let newDraft = AIProviderSettingsDraft.new(kind: .customOpenAICompatible)
+        let addOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: true,
+            selectedProviderID: nil,
+            currentDraft: newDraft,
+            baselineDraft: newDraft,
+            updatedConfigurations: updatedList
+        )
+        #expect(addOutcome == .init(
+            selectedProviderID: nil,
+            rebasedDraft: nil,
+            updatedBaselineDraft: nil,
+            shouldReloadDraft: false,
+            shouldExitEditing: false
+        ))
+
+        // Edited provider deleted externally: fall back cleanly to the remaining default provider.
+        let deletedOutcome = AIProviderEditorPresentation.stateAfterExternalRefresh(
+            isEditingProvider: true,
+            selectedProviderID: AIProviderID("removed-id"),
+            currentDraft: hostedEdited,
+            baselineDraft: hostedBaseline,
+            updatedConfigurations: [localModel]
+        )
+        #expect(deletedOutcome == .init(
+            selectedProviderID: localModel.id,
+            rebasedDraft: nil,
+            updatedBaselineDraft: nil,
+            shouldReloadDraft: true,
+            shouldExitEditing: false
+        ))
+    }
+
+    @Test("Completing a local model download unblocks saving an open draft without clobbering edits")
+    func downloadCompletionUnblocksOpenDraftWithoutClobberingEdits() async throws {
+        var openDraft = AIProviderSettingsDraft.new(kind: .onDeviceDownloadedModel)
+        openDraft.displayName = "My Offline Model"
+        openDraft.isEnabled = true
+
+        // Before download finishes, saving is blocked.
+        var installedIDs: Set<String> = []
+        #expect(
+            AIProviderEditorValidation.blockingReason(
+                for: openDraft,
+                appleIntelligenceAvailability: .available,
+                isLocalModelPlatformSupported: true,
+                installedLocalModelIDs: installedIDs
+            ) != nil
+        )
+
+        // Simulate installedModelsRevision refresh after download completes (draft untouched).
+        installedIDs.insert(openDraft.modelID)
+        #expect(
+            AIProviderEditorValidation.blockingReason(
+                for: openDraft,
+                appleIntelligenceAvailability: .available,
+                isLocalModelPlatformSupported: true,
+                installedLocalModelIDs: installedIDs
+            ) == nil
+        )
+        #expect(openDraft.displayName == "My Offline Model")
+        #expect(openDraft.isEnabled == true)
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "AIProviderSettingsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
