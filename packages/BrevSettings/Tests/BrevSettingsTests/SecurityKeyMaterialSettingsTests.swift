@@ -85,6 +85,78 @@ struct SecurityKeyMaterialSettingsTests {
         #expect(wipeAll.isSatisfied(by: "DELETE"))
     }
 
+    @Test("bulk delete executor refuses empty or wrong confirmation input without deleting keys")
+    func bulkDeleteExecutorRefusesEmptyOrWrongInput() {
+        let record1 = SecurityKeyMaterialSettings.Record(
+            id: "smime-1",
+            family: .smime,
+            label: "Signing identity",
+            emailAddress: "work@example.com",
+            fingerprint: "AA11",
+            algorithm: "RSA",
+            canSign: true,
+            canEncrypt: true,
+            hasPrivateMaterial: true,
+            trust: .trusted,
+            importedAt: Date(timeIntervalSince1970: 0)
+        )
+        let record2 = SecurityKeyMaterialSettings.Record(
+            id: "smime-2",
+            family: .smime,
+            label: "Recipient cert",
+            emailAddress: "peer@example.com",
+            fingerprint: "BB22",
+            algorithm: "RSA",
+            canSign: false,
+            canEncrypt: true,
+            hasPrivateMaterial: false,
+            trust: .trusted,
+            importedAt: Date(timeIntervalSince1970: 1)
+        )
+        var settings = SecurityKeyMaterialSettings(records: [record1, record2], importExport: .defaults)
+
+        // Empty or mismatched confirmation MUST NOT delete any records.
+        #expect(
+            SecurityKeyMaterialConfirmationPolicy.apply(
+                action: .removeAllSMIME,
+                recordID: nil,
+                confirmationInput: "",
+                to: &settings
+            ) == nil
+        )
+        #expect(settings.records.count == 2)
+
+        #expect(
+            SecurityKeyMaterialConfirmationPolicy.apply(
+                action: .removeAllMaterial,
+                recordID: nil,
+                confirmationInput: "delete",
+                to: &settings
+            ) == nil
+        )
+        #expect(settings.records.count == 2)
+
+        // Single-record removal uses normal confirmation without typed phrase.
+        let singleRemoved = SecurityKeyMaterialConfirmationPolicy.apply(
+            action: .removeSelectedItem,
+            recordID: "smime-2",
+            confirmationInput: "",
+            to: &settings
+        )
+        #expect(singleRemoved == ["smime-2"])
+        #expect(settings.records.map(\.id) == ["smime-1"])
+
+        // Exact "DELETE" proceeds with bulk removal.
+        let bulkRemoved = SecurityKeyMaterialConfirmationPolicy.apply(
+            action: .removeAllSMIME,
+            recordID: nil,
+            confirmationInput: "DELETE",
+            to: &settings
+        )
+        #expect(bulkRemoved == ["smime-1"])
+        #expect(settings.records.isEmpty)
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suite = "SecurityKeyMaterialSettingsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))

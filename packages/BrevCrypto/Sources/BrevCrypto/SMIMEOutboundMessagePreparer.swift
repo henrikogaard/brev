@@ -10,45 +10,152 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-// S/MIME outbound preparation uses the macOS-only CMSEncoder. iOS has no public
-// CMS encoder, so S/MIME *send* is a macOS capability. iOS fails closed through
-// the shared preparer seam if stale state requests message security.
-#if os(macOS)
 import BrevBackend
 import Foundation
 import Security
 
 // MARK: - Identity resolution
 
+/// A local signing identity together with any supporting intermediate CA
+/// certificates extracted from its PKCS#12 chain.
+public struct SMIMESigningMaterial: @unchecked Sendable {
+    /// The signer's leaf identity (certificate + private key).
+    public let identity: SecIdentity
+    /// Supporting intermediate CA certificates to embed in CMS `SignedData.certificates`.
+    public let intermediateCertificates: [SecCertificate]
+    /// Optional RAII lifetime guard (for example an isolated temporary macOS
+    /// `SecKeychain` lease) released automatically once signing completes.
+    private let lifetimeToken: (any Sendable)?
+
+    /// Creates signing material with optional supporting intermediate certificates
+    /// and an optional lifetime guard tied to the identity's backing store.
+    public init(
+        identity: SecIdentity,
+        intermediateCertificates: [SecCertificate] = [],
+        lifetimeToken: (any Sendable)? = nil
+    ) {
+        self.identity = identity
+        self.intermediateCertificates = intermediateCertificates
+        self.lifetimeToken = lifetimeToken
+    }
+}
+
 /// Supplies the S/MIME signing identity and recipient certificates from the
-/// local Keychain key store (ADR-0021). Local-only — no directory lookups.
+/// local Keychain key store (`docs/design/privacy-and-security.md`).
+/// Local-only — no directory or network lookups.
 public protocol SMIMEIdentityResolving: Sendable {
     /// The sender's signing identity (certificate + private key), or nil.
     func signingIdentity(forSenderEmail email: String) async -> SecIdentity?
+    /// The sender's signing identity and any supporting intermediate CA certificates, or nil.
+    func signingMaterial(forSenderEmail email: String) async -> SMIMESigningMaterial?
     /// Recipient encryption certificates, keyed by normalized email; recipients
     /// without a certificate are absent.
     func encryptionCertificates(forRecipients emails: [String]) async -> [String: SecCertificate]
 }
 
+public extension SMIMEIdentityResolving {
+    func signingMaterial(forSenderEmail email: String) async -> SMIMESigningMaterial? {
+        guard let identity = await signingIdentity(forSenderEmail: email) else { return nil }
+        return SMIMESigningMaterial(identity: identity)
+    }
+}
+
+// MARK: - CMS encoding backend
+
+/// Selects the CMS encoding implementation backing `SMIMEOutboundMessagePreparer`.
+public enum SMIMECMSEncodingBackend: Sendable {
+    /// Uses Apple's `CMSEncoder` on macOS and `PureSwiftCMSEncoder` on iOS.
+    case platformDefault
+    /// Always uses the cross-platform pure-Swift RFC 8551 / RFC 5652 CMS encoder.
+    case pureSwift
+}
+
 // MARK: - Engine
 
-/// `OutboundMessagePreparing` backed by Apple's CMS (S/MIME) APIs, producing
-/// RFC 5751 `multipart/signed` (detached `application/pkcs7-signature`) and
-/// `application/pkcs7-mime` enveloped-data. Fails closed via the shared
-/// `OutboundMessageSecurityPolicy` before any crypto runs (ADR-0021 #4).
+/// Cross-platform `OutboundMessagePreparing` producing RFC 8551 / RFC 5751
+/// `multipart/signed` (detached `application/pkcs7-signature`) and
+/// `application/pkcs7-mime` enveloped-data on both macOS and iOS.
+///
+/// Fails closed via the shared `OutboundMessageSecurityPolicy` before any
+/// crypto runs, and never downgrades a protected send to plaintext.
 public struct SMIMEOutboundMessagePreparer: OutboundMessagePreparing {
     private let resolver: any SMIMEIdentityResolving
     private let micalg: String
+    private let encodingBackend: SMIMECMSEncodingBackend
     private let boundaryProvider: @Sendable () -> String
 
+    /// Creates an outbound S/MIME preparer backed by a local identity resolver.
+    ///
+    /// - Parameters:
+    ///   - resolver: Local Keychain identity/certificate resolver.
+    ///   - micalg: `multipart/signed` hash algorithm token (defaults to `"sha-256"`).
+    ///   - encodingBackend: CMS encoder backend (`.platformDefault` uses `CMSEncoder` on macOS and `PureSwiftCMSEncoder` on iOS).
+    ///   - boundaryProvider: MIME multipart boundary generator.
     public init(
         resolver: any SMIMEIdentityResolving,
         micalg: String = "sha-256",
+        encodingBackend: SMIMECMSEncodingBackend = .platformDefault,
         boundaryProvider: @escaping @Sendable () -> String = { "brev-smime-\(UUID().uuidString)" }
     ) {
         self.resolver = resolver
         self.micalg = micalg
+        self.encodingBackend = encodingBackend
         self.boundaryProvider = boundaryProvider
+    }
+
+    public func validate(request: OutboundMessageSecurityRequest) async throws {
+        guard request.mode != .none else { return }
+
+        let signingMaterial = request.mode.requiresSigning
+            ? await resolver.signingMaterial(forSenderEmail: request.senderEmail)
+            : nil
+        let recipients = orderedRecipients(for: request)
+        let recipientCerts = request.mode.requiresEncryption
+            ? await resolver.encryptionCertificates(forRecipients: recipients)
+            : [:]
+
+        let availability = OutboundSecurityAvailability(
+            hasTrustedSigningIdentity: signingMaterial != nil,
+            trustedEncryptionRecipients: Set(recipientCerts.keys)
+        )
+        let plan = try OutboundMessageSecurityPolicy.prepare(request: request, availability: availability)
+
+        if plan.requiresSigning {
+            guard let signingMaterial else {
+                throw OutboundMessageSecurityError.missingSigningIdentity(senderEmail: request.senderEmail)
+            }
+            if usesPureSwiftEncoder {
+                try PureSwiftCMSEncoder.validateSigningIdentity(signingMaterial.identity)
+            }
+        }
+        if plan.requiresEncryption {
+            let certs = try plan.encryptionRecipients.map { recipient -> SecCertificate in
+                guard let cert = recipientCerts[recipient] else {
+                    throw OutboundMessageSecurityError.missingEncryptionRecipients([recipient])
+                }
+                return cert
+            }
+            if usesPureSwiftEncoder {
+                try PureSwiftCMSEncoder.validateEncryptionCertificates(certs)
+            } else {
+                #if os(macOS)
+                try CMS.validateEncryptionCertificates(certs)
+                #endif
+            }
+        }
+    }
+
+    private var usesPureSwiftEncoder: Bool {
+        switch encodingBackend {
+        case .pureSwift:
+            return true
+        case .platformDefault:
+            #if os(macOS)
+            return false
+            #else
+            return true
+            #endif
+        }
     }
 
     public func prepare(
@@ -57,8 +164,8 @@ public struct SMIMEOutboundMessagePreparer: OutboundMessagePreparing {
     ) async throws -> Data {
         guard request.mode != .none else { return mimeData }
 
-        let signingIdentity = request.mode.requiresSigning
-            ? await resolver.signingIdentity(forSenderEmail: request.senderEmail)
+        let signingMaterial = request.mode.requiresSigning
+            ? await resolver.signingMaterial(forSenderEmail: request.senderEmail)
             : nil
         let recipients = orderedRecipients(for: request)
         let recipientCerts = request.mode.requiresEncryption
@@ -66,7 +173,7 @@ public struct SMIMEOutboundMessagePreparer: OutboundMessagePreparing {
             : [:]
 
         let availability = OutboundSecurityAvailability(
-            hasTrustedSigningIdentity: signingIdentity != nil,
+            hasTrustedSigningIdentity: signingMaterial != nil,
             trustedEncryptionRecipients: Set(recipientCerts.keys)
         )
         let plan = try OutboundMessageSecurityPolicy.prepare(request: request, availability: availability)
@@ -76,10 +183,10 @@ public struct SMIMEOutboundMessagePreparer: OutboundMessagePreparing {
         var transformed = false
 
         if plan.requiresSigning {
-            guard let signingIdentity else {
+            guard let signingMaterial else {
                 throw OutboundMessageSecurityError.missingSigningIdentity(senderEmail: request.senderEmail)
             }
-            entity = try signedEntity(contentEntity: split.contentEntity, identity: signingIdentity)
+            entity = try signedEntity(contentEntity: split.contentEntity, material: signingMaterial)
             transformed = true
         }
         if plan.requiresEncryption {
@@ -99,8 +206,12 @@ public struct SMIMEOutboundMessagePreparer: OutboundMessagePreparing {
 
     // MARK: Crypto + MIME
 
-    private func signedEntity(contentEntity: Data, identity: SecIdentity) throws -> Data {
-        let signature = try CMS.detachedSignature(of: contentEntity, identity: identity)
+    private func signedEntity(contentEntity: Data, material: SMIMESigningMaterial) throws -> Data {
+        let signature = try encodeDetachedSignature(
+            of: contentEntity,
+            identity: material.identity,
+            intermediateCertificates: material.intermediateCertificates
+        )
         let boundary = boundaryProvider()
         let signaturePart =
             "Content-Type: application/pkcs7-signature; name=\"smime.p7s\"\r\n"
@@ -108,23 +219,67 @@ public struct SMIMEOutboundMessagePreparer: OutboundMessagePreparing {
                 + "Content-Disposition: attachment; filename=\"smime.p7s\"\r\n\r\n"
                 + base64Wrapped(signature)
 
-        var out = "Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; "
+        var out = Data()
+        let header = "Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; "
             + "micalg=\"\(micalg)\"; boundary=\"\(boundary)\"\r\n\r\n"
-        out += "--\(boundary)\r\n"
-        out += String(decoding: contentEntity, as: UTF8.self)
-        out += "\r\n--\(boundary)\r\n"
-        out += signaturePart
-        out += "\r\n--\(boundary)--\r\n"
-        return Data(out.utf8)
+            + "--\(boundary)\r\n"
+        out.append(Data(header.utf8))
+        out.append(contentEntity)
+        out.append(Data("\r\n--\(boundary)\r\n".utf8))
+        out.append(Data(signaturePart.utf8))
+        out.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        return out
     }
 
     private func encryptedEntity(plaintext: Data, certificates: [SecCertificate]) throws -> Data {
-        let enveloped = try CMS.envelopedData(of: plaintext, certificates: certificates)
+        let enveloped = try encodeEnvelopedData(of: plaintext, certificates: certificates)
         let out = "Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name=\"smime.p7m\"\r\n"
             + "Content-Transfer-Encoding: base64\r\n"
             + "Content-Disposition: attachment; filename=\"smime.p7m\"\r\n\r\n"
             + base64Wrapped(enveloped)
         return Data(out.utf8)
+    }
+
+    private func encodeDetachedSignature(
+        of content: Data,
+        identity: SecIdentity,
+        intermediateCertificates: [SecCertificate]
+    ) throws -> Data {
+        switch encodingBackend {
+        case .pureSwift:
+            return try PureSwiftCMSEncoder.detachedSignature(
+                of: content,
+                identity: identity,
+                intermediateCertificates: intermediateCertificates
+            )
+        case .platformDefault:
+            #if os(macOS)
+            return try CMS.detachedSignature(
+                of: content,
+                identity: identity,
+                intermediateCertificates: intermediateCertificates
+            )
+            #else
+            return try PureSwiftCMSEncoder.detachedSignature(
+                of: content,
+                identity: identity,
+                intermediateCertificates: intermediateCertificates
+            )
+            #endif
+        }
+    }
+
+    private func encodeEnvelopedData(of content: Data, certificates: [SecCertificate]) throws -> Data {
+        switch encodingBackend {
+        case .pureSwift:
+            return try PureSwiftCMSEncoder.envelopedData(of: content, certificates: certificates)
+        case .platformDefault:
+            #if os(macOS)
+            return try CMS.envelopedData(of: content, certificates: certificates)
+            #else
+            return try PureSwiftCMSEncoder.envelopedData(of: content, certificates: certificates)
+            #endif
+        }
     }
 
     private func base64Wrapped(_ data: Data) -> String {
@@ -140,20 +295,31 @@ public struct SMIMEOutboundMessagePreparer: OutboundMessagePreparing {
     }
 }
 
-// MARK: - CMS wrapper
+#if os(macOS)
 
-/// Thin wrappers over CMSEncoder for detached signing and enveloped encryption.
+// MARK: - macOS CMSEncoder wrapper
+
+/// Thin wrappers over macOS's `CMSEncoder` for detached signing and enveloped encryption.
 enum CMS {
     enum CMSError: Error { case encoderUnavailable, operationFailed(OSStatus) }
 
-    static func detachedSignature(of content: Data, identity: SecIdentity) throws -> Data {
+    static func detachedSignature(
+        of content: Data,
+        identity: SecIdentity,
+        intermediateCertificates: [SecCertificate] = []
+    ) throws -> Data {
         var encoderOpt: CMSEncoder?
         try check(CMSEncoderCreate(&encoderOpt))
         guard let encoder = encoderOpt else { throw CMSError.encoderUnavailable }
         try check(CMSEncoderAddSigners(encoder, identity))
+        if !intermediateCertificates.isEmpty {
+            try check(CMSEncoderAddSupportingCerts(encoder, intermediateCertificates as CFArray))
+        }
         try check(CMSEncoderSetHasDetachedContent(encoder, true))
         try content.withUnsafeBytes { buffer in
-            try check(CMSEncoderUpdateContent(encoder, buffer.baseAddress!, content.count))
+            if let baseAddress = buffer.baseAddress {
+                try check(CMSEncoderUpdateContent(encoder, baseAddress, content.count))
+            }
         }
         var signedOpt: CFData?
         try check(CMSEncoderCopyEncodedContent(encoder, &signedOpt))
@@ -161,13 +327,49 @@ enum CMS {
         return signed
     }
 
+    /// Verifies each recipient certificate uses an asymmetric key algorithm
+    /// supported by macOS `CMSEncoder` `EnvelopedData` (RSA or EC). Apple's
+    /// `CMSEncoder` can silently omit unsupported recipients (such as DSA)
+    /// without returning an `OSStatus` error, so we check key types up front.
+    private static func validateRecipientKeyTypes(_ certificates: [SecCertificate]) throws {
+        guard !certificates.isEmpty else {
+            throw CMSError.operationFailed(errSecParam)
+        }
+        let supportedKeyTypes: Set<String> = [
+            kSecAttrKeyTypeRSA as String,
+            kSecAttrKeyTypeECSECPrimeRandom as String,
+        ]
+        for certificate in certificates {
+            guard let publicKey = SecCertificateCopyKey(certificate),
+                  let attributes = SecKeyCopyAttributes(publicKey) as? [String: Any],
+                  let keyType = attributes[kSecAttrKeyType as String] as? String,
+                  supportedKeyTypes.contains(keyType)
+            else {
+                throw PureSwiftCMSError.unsupportedEncryptionKeyAlgorithm
+            }
+        }
+    }
+
+    /// Pre-validates that every recipient certificate is compatible with macOS
+    /// `CMSEncoder` `EnvelopedData` (RSA `KeyTransRecipientInfo` or EC
+    /// `KeyAgreeRecipientInfo`) and passes a 1-byte native probe.
+    static func validateEncryptionCertificates(_ certificates: [SecCertificate]) throws {
+        try validateRecipientKeyTypes(certificates)
+        for certificate in certificates {
+            _ = try envelopedData(of: Data([0]), certificates: [certificate])
+        }
+    }
+
     static func envelopedData(of content: Data, certificates: [SecCertificate]) throws -> Data {
+        try validateRecipientKeyTypes(certificates)
         var encoderOpt: CMSEncoder?
         try check(CMSEncoderCreate(&encoderOpt))
         guard let encoder = encoderOpt else { throw CMSError.encoderUnavailable }
         try check(CMSEncoderAddRecipients(encoder, certificates as CFArray))
         try content.withUnsafeBytes { buffer in
-            try check(CMSEncoderUpdateContent(encoder, buffer.baseAddress!, content.count))
+            if let baseAddress = buffer.baseAddress {
+                try check(CMSEncoderUpdateContent(encoder, baseAddress, content.count))
+            }
         }
         var envelopedOpt: CFData?
         try check(CMSEncoderCopyEncodedContent(encoder, &envelopedOpt))

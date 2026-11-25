@@ -342,9 +342,6 @@ Future/deferred:
 - Native Exchange / Microsoft 365 Graph or EWS support, shared
   mailboxes, delegated mailboxes, and enterprise/admin policy controls.
 - JMAP backend (Fastmail and beyond).
-- S/MIME parity beyond the current macOS-only outbound implementation. iOS
-  remains fail-closed until a public, standards-compliant CMS encoder is
-  available or an audited permissive implementation is adopted.
 - Calendar/contact result groups inside mail search, Meet creation,
   Drive picking, and Notes.
 - Single-occurrence edits of recurring events. The editor currently

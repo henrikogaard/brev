@@ -302,6 +302,7 @@ public struct ComposeView: View {
     @State private var pendingSendGuardWarning: ComposeSendGuardWarning?
     @State private var signMessage: Bool
     @State private var encryptMessage: Bool
+    @State private var hasExplicitSecuritySelection = false
     @State private var requestReadReceipt = false
     @State private var remindIfNoReply: Bool
     @State private var aliases: [ServerAlias] = []
@@ -666,8 +667,9 @@ public struct ComposeView: View {
                 isReplyOrForward: replyingTo != nil || forwardingFrom != nil
             )
         )
-        _signMessage = State(initialValue: composeSecurityDefaults.shouldSignByDefault)
-        _encryptMessage = State(initialValue: composeSecurityDefaults.shouldEncryptByDefault)
+        let initialSecurityDefaults = composeSecurityDefaults.gated(by: backend.extendedCapabilities)
+        _signMessage = State(initialValue: initialSecurityDefaults.shouldSignByDefault)
+        _encryptMessage = State(initialValue: initialSecurityDefaults.shouldEncryptByDefault)
         _draftRecoveryNotice = State(initialValue: nil)
         _isRecoverySession = State(initialValue: recoveredDraft != nil)
         _currentSignatureContext = State(initialValue: signatureContext)
@@ -968,6 +970,7 @@ public struct ComposeView: View {
                     .layoutPriority(hostStyle == .inline ? 1 : 0)
             }
             scheduledSendBanner
+            securityUnsupportedBackendBanner
             errorBanner
         }
     }
@@ -1005,9 +1008,27 @@ public struct ComposeView: View {
         }
     }
 
+    private var activeUnsupportedBackendSecurityWarning: String? {
+        ComposeSecurityPresentation.unsupportedBackendWarning(
+            isSigningEnabled: signMessage,
+            isEncryptionEnabled: encryptMessage,
+            supportsOutboundSMIME: selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME)
+        )
+    }
+
+    @ViewBuilder
+    private var securityUnsupportedBackendBanner: some View {
+        ComposeSecurityWarningBanner(
+            isSigningEnabled: signMessage,
+            isEncryptionEnabled: encryptMessage,
+            supportsOutboundSMIME: selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME)
+        )
+    }
+
     @ViewBuilder
     private var errorBanner: some View {
         if let errorMessage,
+           errorMessage != activeUnsupportedBackendSecurityWarning,
            ComposePresentation.showsErrorBanner(errorMessage: errorMessage, restorationError: draftRestorationError) {
             let status = ComposePresentation.errorStatus(errorMessage)
             BrevDivider()
@@ -1553,7 +1574,11 @@ public struct ComposeView: View {
 
             noReplyFollowUpToggle
 
-            if composeSecurityDefaults.isFeatureEnabled {
+            if ComposeSecuritySenderSwitchPolicy.isSecurityMenuVisible(
+                defaults: composeSecurityDefaults,
+                backendSupportsOutboundSMIME: selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME),
+                currentMode: OutboundMessageSecurityMode(signing: signMessage, encrypting: encryptMessage)
+            ) {
                 Menu(ComposeToolbarAction.security.accessibilityLabel) {
                     securityMenuContent
                 }
@@ -1686,7 +1711,11 @@ public struct ComposeView: View {
                 }
             }
 
-            if composeSecurityDefaults.isFeatureEnabled {
+            if ComposeSecuritySenderSwitchPolicy.isSecurityMenuVisible(
+                defaults: composeSecurityDefaults,
+                backendSupportsOutboundSMIME: selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME),
+                currentMode: OutboundMessageSecurityMode(signing: signMessage, encrypting: encryptMessage)
+            ) {
                 Menu(ComposeToolbarAction.security.accessibilityLabel) {
                     securityMenuContent
                 }
@@ -2991,17 +3020,40 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var securityMenuContent: some View {
-        Toggle(isOn: $signMessage) {
+        let supportsOutboundSMIME = selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME)
+        Toggle(
+            isOn: Binding(
+                get: { signMessage },
+                set: { newValue in
+                    hasExplicitSecuritySelection = true
+                    signMessage = newValue
+                }
+            )
+        ) {
             Label(String(localized: "Sign message", bundle: .module), systemImage: "signature")
         }
-        .disabled(!hasTrustedSigningIdentity)
+        .disabled(!hasTrustedSigningIdentity || (!supportsOutboundSMIME && !signMessage))
 
-        Toggle(isOn: $encryptMessage) {
+        Toggle(
+            isOn: Binding(
+                get: { encryptMessage },
+                set: { newValue in
+                    hasExplicitSecuritySelection = true
+                    encryptMessage = newValue
+                }
+            )
+        ) {
             Label(String(localized: "Encrypt message", bundle: .module), systemImage: "lock")
         }
-        .disabled(!hasTrustedEncryptionIdentity)
+        .disabled(!hasTrustedEncryptionIdentity || (!supportsOutboundSMIME && !encryptMessage))
 
-        if !hasTrustedSigningIdentity || !hasTrustedEncryptionIdentity {
+        if !supportsOutboundSMIME {
+            Divider()
+            Text(
+                "This account doesn't support S/MIME signing or encryption. Switch to a supported account or turn off message security before sending.",
+                bundle: .module
+            )
+        } else if !hasTrustedSigningIdentity || !hasTrustedEncryptionIdentity {
             Divider()
             if !hasTrustedSigningIdentity {
                 Text("No trusted signing identities available.", bundle: .module)
@@ -3774,6 +3826,14 @@ public struct ComposeView: View {
             isUpgradePending: isQuotedBodyUpgradePending
         ) else { return }
         guard canStartComposeOperation(kind: .send) else { return }
+        if let unsupportedWarning = ComposeSecurityPresentation.unsupportedBackendWarning(
+            isSigningEnabled: signMessage,
+            isEncryptionEnabled: encryptMessage,
+            supportsOutboundSMIME: selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME)
+        ) {
+            errorMessage = unsupportedWarning
+            return
+        }
         if let missingKeyWarning = ComposeSecurityPresentation.missingKeyWarning(
             isSigningEnabled: signMessage,
             hasTrustedSigningIdentity: hasTrustedSigningIdentity,
@@ -3944,6 +4004,9 @@ public struct ComposeView: View {
                 scheduledSendDate = draft.scheduledFor
                 signMessage = draft.securityMode.requiresSigning
                 encryptMessage = draft.securityMode.requiresEncryption
+                if draft.securityMode != .none {
+                    hasExplicitSecuritySelection = true
+                }
                 requestReadReceipt = draft.readReceiptRequest != nil
                 pendingAttachments = ComposeDraftRestoration.pendingAttachments(from: resolved.attachments)
                 let restoredInline = ComposeDraftRestoration.inlineAttachments(from: resolved.attachments)
@@ -4846,6 +4909,17 @@ public struct ComposeView: View {
         guard option.id != selectedSenderID else { return }
         selectedSenderID = option.id
         selectedAliasID = nil
+        // Never silently downgrade active S/MIME signing/encryption to plaintext
+        // when switching to a backend without `.outboundSMIME`. Only apply
+        // defaults when switching from `.none` onto a supported backend.
+        let updatedMode = ComposeSecuritySenderSwitchPolicy.modeAfterSenderSwitch(
+            currentMode: OutboundMessageSecurityMode(signing: signMessage, encrypting: encryptMessage),
+            hasExplicitUserSelection: hasExplicitSecuritySelection,
+            defaults: composeSecurityDefaults,
+            newBackendSupportsOutboundSMIME: selectedComposeBackend.extendedCapabilities.contains(.outboundSMIME)
+        )
+        signMessage = updatedMode.requiresSigning
+        encryptMessage = updatedMode.requiresEncryption
         recipientSuggestions = [:]
         currentSignatureContext = nil
         applySignatureSelection(nil)

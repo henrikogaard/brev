@@ -5284,6 +5284,9 @@ public struct BrevMailRootView: View {
             existingDraftIsServerSourced: existingDraftIsServerSourced,
             aiBackend: aiBackend(for: composeBackend.account),
             signatureContext: signatureContextProvider?(composeBackend.account),
+            // Pass ungated S/MIME feature settings so ComposeView can enable
+            // the Security menu when the user switches From Gmail -> IMAP,
+            // while gating initial toggles on the active backend's capability.
             composeSecurityDefaults: composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled,
             hasTrustedSigningIdentity: (trustedSigningIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
             hasTrustedEncryptionIdentity: (trustedEncryptionIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
@@ -7427,7 +7430,8 @@ public struct BrevMailRootView: View {
             return (false, false)
         }
 
-        let securityDefaults = composeSecurityDefaultsProvider?(replyBackend.account) ?? .disabled
+        let securityDefaults = (composeSecurityDefaultsProvider?(replyBackend.account) ?? .disabled)
+            .gated(by: replyBackend.extendedCapabilities)
         let securityMode = OutboundMessageSecurityMode(
             signing: securityDefaults.shouldSignByDefault,
             encrypting: securityDefaults.shouldEncryptByDefault
@@ -7516,7 +7520,8 @@ public struct BrevMailRootView: View {
                 messageID: route.messageID,
                 folderID: route.folderID
             )
-        let securityDefaults = composeSecurityDefaultsProvider?(routeBackend.account) ?? .disabled
+        let securityDefaults = (composeSecurityDefaultsProvider?(routeBackend.account) ?? .disabled)
+            .gated(by: routeBackend.extendedCapabilities)
         let securityMode = OutboundMessageSecurityMode(
             signing: securityDefaults.shouldSignByDefault,
             encrypting: securityDefaults.shouldEncryptByDefault

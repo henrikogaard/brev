@@ -100,6 +100,14 @@ struct CompactSettingsViewSmokeTests {
     @Test("security settings render the S/MIME-only baseline")
     @MainActor
     func securitySettingsRenderSMIMEOnly() async throws {
+        // Confirm the shipped Security controls are registered for Settings search on both platforms.
+        let securityControls = SettingsSection.security.searchableControlTitles
+        #expect(securityControls.contains("Enable S/MIME"))
+        #expect(securityControls.contains("Prefer signing"))
+        #expect(securityControls.contains("Prefer encryption"))
+        #expect(securityControls.contains("Local key material"))
+        #expect(securityControls.contains("Allow private material in exports"))
+
         let view = CompactSettingsViewContainer(
             accountStore: InMemoryAccountStore(),
             initialSection: .security
@@ -114,6 +122,8 @@ struct CompactSettingsViewSmokeTests {
             width: 860,
             height: 760
         )
+        #expect(image.size == NSSize(width: 860, height: 760))
+        #expect(Self.renderedInkPixelCount(in: image) > 500)
         try recordArtifactIfRequested(image, name: "security-smime-only-860x760")
         #elseif canImport(UIKit)
         let image = ImageRenderer(
@@ -123,7 +133,9 @@ struct CompactSettingsViewSmokeTests {
                 .brevTheme(.brevPaper)
         )
         image.scale = 2
-        try recordArtifactIfRequested(#require(image.uiImage), name: "security-smime-only-860x760")
+        let uiImage = try #require(image.uiImage)
+        #expect(uiImage.size.width > 0 && uiImage.size.height > 0)
+        try recordArtifactIfRequested(uiImage, name: "security-smime-only-860x760")
         #else
         Issue.record("No supported image renderer is available on this platform.")
         #endif
@@ -434,22 +446,56 @@ struct CompactSettingsViewSmokeTests {
         }
     }
 
-    @Test("settings search expands the import and export disclosure on macOS")
+    @Test("settings search expands the import and export disclosure")
     @MainActor
     func settingsSearchExpandsImportExportDisclosure() async throws {
-        #if os(macOS)
         let defaults = try Self.makeDefaults(named: "security-search-disclosure")
         let view = SecuritySection(settingsStore: SettingsPersistenceStore(defaults: defaults))
             .environment(\.settingsSearchTarget, "Allow private material in exports")
             .frame(width: 860, height: 760)
             .background(BrevTheme.brevPaper.bgPrimary.color)
             .brevTheme(.brevPaper)
+
+        #if os(macOS)
         let image = try await renderMacImage(view, width: 860, height: 760)
+        #expect(image.size == NSSize(width: 860, height: 760))
+        #expect(Self.renderedInkPixelCount(in: image) > 500)
         try recordArtifactIfRequested(image, name: "security-search-import-export")
+        #elseif canImport(UIKit)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        let uiImage = try #require(renderer.uiImage)
+        #expect(uiImage.size.width > 0 && uiImage.size.height > 0)
+        try recordArtifactIfRequested(uiImage, name: "security-search-import-export")
         #else
-        Issue.record("The import and export disclosure is a macOS-only surface.")
+        Issue.record("No supported image renderer is available on this platform.")
         #endif
     }
+
+    #if os(macOS)
+    private static func renderedInkPixelCount(in image: NSImage) -> Int {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let dataProvider = cgImage.dataProvider,
+              let data = dataProvider.data,
+              let ptr = CFDataGetBytePtr(data)
+        else { return 0 }
+        let bytesPerPixel = max(cgImage.bitsPerPixel / 8, 4)
+        let bytesPerRow = cgImage.bytesPerRow
+        var darkPixels = 0
+        for y in stride(from: 0, to: cgImage.height, by: 2) {
+            for x in stride(from: 0, to: cgImage.width, by: 2) {
+                let offset = y * bytesPerRow + x * bytesPerPixel
+                let r = Int(ptr[offset])
+                let g = Int(ptr[offset + 1])
+                let b = Int(ptr[offset + 2])
+                if r + g + b < 600 {
+                    darkPixels += 1
+                }
+            }
+        }
+        return darkPixels
+    }
+    #endif
 
     private static func makeDefaults(named name: String) throws -> UserDefaults {
         let suiteName = "CompactSettingsViewSmokeTests-\(name)-\(UUID().uuidString)"

@@ -7647,6 +7647,50 @@
         }
       }
     },
+    "PKCS#12 passphrase (optional)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PKCS#12-passordfrase (valgfritt)"
+          }
+        }
+      }
+    },
+    "Couldn't unlock the PKCS#12 signing identity. Check the certificate data and passphrase.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke låse opp PKCS#12-signeringsidentiteten. Kontroller sertifikatdataene og passordfrasen."
+          }
+        }
+      }
+    },
+    "Private material export is disabled. Enable “Allow private material in exports” to export this item.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksport av privat nøkkelmateriale er slått av. Slå på «Tillat privat materiale ved eksport» for å eksportere dette elementet."
+          }
+        }
+      }
+    },
+    "This item can't be exported in the selected format. Choose a matching S/MIME export format.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dette elementet kan ikke eksporteres i det valgte formatet. Velg et passende S/MIME-eksportformat."
+          }
+        }
+      }
+    },
     "Pane": {
       "extractionState": "manual",
       "localizations": {
@@ -15036,6 +15080,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Apple Intelligence er tilordnet en bestemt konto sammen med en annen standardleverandør. Administrer ruting per konto i Innstillinger → Skriving → AI-skrivehjelp."
+          }
+        }
+      }
+    },
+    "Exported as PEM because this record is a public certificate without a private key.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksportert som PEM fordi denne oppføringen er et offentlig sertifikat uten privat nøkkel."
           }
         }
       }

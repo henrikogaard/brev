@@ -10,7 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-#if os(macOS)
+import BrevBackend
 @testable import BrevMail
 import BrevSettings
 import Foundation
@@ -21,10 +21,22 @@ import Testing
 /// PKCS#12 import path can be exercised without touching the system Keychain.
 private actor FakeMaterialStore: SecurityKeyMaterialStore {
     private var storage: [String: Data]
-    init(_ storage: [String: Data]) { self.storage = storage }
+    private var passphrases: [String: String]
+    init(_ storage: [String: Data], passphrases: [String: String] = [:]) {
+        self.storage = storage
+        self.passphrases = passphrases
+    }
+
     func material(for recordID: String) async throws -> Data? { storage[recordID] }
     func setMaterial(_ data: Data, for recordID: String) async throws { storage[recordID] = data }
-    func deleteMaterial(for recordID: String) async throws { storage[recordID] = nil }
+    func deleteMaterial(for recordID: String) async throws {
+        storage[recordID] = nil
+        passphrases[recordID] = nil
+    }
+
+    func passphrase(for recordID: String) async throws -> String? { passphrases[recordID] }
+    func setPassphrase(_ passphrase: String, for recordID: String) async throws { passphrases[recordID] = passphrase }
+    func deletePassphrase(for recordID: String) async throws { passphrases[recordID] = nil }
 }
 
 private let smimeEmail = "smime-test@brev.example"
@@ -117,5 +129,386 @@ struct KeychainSMIMEResolverTests {
         let certs = await resolver.encryptionCertificates(forRecipients: [smimeEmail])
         #expect(certs.isEmpty)
     }
+
+    @Test("standard outbound preparer fails closed with policy error when local material is missing")
+    func standardFactoryFailsClosedWithPolicyError() async throws {
+        let preparer = OutboundMessagePreparerFactory.makeStandard(
+            settingsProvider: { settings([]) },
+            materialStore: FakeMaterialStore([:])
+        )
+        let mime = Data("Subject: Test\r\n\r\nHello".utf8)
+        let request = OutboundMessageSecurityRequest(
+            senderEmail: smimeEmail,
+            to: ["recipient@brev.example"],
+            mode: .sign
+        )
+        await #expect(throws: OutboundMessageSecurityError.missingSigningIdentity(senderEmail: smimeEmail)) {
+            _ = try await preparer.prepare(mimeData: mime, request: request)
+        }
+    }
+
+    @Test("standard outbound preparer unlocks password-protected PKCS#12 via Keychain store passphrase")
+    func standardFactorySignsWithKeychainStoredPassphrase() async throws {
+        let store = SecurityKeychainMaterialStore(
+            service: "KeychainSMIMEResolverTests-\(UUID().uuidString)"
+        )
+        let record = signingRecord(id: "keychain-p12-1")
+        let p12Data = try #require(Data(base64Encoded: p12Base64))
+        try await store.setMaterial(p12Data, for: record.id)
+        try await store.setPassphrase(smimePassphrase, for: record.id)
+        defer {
+            Task { try? await store.deleteMaterial(for: record.id) }
+        }
+
+        let preparer = OutboundMessagePreparerFactory.makeStandard(
+            settingsProvider: { settings([record]) },
+            materialStore: store
+        )
+        let mime = Data("From: Test <\(smimeEmail)>\r\nTo: Peer <peer@brev.example>\r\nSubject: Keychain P12\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nSigned via Keychain passphrase.\r\n"
+            .utf8)
+        let request = OutboundMessageSecurityRequest(
+            senderEmail: smimeEmail,
+            to: ["peer@brev.example"],
+            mode: .sign
+        )
+        let prepared = try await preparer.prepare(mimeData: mime, request: request)
+        let text = String(decoding: prepared, as: UTF8.self)
+        #expect(text.contains("multipart/signed"))
+        #expect(text.contains("application/pkcs7-signature"))
+        #expect(text.contains("smime.p7s"))
+    }
+
+    #if os(macOS)
+    @Test(
+        "production KeychainSMIMEResolver embeds intermediate CA chain through both macOS CMSEncoder and pureSwift paths without polluting default Keychain"
+    )
+    func productionChainVerifiesAgainstRootCAAlone() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-mail-chain-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        @discardableResult
+        func runOpenSSL(_ args: [String], stdin: Data? = nil) throws -> Data {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/openssl")
+            p.arguments = args
+            let outPipe = Pipe()
+            let errPipe = Pipe()
+            p.standardOutput = outPipe
+            p.standardError = errPipe
+            if let stdin {
+                let inPipe = Pipe()
+                p.standardInput = inPipe
+                try p.run()
+                inPipe.fileHandleForWriting.write(stdin)
+                inPipe.fileHandleForWriting.closeFile()
+            } else {
+                try p.run()
+            }
+            let out = outPipe.fileHandleForReading.readDataToEndOfFile()
+            let err = errPipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            guard p.terminationStatus == 0 else {
+                Issue.record("openssl failed: \(String(decoding: err, as: UTF8.self))")
+                throw NSError(domain: "OpenSSL", code: Int(p.terminationStatus))
+            }
+            return out
+        }
+
+        let uniqueCN = "Brev-ProdChain-\(UUID().uuidString)"
+        let rootKey = dir.appendingPathComponent("root.key")
+        let rootCert = dir.appendingPathComponent("root.pem")
+        try runOpenSSL([
+            "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", rootKey.path, "-out", rootCert.path,
+            "-days", "7", "-subj", "/CN=Brev Prod Root CA",
+            "-extensions", "v3_ca", "-config", "/System/Library/OpenSSL/openssl.cnf"
+        ])
+
+        let interKey = dir.appendingPathComponent("inter.key")
+        let interCSR = dir.appendingPathComponent("inter.csr")
+        let interCert = dir.appendingPathComponent("inter.pem")
+        let interExt = dir.appendingPathComponent("inter.ext")
+        try "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\n"
+            .write(to: interExt, atomically: true, encoding: .utf8)
+        try runOpenSSL([
+            "req", "-new", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", interKey.path, "-out", interCSR.path,
+            "-subj", "/CN=Brev Prod Intermediate CA"
+        ])
+        try runOpenSSL([
+            "x509", "-req", "-in", interCSR.path,
+            "-CA", rootCert.path, "-CAkey", rootKey.path, "-CAcreateserial",
+            "-out", interCert.path, "-days", "7", "-extfile", interExt.path
+        ])
+
+        let leafKey = dir.appendingPathComponent("leaf.key")
+        let leafCSR = dir.appendingPathComponent("leaf.csr")
+        let leafCert = dir.appendingPathComponent("leaf.pem")
+        let leafExt = dir.appendingPathComponent("leaf.ext")
+        try "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=emailProtection\n"
+            .write(to: leafExt, atomically: true, encoding: .utf8)
+        try runOpenSSL([
+            "req", "-new", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", leafKey.path, "-out", leafCSR.path,
+            "-subj", "/CN=\(uniqueCN)/emailAddress=\(smimeEmail)"
+        ])
+        try runOpenSSL([
+            "x509", "-req", "-in", leafCSR.path,
+            "-CA", interCert.path, "-CAkey", interKey.path, "-CAcreateserial",
+            "-out", leafCert.path, "-days", "7", "-extfile", leafExt.path
+        ])
+
+        let p12URL = dir.appendingPathComponent("chain.p12")
+        try runOpenSSL([
+            "pkcs12", "-export",
+            "-inkey", leafKey.path,
+            "-in", leafCert.path,
+            "-certfile", interCert.path,
+            "-out", p12URL.path,
+            "-passout", "pass:\(smimePassphrase)"
+        ])
+
+        let store = SecurityKeychainMaterialStore(
+            service: "KeychainSMIMEResolverChainTests-\(UUID().uuidString)"
+        )
+        let record = signingRecord(id: "chain-record-1")
+        try await store.setMaterial(Data(contentsOf: p12URL), for: record.id)
+        try await store.setPassphrase(smimePassphrase, for: record.id)
+        defer {
+            Task { try? await store.deleteMaterial(for: record.id) }
+        }
+
+        let mimeLines = [
+            "From: Chain Test <\(smimeEmail)>",
+            "To: Peer <peer@brev.example>",
+            "Subject: Chain Verification",
+            "MIME-Version: 1.0",
+            "Content-Type: text/plain; charset=utf-8",
+            "",
+            "Signed with full intermediate chain.",
+            ""
+        ]
+        let mime = Data(mimeLines.joined(separator: "\r\n").utf8)
+        let request = OutboundMessageSecurityRequest(
+            senderEmail: smimeEmail,
+            to: ["peer@brev.example"],
+            mode: .sign
+        )
+
+        func verifyPreparedMIME(_ prepared: Data, label: String) throws {
+            let text = String(decoding: prepared, as: UTF8.self)
+            let bStart = try #require(text.range(of: "boundary=\""))
+            let bEnd = try #require(text.range(of: "\"", range: bStart.upperBound ..< text.endIndex))
+            let boundary = String(text[bStart.upperBound ..< bEnd.lowerBound])
+            let firstMarker = Data("--\(boundary)\r\n".utf8)
+            let nextMarker = Data("\r\n--\(boundary)\r\n".utf8)
+            let m1 = try #require(prepared.range(of: firstMarker))
+            let m2 = try #require(prepared.range(of: nextMarker, in: m1.upperBound ..< prepared.endIndex))
+            let signedEntity = Data(prepared[m1.upperBound ..< m2.lowerBound])
+            let entityURL = dir.appendingPathComponent("entity-\(label)-\(UUID().uuidString).bin")
+            try signedEntity.write(to: entityURL)
+
+            let sigMarker = try #require(text.range(of: "filename=\"smime.p7s\""))
+            let blank = try #require(text.range(of: "\r\n\r\n", range: sigMarker.upperBound ..< text.endIndex))
+            let rest = text[blank.upperBound...]
+            let endSig = try #require(rest.range(of: "\r\n--"))
+            let sigDER = try #require(
+                Data(base64Encoded: String(rest[..<endSig.lowerBound]), options: .ignoreUnknownCharacters)
+            )
+            // Verify with ONLY root.pem (no separate intermediate CA file).
+            _ = try runOpenSSL(
+                [
+                    "cms", "-verify", "-binary", "-inform", "DER",
+                    "-content", entityURL.path,
+                    "-CAfile", rootCert.path,
+                    "-purpose", "any",
+                    "-out", "/dev/null"
+                ],
+                stdin: sigDER
+            )
+        }
+
+        // 1. Production macOS path (CMSEncoder + CMSEncoderAddSupportingCerts)
+        let macPreparer = OutboundMessagePreparerFactory.makeStandard(
+            settingsProvider: { settings([record]) },
+            materialStore: store
+        )
+        try await verifyPreparedMIME(macPreparer.prepare(mimeData: mime, request: request), label: "macOS")
+
+        // 2. Production iOS encoder path (PureSwiftCMSEncoder)
+        let pureSwiftPreparer = OutboundMessagePreparerFactory.makePureSwift(
+            settingsProvider: { settings([record]) },
+            materialStore: store
+        )
+        try await verifyPreparedMIME(pureSwiftPreparer.prepare(mimeData: mime, request: request), label: "pureSwift")
+
+        // 3. Delete Keychain record and confirm default login Keychain was NOT polluted.
+        try await store.deleteMaterial(for: record.id)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassCertificate,
+            kSecMatchSubjectContains as String: uniqueCN,
+            kSecReturnRef as String: true
+        ]
+        var found: CFTypeRef?
+        #expect(SecItemCopyMatching(query as CFDictionary, &found) == errSecItemNotFound)
+    }
+
+    @Test(
+        "encrypted To (Sales@example.org) and Bcc (sales@example.org) resolve distinct case-variant RSA keys and reject ambiguous case"
+    )
+    func caseVariantEncryptionResolvesDistinctKeysAndRejectsAmbiguity() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-case-smime-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        func runOpenSSL(_ args: [String], stdin: Data? = nil) throws -> Data {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/openssl")
+            p.arguments = args
+            let outPipe = Pipe()
+            let errPipe = Pipe()
+            p.standardOutput = outPipe
+            p.standardError = errPipe
+            if let stdin {
+                let inPipe = Pipe()
+                p.standardInput = inPipe
+                try p.run()
+                inPipe.fileHandleForWriting.write(stdin)
+                inPipe.fileHandleForWriting.closeFile()
+            } else {
+                try p.run()
+            }
+            let out = outPipe.fileHandleForReading.readDataToEndOfFile()
+            let err = errPipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            guard p.terminationStatus == 0 else {
+                throw NSError(
+                    domain: "OpenSSL",
+                    code: Int(p.terminationStatus),
+                    userInfo: [NSLocalizedDescriptionKey: String(decoding: err, as: UTF8.self)]
+                )
+            }
+            return out
+        }
+
+        func generateCert(name: String, email: String) throws -> (keyURL: URL, certPEM: URL, certDER: Data) {
+            let keyURL = dir.appendingPathComponent("\(name).key")
+            let certPEM = dir.appendingPathComponent("\(name).pem")
+            let certDER = dir.appendingPathComponent("\(name).der")
+            _ = try runOpenSSL([
+                "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                "-keyout", keyURL.path, "-out", certPEM.path,
+                "-days", "1", "-subj", "/CN=\(name)/emailAddress=\(email)"
+            ])
+            _ = try runOpenSSL(["x509", "-in", certPEM.path, "-outform", "DER", "-out", certDER.path])
+            return try (keyURL, certPEM, Data(contentsOf: certDER))
+        }
+
+        let sender = try generateCert(name: "sender", email: "sender@example.org")
+        let upperSales = try generateCert(name: "upper-sales", email: "Sales@example.org")
+        let lowerSales = try generateCert(name: "lower-sales", email: "sales@example.org")
+
+        let store = FakeMaterialStore([
+            "rec-sender": sender.certDER,
+            "rec-upper": upperSales.certDER,
+            "rec-lower": lowerSales.certDER,
+        ])
+
+        func encRecord(id: String, email: String) -> SecurityKeyMaterialSettings.Record {
+            SecurityKeyMaterialSettings.Record(
+                id: id,
+                family: .smime,
+                label: id,
+                emailAddress: email,
+                fingerprint: id,
+                algorithm: "RSA-2048",
+                canSign: false,
+                canEncrypt: true,
+                hasPrivateMaterial: false,
+                trust: .trusted,
+                importedAt: Date(timeIntervalSince1970: 0)
+            )
+        }
+
+        let records = [
+            encRecord(id: "rec-sender", email: "sender@example.org"),
+            encRecord(id: "rec-upper", email: "Sales@example.org"),
+            encRecord(id: "rec-lower", email: "sales@example.org"),
+        ]
+        let preparer = OutboundMessagePreparerFactory.makePureSwift(
+            settingsProvider: { settings(records) },
+            materialStore: store
+        )
+
+        let mimeLines = [
+            "From: Sender <sender@example.org>",
+            "To: Sales <Sales@example.org>",
+            "Subject: Case Sensitive Encryption",
+            "MIME-Version: 1.0",
+            "Content-Type: text/plain; charset=utf-8",
+            "",
+            "Distinct key payload.",
+            ""
+        ]
+        let mime = Data(mimeLines.joined(separator: "\r\n").utf8)
+
+        func extractEnvelopedDER(from prepared: Data) throws -> Data {
+            let text = String(decoding: prepared, as: UTF8.self)
+            let marker = try #require(text.range(of: "filename=\"smime.p7m\""))
+            let blank = try #require(text.range(of: "\r\n\r\n", range: marker.upperBound ..< text.endIndex))
+            return try #require(
+                Data(base64Encoded: String(text[blank.upperBound...]), options: .ignoreUnknownCharacters)
+            )
+        }
+
+        func canDecrypt(_ der: Data, certPEM: URL, keyURL: URL) -> Bool {
+            (try? runOpenSSL(
+                ["cms", "-decrypt", "-inform", "DER", "-recip", certPEM.path, "-inkey", keyURL.path],
+                stdin: der
+            )) != nil
+        }
+
+        // Visible To envelope for Sales@example.org: decrypts with upperSales key, NOT lowerSales key.
+        let toPrepared = try await preparer.prepare(
+            mimeData: mime,
+            request: OutboundMessageSecurityRequest(
+                senderEmail: "sender@example.org",
+                to: ["Sales@example.org"],
+                mode: .encrypt
+            )
+        )
+        let toDER = try extractEnvelopedDER(from: toPrepared)
+        #expect(canDecrypt(toDER, certPEM: upperSales.certPEM, keyURL: upperSales.keyURL))
+        #expect(!canDecrypt(toDER, certPEM: lowerSales.certPEM, keyURL: lowerSales.keyURL))
+
+        // Isolated Bcc envelope for sales@example.org: decrypts with lowerSales key, NOT upperSales key.
+        let bccPrepared = try await preparer.prepare(
+            mimeData: mime,
+            request: OutboundMessageSecurityRequest(
+                senderEmail: "sender@example.org",
+                to: [],
+                bcc: ["sales@example.org"],
+                mode: .encrypt
+            )
+        )
+        let bccDER = try extractEnvelopedDER(from: bccPrepared)
+        #expect(canDecrypt(bccDER, certPEM: lowerSales.certPEM, keyURL: lowerSales.keyURL))
+        #expect(!canDecrypt(bccDER, certPEM: upperSales.certPEM, keyURL: upperSales.keyURL))
+
+        // Ambiguous case variant (SALES@example.org when both Sales@ and sales@ exist)
+        // MUST fail closed instead of guessing one of the two keys.
+        await #expect(throws: OutboundMessageSecurityError.missingEncryptionRecipients(["SALES@example.org"])) {
+            try await preparer.validate(
+                request: OutboundMessageSecurityRequest(
+                    senderEmail: "sender@example.org",
+                    to: ["SALES@example.org"],
+                    mode: .encrypt
+                )
+            )
+        }
+    }
+    #endif
 }
-#endif

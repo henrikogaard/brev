@@ -14,42 +14,53 @@ import BrevBackend
 import BrevCrypto
 import BrevSettings
 import Foundation
-#if os(macOS)
 import Security
-#endif
 
 /// Builds the production S/MIME engine, backed by the local Keychain key store.
 /// Returns the `BrevBackend` protocol type so the app targets can inject it into
 /// `IMAPAccountConnector.standard(outboundMessagePreparer:)` without importing
 /// `BrevCrypto`.
 ///
-/// macOS uses Apple's CMS encoder. iOS has no public CMS encoder, so its empty
-/// composite fails closed if stale state ever requests message security.
+/// macOS uses Apple's `CMSEncoder` and iOS uses `BrevCrypto`'s pure-Swift RFC
+/// 8551/5652 CMS DER encoder; both platforms resolve material strictly from the
+/// local Keychain and fail closed when required certificates or identities are
+/// missing.
 public enum OutboundMessagePreparerFactory {
+    /// Creates the standard local-Keychain S/MIME outbound preparer.
     public static func makeStandard(
         settingsProvider: @escaping @Sendable () -> SecurityKeyMaterialSettings = {
             SecurityKeyMaterialSettings.load()
         },
         materialStore: any SecurityKeyMaterialStore = SecurityKeychainMaterialStore()
     ) -> any OutboundMessagePreparing {
-        #if os(macOS)
-        return SMIMEOutboundMessagePreparer(
+        SMIMEOutboundMessagePreparer(
             resolver: KeychainSMIMEResolver(
                 settingsProvider: settingsProvider,
                 materialStore: materialStore
             )
         )
-        #else
-        return CompositeOutboundMessagePreparer([])
-        #endif
+    }
+
+    /// Creates an outbound S/MIME preparer forced onto the cross-platform
+    /// pure-Swift CMS encoder (mirrors the iOS production encoding path on macOS).
+    static func makePureSwift(
+        settingsProvider: @escaping @Sendable () -> SecurityKeyMaterialSettings,
+        materialStore: any SecurityKeyMaterialStore
+    ) -> any OutboundMessagePreparing {
+        SMIMEOutboundMessagePreparer(
+            resolver: KeychainSMIMEResolver(
+                settingsProvider: settingsProvider,
+                materialStore: materialStore
+            ),
+            encodingBackend: .pureSwift
+        )
     }
 }
 
-#if os(macOS)
 /// Resolves S/MIME (CMS) key material from the local Keychain key store for the
-/// outbound engine. Local-only — no directory lookups (ADR-0021 #1). Only
-/// `.trusted` `.smime` records with the required capability are eligible
-/// (fail-closed before use).
+/// outbound engine. Local-only — no directory lookups
+/// (`docs/design/privacy-and-security.md`). Only `.trusted` `.smime` records
+/// with the required capability are eligible (fail-closed before use).
 ///
 /// Signing material is a PKCS#12 blob (certificate + private key); recipient
 /// encryption material is either a DER certificate or a PKCS#12 from which the
@@ -73,53 +84,91 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
     }
 
     func signingIdentity(forSenderEmail email: String) async -> SecIdentity? {
-        let target = normalize(email)
-        let record = settingsProvider().records.first { record in
-            isEligible(record, capability: .signing, target: target)
-        }
-        guard let record, let material = try? await materialStore.material(for: record.id) else {
+        await signingMaterial(forSenderEmail: email)?.identity
+    }
+
+    func signingMaterial(forSenderEmail email: String) async -> SMIMESigningMaterial? {
+        let records = settingsProvider().records
+        guard let record = resolveRecord(in: records, capability: .signing, email: email),
+              let material = try? await materialStore.material(for: record.id)
+        else {
             return nil
         }
-        return Self.identity(fromPKCS12: material, passphrase: pkcs12Passphrase())
+        let passphrase = await resolvedPassphrase(for: record.id)
+        return Self.signingMaterial(fromPKCS12: material, passphrase: passphrase)
     }
 
     func encryptionCertificates(forRecipients emails: [String]) async -> [String: SecCertificate] {
         let records = settingsProvider().records
         var result: [String: SecCertificate] = [:]
         for email in emails {
-            let target = normalize(email)
-            let record = records.first { record in
-                isEligible(record, capability: .encryption, target: target)
-            }
-            guard let record, let material = try? await materialStore.material(for: record.id) else {
+            let exactTarget = normalizePreservingLocalPart(email)
+            guard !exactTarget.isEmpty,
+                  let record = resolveRecord(in: records, capability: .encryption, email: email),
+                  let material = try? await materialStore.material(for: record.id)
+            else {
                 continue
             }
-            if let cert = Self.certificate(fromMaterial: material, passphrase: pkcs12Passphrase()) {
-                result[target] = cert
+            let passphrase = await resolvedPassphrase(for: record.id)
+            if let cert = Self.certificate(fromMaterial: material, passphrase: passphrase) {
+                result[exactTarget] = cert
             }
         }
         return result
     }
 
+    private func resolvedPassphrase(for recordID: String) async -> String {
+        if let stored = try? await materialStore.passphrase(for: recordID), !stored.isEmpty {
+            return stored
+        }
+        return pkcs12Passphrase()
+    }
+
     private enum Capability { case signing, encryption }
 
-    /// Broken out of the `first(where:)` predicates because the combined boolean
-    /// expression exceeded the Swift type-checker's time budget inline.
-    private func isEligible(
-        _ record: SecurityKeyMaterialSettings.Record,
+    /// Resolves an eligible trusted S/MIME record for `email`: prefers an exact
+    /// local-part-case-preserving match (`normalizedSMTPRecipientKey`), and falls
+    /// back to case-insensitive local-part matching ONLY when all matching
+    /// records belong to a single unambiguous address variant (rejecting
+    /// ambiguous case-variant collisions rather than encrypting for the wrong key).
+    private func resolveRecord(
+        in records: [SecurityKeyMaterialSettings.Record],
         capability: Capability,
-        target: String
+        email: String
+    ) -> SecurityKeyMaterialSettings.Record? {
+        let exactTarget = normalizePreservingLocalPart(email)
+        guard !exactTarget.isEmpty else { return nil }
+        let eligible = records.filter { hasEligibility($0, capability: capability) }
+        if let exactMatch = eligible.first(where: {
+            normalizePreservingLocalPart($0.emailAddress ?? "") == exactTarget
+        }) {
+            return exactMatch
+        }
+        let foldedTarget = exactTarget.lowercased()
+        let foldedMatches = eligible.filter {
+            normalizePreservingLocalPart($0.emailAddress ?? "").lowercased() == foldedTarget
+        }
+        let distinctVariants = Set(foldedMatches.map { normalizePreservingLocalPart($0.emailAddress ?? "") })
+        guard distinctVariants.count == 1 else {
+            return nil
+        }
+        return foldedMatches.first
+    }
+
+    private func hasEligibility(
+        _ record: SecurityKeyMaterialSettings.Record,
+        capability: Capability
     ) -> Bool {
         guard record.family == .smime, record.trust == .trusted else { return false }
         switch capability {
-        case .signing where !(record.canSign && record.hasPrivateMaterial): return false
-        case .encryption where !record.canEncrypt: return false
-        default: break
+        case .signing:
+            return record.canSign && record.hasPrivateMaterial
+        case .encryption:
+            return record.canEncrypt
         }
-        return normalize(record.emailAddress ?? "") == target
     }
 
-    private func normalize(_ value: String) -> String {
+    private func normalizePreservingLocalPart(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let address: String
         if let start = trimmed.lastIndex(of: "<"),
@@ -128,34 +177,43 @@ struct KeychainSMIMEResolver: SMIMEIdentityResolving {
         } else {
             address = trimmed
         }
-        return address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return SentMessageLedger.normalizedSMTPRecipientKey(address)
     }
 
-    /// Imports a PKCS#12 blob and returns its first identity, or nil if the blob
-    /// can't be decoded (e.g. wrong passphrase) — never throwing, so the caller
-    /// fails closed rather than crashing.
-    private static func identity(fromPKCS12 data: Data, passphrase: String) -> SecIdentity? {
-        let options = [kSecImportExportPassphrase as String: passphrase] as CFDictionary
-        var itemsOpt: CFArray?
-        let status = SecPKCS12Import(data as CFData, options, &itemsOpt)
-        guard status == errSecSuccess, let items = itemsOpt as? [[String: Any]] else { return nil }
-        for item in items {
-            guard let value = item[kSecImportItemIdentity as String] else { continue }
-            return (value as! SecIdentity) // key presence guarantees the type
+    /// Imports a PKCS#12 blob in isolation (via an ephemeral macOS keychain so
+    /// the user's default login Keychain is never polluted) and returns its
+    /// first identity alongside any intermediate CA certificates from
+    /// `kSecImportItemCertChain`, or nil if the blob can't be decoded (e.g.
+    /// wrong passphrase) — never throwing, so the caller fails closed.
+    private static func signingMaterial(
+        fromPKCS12 data: Data,
+        passphrase: String
+    ) -> SMIMESigningMaterial? {
+        guard let imported = SecurityKeyMaterialPayloadDecoder.importPKCS12(data, passphrase: passphrase) else {
+            return nil
         }
-        return nil
+        return SMIMESigningMaterial(
+            identity: imported.identity,
+            intermediateCertificates: imported.intermediateCertificates,
+            lifetimeToken: imported.lifetimeToken
+        )
     }
 
-    /// Builds a recipient certificate from stored material: a DER certificate if
-    /// possible, otherwise the leaf certificate of a PKCS#12 identity.
+    /// Builds a pure in-memory recipient certificate from stored material: a
+    /// DER certificate if possible, otherwise the leaf certificate of a PKCS#12
+    /// identity imported in isolation (never writing to the default Keychain).
     private static func certificate(fromMaterial data: Data, passphrase: String) -> SecCertificate? {
         if let cert = SecCertificateCreateWithData(nil, data as CFData) {
             return cert
         }
-        guard let identity = identity(fromPKCS12: data, passphrase: passphrase) else { return nil }
+        guard let imported = SecurityKeyMaterialPayloadDecoder.importPKCS12(data, passphrase: passphrase) else {
+            return nil
+        }
         var certOpt: SecCertificate?
-        guard SecIdentityCopyCertificate(identity, &certOpt) == errSecSuccess else { return nil }
-        return certOpt
+        guard SecIdentityCopyCertificate(imported.identity, &certOpt) == errSecSuccess,
+              let cert = certOpt
+        else { return nil }
+        let der = SecCertificateCopyData(cert) as Data
+        return SecCertificateCreateWithData(nil, der as CFData)
     }
 }
-#endif

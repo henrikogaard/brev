@@ -316,4 +316,38 @@ public enum SecurityKeyMaterialConfirmationPolicy {
             )
         }
     }
+
+    /// Applies a destructive key-material action only when `confirmationInput`
+    /// satisfies the action's confirmation policy (never substituting the
+    /// expected phrase for empty input).
+    ///
+    /// - Returns: The removed record IDs when the confirmation passed, or `nil`
+    ///   when confirmation failed and `settings` was left untouched.
+    public static func apply(
+        action: SecurityKeyMaterialDestructiveAction,
+        recordID: String?,
+        confirmationInput: String?,
+        to settings: inout SecurityKeyMaterialSettings
+    ) -> [String]? {
+        let requirement = confirmation(for: action)
+        guard requirement.isSatisfied(by: confirmationInput) else {
+            return nil
+        }
+        switch action {
+        case .removeSelectedItem:
+            guard let recordID else { return [] }
+            let removed = settings.removeRecord(id: recordID)
+            return removed ? [recordID] : []
+        case .removeAllSMIME:
+            let ids = settings.records
+                .filter { $0.family == .smime }
+                .map(\.id)
+            _ = settings.removeAllRecords(in: .smime)
+            return ids
+        case .removeAllMaterial:
+            let ids = settings.records.map(\.id)
+            _ = settings.removeAllRecords()
+            return ids
+        }
+    }
 }

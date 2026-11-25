@@ -106,6 +106,9 @@ enum MIMESecurityAssembler {
 }
 
 enum OutboundAddressNormalizer {
+    /// Normalizes an address for recipient lookup: extracts `<addr>`, trims
+    /// whitespace, and lowercases ONLY the domain while preserving RFC 5321
+    /// local-part case.
     static func normalize(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let address: String
@@ -115,6 +118,12 @@ enum OutboundAddressNormalizer {
         } else {
             address = trimmed
         }
-        return address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleaned = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let atIndex = cleaned.lastIndex(of: "@") else {
+            return cleaned
+        }
+        let localPart = cleaned[..<atIndex]
+        let domain = cleaned[cleaned.index(after: atIndex)...].lowercased()
+        return "\(localPart)@\(domain)"
     }
 }

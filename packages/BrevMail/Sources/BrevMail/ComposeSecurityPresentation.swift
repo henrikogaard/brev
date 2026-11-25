@@ -10,7 +10,9 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevDesign
 import Foundation
+import SwiftUI
 
 enum ComposeSecurityPresentation {
     static func menuHelpText(
@@ -42,5 +44,48 @@ enum ComposeSecurityPresentation {
             return "Encryption is enabled, but no trusted local encryption identity is available."
         }
         return nil
+    }
+
+    /// Returns a blocking error message when signing or encryption is active
+    /// on a draft whose selected sender backend does not support outbound
+    /// S/MIME (never silently downgrading to plaintext).
+    static func unsupportedBackendWarning(
+        isSigningEnabled: Bool,
+        isEncryptionEnabled: Bool,
+        supportsOutboundSMIME: Bool
+    ) -> String? {
+        guard isSigningEnabled || isEncryptionEnabled, !supportsOutboundSMIME else {
+            return nil
+        }
+        return String(
+            localized: "This account doesn't support S/MIME signing or encryption. Switch to a supported account or turn off message security before sending.",
+            bundle: .module
+        )
+    }
+}
+
+/// Inline warning banner rendered in Compose whenever S/MIME signing or
+/// encryption remains active after switching to a sender backend that does not
+/// advertise `.outboundSMIME`.
+struct ComposeSecurityWarningBanner: View {
+    let isSigningEnabled: Bool
+    let isEncryptionEnabled: Bool
+    let supportsOutboundSMIME: Bool
+
+    var body: some View {
+        if let message = ComposeSecurityPresentation.unsupportedBackendWarning(
+            isSigningEnabled: isSigningEnabled,
+            isEncryptionEnabled: isEncryptionEnabled,
+            supportsOutboundSMIME: supportsOutboundSMIME
+        ) {
+            VStack(spacing: 0) {
+                BrevDivider()
+                BrevInlineStatus(
+                    message: message,
+                    tone: .warning,
+                    lineLimit: 3
+                )
+            }
+        }
     }
 }
