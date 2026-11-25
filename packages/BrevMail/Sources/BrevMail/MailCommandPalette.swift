@@ -37,6 +37,12 @@ public enum MailCommandPalette {
         let sheet = NSPanel(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
         sheet.title = title
         sheet.isReleasedWhenClosed = false
+        if BrevLiquidGlassPolicy.usesNativeLiquidGlass(
+            reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        ) {
+            sheet.isOpaque = false
+            sheet.backgroundColor = .clear
+        }
         var chosen: MailPaletteEntry?
         sheet.contentViewController = contentController(theme: theme, entries: entries) { entry in
             guard owner.attachedSheet === sheet else { return }
@@ -143,7 +149,7 @@ private struct MailCommandPaletteView: View {
         .padding(BrevSpacing.lg)
         .frame(width: 560, height: 400, alignment: .topLeading)
         .foregroundStyle(theme.textPrimary.color)
-        .background(theme.bgPrimary.color)
+        .brevGlassSurface(cornerRadius: 18, tint: theme.bgPrimary.color)
         .tint(theme.accent.color)
         .onAppear { searching = true }
         .onChange(of: query) { _, _ in cursor = 0 }

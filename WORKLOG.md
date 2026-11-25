@@ -8747,6 +8747,26 @@ buttons, and package-aware localization.
 - **Skipped:** Live interactive iOS Simulator visual QA and pre-existing iOS pixel-snapshot baseline re-recording (tracked separately; geometry/alignment verified deterministically via `UIHostingController` frame tests on iOS 27.2 Simulator).
 - **Next / Handoff:** Push `feat/polish-ios-inbox-reader-compose-mailboxes` and open PR targeting `main` referencing `#281` and `#360`.
 
+## 2026-11-25 — Agent — Native Liquid Glass Wave 2 (`BrevDesign` primitives, Quick Reply, `⌘K` Palette & Undo Toasts)
+
+- **Goal:** Implement Native Liquid Glass Wave 2 on `feat/liquid-glass-quick-reply-and-huds` from `origin/main` (`d5d366e9`): reusable `BrevDesign` Liquid Glass primitives (`BrevLiquidGlass.swift`), floating Liquid Glass `ReaderQuickReplyBar` + subtle reader bottom scroll fade, Spotlight-style Liquid Glass `MailCommandPalette`, and floating Liquid Glass `MailUndoToast` HUD pills.
+- **Changes:**
+  - `packages/BrevDesign/Sources/BrevDesign/Components/BrevLiquidGlass.swift` & `packages/BrevDesign/Tests/BrevDesignTests/BrevLiquidGlassTests.swift`: added `BrevLiquidGlassPolicy`, `BrevGlassContainer`, `View.brevGlassCapsule(interactive:tint:)`, `View.brevGlassSurface(cornerRadius:interactive:tint:)`, and `View.brevGlassButtonStyle(prominent:tint:)` guarded with `#if compiler(>=6.2)` and `if #available(macOS 26.0, iOS 26.0, *)`, honoring `accessibilityReduceTransparency` with opaque theme fallbacks and OS < 26 `.regularMaterial` fallbacks; layered `.glassEffect` behind a translucent theme wash and hairline border so native WindowServer refraction shines through while preserving custom Brev themes and offscreen snapshot contrast.
+  - `packages/BrevMail/Sources/BrevMail/ReaderQuickReplyBar.swift`, `MessageDetailView.swift`, `ThreadConversationView.swift`, & `packages/BrevMail/Tests/BrevMailTests/ReaderQuickReplyBarTests.swift`: removed the full-bleed opaque bar and top hairline divider; rebuilt `ReaderQuickReplyBar` inside `BrevGlassContainer` with a `20 pt` expanding glass input capsule + inline Open in Composer button, separate circular `34 pt` (macOS) / `44 pt` (iOS) glass Send button (`brevGlassButtonStyle`), floating glass Undo Send / Sending / Sent / Failed status pills, and a non-hit-testing `ReaderQuickReplyBottomFade` gradient behind the bottom `safeAreaInset` dock (only when `readerFooter` is present, leaving `ReaderMeasureSnapshotTests` untouched).
+  - `packages/BrevMail/Sources/BrevMail/MailCommandPalette.swift` & `packages/BrevMail/Tests/BrevMailTests/MailCommandPaletteTests.swift`: upgraded the `⌘K` palette container to `.brevGlassSurface(cornerRadius: 18, tint: theme.bgPrimary.color)` and cleared `NSPanel` opacity when native Liquid Glass is active; updated `sheetAppearance()` to assert translucent theme-tinted glass rendering.
+  - `packages/BrevMail/Sources/BrevMail/MailUndoToast.swift`: upgraded undo, retry, and in-progress reversal toasts to floating `BrevGlassContainer` + `.brevGlassCapsule` HUD pills with preserved 44 pt iOS touch targets and VoiceOver announcements.
+  - Refreshed and visually inspected `MailCommandPaletteSnapshotTests` (`command-palette-{light,dark}.png`) and `MailUndoToastSnapshotTests` (`retry-{light,dark}.png`) baselines. Updated `CHANGELOG.md` and `WORKLOG.md`; no subsystem architecture, privacy boundary, or external network call changes, so `docs/design/` and `PRIVACY.md` required no edits.
+- **Verification:**
+  - Remote `macmini-devbox` (macOS 27.0 / 26A425, Swift 6.4.2, Xcode 27.2; `/tmp/brev-lg-w2` and temp DerivedData cleaned up):
+    - `swift test --package-path packages/BrevDesign`: **55/55 tests in 8 suites passed** (including `BrevLiquidGlassTests`).
+    - `xcodebuild -scheme BrevDesign` on iOS 27.2 Simulator (`iPhone 18 Pro`, `BrevLiquidGlassTests`): **3/3 tests passed**.
+    - `swift test --package-path packages/BrevMail --filter 'MailCommandPaletteSnapshotTests|MailUndoToastSnapshotTests|MailCommandPaletteTests|ReaderQuickReplyBarTests|SheetAppearanceTests'`: **15/15 tests in 5 suites passed**.
+    - `BrevMacOS` Debug build (`Brev.xcworkspace`, `arm64`, `CODE_SIGNING_ALLOWED=NO`): `** BUILD SUCCEEDED **`.
+    - `BrevIOS` Debug Simulator build (`Brev.xcworkspace`, `iPhone 18 Pro`, iOS 27.2, `CODE_SIGNING_ALLOWED=NO`): `** BUILD SUCCEEDED **`.
+  - Local Mac Studio (strictly headless): `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`.
+- **Skipped:** iOS `BrevMail` simulator test execution timed out over the Cua relay while building full `BrevMail` from clean DerivedData; iOS compilation is verified via `BrevIOS` Debug Simulator build and `BrevDesign` `BrevLiquidGlassTests` on iOS 27.2 Simulator.
+- **Next / Handoff:** Commit, push `feat/liquid-glass-quick-reply-and-huds`, and open PR targeting `main`.
+
 ## 2026-11-25 — Agent — Fix SQLiteSyncStore O(N²) FTS5 scans and SQLite 3.54 attachment index plan (#358, #359)
 
 - **Goal:** Eliminate O(N²) full FTS5 scans in `SQLiteSyncStore.upsertHeaders` / O(N) scans on flag updates (#358) and fix `attachmentOrCachedBodyHeadersSQL` regressing to a folder-wide PK scan on SQLite 3.54.0 (#359) on branch `fix/sqlite-upsert-and-attachment-index` from `origin/main` (`40ca565d`).

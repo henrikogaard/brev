@@ -308,6 +308,9 @@ public struct ThreadConversationView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if let readerFooter {
                         readerFooter
+                            .background {
+                                ReaderQuickReplyBottomFade()
+                            }
                     }
                 }
                 .modifier(ReaderSingleKeyShortcutModifier { key in
