@@ -365,6 +365,34 @@ struct MailRootSettingsToolbarPolicyTests {
             platform: .macOS
         ))
     }
+
+    @Test("iOS Mailboxes sidebar exposes the Settings action when a handler is wired (#360)")
+    func iOSSidebarExposesSettingsActionWhenConfigured() {
+        var didOpenSettings = false
+        let action = MailRootSettingsToolbarPolicy.sidebarSettingsAction(
+            platform: .iOS,
+            hasExternalSettingsHandler: true,
+            presentSettings: { didOpenSettings = true }
+        )
+
+        #expect(action != nil)
+        action?()
+        #expect(didOpenSettings)
+    }
+
+    @Test("iOS sidebar hides Settings without an external handler and macOS keeps footer-only wiring (#360)")
+    func sidebarSettingsActionRespectsPlatformAndHandlerAvailability() {
+        #expect(MailRootSettingsToolbarPolicy.sidebarSettingsAction(
+            platform: .iOS,
+            hasExternalSettingsHandler: false,
+            presentSettings: {}
+        ) == nil)
+        #expect(MailRootSettingsToolbarPolicy.sidebarSettingsAction(
+            platform: .macOS,
+            hasExternalSettingsHandler: true,
+            presentSettings: {}
+        ) == nil)
+    }
 }
 
 @Suite("MailboxFilterControlPolicy")

@@ -71,14 +71,17 @@ enum ComposeLayoutPolicy {
         }
     }
 
-    static func toolbarMetrics(for platform: ComposeLayoutPlatform) -> ComposeToolbarMetrics {
+    static func toolbarMetrics(
+        for platform: ComposeLayoutPlatform,
+        isCompactVertical: Bool = false
+    ) -> ComposeToolbarMetrics {
         switch platform {
         case .compactIOS, .compactIOSAccessibility, .regularIOS:
             ComposeToolbarMetrics(
                 buttonSize: 26,
                 hitTargetSize: 44,
-                height: 52,
-                utilityHeight: 48,
+                height: isCompactVertical ? 44 : 52,
+                utilityHeight: isCompactVertical ? 44 : 48,
                 leadingInset: 0,
                 topInset: 0
             )
@@ -91,6 +94,43 @@ enum ComposeLayoutPolicy {
                 leadingInset: 76,
                 topInset: 0
             )
+        }
+    }
+
+    /// Whether header fields and the body share a scrollable column between the
+    /// pinned top navigation bar and bottom utility bar (#362).
+    ///
+    /// True at iOS accessibility text sizes (stacked tall headers) and in
+    /// compact vertical height (iPhone Landscape), where fixed headers plus the
+    /// software keyboard otherwise push the top bar off-screen and occlude the
+    /// body and formatting controls.
+    static func usesScrollableFieldLayout(
+        platform: ComposeLayoutPlatform,
+        isCompactVertical: Bool
+    ) -> Bool {
+        switch platform {
+        case .compactIOSAccessibility:
+            true
+        case .compactIOS, .regularIOS:
+            isCompactVertical
+        case .macOS:
+            false
+        }
+    }
+
+    /// Minimum body-editor height inside the scrollable iOS compose layout so
+    /// the message body stays reachable below the header fields (#362).
+    static func scrollableBodyMinHeight(
+        platform: ComposeLayoutPlatform,
+        isCompactVertical: Bool
+    ) -> CGFloat? {
+        switch platform {
+        case .compactIOSAccessibility:
+            240
+        case .compactIOS, .regularIOS:
+            isCompactVertical ? 160 : nil
+        case .macOS:
+            nil
         }
     }
 }

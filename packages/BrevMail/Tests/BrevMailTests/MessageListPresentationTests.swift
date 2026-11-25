@@ -349,4 +349,27 @@ struct MessageListPresentationTests {
     func bottomBarScrollInsetReservesPillHeight() {
         #expect(MessageListPresentation.bottomBarScrollInset == 76)
     }
+
+    @Test("section header toggle hints use complete localized sentences with Norwegian nb copy (#363)")
+    func sectionHeaderToggleHintsAreFullyLocalizedInEnglishAndNorwegian() throws {
+        #expect(MessageListPresentation.sectionHeaderToggleHint(isCollapsed: true) == "Double-tap to expand this section")
+        #expect(MessageListPresentation.sectionHeaderToggleHint(isCollapsed: false) == "Double-tap to collapse this section")
+
+        let strings = try LocalizationCatalogTestSupport.loadCatalogStrings()
+        #expect(strings["Double-tap to %@ this section"] == nil)
+
+        for (key, expectedNB) in [
+            ("Double-tap to expand this section", "Dobbelttrykk for å utvide denne delen"),
+            ("Double-tap to collapse this section", "Dobbelttrykk for å skjule denne delen")
+        ] {
+            let entry = try #require(strings[key] as? [String: Any])
+            let localizations = try #require(entry["localizations"] as? [String: Any])
+            let enValue = ((localizations["en"] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+            let nbValue = ((localizations["nb"] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+            #expect(enValue == key)
+            #expect(nbValue == expectedNB)
+            #expect(nbValue?.localizedCaseInsensitiveContains("expand") == false)
+            #expect(nbValue?.localizedCaseInsensitiveContains("collapse") == false)
+        }
+    }
 }

@@ -85,6 +85,19 @@ enum MessageListPresentation {
         )
     }
 
+    /// Accessibility hint for toggling a collapsible date section (#363).
+    ///
+    /// Uses two complete localized sentences rather than interpolating an
+    /// English verb into a format string so Norwegian (`nb`) and other locales
+    /// never receive untranslated verbs.
+    static func sectionHeaderToggleHint(isCollapsed: Bool) -> String {
+        if isCollapsed {
+            String(localized: "Double-tap to expand this section", bundle: .module)
+        } else {
+            String(localized: "Double-tap to collapse this section", bundle: .module)
+        }
+    }
+
     /// Produces a short, human-readable line from potentially raw listing text.
     ///
     /// Snippets fetched by older builds were cached with MIME plumbing still

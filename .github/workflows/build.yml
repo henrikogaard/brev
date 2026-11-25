@@ -302,6 +302,7 @@ jobs:
             -testRegion en_US \
             '-only-testing:BrevSettingsTests/CompactSettingsRowSnapshotTests' \
             '-only-testing:BrevSettingsTests/SettingsFormSnapshotTests' \
+            '-only-testing:BrevSettingsTests/PrivacyOnboardingAXLLayoutIOSTests' \
             test
 
       - name: Report deferred iOS snapshot comparison

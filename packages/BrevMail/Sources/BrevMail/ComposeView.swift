@@ -26,6 +26,42 @@ import PhotosUI
 import UIKit
 #endif
 
+#if os(iOS)
+enum ComposeChromeControlKey: Hashable, Sendable {
+    case cancel
+    case send
+    case scrollArea
+    case attach
+    case format
+    case moreActions
+}
+
+struct ComposeChromeControlFramesKey: PreferenceKey {
+    static let coordinateSpaceName = "compose.chrome"
+    static let defaultValue: [ComposeChromeControlKey: CGRect] = [:]
+
+    static func reduce(
+        value: inout [ComposeChromeControlKey: CGRect],
+        nextValue: () -> [ComposeChromeControlKey: CGRect]
+    ) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private extension View {
+    func trackComposeChromeControl(_ key: ComposeChromeControlKey) -> some View {
+        background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: ComposeChromeControlFramesKey.self,
+                    value: [key: proxy.frame(in: .named(ComposeChromeControlFramesKey.coordinateSpaceName))]
+                )
+            }
+        )
+    }
+}
+#endif
+
 private struct ComposeAutoSaveFingerprint: Equatable {
     let senderID: String
     let identityID: String?
@@ -205,6 +241,7 @@ public struct ComposeView: View {
     @Environment(\.dismiss) private var dismiss
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     // Both follow Dynamic Type: a long label like "Subject" keeps to one line,
     // and rows with and without recipient chips stay equally tall.
@@ -874,8 +911,26 @@ public struct ComposeView: View {
         return ComposeLayoutPolicy.frameMetrics(for: composeLayoutPlatform)
     }
 
+    private var isCompactVerticalLayout: Bool {
+        #if os(iOS)
+        verticalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
+    private var usesScrollableFieldLayout: Bool {
+        ComposeLayoutPolicy.usesScrollableFieldLayout(
+            platform: composeLayoutPlatform,
+            isCompactVertical: isCompactVerticalLayout
+        )
+    }
+
     private var toolbarMetrics: ComposeToolbarMetrics {
-        ComposeLayoutPolicy.toolbarMetrics(for: composeLayoutPlatform)
+        ComposeLayoutPolicy.toolbarMetrics(
+            for: composeLayoutPlatform,
+            isCompactVertical: isCompactVerticalLayout
+        )
     }
 
     private var composeLayoutPlatform: ComposeLayoutPlatform {
@@ -906,15 +961,48 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var composeContent: some View {
+        #if os(macOS)
         VStack(spacing: 0) {
-            if isAccessibilityFieldLayout {
-                toolbar
-                    .disabled(isBusy)
+            if hostStyle == .inline {
+                inlineActionBar
+            }
+            if showsInlineFieldsAndStarters {
+                fieldPanel
+                if showsInlineReplyStarters {
+                    inlineReplyStarters
+                }
+            }
+            composeEditorContent
+            if hostStyle == .inline {
+                inlineBottomBar
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        #else
+        // Keep one structural view tree across portrait, landscape, and
+        // accessibility layouts so rotation never destroys/recreates the live
+        // PlatformComposeBodyEditor (UITextView) or drops rich formatting (#366).
+        VStack(spacing: 0) {
+            toolbar
+                .padding(.top, toolbarMetrics.topInset)
+                .overlay(alignment: .bottom) {
+                    if isCompactVerticalLayout {
+                        BrevDivider()
+                    }
+                }
+                .disabled(isBusy)
+            GeometryReader { scrollArea in
                 ScrollView {
                     VStack(spacing: 0) {
                         fieldPanel.disabled(isBusy)
                         composeEditorContent
                     }
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: usesScrollableFieldLayout ? nil : scrollArea.size.height,
+                        maxHeight: usesScrollableFieldLayout ? nil : scrollArea.size.height,
+                        alignment: .topLeading
+                    )
                     // A vertical ScrollView measures its content at ideal
                     // width; intrinsic text widths (recipient/subject
                     // fields, the body editor) exceed the phone viewport
@@ -922,35 +1010,26 @@ public struct ComposeView: View {
                     // scrolling/clipping (#49). Capping the ideal width
                     // keeps the column inside the sheet while finite
                     // proposals still stretch it to the real width.
-                    .frame(idealWidth: ComposeLayout.compactSheetIdealWidth)
+                    .frame(idealWidth: isAccessibilityFieldLayout ? ComposeLayout.compactSheetIdealWidth : nil)
                 }
-            } else {
-                #if os(macOS)
-                if hostStyle == .inline {
-                    inlineActionBar
-                }
-                if showsInlineFieldsAndStarters {
-                    fieldPanel
-                    if showsInlineReplyStarters {
-                        inlineReplyStarters
-                    }
-                }
-                #else
-                header
-                #endif
-                composeEditorContent
-                #if os(macOS)
-                if hostStyle == .inline {
-                    inlineBottomBar
-                }
-                #endif
+                // Avoid `.scrollDisabled(!usesScrollableFieldLayout)`, which
+                // propagates through the environment and disables nested
+                // preview ScrollViews (`aiPreviewBody`,
+                // `ComposePreservedQuoteSection`) in portrait (#366). Pinning
+                // content height to `scrollArea.size.height` in portrait plus
+                // `.scrollBounceBehavior(.basedOnSize)` keeps the outer scroll
+                // view stationary while nested previews stay scrollable.
+                .scrollBounceBehavior(.basedOnSize)
+                .clipped()
+                .scrollDismissesKeyboard(.interactively)
             }
-            #if os(iOS)
+            .trackComposeChromeControl(.scrollArea)
             mobileUtilityToolbar
                 .disabled(isBusy)
-            #endif
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .coordinateSpace(name: ComposeChromeControlFramesKey.coordinateSpaceName)
+        #endif
     }
 
     private var composeEditorContent: some View {
@@ -961,7 +1040,12 @@ public struct ComposeView: View {
                 VStack(spacing: 0) {
                     attachmentsList
                     bodyField
-                        .frame(minHeight: isAccessibilityFieldLayout ? 240 : nil)
+                        .frame(
+                            minHeight: ComposeLayoutPolicy.scrollableBodyMinHeight(
+                                platform: composeLayoutPlatform,
+                                isCompactVertical: isCompactVerticalLayout
+                            )
+                        )
                 }
                 .disabled(isBusy)
                 aiPreviewPanel
@@ -1074,19 +1158,6 @@ public struct ComposeView: View {
                 )
             }
         }
-    }
-
-    @ViewBuilder
-    private var header: some View {
-        VStack(spacing: 0) {
-            toolbar
-            fieldPanel
-        }
-        .padding(.top, toolbarMetrics.topInset)
-        // No opaque chrome background: the toolbar and fields sit directly on the
-        // window's shared (opacity-aware) surface, so the whole compose window is
-        // one continuous colour rather than a header band split off from the body.
-        .disabled(isBusy)
     }
 
     #if os(macOS)
@@ -1282,7 +1353,11 @@ public struct ComposeView: View {
 
     private var mobileToolbar: some View {
         HStack(spacing: BrevSpacing.sm) {
-            cancelButton.fixedSize(horizontal: true, vertical: false)
+            cancelButton
+                .fixedSize(horizontal: true, vertical: false)
+            #if os(iOS)
+                .trackComposeChromeControl(.cancel)
+            #endif
             Spacer(minLength: 0)
             if !isAccessibilityFieldLayout {
                 Text(composeTitle)
@@ -1295,6 +1370,9 @@ public struct ComposeView: View {
             Spacer(minLength: 0)
             scheduleSendButton.fixedSize(horizontal: true, vertical: false)
             sendButton
+            #if os(iOS)
+            .trackComposeChromeControl(.send)
+            #endif
         }
         .padding(.leading, BrevSpacing.sm)
         .padding(.trailing, BrevSpacing.sm)
@@ -1412,8 +1490,11 @@ public struct ComposeView: View {
     private var mobileUtilityToolbar: some View {
         HStack(spacing: BrevSpacing.xxs) {
             attachMenu
+                .trackComposeChromeControl(.attach)
             formatMenu
+                .trackComposeChromeControl(.format)
             composeActionsMenu
+                .trackComposeChromeControl(.moreActions)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, BrevSpacing.sm)
@@ -2731,6 +2812,13 @@ public struct ComposeView: View {
     }
 
     #endif
+
+    /// Seeds an initial AI preview state for internal layout tests (#366).
+    func initialAIPreview(_ preview: ComposeAIPreviewState) -> ComposeView {
+        var copy = self
+        copy._aiPreview = State(initialValue: preview)
+        return copy
+    }
 
     @ViewBuilder
     private var aiPreviewPanel: some View {

@@ -246,6 +246,21 @@ enum MailRootSettingsToolbarPolicy {
             false
         }
     }
+
+    /// Resolves the `FolderSidebar` Settings action for the current platform (#360).
+    ///
+    /// On iOS (iPhone and iPad), `FolderSidebar` surfaces Settings inside its
+    /// leading gear menu when `onOpenSettings` is provided. On macOS, Settings
+    /// lives in the dedicated `FolderSidebarFooter` and the app menu, so the
+    /// sidebar menu callback stays `nil`.
+    static func sidebarSettingsAction(
+        platform: MailRootToolbarPlatform,
+        hasExternalSettingsHandler: Bool,
+        presentSettings: @escaping () -> Void
+    ) -> (() -> Void)? {
+        guard platform == .iOS, hasExternalSettingsHandler else { return nil }
+        return presentSettings
+    }
 }
 
 /// Toolbar section that carries Get Mail and New Message.
