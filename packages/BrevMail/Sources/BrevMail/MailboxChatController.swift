@@ -166,6 +166,7 @@ final class MailboxChatController: ObservableObject {
         let actionFolders = actionFolders
         let actionSourceScope = actionSourceScope
         let sentFolderIDs = Set(actionFolders.filter { $0.role == .sent }.map(\.id))
+        let draftFolderIDs = Set(actionFolders.filter { $0.role == .drafts }.map(\.id))
         let primarySentFolderID = actionFolders.first(where: { $0.role == .sent })?.id
 
         let task = Task<MailboxChatTurnKind?, Never> {
@@ -179,8 +180,20 @@ final class MailboxChatController: ObservableObject {
                     referenceDate: referenceDate
                 )
                 var fetchedHeaders: [MessageHeader] = []
+                var fetchedIDs = Set<MessageHeader.ID>()
                 for query in queries {
+                    // For `.needsMeToday`, skip the unfiltered recent-fallback scan when
+                    // the targeted flagged + unread scans already fill the context budget.
+                    if starterIntent == .needsMeToday,
+                       query.isFlagged == nil,
+                       query.isUnread == nil,
+                       fetchedIDs.count >= maxMessages {
+                        continue
+                    }
                     let batch = try await search(query, sourceID)
+                    for header in batch {
+                        fetchedIDs.insert(header.id)
+                    }
                     fetchedHeaders.append(contentsOf: batch)
                 }
 
@@ -188,13 +201,17 @@ final class MailboxChatController: ObservableObject {
                     headers: fetchedHeaders,
                     intent: starterIntent,
                     sentFolderIDs: sentFolderIDs,
+                    draftFolderIDs: draftFolderIDs,
                     myEmailAddress: actionSourceScope.mailboxAddress,
                     maxMessages: maxMessages
                 )
 
                 guard !headers.isEmpty else {
                     let emptyText = starterIntent == .whoHasntReplied
-                        ? "I couldn't find any recent cached sent messages without a cached reply yet."
+                        ? String(
+                            localized: "I couldn't find any recent cached sent messages without a cached reply yet.",
+                            bundle: .module
+                        )
                         : MailboxChatScopeSearchPolicy.emptySearchMessage(
                             scope: scope,
                             folderName: focusedFolder?.name

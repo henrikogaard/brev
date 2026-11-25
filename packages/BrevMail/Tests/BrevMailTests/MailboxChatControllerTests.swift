@@ -513,6 +513,262 @@ struct MailboxChatControllerTests {
         #expect(citations.map(\.id) == ["busy-1", "other-alpha", "other-beta", "other-gamma", "other-delta"])
     }
 
+    @Test("whoHasntReplied excludes unsent drafts and tokenizes Gmail single-element multi-ID References (#370)")
+    @MainActor
+    func whoHasntRepliedExcludesDraftsAndMatchesMultiIDReferences() async throws {
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let day: TimeInterval = 24 * 60 * 60
+        let me = Correspondent(name: "Henrik", email: "henrik@example.com")
+        let maya = Correspondent(name: "Maya Okafor", email: "maya@northwind.example")
+        let lars = Correspondent(name: "Lars Bjørnstad", email: "lars@acme.example")
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let sent = Folder(id: "sent", name: "Sent", role: .sent)
+        let drafts = Folder(id: "drafts", name: "Drafts", role: .drafts)
+
+        // Real sent message to Maya in thread t-maya, followed by a newer unsent Draft in the same thread.
+        let realSentToMaya = MessageHeader(
+            id: "sent-maya-real",
+            threadID: "t-maya",
+            folderID: sent.id,
+            from: me,
+            to: [maya],
+            subject: "Q4 scope",
+            snippet: "Please review section 2.",
+            date: now.addingTimeInterval(-3 * day),
+            isRead: true,
+            messageID: "<sent-maya@example.com>"
+        )
+        let newerDraftInSameThread = MessageHeader(
+            id: "draft-maya-newer",
+            threadID: "t-maya",
+            folderID: drafts.id,
+            from: me,
+            to: [maya],
+            subject: "Re: Q4 scope",
+            snippet: "Unfinished follow-up draft.",
+            date: now.addingTimeInterval(-1 * day),
+            isRead: true
+        )
+        // Gmail-labeled DRAFT in ALL_MAIL targeting a different recipient — must never appear as sent.
+        let gmailLabeledDraft = MessageHeader(
+            id: "gmail-draft-1",
+            threadID: "t-gmail-draft",
+            folderID: "ALL_MAIL",
+            from: me,
+            to: [lars],
+            subject: "Unsent proposal",
+            snippet: "Still drafting numbers.",
+            date: now.addingTimeInterval(-1 * day),
+            isRead: true,
+            labels: ["DRAFT"]
+        )
+        // Sent message to Lars answered in a DIFFERENT threadID where Gmail packs multiple IDs
+        // into one References string and In-Reply-To points elsewhere.
+        let sentToLars = MessageHeader(
+            id: "sent-lars",
+            threadID: "gmail-thread-a",
+            folderID: sent.id,
+            from: me,
+            to: [lars],
+            subject: "Harbour API",
+            snippet: "Any thoughts on the endpoint?",
+            date: now.addingTimeInterval(-4 * day),
+            isRead: true,
+            messageID: "<sent-lars@example.com>"
+        )
+        let larsReplyMultiRef = MessageHeader(
+            id: "inbox-lars-reply",
+            threadID: "gmail-thread-b",
+            folderID: inbox.id,
+            from: lars,
+            to: [me],
+            subject: "Re: Harbour API",
+            snippet: "Looks good to me.",
+            date: now.addingTimeInterval(-2 * day),
+            isRead: true,
+            inReplyTo: "<other-mid@example.com>",
+            references: ["<intro@example.com> <sent-lars@example.com>"]
+        )
+
+        let stubBackend = StubCachedSearchBackend(
+            accountEmail: me.email,
+            folders: [inbox, sent, drafts],
+            cachedMessages: [
+                realSentToMaya,
+                newerDraftInSameThread,
+                gmailLabeledDraft,
+                sentToLars,
+                larsReplyMultiRef,
+            ]
+        )
+        let sourceID = MailSourceID(accountID: stubBackend.account.id, mailboxID: "primary")
+        let aiBackend = RecordingAIBackend(responseText: "Maya hasn't replied yet.")
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: sourceID,
+            aiBackend: aiBackend,
+            actionFolders: [inbox, sent, drafts],
+            actionSourceScope: MailboxActionAgentSourceScope(
+                sourceID: sourceID,
+                accountName: "Work",
+                mailboxName: "Primary",
+                mailboxAddress: me.email
+            ),
+            search: MailboxChatSearchBridge.makeSearch { _ in stubBackend }
+        )
+
+        await controller.send(
+            userText: "Who hasn't replied?",
+            starterIntent: .whoHasntReplied,
+            referenceDate: now
+        )
+
+        guard case .answer(_, let citations, _)? = controller.turns.last else {
+            Issue.record("Expected answer turn citing only realSentToMaya")
+            return
+        }
+        #expect(citations.map(\.id) == ["sent-maya-real"])
+
+        // Verify the localized no-unanswered-sent-mail clarification has both en and nb entries.
+        let strings = try LocalizationCatalogTestSupport.loadCatalogStrings()
+        let key = "I couldn't find any recent cached sent messages without a cached reply yet."
+        let entry = try #require(strings[key] as? [String: Any])
+        let locs = try #require(entry["localizations"] as? [String: Any])
+        #expect(((locs["en"] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String != nil)
+        #expect(((locs["nb"] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String != nil)
+    }
+
+    @Test(
+        "summarizeRecentThreads groups unthreaded IMAP replies by In-Reply-To so a second thread gets a first-round slot (#370)"
+    )
+    @MainActor
+    func summarizeRecentThreadsResolvesIMAPConversationMembership() async throws {
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let hour: TimeInterval = 3600
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+
+        // IMAP cache returns each message with its own raw threadID, linked only via messageID/inReplyTo.
+        let incidentRoot = MessageHeader(
+            id: "imap-inc-1",
+            threadID: "imap-inc-1",
+            folderID: inbox.id,
+            from: Correspondent(name: "Ops", email: "ops@example.com"),
+            subject: "Incident #404",
+            snippet: "Investigating spike.",
+            date: now.addingTimeInterval(-6 * hour),
+            isRead: false,
+            messageID: "<inc-1@example.com>"
+        )
+        let incidentReply1 = MessageHeader(
+            id: "imap-inc-2",
+            threadID: "imap-inc-2",
+            folderID: inbox.id,
+            from: Correspondent(name: "Ops", email: "ops@example.com"),
+            subject: "Re: Incident #404",
+            snippet: "Mitigation deployed.",
+            date: now.addingTimeInterval(-2 * hour),
+            isRead: false,
+            messageID: "<inc-2@example.com>",
+            inReplyTo: "<inc-1@example.com>"
+        )
+        let incidentReply2 = MessageHeader(
+            id: "imap-inc-3",
+            threadID: "imap-inc-3",
+            folderID: inbox.id,
+            from: Correspondent(name: "Ops", email: "ops@example.com"),
+            subject: "Re: Incident #404",
+            snippet: "All clear now.",
+            date: now.addingTimeInterval(-1 * hour),
+            isRead: false,
+            messageID: "<inc-3@example.com>",
+            inReplyTo: "<inc-2@example.com>"
+        )
+        let separateConversation = MessageHeader(
+            id: "imap-other-1",
+            threadID: "imap-other-1",
+            folderID: inbox.id,
+            from: Correspondent(name: "Maya", email: "maya@example.com"),
+            subject: "Design kickoff",
+            snippet: "Agenda for Wednesday.",
+            date: now.addingTimeInterval(-4 * hour),
+            isRead: false,
+            messageID: "<other-1@example.com>"
+        )
+
+        let stubBackend = StubCachedSearchBackend(
+            accountEmail: "henrik@example.com",
+            folders: [inbox],
+            cachedMessages: [incidentRoot, incidentReply1, incidentReply2, separateConversation]
+        )
+        let sourceID = MailSourceID(accountID: stubBackend.account.id, mailboxID: "primary")
+        let aiBackend = RecordingAIBackend(responseText: "Two conversations summarized.")
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: sourceID,
+            aiBackend: aiBackend,
+            actionFolders: [inbox],
+            maxMessages: 2,
+            search: MailboxChatSearchBridge.makeSearch { _ in stubBackend }
+        )
+
+        await controller.send(
+            userText: "Summarize recent threads",
+            starterIntent: .summarizeRecentThreads,
+            referenceDate: now
+        )
+
+        guard case .answer(_, let citations, _)? = controller.turns.last else {
+            Issue.record("Expected answer turn for IMAP summarizeRecentThreads")
+            return
+        }
+        #expect(citations.map(\.id) == ["imap-inc-3", "imap-other-1"])
+    }
+
+    @Test("needsMeToday skips the 3rd unfiltered fallback scan when flagged and unread already satisfy maxMessages (#370)")
+    @MainActor
+    func needsMeTodaySkipsFallbackScanWhenAttentionItemsFillCap() async throws {
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+
+        let attentionItems = (1 ... 4).map { idx in
+            MessageHeader(
+                id: "attn-\(idx)",
+                threadID: "t-attn-\(idx)",
+                folderID: inbox.id,
+                from: Correspondent(name: "Maya", email: "maya@example.com"),
+                subject: "Action needed #\(idx)",
+                snippet: "Please review.",
+                date: now.addingTimeInterval(-Double(idx) * 3600),
+                isRead: false,
+                isFlagged: idx <= 2
+            )
+        }
+        let stubBackend = StubCachedSearchBackend(
+            accountEmail: "henrik@example.com",
+            folders: [inbox],
+            cachedMessages: attentionItems
+        )
+        let sourceID = MailSourceID(accountID: stubBackend.account.id, mailboxID: "primary")
+        let aiBackend = RecordingAIBackend(responseText: "Four items need you.")
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: sourceID,
+            aiBackend: aiBackend,
+            actionFolders: [inbox],
+            maxMessages: 3,
+            search: MailboxChatSearchBridge.makeSearch { _ in stubBackend }
+        )
+
+        await controller.send(
+            userText: "What needs me today?",
+            starterIntent: .needsMeToday,
+            referenceDate: now
+        )
+
+        #expect(stubBackend.recordedSearchQueries.count == 2)
+        #expect(stubBackend.recordedSearchQueries.allSatisfy { $0.isFlagged == true || $0.isUnread == true })
+    }
+
     @Test("account scope without source id returns a local clarification")
     @MainActor
     func accountScopeWithoutSourceIDReturnsALocalClarification() async throws {
@@ -908,6 +1164,12 @@ private final class StubCachedSearchBackend: MailBackend, @unchecked Sendable {
     private let folderList: [Folder]
     private let cachedMessages: [MessageHeader]
     private let perQueryResultCap: Int?
+    private let lock = NSLock()
+    private var _recordedSearchQueries: [SearchQuery] = []
+
+    var recordedSearchQueries: [SearchQuery] {
+        lock.withLock { _recordedSearchQueries }
+    }
 
     init(
         accountEmail: String,
@@ -947,6 +1209,7 @@ private final class StubCachedSearchBackend: MailBackend, @unchecked Sendable {
     func send(draft: Draft) async throws -> SendResult { SendResult() }
 
     func search(_ query: SearchQuery) async throws -> [MessageHeader] {
+        lock.withLock { _recordedSearchQueries.append(query) }
         guard query.hasSearchCriteria else { return [] }
         let matched = cachedMessages
             .filter { query.matches($0) }

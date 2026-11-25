@@ -28,6 +28,12 @@
   - `PRRT_kwDOUHC-Ds68BV4S`: added round-robin thread diversification (`diversifyByThread`) for `.summarizeRecentThreads` so each distinct recent conversation gets its newest representative before any busy thread fills remaining context budget.
   - `PRRT_kwDOUHC-Ds68BV52`: added `PeopleUpdatesListLayoutPolicy.visibleBulkRowIDs(...)` including visible inline thread children in open date sections, wired `MessageListView.toggleDateSection(_:)` to prune strictly hidden rows/children on collapse while preserving visible inline child selections and top-level keyboard navigation order, and added `PeopleUpdatesClassifierTests.collapsingDateSectionPreservesVisibleInlineChildrenAndPrunesCollapsedSection`.
   - `PRRT_kwDOUHC-Ds68BV7e`: added `StubCachedSearchBackend: MailBackend` and end-to-end `MailboxChatSearchBridge` + `MockBackend` starter tests covering `.whoHasntReplied`, `.needsMeToday`, `.summarizeRecentThreads`, and `.findRecentAttachments` in `MailboxChatControllerTests.swift`.
+- Review fixes round 3 (PR #370 — 5 Devin findings on `c5ec1f9e`):
+  - `PRRT_kwDOUHC-Ds68BwcA`: excluded unsent drafts (by `.drafts` folder role/IDs, canonical draft folder IDs, and `DRAFT`/`\Draft` labels) from both sent-candidate selection and reply scans in `MailboxChatStarterCandidateSelector.unansweredSentMessages`.
+  - `PRRT_kwDOUHC-Ds68Bwd5`: updated `MailboxChatStarterCandidateSelector.diversifyByThread` to union candidates via `ConversationMembershipResolver.cachedLinkIdentifiers(for:)` alongside native `threadID`s (with unsafe duplicate Message-ID protection) so unthreaded IMAP replies group into one conversation.
+  - `PRRT_kwDOUHC-Ds68BwfW`: tokenized `inReplyTo`, `references`, and sent `rfcMessageID` via `ConversationMembershipResolver.identifiers(in:)` so Gmail single-element multi-ID `References` headers match across thread IDs.
+  - `PRRT_kwDOUHC-Ds68BwhJ`: localized `"I couldn't find any recent cached sent messages without a cached reply yet."` with explicit `en` and `nb` entries in `BrevMail`'s `Localizable.xcstrings`.
+  - `PRRT_kwDOUHC-Ds68Bwi0`: skipped the 3rd unfiltered recent-fallback scan for `.needsMeToday` in `MailboxChatController.send` whenever the deduplicated `.cacheOnly` flagged + unread candidates already meet or exceed `maxMessages`.
 
 ## 2026-11-25 — Agent — Issues #360, #362, #363 (iOS Settings Menu, Landscape/AXL Clipping, `nb` AX Hints)
 

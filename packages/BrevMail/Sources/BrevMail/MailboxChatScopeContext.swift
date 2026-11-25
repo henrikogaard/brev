@@ -278,6 +278,7 @@ enum MailboxChatStarterCandidateSelector {
         headers: [MessageHeader],
         intent: MailboxChatStarterIntent?,
         sentFolderIDs: Set<String>,
+        draftFolderIDs: Set<String> = [],
         myEmailAddress: String?,
         maxMessages: Int
     ) -> [MessageHeader] {
@@ -302,6 +303,7 @@ enum MailboxChatStarterCandidateSelector {
             return unansweredSentMessages(
                 unique,
                 sentFolderIDs: sentFolderIDs,
+                draftFolderIDs: draftFolderIDs,
                 myEmailAddress: myEmailAddress
             )
         case .findRecentAttachments:
@@ -328,25 +330,89 @@ enum MailboxChatStarterCandidateSelector {
         }
     }
 
+    /// Groups candidates by conversation using both native `threadID`s and
+    /// `ConversationMembershipResolver` RFC link identifiers (so unthreaded
+    /// IMAP replies with per-message `threadID`s still group into one
+    /// conversation), then allocates slots round-robin across conversations (#370).
     private static func diversifyByThread(
         _ headers: [MessageHeader],
         maxMessages: Int
     ) -> [MessageHeader] {
         guard !headers.isEmpty else { return [] }
 
-        var buckets: [String: [MessageHeader]] = [:]
-        var orderedThreadKeys: [String] = []
-        for header in headers {
-            let key = header.threadID.isEmpty ? header.id : header.threadID
-            if buckets[key] == nil {
-                orderedThreadKeys.append(key)
-                buckets[key] = [header]
-            } else {
-                buckets[key, default: []].append(header)
+        var parent = Array(headers.indices)
+        func find(_ index: Int) -> Int {
+            var root = index
+            while parent[root] != root {
+                root = parent[root]
+            }
+            var current = index
+            while parent[current] != root {
+                let next = parent[current]
+                parent[current] = root
+                current = next
+            }
+            return root
+        }
+        func union(_ lhs: Int, _ rhs: Int) {
+            let rootA = find(lhs)
+            let rootB = find(rhs)
+            if rootA != rootB {
+                // Keep the smaller index (newest header) as canonical root.
+                if rootA < rootB {
+                    parent[rootB] = rootA
+                } else {
+                    parent[rootA] = rootB
+                }
             }
         }
 
-        // Round-robin across recent threads: every distinct recent conversation
+        // Track owners of each own Message-ID so duplicate/reused IDs across
+        // unrelated messages do not bridge unrelated conversations.
+        var ownIDFingerprints: [String: Set<String>] = [:]
+        for header in headers {
+            if let ownID = singleMessageIdentifier(header.rfcMessageID) {
+                let fingerprint = "\(header.from.email.lowercased())|\(header.subject)|\(header.date.timeIntervalSinceReferenceDate)"
+                ownIDFingerprints[ownID, default: []].insert(fingerprint)
+            }
+        }
+        let unsafeIdentifiers = Set(ownIDFingerprints.filter { $0.value.count > 1 }.map(\.key))
+
+        var firstIndexByThreadID: [String: Int] = [:]
+        var firstIndexByLinkID: [String: Int] = [:]
+
+        for (index, header) in headers.enumerated() {
+            if !header.threadID.isEmpty {
+                if let existing = firstIndexByThreadID[header.threadID] {
+                    union(existing, index)
+                } else {
+                    firstIndexByThreadID[header.threadID] = index
+                }
+            }
+            let linkIDs = (ConversationMembershipResolver.cachedLinkIdentifiers(for: header) ?? [])
+                .map { $0.lowercased() }
+            for linkID in linkIDs where !unsafeIdentifiers.contains(linkID) {
+                if let existing = firstIndexByLinkID[linkID] {
+                    union(existing, index)
+                } else {
+                    firstIndexByLinkID[linkID] = index
+                }
+            }
+        }
+
+        var buckets: [Int: [MessageHeader]] = [:]
+        var orderedRoots: [Int] = []
+        for (index, header) in headers.enumerated() {
+            let root = find(index)
+            if buckets[root] == nil {
+                orderedRoots.append(root)
+                buckets[root] = [header]
+            } else {
+                buckets[root, default: []].append(header)
+            }
+        }
+
+        // Round-robin across recent conversations: every distinct conversation
         // gets its newest representative first before any busy thread consumes
         // additional context slots.
         var result: [MessageHeader] = []
@@ -354,9 +420,9 @@ enum MailboxChatStarterCandidateSelector {
         var depth = 0
         while result.count < limit {
             var addedInRound = false
-            for key in orderedThreadKeys {
+            for root in orderedRoots {
                 guard result.count < limit else { break }
-                if let members = buckets[key], depth < members.count {
+                if let members = buckets[root], depth < members.count {
                     result.append(members[depth])
                     addedInRound = true
                 }
@@ -367,21 +433,46 @@ enum MailboxChatStarterCandidateSelector {
         return result
     }
 
-    /// Matches `TodayDigestBuilder`'s local reply-matching convention:
-    /// identifies sent headers, matches cached replies by thread timestamp or
-    /// `In-Reply-To`/`References`, and returns sent messages with external
-    /// recipients that have no known cached reply (#370).
+    private static func isDraftIdentifier(_ raw: String) -> Bool {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "draft"
+            || normalized == "drafts"
+            || normalized == "\\draft"
+            || normalized == "\\drafts"
+            || normalized == "[gmail]/drafts"
+            || normalized.hasSuffix("/drafts")
+            || normalized.hasSuffix(".drafts")
+    }
+
+    private static func isDraftHeader(
+        _ header: MessageHeader,
+        draftFolderIDs: Set<String>
+    ) -> Bool {
+        if draftFolderIDs.contains(header.folderID) || isDraftIdentifier(header.folderID) {
+            return true
+        }
+        return header.labels.contains { draftFolderIDs.contains($0) || isDraftIdentifier($0) }
+    }
+
+    /// Matches `TodayDigestBuilder` and `NoReplyFollowUpReconciler`:
+    /// excludes unsent drafts from both sent and reply scans, matches cached
+    /// replies by thread timestamp or tokenized `In-Reply-To`/`References`
+    /// identifiers, and returns sent messages with external recipients that have
+    /// no known cached reply (#370).
     private static func unansweredSentMessages(
         _ headers: [MessageHeader],
         sentFolderIDs: Set<String>,
+        draftFolderIDs: Set<String>,
         myEmailAddress: String?
     ) -> [MessageHeader] {
+        let eligibleHeaders = headers.filter { !isDraftHeader($0, draftFolderIDs: draftFolderIDs) }
+
         var myAddresses = Set<String>()
         if let normalized = myEmailAddress?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
            !normalized.isEmpty {
             myAddresses.insert(normalized)
         }
-        for header in headers where sentFolderIDs.contains(header.folderID) {
+        for header in eligibleHeaders where sentFolderIDs.contains(header.folderID) {
             let email = header.from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if !email.isEmpty {
                 myAddresses.insert(email)
@@ -401,9 +492,9 @@ enum MailboxChatStarterCandidateSelector {
 
         var sentHeaders: [MessageHeader] = []
         var sentMessageIDs = Set<String>()
-        for header in headers where isSentHeader(header) {
+        for header in eligibleHeaders where isSentHeader(header) {
             sentHeaders.append(header)
-            if let messageID = normalizedMessageID(header.messageID) {
+            if let messageID = singleMessageIdentifier(header.rfcMessageID) {
                 sentMessageIDs.insert(messageID)
             }
         }
@@ -424,8 +515,8 @@ enum MailboxChatStarterCandidateSelector {
 
         var incomingByThread: [String: Date] = [:]
         var repliedSentMessageIDs = Set<String>()
-        for header in headers where !isSentHeader(header) {
-            if let id = normalizedMessageID(header.messageID), sentMessageIDs.contains(id) {
+        for header in eligibleHeaders where !isSentHeader(header) {
+            if let id = singleMessageIdentifier(header.rfcMessageID), sentMessageIDs.contains(id) {
                 continue
             }
             if isMine(header.from) { continue }
@@ -442,7 +533,7 @@ enum MailboxChatStarterCandidateSelector {
                 guard !externalRecipients.isEmpty else { return false }
                 let threadKey = header.threadID.isEmpty ? header.id : header.threadID
                 let repliedInThread = (incomingByThread[threadKey] ?? .distantPast) > header.date
-                let repliedByHeader = normalizedMessageID(header.messageID)
+                let repliedByHeader = singleMessageIdentifier(header.rfcMessageID)
                     .map(repliedSentMessageIDs.contains) == true
                 return !repliedInThread && !repliedByHeader
             }
@@ -452,17 +543,18 @@ enum MailboxChatStarterCandidateSelector {
             }
     }
 
-    private static func referencedMessageIDs(_ header: MessageHeader) -> [String] {
-        ([header.inReplyTo] + (header.references ?? []).map(Optional.some))
-            .compactMap { normalizedMessageID($0) }
+    private static func messageIdentifiers(_ value: String?) -> [String] {
+        ((try? ConversationMembershipResolver.identifiers(in: value)) ?? [])
+            .map { $0.lowercased() }
     }
 
-    private static func normalizedMessageID(_ raw: String?) -> String? {
-        guard let raw else { return nil }
-        let trimmed = raw
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
-            .lowercased()
-        return trimmed.isEmpty ? nil : trimmed
+    private static func singleMessageIdentifier(_ value: String?) -> String? {
+        let identifiers = messageIdentifiers(value)
+        return identifiers.count == 1 ? identifiers.first : nil
+    }
+
+    private static func referencedMessageIDs(_ header: MessageHeader) -> [String] {
+        messageIdentifiers(header.inReplyTo)
+            + (header.references ?? []).flatMap { messageIdentifiers($0) }
     }
 }

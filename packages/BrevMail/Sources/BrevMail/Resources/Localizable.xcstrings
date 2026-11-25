@@ -8251,6 +8251,23 @@
         }
       }
     },
+    "I couldn't find any recent cached sent messages without a cached reply yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I couldn't find any recent cached sent messages without a cached reply yet."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeg fant ingen nylige bufrede sendte meldinger uten et bufret svar ennå."
+          }
+        }
+      }
+    },
     "I couldn't find cached messages across this account's folders that answer that yet.": {
       "extractionState": "manual",
       "localizations": {
