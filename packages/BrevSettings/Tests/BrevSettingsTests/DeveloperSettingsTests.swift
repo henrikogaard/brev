@@ -157,6 +157,10 @@ struct DeveloperSettingsTests {
         try sendSpaceKey(to: enabledHost.window)
         #expect(enabledBox.isOn == true)
 
+        // Holding Space (key repeat) must not repeatedly flip the switch.
+        try sendSpaceKey(to: enabledHost.window, isRepeat: true)
+        #expect(enabledBox.isOn == true)
+
         try sendSpaceKey(to: enabledHost.window)
         #expect(enabledBox.isOn == false)
 
@@ -199,7 +203,7 @@ struct DeveloperSettingsTests {
     }
 
     @MainActor
-    private func sendSpaceKey(to window: NSWindow) throws {
+    private func sendSpaceKey(to window: NSWindow, isRepeat: Bool = false) throws {
         let keyDown = try #require(NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
@@ -209,23 +213,25 @@ struct DeveloperSettingsTests {
             context: nil,
             characters: " ",
             charactersIgnoringModifiers: " ",
-            isARepeat: false,
-            keyCode: 49
-        ))
-        let keyUp = try #require(NSEvent.keyEvent(
-            with: .keyUp,
-            location: .zero,
-            modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber,
-            context: nil,
-            characters: " ",
-            charactersIgnoringModifiers: " ",
-            isARepeat: false,
+            isARepeat: isRepeat,
             keyCode: 49
         ))
         window.sendEvent(keyDown)
-        window.sendEvent(keyUp)
+        if !isRepeat {
+            let keyUp = try #require(NSEvent.keyEvent(
+                with: .keyUp,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber,
+                context: nil,
+                characters: " ",
+                charactersIgnoringModifiers: " ",
+                isARepeat: false,
+                keyCode: 49
+            ))
+            window.sendEvent(keyUp)
+        }
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     }
 

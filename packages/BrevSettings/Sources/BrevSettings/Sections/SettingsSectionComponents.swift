@@ -366,7 +366,7 @@ private struct SettingsHighContrastSwitchToggleStyle: ToggleStyle {
             }
             .buttonStyle(.plain)
             .focusable(isEnabled)
-            .onKeyPress(.space) {
+            .onKeyPress(.space, phases: .down) { _ in
                 guard isEnabled else { return .ignored }
                 withAnimation(.easeInOut(duration: 0.15)) {
                     configuration.isOn.toggle()

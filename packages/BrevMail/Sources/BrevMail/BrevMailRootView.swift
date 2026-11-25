@@ -2149,7 +2149,7 @@ public struct BrevMailRootView: View {
             )
             let quickReplyRouting = ComposeReplyAccountRouting.resolve(
                 replyingTo: quickReplyTarget,
-                in: sourceSections,
+                in: visibleSourceSections,
                 messageOwnerSourceID: navigation.selectedSourceID,
                 defaultSourceID: preferredDefaultSection(in: visibleSourceSections)?.id
             )
