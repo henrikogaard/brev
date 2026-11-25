@@ -558,6 +558,7 @@ public struct LocalDownloadedModelAIBackend: AIBackend {
     public let displayName: String
     public let transparencyLabel: String
     public let contextBudget: AIBackendContextBudget?
+    public let isOnDeviceZeroNetwork = true
 
     /// Catalog model ID configured for this backend.
     public let modelID: String

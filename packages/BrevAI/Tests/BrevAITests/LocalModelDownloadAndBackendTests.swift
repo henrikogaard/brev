@@ -411,6 +411,7 @@ struct LocalModelDownloadAndBackendTests {
 
         #expect(backend.transparencyLabel == OnDeviceAIPlatformLabel.transparencyLabel)
         #expect(backend.contextBudget == .onDevice)
+        #expect(backend.isOnDeviceZeroNetwork)
 
         // Before download: fails closed with zero runtime invocations and zero network calls.
         await #expect(throws: AIBackendError.self) {
@@ -522,6 +523,8 @@ struct LocalModelDownloadAndBackendTests {
         #expect(backend.identifier == LocalDownloadedModelAIBackend.backendIdentifier)
         #expect(backend.transparencyLabel == OnDeviceAIPlatformLabel.transparencyLabel)
         #expect(backend.contextBudget == .onDevice)
+        #expect(backend.isOnDeviceZeroNetwork)
+        #expect(backend.isOnDeviceZeroNetwork)
 
         // Per-account override routes specifically to the assigned account.
         let hostedDefault = try #require(AIProviderConfiguration(
