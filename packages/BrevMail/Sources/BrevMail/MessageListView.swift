@@ -903,14 +903,13 @@ public struct MessageListView: View {
     private func renderedSelectableHeaders(
         in presentation: MessageListPresentationSnapshot
     ) -> [MessageHeader] {
-        guard showsPeopleUpdatesBar, activePeopleUpdatesTab == .updates else {
-            return presentation.headers
-        }
-        return UpdatesSenderBundler.selectableHeaders(
-            from: presentation.filteredUngroupedHeaders,
+        PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: presentation,
+            showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+            activeTab: activePeopleUpdatesTab,
+            groupByDate: groupByDate,
             sourceID: sourceID,
-            expandedBundleIDs: expandedUpdateBundleIDs,
-            effectiveDateOverrides: presentation.ungroupedDateOverrides
+            expandedUpdateBundleIDs: expandedUpdateBundleIDs
         )
     }
 
@@ -974,6 +973,23 @@ public struct MessageListView: View {
                         threadChildrenByID: [:],
                         selectedRowID: selectedRowID,
                         allowsInlineThreading: false
+                    )
+                }
+            }
+        } else if PeopleUpdatesListLayoutPolicy.usesDateSectionHeaders(
+            showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+            activeTab: activePeopleUpdatesTab,
+            groupByDate: groupByDate
+        ) {
+            ForEach(presentation.dateSections) { section in
+                dateSectionHeaderRow(section)
+                ForEach(section.visibleHeaders) { header in
+                    messageRow(
+                        for: header,
+                        visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
+                        visibleCount: presentation.headers.count,
+                        threadChildrenByID: presentation.headersByThreadID,
+                        selectedRowID: selectedRowID
                     )
                 }
             }
@@ -2711,6 +2727,18 @@ public struct MessageListView: View {
             collapsedDateSectionIDs.remove(sectionID)
         } else {
             collapsedDateSectionIDs.insert(sectionID)
+            let visibleIDs = PeopleUpdatesListLayoutPolicy.visibleBulkRowIDs(
+                in: presentationSnapshot,
+                showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+                activeTab: activePeopleUpdatesTab,
+                groupByDate: groupByDate,
+                sourceID: sourceID,
+                expandedUpdateBundleIDs: expandedUpdateBundleIDs,
+                allowsInlineThreading: allowsInlineThreadDisclosure,
+                groupsThreads: groupByThread && backend.groupsMessagesIntoThreads,
+                expandedThreadIDs: expandedThreadIDs
+            )
+            navigation.bulkSelection.formIntersection(visibleIDs)
         }
     }
 
@@ -2749,15 +2777,10 @@ public struct MessageListView: View {
 
     #if os(macOS)
     /// Row IDs in the order the list shows them, skipping collapsed date
-    /// sections; the order Shift ranges and Select All work in.
+    /// sections and collapsed Updates bundles; the order Shift ranges and
+    /// Select All work in.
     private var visibleRowIDs: [MessageHeader.ID] {
-        let snapshot = presentationSnapshot
-        if showsPeopleUpdatesBar && activePeopleUpdatesTab == .updates {
-            return renderedSelectableHeaders(in: snapshot).map(\.id)
-        }
-        return groupByDate
-            ? snapshot.dateSections.flatMap(\.visibleHeaders).map(\.id)
-            : snapshot.headers.map(\.id)
+        renderedSelectableHeaders(in: presentationSnapshot).map(\.id)
     }
 
     private func applySelection(_ result: MessageListSelectionMath.Result) {

@@ -204,6 +204,41 @@ struct AssistantDestinationTests {
         #expect(!navigation.isAssistantSelected)
     }
 
+    @Test("Empty state hero provides four grounded starter prompts with English and Norwegian copy")
+    func emptyHeroStarterPromptsLocalized() throws {
+        let starters = AssistantStarterPrompt.defaults(locale: Locale(identifier: "en_US"))
+        #expect(starters.count == 4)
+        #expect(starters.map(\.title) == [
+            "What needs me today?",
+            "Who hasn't replied?",
+            "Summarize recent threads",
+            "Find recent attachments",
+        ])
+        #expect(starters.allSatisfy { !$0.subtitle.isEmpty && !$0.icon.isEmpty })
+
+        let strings = try LocalizationCatalogTestSupport.loadCatalogStrings()
+        for key in [
+            "On this Mac",
+            "Ask about your mail",
+            "Answers link to real conversations in your cached mail and only run when you press Send.",
+            "What needs me today?",
+            "Flagged and unread mail needing a reply",
+            "Who hasn't replied?",
+            "Threads still waiting on someone else",
+            "Summarize recent threads",
+            "Key decisions and open questions",
+            "Find recent attachments",
+            "PDFs, contracts, and shared files",
+        ] {
+            let entry = try #require(strings[key] as? [String: Any])
+            let locs = try #require(entry["localizations"] as? [String: Any])
+            let en = ((locs["en"] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+            let nb = ((locs["nb"] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+            #expect(en?.isEmpty == false)
+            #expect(nb?.isEmpty == false)
+        }
+    }
+
     @Test("Assistant prompt submission gate blocks disabled, unconsented, and missing-backend prompts")
     func availabilityGateBlocksDisabledOrUnconsented() {
         let disabled = MailboxChatAvailabilityState(

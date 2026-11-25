@@ -95,6 +95,33 @@ struct PeopleUpdatesClassifierTests {
             senderOverrideStore: store
         )
         #expect(receiptResult.bucket == .updates)
+
+        let vercelResult = PeopleUpdatesClassifier.classify(
+            header: Self.header(
+                id: "m5",
+                fromName: "Vercel",
+                fromEmail: "deployments@vercel.com",
+                subject: "Production deployment succeeded",
+                snippet: "harbour-data deployed from main with no build warnings."
+            ),
+            repliedSenderEmails: [],
+            senderOverrideStore: store
+        )
+        #expect(vercelResult.bucket == .updates)
+        #expect(vercelResult.signal == .automatedSenderAddress)
+
+        let ciSubjectResult = PeopleUpdatesClassifier.classify(
+            header: Self.header(
+                id: "m6",
+                fromName: "Buildkite",
+                fromEmail: "hello@buildkite.example",
+                subject: "Build failed on main",
+                snippet: "Pipeline failed in integration step."
+            ),
+            repliedSenderEmails: [],
+            senderOverrideStore: store
+        )
+        #expect(ciSubjectResult.bucket == .updates)
     }
 
     @Test("Classifier keeps direct people and senders the user has written to in People")
@@ -111,6 +138,17 @@ struct PeopleUpdatesClassifierTests {
         #expect(directResult.bucket == .people)
         #expect(directResult.signal == .directPerson)
 
+        // Human names whose suffix matches short role tokens (e.g. "ci", "bot") stay in People.
+        for (name, email) in [("Staci", "staci@example.com"), ("Abbot", "abbot@example.com")] {
+            let result = PeopleUpdatesClassifier.classify(
+                header: Self.header(id: email, fromName: name, fromEmail: email, subject: "Quick question"),
+                repliedSenderEmails: [],
+                senderOverrideStore: store
+            )
+            #expect(result.bucket == .people)
+            #expect(result.signal == .directPerson)
+        }
+
         // Even if the subject mentions "invoice", a sender I have written to stays in People.
         let replied = Self.header(id: "m2", fromName: "Sara", fromEmail: "sara@studio.example", subject: "Re: invoice question")
         let repliedResult = PeopleUpdatesClassifier.classify(
@@ -120,6 +158,224 @@ struct PeopleUpdatesClassifierTests {
         )
         #expect(repliedResult.bucket == .people)
         #expect(repliedResult.signal == .repliedToSender)
+    }
+
+    @Test("People tab keeps date section headers while Updates tab stays sender-bundled")
+    func peopleTabUsesDateSectionHeaders() {
+        #expect(PeopleUpdatesListLayoutPolicy.usesDateSectionHeaders(
+            showsPeopleUpdatesBar: true,
+            activeTab: .people,
+            groupByDate: true
+        ))
+        #expect(PeopleUpdatesListLayoutPolicy.usesDateSectionHeaders(
+            showsPeopleUpdatesBar: true,
+            activeTab: .all,
+            groupByDate: true
+        ))
+        #expect(!PeopleUpdatesListLayoutPolicy.usesDateSectionHeaders(
+            showsPeopleUpdatesBar: true,
+            activeTab: .updates,
+            groupByDate: true
+        ))
+        #expect(!PeopleUpdatesListLayoutPolicy.usesDateSectionHeaders(
+            showsPeopleUpdatesBar: true,
+            activeTab: .people,
+            groupByDate: false
+        ))
+    }
+
+    @Test("Collapsed People date sections are excluded from both bulk selectable headers and visible row IDs (#370)")
+    func collapsedPeopleDateSectionExcludedFromBulkSelectAndVisibleRows() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = calendar.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: 15, minute: 0))!
+
+        let todayMsg = MessageHeader(
+            id: "today-1",
+            threadID: "t-today",
+            folderID: "inbox",
+            from: Correspondent(name: "Maya", email: "maya@example.com"),
+            subject: "Today's check-in",
+            snippet: "Quick sync at 4?",
+            date: referenceDate.addingTimeInterval(-1800)
+        )
+        let yesterdayMsg = MessageHeader(
+            id: "yesterday-1",
+            threadID: "t-yesterday",
+            folderID: "inbox",
+            from: Correspondent(name: "Daniel", email: "daniel@example.com"),
+            subject: "Yesterday's notes",
+            snippet: "Following up on Monday.",
+            date: referenceDate.addingTimeInterval(-86400)
+        )
+        let snapshot = MessageListPresentationSnapshot(
+            headers: [todayMsg, yesterdayMsg],
+            pinnedMessageIDs: [],
+            groupByDate: true,
+            collapsedDateSectionIDs: ["Yesterday"],
+            referenceDate: referenceDate,
+            calendar: calendar,
+            sourceHeaders: [todayMsg, yesterdayMsg],
+            filteredUngroupedHeaders: [todayMsg, yesterdayMsg],
+            navigationHeaders: [todayMsg, yesterdayMsg],
+            sourceID: Self.source,
+            groupsThreads: true
+        )
+
+        // People tab: both bulk Select All projection and visible date-section rows exclude collapsed Yesterday.
+        let peopleSelectable = PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: snapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .people,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: []
+        )
+        let expectedVisibleIDs = snapshot.dateSections.flatMap(\.visibleHeaders).map(\.id)
+        #expect(expectedVisibleIDs == ["today-1"])
+        #expect(peopleSelectable.map(\.id) == expectedVisibleIDs)
+
+        // All tab: matches the exact same collapsed-section visibility.
+        let allSelectable = PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: snapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .all,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: []
+        )
+        #expect(allSelectable.map(\.id) == ["today-1"])
+
+        // Updates tab: preserves the sender-bundle projection rather than date sections.
+        let update1 = Self.header(id: "u1", fromName: "Linear", fromEmail: "notifications@linear.app", subject: "One")
+        let update2 = Self.header(id: "u2", fromName: "Linear", fromEmail: "notifications@linear.app", subject: "Two")
+        let updateSolo = Self.header(id: "u3", fromName: "Vercel", fromEmail: "deployments@vercel.com", subject: "Deploy")
+        let updatesSnapshot = MessageListPresentationSnapshot(
+            headers: [update1, update2, updateSolo],
+            pinnedMessageIDs: [],
+            groupByDate: true,
+            collapsedDateSectionIDs: ["Today"],
+            referenceDate: Self.now,
+            calendar: calendar,
+            sourceHeaders: [update1, update2, updateSolo],
+            filteredUngroupedHeaders: [update1, update2, updateSolo],
+            navigationHeaders: [update1, update2, updateSolo],
+            sourceID: Self.source,
+            groupsThreads: true
+        )
+        let updatesSelectableCollapsed = PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: updatesSnapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .updates,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: []
+        )
+        #expect(updatesSelectableCollapsed.map(\.id) == ["u3"])
+
+        let updatesSelectableExpanded = PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: updatesSnapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .updates,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: ["notifications@linear.app"]
+        )
+        #expect(updatesSelectableExpanded.map(\.id) == ["u1", "u2", "u3"])
+    }
+
+    @Test(
+        "Collapsing Yesterday preserves selected inline children inside an expanded Today thread while pruning Yesterday (#370)"
+    )
+    func collapsingDateSectionPreservesVisibleInlineChildrenAndPrunesCollapsedSection() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = calendar.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: 15, minute: 0))!
+
+        let todayParent = MessageHeader(
+            id: "today-parent",
+            threadID: "t-today",
+            folderID: "inbox",
+            from: Correspondent(name: "Maya", email: "maya@example.com"),
+            subject: "Re: Q4 Launch",
+            snippet: "Latest reply today.",
+            date: referenceDate.addingTimeInterval(-1800)
+        )
+        let todayChild = MessageHeader(
+            id: "today-child",
+            threadID: "t-today",
+            folderID: "inbox",
+            from: Correspondent(name: "Daniel", email: "daniel@example.com"),
+            subject: "Q4 Launch",
+            snippet: "Original message earlier today.",
+            date: referenceDate.addingTimeInterval(-7200)
+        )
+        let yesterdayParent = MessageHeader(
+            id: "yesterday-parent",
+            threadID: "t-yesterday",
+            folderID: "inbox",
+            from: Correspondent(name: "Ingrid", email: "ingrid@northwind.example"),
+            subject: "Re: Stavanger rollout",
+            snippet: "Latest reply yesterday.",
+            date: referenceDate.addingTimeInterval(-86400)
+        )
+        let yesterdayChild = MessageHeader(
+            id: "yesterday-child",
+            threadID: "t-yesterday",
+            folderID: "inbox",
+            from: Correspondent(name: "Marte", email: "marte@northwind.example"),
+            subject: "Stavanger rollout",
+            snippet: "Earlier message yesterday.",
+            date: referenceDate.addingTimeInterval(-90000)
+        )
+
+        let allHeaders = [todayParent, todayChild, yesterdayParent, yesterdayChild]
+        let collapsedYesterdaySnapshot = MessageListPresentationSnapshot(
+            headers: [todayParent, yesterdayParent],
+            pinnedMessageIDs: [],
+            groupByDate: true,
+            collapsedDateSectionIDs: ["Yesterday"],
+            referenceDate: referenceDate,
+            calendar: calendar,
+            sourceHeaders: allHeaders,
+            filteredUngroupedHeaders: allHeaders,
+            navigationHeaders: allHeaders,
+            sourceID: Self.source,
+            groupsThreads: true
+        )
+
+        var bulkSelection: Set<MessageHeader.ID> = [
+            "today-parent",
+            "today-child",
+            "yesterday-parent",
+            "yesterday-child",
+        ]
+        let visibleBulkIDs = PeopleUpdatesListLayoutPolicy.visibleBulkRowIDs(
+            in: collapsedYesterdaySnapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .people,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: [],
+            allowsInlineThreading: true,
+            groupsThreads: true,
+            expandedThreadIDs: ["t-today", "t-yesterday"]
+        )
+        bulkSelection.formIntersection(visibleBulkIDs)
+
+        // Today's expanded parent + inline child stay selected; Yesterday's parent + child are pruned.
+        #expect(bulkSelection == Set(["today-parent", "today-child"]))
+
+        // Keyboard selection unit stays top-level rows only.
+        let keyboardRows = PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: collapsedYesterdaySnapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .people,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: []
+        )
+        #expect(keyboardRows.map(\.id) == ["today-parent"])
     }
 
     @Test("Sender overrides persist across reloads and take precedence over heuristics")

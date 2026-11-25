@@ -313,35 +313,37 @@ struct SubscriptionsView: View {
     }
 
     private func row(for group: SubscriptionSenderGroup) -> some View {
-        HStack(spacing: BrevSpacing.md) {
-            Text(verbatim: InitialsAvatar.initials(displayName: group.senderName, email: group.senderEmail))
-                .brevFont(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(theme.textSecondary.color)
-                .frame(width: avatarSize, height: avatarSize)
-                .background(Circle().fill(theme.bgTertiary.color))
-                .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            HStack(alignment: .center, spacing: BrevSpacing.md) {
+                Text(verbatim: InitialsAvatar.initials(displayName: group.senderName, email: group.senderEmail))
+                    .brevFont(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(width: avatarSize, height: avatarSize)
+                    .background(Circle().fill(theme.bgTertiary.color))
+                    .accessibilityHidden(true)
 
-            Button {
-                if let latest = group.headers.first {
-                    onSelectMessage(group.sourceID, latest)
+                Button {
+                    if let latest = group.headers.first {
+                        onSelectMessage(group.sourceID, latest)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: group.senderName)
+                            .brevFont(.body)
+                            .fontWeight(.medium)
+                            .foregroundStyle(theme.textPrimary.color)
+                            .lineLimit(1)
+                        Text(verbatim: subtitle(for: group))
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textSecondary.color)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: group.senderName)
-                        .brevFont(.body)
-                        .fontWeight(.medium)
-                        .foregroundStyle(theme.textPrimary.color)
-                        .lineLimit(1)
-                    Text(verbatim: subtitle(for: group))
-                        .brevFont(.caption)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             HStack(spacing: BrevSpacing.xs) {
                 Button {
@@ -349,6 +351,8 @@ struct SubscriptionsView: View {
                 } label: {
                     Text("Unsubscribe", bundle: .module)
                         .brevFont(.caption)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -371,20 +375,26 @@ struct SubscriptionsView: View {
                     } label: {
                         Text("Archive all", bundle: .module)
                             .brevFont(.caption)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
+
+                Spacer(minLength: 0)
             }
-        }
-        .padding(.vertical, BrevSpacing.xs)
-        .overlay(alignment: .bottomLeading) {
+            .padding(.leading, avatarSize + BrevSpacing.md)
+
             if archiveErrorGroupID == group.id {
                 Text("Couldn't archive all messages from this sender.", bundle: .module)
                     .brevFont(.caption)
                     .foregroundStyle(theme.danger.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, avatarSize + BrevSpacing.md)
             }
         }
+        .padding(.vertical, BrevSpacing.sm)
     }
 
     private func subtitle(for group: SubscriptionSenderGroup) -> String {

@@ -18,6 +18,25 @@ import Foundation
 typealias MailboxChatSearch = @Sendable (SearchQuery, MailSourceID?) async throws -> [MessageHeader]
 typealias MailboxChatActionExecute = @Sendable (MailboxActionAgentPlan) async throws -> String
 
+/// Bridges `@MainActor` backend resolution into a `@Sendable` `MailboxChatSearch`
+/// closure so off-main execution inside `MailboxChatController` never traps with
+/// `_dispatch_assert_queue_fail` (#369).
+enum MailboxChatSearchBridge {
+    static func makeSearch(
+        resolveBackend: @escaping @MainActor @Sendable (MailSourceID?) -> any MailBackend
+    ) -> MailboxChatSearch {
+        { query, sourceID in
+            let targetBackend = await MainActor.run {
+                resolveBackend(sourceID)
+            }
+            if let sourceID {
+                return try await targetBackend.search(query, sourceID: sourceID)
+            }
+            return try await targetBackend.search(query)
+        }
+    }
+}
+
 @MainActor
 final class MailboxChatController: ObservableObject {
     typealias Search = MailboxChatSearch
@@ -97,18 +116,24 @@ final class MailboxChatController: ObservableObject {
         self.search = search
     }
 
-    func send(userText: String) async {
+    func send(
+        userText: String,
+        starterIntent: MailboxChatStarterIntent? = nil,
+        referenceDate: Date = Date()
+    ) async {
         let message = userText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return }
 
         turns.append(.user(message))
 
-        switch MailboxChatIntentRouter.classify(message) {
-        case .action:
-            await sendAction(message: message)
-            return
-        case .answer:
-            break
+        if starterIntent == nil {
+            switch MailboxChatIntentRouter.classify(message) {
+            case .action:
+                await sendAction(message: message)
+                return
+            case .answer:
+                break
+            }
         }
 
         guard isScopeReadyForAnswers else {
@@ -138,25 +163,61 @@ final class MailboxChatController: ObservableObject {
         let maxBytes = aiBackend.contextBudget.map { min(baseMaxBytes, $0.maxTotalContextBytes) } ?? baseMaxBytes
         let scope = scope
         let focusedFolder = focusedFolder
+        let actionFolders = actionFolders
         let actionSourceScope = actionSourceScope
+        let sentFolderIDs = Set(actionFolders.filter { $0.role == .sent }.map(\.id))
+        let draftFolderIDs = Set(actionFolders.filter { $0.role == .drafts }.map(\.id))
+        let primarySentFolderID = actionFolders.first(where: { $0.role == .sent })?.id
 
         let task = Task<MailboxChatTurnKind?, Never> {
             do {
-                let headers = try await search(
-                    MailboxChatScopeSearchPolicy.answerSearchQuery(
-                        question: message,
-                        scope: scope,
-                        folderID: focusedFolder?.id
-                    ),
-                    sourceID
+                let queries = MailboxChatScopeSearchPolicy.answerSearchQueries(
+                    question: message,
+                    scope: scope,
+                    folderID: focusedFolder?.id,
+                    sentFolderID: primarySentFolderID,
+                    starterIntent: starterIntent,
+                    referenceDate: referenceDate
+                )
+                var fetchedHeaders: [MessageHeader] = []
+                var fetchedIDs = Set<MessageHeader.ID>()
+                for query in queries {
+                    // For `.needsMeToday`, skip the unfiltered recent-fallback scan when
+                    // the targeted flagged + unread scans already fill the context budget.
+                    if starterIntent == .needsMeToday,
+                       query.isFlagged == nil,
+                       query.isUnread == nil,
+                       fetchedIDs.count >= maxMessages {
+                        continue
+                    }
+                    let batch = try await search(query, sourceID)
+                    for header in batch {
+                        fetchedIDs.insert(header.id)
+                    }
+                    fetchedHeaders.append(contentsOf: batch)
+                }
+
+                let headers = MailboxChatStarterCandidateSelector.select(
+                    headers: fetchedHeaders,
+                    intent: starterIntent,
+                    sentFolderIDs: sentFolderIDs,
+                    draftFolderIDs: draftFolderIDs,
+                    myEmailAddress: actionSourceScope.mailboxAddress,
+                    maxMessages: maxMessages
                 )
 
                 guard !headers.isEmpty else {
-                    return .clarification(
-                        text: MailboxChatScopeSearchPolicy.emptySearchMessage(
+                    let emptyText = starterIntent == .whoHasntReplied
+                        ? String(
+                            localized: "I couldn't find any recent cached sent messages without a cached reply yet.",
+                            bundle: .module
+                        )
+                        : MailboxChatScopeSearchPolicy.emptySearchMessage(
                             scope: scope,
                             folderName: focusedFolder?.name
-                        ),
+                        )
+                    return .clarification(
+                        text: emptyText,
                         providerLabel: MailboxChatProviderLabelPolicy.localClarification()
                     )
                 }
@@ -170,6 +231,9 @@ final class MailboxChatController: ObservableObject {
                     ),
                     sourceID: sourceID,
                     headers: headers,
+                    starterIntent: starterIntent,
+                    sentFolderIDs: sentFolderIDs,
+                    myEmailAddress: actionSourceScope.mailboxAddress,
                     maxMessages: maxMessages,
                     maxBytes: maxBytes
                 )
@@ -427,6 +491,9 @@ private struct MailboxChatAnswerContext {
         scopeDescription: String,
         sourceID: MailSourceID?,
         headers: [MessageHeader],
+        starterIntent: MailboxChatStarterIntent? = nil,
+        sentFolderIDs: Set<String> = [],
+        myEmailAddress: String? = nil,
         maxMessages: Int,
         maxBytes: Int
     ) -> Self {
@@ -434,6 +501,7 @@ private struct MailboxChatAnswerContext {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
+        let normalizedMyEmail = myEmailAddress?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         var includedHeaders: [MessageHeader] = []
         var contextBlocks: [String] = []
@@ -441,9 +509,18 @@ private struct MailboxChatAnswerContext {
 
         for header in headers.prefix(maxMessages) {
             let remainingBytes = max(maxBytes - usedBytes, 0)
+            let isSentItem = sentFolderIDs.contains(header.folderID)
+                || (normalizedMyEmail?.isEmpty == false
+                    && header.from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedMyEmail)
+            let includeRecipients = starterIntent == .whoHasntReplied || isSentItem
+            let statusNote: String? = starterIntent == .whoHasntReplied
+                ? "No known cached reply (uncached folders or replies may not be checked)"
+                : nil
             let block = contextBlock(
                 for: header,
                 formatter: formatter,
+                includeRecipients: includeRecipients,
+                statusNote: statusNote,
                 maxBytes: remainingBytes
             )
             guard !block.isEmpty else {
@@ -496,12 +573,16 @@ private struct MailboxChatAnswerContext {
         ]
         .joined(separator: "\n")
 
+        let instruction = starterIntent == .whoHasntReplied
+            ? "Answer only from the provided cached sent-mail context. Name recipients from To/Cc and state that no cached reply was found rather than claiming confirmed absence outside cached mail."
+            : "Answer only from the provided cached mailbox context. Cite supporting subjects and dates when possible."
+
         return Self(
             messages: [
                 AIMessage(role: .system, content: systemPrompt),
                 AIMessage(role: .user, content: questionPrompt)
             ],
-            instruction: "Answer only from the provided cached mailbox context. Cite supporting subjects and dates when possible.",
+            instruction: instruction,
             citations: citations
         )
     }
@@ -514,22 +595,43 @@ private struct MailboxChatAnswerContext {
         return cleaned.isEmpty ? fallback : cleaned
     }
 
+    private static func formattedCorrespondents(_ correspondents: [Correspondent]) -> String {
+        correspondents
+            .map { "\($0.displayName) <\($0.email)>" }
+            .joined(separator: ", ")
+    }
+
     private static func contextBlock(
         for header: MessageHeader,
         formatter: DateFormatter,
+        includeRecipients: Bool,
+        statusNote: String?,
         maxBytes: Int
     ) -> String {
         guard maxBytes > 0 else { return "" }
 
-        let dateLine = "Date: \(formatter.string(from: header.date))"
-        let fromLine = "From: \(header.from.displayName) <\(header.from.email)>"
-        let subjectLine = "Subject: \(sanitized(header.subject, fallback: "(No subject)"))"
+        var prefixLines = [
+            "Date: \(formatter.string(from: header.date))",
+            "From: \(header.from.displayName) <\(header.from.email)>"
+        ]
+        if includeRecipients {
+            if !header.to.isEmpty {
+                prefixLines.append("To: \(formattedCorrespondents(header.to))")
+            }
+            if !header.cc.isEmpty {
+                prefixLines.append("Cc: \(formattedCorrespondents(header.cc))")
+            }
+        }
+        prefixLines.append("Subject: \(sanitized(header.subject, fallback: "(No subject)"))")
+        if let statusNote, !statusNote.isEmpty {
+            prefixLines.append("Reply status: \(statusNote)")
+        }
+
         let snippetPrefix = "Snippet: "
-        let newlines = "\n\n\n"
-        let fixedPrefix = [dateLine, fromLine, subjectLine].joined(separator: "\n")
+        let fixedPrefix = prefixLines.joined(separator: "\n")
         let availableSnippetBytes = maxBytes
             - fixedPrefix.lengthOfBytes(using: .utf8)
-            - newlines.lengthOfBytes(using: .utf8)
+            - "\n".lengthOfBytes(using: .utf8)
             - snippetPrefix.lengthOfBytes(using: .utf8)
 
         let snippet = truncatedSnippet(
@@ -537,13 +639,8 @@ private struct MailboxChatAnswerContext {
             maxBytes: max(availableSnippetBytes, 0)
         )
 
-        let block = [
-            dateLine,
-            fromLine,
-            subjectLine,
-            "\(snippetPrefix)\(snippet)"
-        ]
-        .joined(separator: "\n")
+        let block = (prefixLines + ["\(snippetPrefix)\(snippet)"])
+            .joined(separator: "\n")
 
         guard block.lengthOfBytes(using: .utf8) <= maxBytes else {
             return ""

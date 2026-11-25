@@ -45,6 +45,64 @@ enum AssistantPromptSubmissionGate {
     }
 }
 
+/// Grounded starter prompt displayed in the empty Assistant hero (#294).
+struct AssistantStarterPrompt: Identifiable, Equatable {
+    let id: String
+    let intent: MailboxChatStarterIntent
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    static func defaults(locale: Locale = .current) -> [Self] {
+        [
+            Self(
+                id: "needs-me-today",
+                intent: .needsMeToday,
+                icon: "sun.max",
+                title: String(localized: "What needs me today?", bundle: .module, locale: locale),
+                subtitle: String(
+                    localized: "Flagged and unread mail needing a reply",
+                    bundle: .module,
+                    locale: locale
+                )
+            ),
+            Self(
+                id: "who-hasnt-replied",
+                intent: .whoHasntReplied,
+                icon: "clock.arrow.circlepath",
+                title: String(localized: "Who hasn't replied?", bundle: .module, locale: locale),
+                subtitle: String(
+                    localized: "Threads still waiting on someone else",
+                    bundle: .module,
+                    locale: locale
+                )
+            ),
+            Self(
+                id: "summarize-recent",
+                intent: .summarizeRecentThreads,
+                icon: "text.alignleft",
+                title: String(localized: "Summarize recent threads", bundle: .module, locale: locale),
+                subtitle: String(
+                    localized: "Key decisions and open questions",
+                    bundle: .module,
+                    locale: locale
+                )
+            ),
+            Self(
+                id: "find-attachments",
+                intent: .findRecentAttachments,
+                icon: "paperclip",
+                title: String(localized: "Find recent attachments", bundle: .module, locale: locale),
+                subtitle: String(
+                    localized: "PDFs, contracts, and shared files",
+                    bundle: .module,
+                    locale: locale
+                )
+            ),
+        ]
+    }
+}
+
 /// Full-pane Assistant sidebar destination (#294, ADR-0047 amendment): reuses
 /// `MailboxChatController`, renders grounded conversation cards grouped by
 /// priority, and keeps AI invocation strictly user-initiated with visible
@@ -75,11 +133,6 @@ struct AssistantDestinationView: View {
     @State private var draftPrompt = ""
     @State private var confirmationPhrases: [UUID: String] = [:]
     @State private var showAIConsent = false
-
-    private static let suggestedStarters: [String] = [
-        String(localized: "What needs me today?", bundle: .module),
-        String(localized: "Who hasn't replied?", bundle: .module),
-    ]
 
     init(
         sourceID: MailSourceID?,
@@ -138,11 +191,23 @@ struct AssistantDestinationView: View {
     var body: some View {
         VStack(spacing: 0) {
             headerBar
-            ScrollView {
-                VStack(alignment: .leading, spacing: BrevSpacing.lg) {
-                    if controller.turns.isEmpty {
-                        welcomeState
-                    } else {
+            if controller.turns.isEmpty {
+                GeometryReader { proxy in
+                    ScrollView {
+                        VStack {
+                            Spacer(minLength: BrevSpacing.lg)
+                            welcomeState
+                            Spacer(minLength: BrevSpacing.xl)
+                        }
+                        .frame(maxWidth: 620)
+                        .padding(.horizontal, BrevSpacing.xl)
+                        .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+                    }
+                    .scrollContentBackground(.hidden)
+                }
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: BrevSpacing.lg) {
                         ForEach(Array(controller.turns.enumerated()), id: \.offset) { _, turn in
                             turnView(turn)
                         }
@@ -157,14 +222,18 @@ struct AssistantDestinationView: View {
                             .padding(.vertical, BrevSpacing.xs)
                         }
                     }
+                    .frame(maxWidth: 680, alignment: .leading)
+                    .padding(.horizontal, BrevSpacing.xl)
+                    .padding(.vertical, BrevSpacing.xl)
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: 680, alignment: .leading)
-                .padding(.horizontal, BrevSpacing.xl)
-                .padding(.vertical, BrevSpacing.xl)
-                .frame(maxWidth: .infinity)
+                .scrollContentBackground(.hidden)
+                promptBar
+                    .frame(maxWidth: 680)
+                    .padding(.horizontal, BrevSpacing.xl)
+                    .padding(.vertical, BrevSpacing.md)
+                    .frame(maxWidth: .infinity)
             }
-            .scrollContentBackground(.hidden)
-            promptBar
         }
         .background(theme.bgPrimary.color)
         .onChange(of: sourceID) { _, _ in
@@ -231,39 +300,99 @@ struct AssistantDestinationView: View {
         }
     }
 
+    private var heroTrustLabel: String {
+        aiBackend?.transparencyLabel ?? String(localized: "On this Mac", bundle: .module, locale: locale)
+    }
+
     private var welcomeState: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.md) {
-            Text("Assistant", bundle: .module)
-                .brevFont(.largeTitle)
-                .foregroundStyle(theme.textPrimary.color)
-            Text(
-                "Ask about your cached mail. Answers link to real conversations and never run until you press Send.",
-                bundle: .module
-            )
-            .brevFont(.body)
-            .foregroundStyle(theme.textSecondary.color)
-            .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: BrevSpacing.sm) {
-                ForEach(Self.suggestedStarters, id: \.self) { starter in
+        let starters = AssistantStarterPrompt.defaults(locale: locale)
+        let columns = [
+            GridItem(.flexible(), spacing: BrevSpacing.sm),
+            GridItem(.flexible(), spacing: BrevSpacing.sm),
+        ]
+        return VStack(spacing: BrevSpacing.lg) {
+            VStack(spacing: BrevSpacing.sm) {
+                HStack(spacing: BrevSpacing.xs) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(theme.accent.color)
+                        .accessibilityHidden(true)
+                    Text(verbatim: heroTrustLabel)
+                        .brevFont(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+                .padding(.horizontal, BrevSpacing.sm)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(theme.bgSecondary.color))
+                .overlay(
+                    Capsule().strokeBorder(theme.border.color, lineWidth: 0.5)
+                )
+
+                Text("Ask about your mail", bundle: .module)
+                    .brevFont(.largeTitle)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .multilineTextAlignment(.center)
+
+                Text(
+                    "Answers link to real conversations in your cached mail and only run when you press Send.",
+                    bundle: .module
+                )
+                .brevFont(.callout)
+                .foregroundStyle(theme.textSecondary.color)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 460)
+            }
+
+            LazyVGrid(columns: columns, spacing: BrevSpacing.sm) {
+                ForEach(starters) { starter in
                     Button {
-                        submit(starter)
+                        submit(starter.title, starterIntent: starter.intent)
                     } label: {
-                        Text(verbatim: starter)
-                            .brevFont(.callout)
-                            .foregroundStyle(theme.textPrimary.color)
-                            .padding(.horizontal, BrevSpacing.md)
-                            .padding(.vertical, BrevSpacing.xs)
-                            .background(Capsule().fill(theme.bgSecondary.color))
-                            .overlay(
-                                Capsule().strokeBorder(theme.border.color, lineWidth: 0.5)
-                            )
+                        HStack(alignment: .top, spacing: BrevSpacing.sm) {
+                            Image(systemName: starter.icon)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(theme.accent.color)
+                                .frame(width: 18, height: 18)
+                                .padding(.top, 1)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(verbatim: starter.title)
+                                    .brevFont(.callout)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(theme.textPrimary.color)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text(verbatim: starter.subtitle)
+                                    .brevFont(.caption)
+                                    .foregroundStyle(theme.textSecondary.color)
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(BrevSpacing.md)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .background(
+                            RoundedRectangle(cornerRadius: BrevRadius.md)
+                                .fill(theme.bgSecondary.color)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: BrevRadius.md)
+                                .strokeBorder(theme.border.color, lineWidth: 0.5)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: BrevRadius.md))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.top, BrevSpacing.xs)
+
+            promptBar
         }
-        .padding(.top, BrevSpacing.xl)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -513,13 +642,9 @@ struct AssistantDestinationView: View {
             RoundedRectangle(cornerRadius: BrevRadius.lg)
                 .strokeBorder(theme.border.color, lineWidth: 0.5)
         )
-        .frame(maxWidth: 680)
-        .padding(.horizontal, BrevSpacing.xl)
-        .padding(.vertical, BrevSpacing.md)
-        .frame(maxWidth: .infinity)
     }
 
-    private func submit(_ prompt: String) {
+    private func submit(_ prompt: String, starterIntent: MailboxChatStarterIntent? = nil) {
         switch AssistantPromptSubmissionGate.evaluate(
             prompt: prompt,
             isSending: controller.isSending,
@@ -534,7 +659,7 @@ struct AssistantDestinationView: View {
         case .send(let trimmed):
             draftPrompt = ""
             Task {
-                await controller.send(userText: trimmed)
+                await controller.send(userText: trimmed, starterIntent: starterIntent)
             }
         }
     }

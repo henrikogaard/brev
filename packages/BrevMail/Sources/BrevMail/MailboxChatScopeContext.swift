@@ -116,20 +116,115 @@ struct MailboxChatScopeContext: Equatable, Sendable {
     }
 }
 
+/// Explicit retrieval intent for built-in Assistant starter prompts so clicking
+/// a starter queries cached mailbox metadata (date range, attachments) instead
+/// of searching FTS5 for the localized card wording (#294, #370).
+enum MailboxChatStarterIntent: String, Equatable, Sendable {
+    case needsMeToday
+    case whoHasntReplied
+    case summarizeRecentThreads
+    case findRecentAttachments
+}
+
 /// Builds cache-only search queries for mailbox chat Q&A by scope.
 enum MailboxChatScopeSearchPolicy {
+    private static let dayInterval: TimeInterval = 24 * 60 * 60
+
     static func answerSearchQuery(
         question: String,
         scope: MailboxChatScope,
-        folderID: String?
+        folderID: String?,
+        starterIntent: MailboxChatStarterIntent? = nil,
+        referenceDate: Date = Date()
     ) -> SearchQuery {
+        let queryText: String
+        let dateRange: ClosedRange<Date>?
+        let hasAttachments: Bool?
+
+        switch starterIntent {
+        case .needsMeToday:
+            queryText = ""
+            dateRange = referenceDate.addingTimeInterval(-7 * dayInterval) ... referenceDate
+            hasAttachments = nil
+        case .whoHasntReplied:
+            queryText = ""
+            dateRange = referenceDate.addingTimeInterval(-30 * dayInterval) ... referenceDate
+            hasAttachments = nil
+        case .summarizeRecentThreads:
+            queryText = ""
+            dateRange = referenceDate.addingTimeInterval(-14 * dayInterval) ... referenceDate
+            hasAttachments = nil
+        case .findRecentAttachments:
+            queryText = ""
+            dateRange = referenceDate.addingTimeInterval(-30 * dayInterval) ... referenceDate
+            hasAttachments = true
+        case nil:
+            queryText = question
+            dateRange = nil
+            hasAttachments = nil
+        }
+
         switch scope {
         case .sender(let email):
-            return SearchQuery(text: question, from: email, execution: .cacheOnly)
+            return SearchQuery(
+                text: queryText,
+                from: email,
+                dateRange: dateRange,
+                hasAttachments: hasAttachments,
+                execution: .cacheOnly
+            )
         case .folder:
-            return SearchQuery(text: question, folderID: folderID, execution: .cacheOnly)
+            return SearchQuery(
+                text: queryText,
+                folderID: folderID,
+                dateRange: dateRange,
+                hasAttachments: hasAttachments,
+                execution: .cacheOnly
+            )
         case .account:
-            return SearchQuery(text: question, execution: .cacheOnly)
+            return SearchQuery(
+                text: queryText,
+                dateRange: dateRange,
+                hasAttachments: hasAttachments,
+                execution: .cacheOnly
+            )
+        }
+    }
+
+    /// Returns the ordered set of cache-only queries needed to gather complete
+    /// candidates for a starter intent before ranking and applying context limits
+    /// (#370). Always stays strictly `.cacheOnly` and preserves scope constraints.
+    static func answerSearchQueries(
+        question: String,
+        scope: MailboxChatScope,
+        folderID: String?,
+        sentFolderID: String? = nil,
+        starterIntent: MailboxChatStarterIntent? = nil,
+        referenceDate: Date = Date()
+    ) -> [SearchQuery] {
+        let base = answerSearchQuery(
+            question: question,
+            scope: scope,
+            folderID: folderID,
+            starterIntent: starterIntent,
+            referenceDate: referenceDate
+        )
+        switch starterIntent {
+        case .needsMeToday:
+            var flagged = base
+            flagged.isFlagged = true
+            var unread = base
+            unread.isUnread = true
+            return [flagged, unread, base]
+        case .whoHasntReplied:
+            if scope == .account, let sentFolderID {
+                var sentQuery = base
+                sentQuery.folderID = sentFolderID
+                return [sentQuery, base]
+            }
+            return [base]
+        case .summarizeRecentThreads, .findRecentAttachments, nil:
+            return [base]
         }
     }
 
@@ -173,5 +268,325 @@ enum MailboxChatScopeSearchPolicy {
             accountLabel.map { "all folders in \($0)" }
                 ?? "all folders in the current account"
         }
+    }
+}
+
+/// Ranks and filters cached mailbox headers for structured Assistant starters
+/// before `MailboxChatAnswerContext` applies the message/byte budget (#370).
+enum MailboxChatStarterCandidateSelector {
+    static func select(
+        headers: [MessageHeader],
+        intent: MailboxChatStarterIntent?,
+        sentFolderIDs: Set<String>,
+        draftFolderIDs: Set<String> = [],
+        myEmailAddress: String?,
+        maxMessages: Int
+    ) -> [MessageHeader] {
+        // Freeform Q&A preserves the search backend's exact relevance/recency order.
+        guard let intent else { return headers }
+
+        // Deduplicate merged starter batches by message ID while keeping newest first.
+        var seenIDs = Set<MessageHeader.ID>()
+        let unique = headers
+            .sorted { lhs, rhs in
+                if lhs.date != rhs.date { return lhs.date > rhs.date }
+                return lhs.id < rhs.id
+            }
+            .filter { seenIDs.insert($0.id).inserted }
+
+        switch intent {
+        case .needsMeToday:
+            return prioritizeAttentionItems(unique)
+        case .summarizeRecentThreads:
+            return diversifyByThread(unique, maxMessages: maxMessages)
+        case .whoHasntReplied:
+            return unansweredSentMessages(
+                unique,
+                sentFolderIDs: sentFolderIDs,
+                draftFolderIDs: draftFolderIDs,
+                myEmailAddress: myEmailAddress
+            )
+        case .findRecentAttachments:
+            return unique.filter(\.hasAttachments)
+        }
+    }
+
+    private static func prioritizeAttentionItems(_ headers: [MessageHeader]) -> [MessageHeader] {
+        headers.sorted { lhs, rhs in
+            let lhsRank = attentionRank(lhs)
+            let rhsRank = attentionRank(rhs)
+            if lhsRank != rhsRank { return lhsRank < rhsRank }
+            if lhs.date != rhs.date { return lhs.date > rhs.date }
+            return lhs.id < rhs.id
+        }
+    }
+
+    private static func attentionRank(_ header: MessageHeader) -> Int {
+        switch (header.isFlagged, !header.isRead) {
+        case (true, true): 0
+        case (true, false): 1
+        case (false, true): 2
+        case (false, false): 3
+        }
+    }
+
+    /// Matches `ConversationMembershipResolver`'s ownership fingerprint (including
+    /// normalized sorted `To` recipients) so true physical copies stay unified
+    /// while reused Message-IDs sent to different recipients remain separate (#370).
+    private struct OwnershipFingerprint: Hashable {
+        let sender: String
+        let recipients: [String]
+        let date: Date
+        let subject: String
+
+        init(_ header: MessageHeader) {
+            sender = header.from.email.lowercased()
+            recipients = header.to.map { $0.email.lowercased() }.sorted()
+            date = header.date
+            subject = header.subject
+        }
+    }
+
+    /// Groups candidates by conversation using both native `threadID`s and
+    /// `ConversationMembershipResolver` RFC link identifiers (so unthreaded
+    /// IMAP replies with per-message `threadID`s still group into one
+    /// conversation), then allocates slots round-robin across conversations (#370).
+    private static func diversifyByThread(
+        _ headers: [MessageHeader],
+        maxMessages: Int
+    ) -> [MessageHeader] {
+        guard !headers.isEmpty else { return [] }
+
+        var parent = Array(headers.indices)
+        func find(_ index: Int) -> Int {
+            var root = index
+            while parent[root] != root {
+                root = parent[root]
+            }
+            var current = index
+            while parent[current] != root {
+                let next = parent[current]
+                parent[current] = root
+                current = next
+            }
+            return root
+        }
+        func union(_ lhs: Int, _ rhs: Int) {
+            let rootA = find(lhs)
+            let rootB = find(rhs)
+            if rootA != rootB {
+                // Keep the smaller index (newest header) as canonical root.
+                if rootA < rootB {
+                    parent[rootB] = rootA
+                } else {
+                    parent[rootA] = rootB
+                }
+            }
+        }
+
+        // Track owners of each own Message-ID (case-preserving, matching
+        // `ConversationMembershipResolver`) so duplicate/reused IDs across
+        // distinct messages do not bridge unrelated conversations.
+        var ownIDFingerprints: [String: Set<OwnershipFingerprint>] = [:]
+        for header in headers {
+            if let ownID = singleMessageIdentifier(header.rfcMessageID) {
+                ownIDFingerprints[ownID, default: []].insert(OwnershipFingerprint(header))
+            }
+        }
+        let unsafeIdentifiers = Set(ownIDFingerprints.filter { $0.value.count > 1 }.map(\.key))
+
+        var firstIndexByThreadID: [String: Int] = [:]
+        var firstIndexByLinkID: [String: Int] = [:]
+
+        for (index, header) in headers.enumerated() {
+            if !header.threadID.isEmpty {
+                if let existing = firstIndexByThreadID[header.threadID] {
+                    union(existing, index)
+                } else {
+                    firstIndexByThreadID[header.threadID] = index
+                }
+            }
+            let linkIDs = ConversationMembershipResolver.cachedLinkIdentifiers(for: header) ?? []
+            for linkID in linkIDs where !unsafeIdentifiers.contains(linkID) {
+                if let existing = firstIndexByLinkID[linkID] {
+                    union(existing, index)
+                } else {
+                    firstIndexByLinkID[linkID] = index
+                }
+            }
+        }
+
+        var buckets: [Int: [MessageHeader]] = [:]
+        var orderedRoots: [Int] = []
+        for (index, header) in headers.enumerated() {
+            let root = find(index)
+            if buckets[root] == nil {
+                orderedRoots.append(root)
+                buckets[root] = [header]
+            } else {
+                buckets[root, default: []].append(header)
+            }
+        }
+
+        // Round-robin across recent conversations: every distinct conversation
+        // gets its newest representative first before any busy thread consumes
+        // additional context slots.
+        var result: [MessageHeader] = []
+        let limit = max(maxMessages, 0)
+        var depth = 0
+        while result.count < limit {
+            var addedInRound = false
+            for root in orderedRoots {
+                guard result.count < limit else { break }
+                if let members = buckets[root], depth < members.count {
+                    result.append(members[depth])
+                    addedInRound = true
+                }
+            }
+            if !addedInRound { break }
+            depth += 1
+        }
+        return result
+    }
+
+    private static let canonicalDraftFolderMarkers: Set<String> = [
+        "draft",
+        "drafts",
+        "\\draft",
+        "\\drafts",
+        "[gmail]/drafts",
+    ]
+
+    private static let exactProviderDraftLabelMarkers: Set<String> = [
+        "draft",
+        "\\draft",
+        "\\drafts",
+        "[gmail]/drafts",
+    ]
+
+    private static func isDraftHeader(
+        _ header: MessageHeader,
+        draftFolderIDs: Set<String>
+    ) -> Bool {
+        if draftFolderIDs.contains(header.folderID) {
+            return true
+        }
+        let normalizedFolderID = header.folderID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if draftFolderIDs.isEmpty, canonicalDraftFolderMarkers.contains(normalizedFolderID) {
+            return true
+        }
+        if exactProviderDraftLabelMarkers.contains(normalizedFolderID) {
+            return true
+        }
+        return header.labels.contains { label in
+            if draftFolderIDs.contains(label) { return true }
+            let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return exactProviderDraftLabelMarkers.contains(normalized)
+        }
+    }
+
+    /// Matches `TodayDigestBuilder` and `NoReplyFollowUpReconciler`:
+    /// excludes unsent drafts from both sent and reply scans, matches cached
+    /// replies by thread timestamp or tokenized `In-Reply-To`/`References`
+    /// identifiers, and returns sent messages with external recipients that have
+    /// no known cached reply (#370).
+    private static func unansweredSentMessages(
+        _ headers: [MessageHeader],
+        sentFolderIDs: Set<String>,
+        draftFolderIDs: Set<String>,
+        myEmailAddress: String?
+    ) -> [MessageHeader] {
+        let eligibleHeaders = headers.filter { !isDraftHeader($0, draftFolderIDs: draftFolderIDs) }
+
+        var myAddresses = Set<String>()
+        if let normalized = myEmailAddress?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !normalized.isEmpty {
+            myAddresses.insert(normalized)
+        }
+        for header in eligibleHeaders where sentFolderIDs.contains(header.folderID) {
+            let email = header.from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !email.isEmpty {
+                myAddresses.insert(email)
+            }
+        }
+
+        func isMine(_ correspondent: Correspondent) -> Bool {
+            let normalized = correspondent.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return !normalized.isEmpty && myAddresses.contains(normalized)
+        }
+
+        func isSentHeader(_ header: MessageHeader) -> Bool {
+            if sentFolderIDs.contains(header.folderID) { return true }
+            if !myAddresses.isEmpty, isMine(header.from) { return true }
+            return sentFolderIDs.isEmpty && header.folderID.lowercased().contains("sent")
+        }
+
+        var sentHeaders: [MessageHeader] = []
+        var sentMessageIDs = Set<String>()
+        for header in eligibleHeaders where isSentHeader(header) {
+            sentHeaders.append(header)
+            if let messageID = singleMessageIdentifier(header.messageID) {
+                sentMessageIDs.insert(messageID)
+            }
+        }
+        guard !sentHeaders.isEmpty else { return [] }
+
+        // Keep newest sent message per thread so repeated follow-ups don't duplicate.
+        var sentLatestByThread: [String: MessageHeader] = [:]
+        for header in sentHeaders {
+            let key = header.threadID.isEmpty ? header.id : header.threadID
+            if let existing = sentLatestByThread[key] {
+                if header.date > existing.date {
+                    sentLatestByThread[key] = header
+                }
+            } else {
+                sentLatestByThread[key] = header
+            }
+        }
+
+        var incomingByThread: [String: Date] = [:]
+        var repliedSentMessageIDs = Set<String>()
+        for header in eligibleHeaders where !isSentHeader(header) {
+            if let id = singleMessageIdentifier(header.messageID), sentMessageIDs.contains(id) {
+                continue
+            }
+            if isMine(header.from) { continue }
+            let threadKey = header.threadID.isEmpty ? header.id : header.threadID
+            incomingByThread[threadKey] = max(incomingByThread[threadKey] ?? .distantPast, header.date)
+            for ref in referencedMessageIDs(header) where sentMessageIDs.contains(ref) {
+                repliedSentMessageIDs.insert(ref)
+            }
+        }
+
+        return sentLatestByThread.values
+            .filter { header in
+                let externalRecipients = (header.to + header.cc).filter { !isMine($0) }
+                guard !externalRecipients.isEmpty else { return false }
+                let threadKey = header.threadID.isEmpty ? header.id : header.threadID
+                let repliedInThread = (incomingByThread[threadKey] ?? .distantPast) > header.date
+                let repliedByHeader = singleMessageIdentifier(header.messageID)
+                    .map(repliedSentMessageIDs.contains) == true
+                return !repliedInThread && !repliedByHeader
+            }
+            .sorted { lhs, rhs in
+                if lhs.date != rhs.date { return lhs.date > rhs.date }
+                return lhs.id < rhs.id
+            }
+    }
+
+    private static func messageIdentifiers(_ value: String?) -> [String] {
+        (try? ConversationMembershipResolver.identifiers(in: value)) ?? []
+    }
+
+    private static func singleMessageIdentifier(_ value: String?) -> String? {
+        let identifiers = messageIdentifiers(value)
+        return identifiers.count == 1 ? identifiers.first : nil
+    }
+
+    private static func referencedMessageIDs(_ header: MessageHeader) -> [String] {
+        messageIdentifiers(header.inReplyTo)
+            + (header.references ?? []).flatMap { messageIdentifiers($0) }
     }
 }

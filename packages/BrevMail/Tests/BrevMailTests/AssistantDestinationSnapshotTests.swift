@@ -40,6 +40,34 @@ struct AssistantDestinationSnapshotTests {
         }
     }
 
+    @Test("Assistant empty state renders centered hero, 2x2 starter cards, and inline composer", arguments: ["light", "dark"])
+    func assistantEmptyState(_ mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let source = MailSourceID(accountID: "acct", mailboxID: "box")
+        let view = AssistantDestinationView(
+            sourceID: source,
+            aiBackend: SnapshotAI(),
+            search: { _, _ in [] },
+            onOpenCard: { _ in },
+            onReplyCard: { _ in },
+            preloadedTurns: []
+        )
+        .frame(width: 720, height: 680)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .environment(\.locale, Locale(identifier: "en_US"))
+
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 720, height: 680)),
+            named: "assistant-empty-hero-" + mode,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     @Test("Assistant renders grouped grounded cards and action chips", arguments: ["light", "dark"])
     func assistantAnswerCards(_ mode: String) {
         let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight

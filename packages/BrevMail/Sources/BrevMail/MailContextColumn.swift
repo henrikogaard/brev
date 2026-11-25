@@ -217,14 +217,15 @@ struct MailContextColumn: View {
     }
 
     private var mailboxChatSearch: MailboxChatSearch {
-        { query, sourceID in
-            guard let backend else {
+        let capturedBackend = backend
+        return { query, sourceID in
+            guard let capturedBackend else {
                 throw MailBackendError.notConnected
             }
             if let sourceID {
-                return try await backend.search(query, sourceID: sourceID)
+                return try await capturedBackend.search(query, sourceID: sourceID)
             }
-            return try await backend.search(query)
+            return try await capturedBackend.search(query)
         }
     }
 

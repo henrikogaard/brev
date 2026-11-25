@@ -4,6 +4,12 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- macOS Assistant crash fix and UI/UX Polish Wave A (#369, #294, #295, #300):
+  - Fixed P1 macOS Assistant `_dispatch_assert_queue_fail` crash on prompt submit (#369) by routing backend resolution through `MailboxChatSearchBridge` on `@MainActor` before running off-main local searches (and removing `@MainActor` `View` captures from iOS `MailboxChatPanel` and macOS `MailContextColumn` search closures).
+  - Polished the macOS Assistant empty state (#294) into a centered hero with a subtle provider trust badge (`"On this Mac"`), concise headline and subtitle, a 2×2 grid of four grounded localized starter prompt cards (`en` + `nb`), and an inline composer that docks to the bottom once conversation turns exist.
+  - Improved the macOS `⌘K` Command Palette (#300) to rank contextual **Mail Actions** (`New Message`, `Reply`, `Archive`, `Snooze`, `Get New Mail`) and **Jump To** (`Assistant`, `Today`, `Inbox`, `Settings…`) ahead of macOS app/window boilerplate (`About…`, `Hide…`, `Hide Others`, `Show All`, `Quit…`), with subtle unfiltered section headers, right-aligned shortcut keycaps, and a theme-token rounded selected-row highlight fill.
+  - Polished macOS Subscriptions and the People/Updates inbox split (#295): moved `Unsubscribe` and `Archive all` onto a non-truncating secondary action row in `SubscriptionsView` so full labels never ellipsize at default 3-pane list widths, classified automated CI/deployment/infra notifications (such as Vercel `"Production deployment succeeded"`) under **Updates** instead of **People** without misclassifying human local parts, and kept subtle date section headers (`Today`, `Yesterday`, `This week`) visible under the `People` filter.
+
 - Rich compose Dark Mode contrast (#361): fixed iOS `UITextView` rich compose
   body text and typing attributes staying dark when switching from Light to Dark
   Mode (including `UITraitUserInterfaceStyle` updates and Dark Mode draft

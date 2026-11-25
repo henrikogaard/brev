@@ -1347,6 +1347,7 @@ public struct BrevMailRootView: View {
             // mailbox chat half of the shared column presents as a sheet
             // instead, with the same scope/search wiring the macOS
             // inspector uses.
+            let chatBackend = selectedBackend
             NavigationStack {
                 MailboxChatPanel(
                     scope: MailContextColumnScopePolicy.chatScope(
@@ -1364,9 +1365,9 @@ public struct BrevMailRootView: View {
                     },
                     search: { query, sourceID in
                         if let sourceID {
-                            return try await selectedBackend.search(query, sourceID: sourceID)
+                            return try await chatBackend.search(query, sourceID: sourceID)
                         }
-                        return try await selectedBackend.search(query)
+                        return try await chatBackend.search(query)
                     },
                     onOpenCitation: { citation in
                         openMailContextMessage(citation.recentItem)
@@ -1433,6 +1434,13 @@ public struct BrevMailRootView: View {
                     exitTriage()
                 }
                 navigation.selectAssistantDestination(preserving: preservedSourceID)
+            },
+            openToday: {
+                guard navigation.presentedSheet == nil, !isCommandMutationBlocked else { return }
+                if triageSession != nil {
+                    exitTriage()
+                }
+                navigation.selectTodaySmartView()
             },
             startTriage: {
                 guard navigation.presentedSheet == nil, !isCommandMutationBlocked,
@@ -1862,6 +1870,15 @@ public struct BrevMailRootView: View {
         let resolvedSource = resolvedAssistantSourceID
         let resolvedOwner = backend(for: resolvedSource)
         let resolvedAIBackend = aiBackend(for: resolvedOwner.account)
+        let currentBackends = currentBackendsProvider
+        let fallbackBackend = selectedBackend
+        let assistantSearch = MailboxChatSearchBridge.makeSearch { sourceID in
+            if let sourceID,
+               let match = currentBackends().first(where: { $0.account.id == sourceID.accountID }) {
+                return match
+            }
+            return fallbackBackend
+        }
         return AssistantDestinationView(
             sourceID: resolvedSource,
             aiBackend: resolvedAIBackend,
@@ -1873,12 +1890,7 @@ public struct BrevMailRootView: View {
             executeAction: { plan in
                 try await executeMailboxAction(plan: plan)
             },
-            search: { query, sourceID in
-                if let sourceID {
-                    return try await backend(for: sourceID).search(query, sourceID: sourceID)
-                }
-                return try await selectedBackend.search(query)
-            },
+            search: assistantSearch,
             onOpenCard: { card in
                 openMailContextMessage(card.citation.recentItem)
             },

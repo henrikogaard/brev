@@ -149,24 +149,124 @@ final class InboxSenderCategoryOverrideStore: Equatable, @unchecked Sendable {
     }
 }
 
+/// Determines whether the message list renders date section headers and which
+/// rows are currently visible and selectable under the active People / Updates / All
+/// inbox split (#295, #370).
+enum PeopleUpdatesListLayoutPolicy {
+    static func usesDateSectionHeaders(
+        showsPeopleUpdatesBar: Bool,
+        activeTab: InboxSplitTab,
+        groupByDate: Bool
+    ) -> Bool {
+        guard groupByDate else { return false }
+        if showsPeopleUpdatesBar && activeTab == .updates {
+            return false
+        }
+        return true
+    }
+
+    /// Returns the exact visible, selectable headers matching what is currently
+    /// rendered in the list — excluding rows hidden inside collapsed date
+    /// sections (People, All, or standard list) and preserving the sender-bundle
+    /// projection for Updates (#295, #370).
+    static func selectableHeaders(
+        in presentation: MessageListPresentationSnapshot,
+        showsPeopleUpdatesBar: Bool,
+        activeTab: InboxSplitTab,
+        groupByDate: Bool,
+        sourceID: MailSourceID?,
+        expandedUpdateBundleIDs: Set<String>
+    ) -> [MessageHeader] {
+        if showsPeopleUpdatesBar && activeTab == .updates {
+            return UpdatesSenderBundler.selectableHeaders(
+                from: presentation.filteredUngroupedHeaders,
+                sourceID: sourceID,
+                expandedBundleIDs: expandedUpdateBundleIDs,
+                effectiveDateOverrides: presentation.ungroupedDateOverrides
+            )
+        }
+        if usesDateSectionHeaders(
+            showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+            activeTab: activeTab,
+            groupByDate: groupByDate
+        ) {
+            return presentation.dateSections.flatMap(\.visibleHeaders)
+        }
+        return presentation.headers
+    }
+
+    /// Returns the full set of currently rendered message IDs that may stay in
+    /// `bulkSelection` — including both visible top-level rows AND visible
+    /// inline thread children inside expanded threads in open date sections,
+    /// while excluding rows and children hidden by collapsed sections or
+    /// collapsed Updates bundles (#370).
+    static func visibleBulkRowIDs(
+        in presentation: MessageListPresentationSnapshot,
+        showsPeopleUpdatesBar: Bool,
+        activeTab: InboxSplitTab,
+        groupByDate: Bool,
+        sourceID: MailSourceID?,
+        expandedUpdateBundleIDs: Set<String>,
+        allowsInlineThreading: Bool,
+        groupsThreads: Bool,
+        expandedThreadIDs: Set<String>
+    ) -> Set<MessageHeader.ID> {
+        let topLevel = selectableHeaders(
+            in: presentation,
+            showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+            activeTab: activeTab,
+            groupByDate: groupByDate,
+            sourceID: sourceID,
+            expandedUpdateBundleIDs: expandedUpdateBundleIDs
+        )
+        var visibleIDs = Set(topLevel.map(\.id))
+        guard allowsInlineThreading, groupsThreads else { return visibleIDs }
+        for header in topLevel where expandedThreadIDs.contains(header.threadID) {
+            if let members = presentation.headersByThreadID[header.threadID] {
+                for member in members {
+                    visibleIDs.insert(member.id)
+                }
+            }
+        }
+        return visibleIDs
+    }
+}
+
 /// Deterministic, local-only classifier for the People / Updates inbox split (ADR-0035 amendment).
 enum PeopleUpdatesClassifier {
-    private static let automatedLocalPartPatterns = [
+    private static let automatedLocalPartSubstrings = [
         "noreply",
         "no-reply",
         "donotreply",
         "do-not-reply",
         "mailer-daemon",
-        "notifications@",
-        "notification@",
-        "newsletter@",
-        "newsletters@",
-        "updates@",
-        "notices@",
-        "receipts@",
-        "billing@",
-        "marketing@",
-        "digest@",
+    ]
+
+    private static let automatedExactLocalParts: Set<String> = [
+        "notifications",
+        "notification",
+        "newsletter",
+        "newsletters",
+        "updates",
+        "notices",
+        "receipts",
+        "billing",
+        "marketing",
+        "digest",
+        "deployments",
+        "deploy",
+        "builds",
+        "build",
+        "ci",
+        "alerts",
+        "alert",
+        "status",
+        "releases",
+        "release",
+        "bot",
+        "automated",
+        "devops",
+        "monitoring",
     ]
 
     private static let updateKeywords = [
@@ -187,7 +287,29 @@ enum PeopleUpdatesClassifier {
         "discount",
         "coupon",
         "statement",
+        "production deployment",
+        "preview deployment",
+        "deployment succeeded",
+        "deployment failed",
+        "deployment ready",
+        "deploy succeeded",
+        "deploy failed",
+        "build succeeded",
+        "build failed",
+        "pipeline succeeded",
+        "pipeline failed",
+        "workflow run",
     ]
+
+    private static func isAutomatedSenderEmail(_ senderEmail: String) -> Bool {
+        let localPart = senderEmail.split(separator: "@", maxSplits: 1).first.map(String.init) ?? ""
+        guard !localPart.isEmpty else { return false }
+        if automatedLocalPartSubstrings.contains(where: { localPart.contains($0) }) {
+            return true
+        }
+        let baseLocalPart = localPart.split(separator: "+", maxSplits: 1).first.map(String.init) ?? localPart
+        return automatedExactLocalParts.contains(baseLocalPart)
+    }
 
     static func classify(
         header: MessageHeader,
@@ -218,7 +340,7 @@ enum PeopleUpdatesClassifier {
             )
         }
 
-        if automatedLocalPartPatterns.contains(where: { senderEmail.contains($0) }) {
+        if isAutomatedSenderEmail(senderEmail) {
             return PeopleUpdatesClassificationResult(
                 bucket: .updates,
                 signal: .automatedSenderAddress
