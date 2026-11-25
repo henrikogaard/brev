@@ -89,6 +89,124 @@ struct MailboxChatControllerTests {
         #expect(!citations.isEmpty)
     }
 
+    @Test("Assistant starter intents build structured cache-only metadata queries and retrieve non-matching subjects (#370)")
+    @MainActor
+    func assistantStarterIntentsRetrieveRelevantCachedMailWithoutMatchingCardWording() async throws {
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let day: TimeInterval = 24 * 60 * 60
+        let sourceID = MailSourceID(accountID: "account-1", mailboxID: "mailbox-1")
+
+        let signedContract = MessageHeader(
+            id: "msg-contract",
+            threadID: "t-contract",
+            folderID: "inbox",
+            from: Correspondent(name: "Ingrid Solberg", email: "ingrid@northwind.example"),
+            subject: "Signed contract",
+            snippet: "Attached PDF for Q4 sign-off.",
+            date: now.addingTimeInterval(-2 * day),
+            isRead: false,
+            isFlagged: false,
+            hasAttachments: true
+        )
+        let budgetReview = MessageHeader(
+            id: "msg-budget",
+            threadID: "t-budget",
+            folderID: "inbox",
+            from: Correspondent(name: "Daniel Reyes", email: "daniel@example.com"),
+            subject: "Q4 budget review",
+            snippet: "Can we finalize numbers before Friday?",
+            date: now.addingTimeInterval(-3 * day),
+            isRead: false,
+            isFlagged: true,
+            hasAttachments: false
+        )
+        let ancientAttachment = MessageHeader(
+            id: "msg-old-attachment",
+            threadID: "t-old",
+            folderID: "inbox",
+            from: Correspondent(name: "Archive", email: "archive@example.com"),
+            subject: "2025 lease agreement",
+            snippet: "PDF copy for your records.",
+            date: now.addingTimeInterval(-45 * day),
+            isRead: true,
+            isFlagged: false,
+            hasAttachments: true
+        )
+        let cachedHeaders = [signedContract, budgetReview, ancientAttachment]
+
+        // Verify structured queries directly.
+        let summaryQuery = MailboxChatScopeSearchPolicy.answerSearchQuery(
+            question: "Summarize recent threads",
+            scope: .account,
+            folderID: nil,
+            starterIntent: .summarizeRecentThreads,
+            referenceDate: now
+        )
+        #expect(summaryQuery.text.isEmpty)
+        #expect(summaryQuery.execution == .cacheOnly)
+        #expect(summaryQuery.hasAttachments == nil)
+        #expect(summaryQuery.dateRange == now.addingTimeInterval(-14 * day) ... now)
+        #expect(summaryQuery.hasSearchCriteria)
+
+        let attachmentsQuery = MailboxChatScopeSearchPolicy.answerSearchQuery(
+            question: "Find recent attachments",
+            scope: .account,
+            folderID: nil,
+            starterIntent: .findRecentAttachments,
+            referenceDate: now
+        )
+        #expect(attachmentsQuery.text.isEmpty)
+        #expect(attachmentsQuery.execution == .cacheOnly)
+        #expect(attachmentsQuery.hasAttachments == true)
+        #expect(attachmentsQuery.dateRange == now.addingTimeInterval(-30 * day) ... now)
+        #expect(attachmentsQuery.hasSearchCriteria)
+
+        // End-to-end through MailboxChatController using real SearchQuery.matches filtering.
+        let aiBackend = RecordingAIBackend(responseText: "Here is what I found.")
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: sourceID,
+            aiBackend: aiBackend,
+            search: { query, _ in
+                guard query.hasSearchCriteria else { return [] }
+                return cachedHeaders.filter { query.matches($0) }
+            }
+        )
+
+        await controller.send(
+            userText: "Find recent attachments",
+            starterIntent: .findRecentAttachments,
+            referenceDate: now
+        )
+        guard case .answer(_, let attachmentCitations, _)? = controller.turns.last else {
+            Issue.record("Expected answer turn for findRecentAttachments starter")
+            return
+        }
+        #expect(attachmentCitations.map(\.id) == ["msg-contract"])
+
+        await controller.send(
+            userText: "Summarize recent threads",
+            starterIntent: .summarizeRecentThreads,
+            referenceDate: now
+        )
+        guard case .answer(_, let recentCitations, _)? = controller.turns.last else {
+            Issue.record("Expected answer turn for summarizeRecentThreads starter")
+            return
+        }
+        #expect(recentCitations.map(\.id) == ["msg-contract", "msg-budget"])
+
+        await controller.send(
+            userText: "What needs me today?",
+            starterIntent: .needsMeToday,
+            referenceDate: now
+        )
+        guard case .answer(_, let todayCitations, _)? = controller.turns.last else {
+            Issue.record("Expected answer turn for needsMeToday starter")
+            return
+        }
+        #expect(todayCitations.map(\.id) == ["msg-contract", "msg-budget"])
+    }
+
     @Test("account scope without source id returns a local clarification")
     @MainActor
     func accountScopeWithoutSourceIDReturnsALocalClarification() async throws {

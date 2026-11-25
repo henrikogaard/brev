@@ -116,18 +116,24 @@ final class MailboxChatController: ObservableObject {
         self.search = search
     }
 
-    func send(userText: String) async {
+    func send(
+        userText: String,
+        starterIntent: MailboxChatStarterIntent? = nil,
+        referenceDate: Date = Date()
+    ) async {
         let message = userText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return }
 
         turns.append(.user(message))
 
-        switch MailboxChatIntentRouter.classify(message) {
-        case .action:
-            await sendAction(message: message)
-            return
-        case .answer:
-            break
+        if starterIntent == nil {
+            switch MailboxChatIntentRouter.classify(message) {
+            case .action:
+                await sendAction(message: message)
+                return
+            case .answer:
+                break
+            }
         }
 
         guard isScopeReadyForAnswers else {
@@ -165,7 +171,9 @@ final class MailboxChatController: ObservableObject {
                     MailboxChatScopeSearchPolicy.answerSearchQuery(
                         question: message,
                         scope: scope,
-                        folderID: focusedFolder?.id
+                        folderID: focusedFolder?.id,
+                        starterIntent: starterIntent,
+                        referenceDate: referenceDate
                     ),
                     sourceID
                 )

@@ -903,14 +903,13 @@ public struct MessageListView: View {
     private func renderedSelectableHeaders(
         in presentation: MessageListPresentationSnapshot
     ) -> [MessageHeader] {
-        guard showsPeopleUpdatesBar, activePeopleUpdatesTab == .updates else {
-            return presentation.headers
-        }
-        return UpdatesSenderBundler.selectableHeaders(
-            from: presentation.filteredUngroupedHeaders,
+        PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: presentation,
+            showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+            activeTab: activePeopleUpdatesTab,
+            groupByDate: groupByDate,
             sourceID: sourceID,
-            expandedBundleIDs: expandedUpdateBundleIDs,
-            effectiveDateOverrides: presentation.ungroupedDateOverrides
+            expandedUpdateBundleIDs: expandedUpdateBundleIDs
         )
     }
 
@@ -2728,6 +2727,8 @@ public struct MessageListView: View {
             collapsedDateSectionIDs.remove(sectionID)
         } else {
             collapsedDateSectionIDs.insert(sectionID)
+            let visibleIDs = Set(renderedSelectableHeaders(in: presentationSnapshot).map(\.id))
+            navigation.bulkSelection.formIntersection(visibleIDs)
         }
     }
 
@@ -2766,15 +2767,10 @@ public struct MessageListView: View {
 
     #if os(macOS)
     /// Row IDs in the order the list shows them, skipping collapsed date
-    /// sections; the order Shift ranges and Select All work in.
+    /// sections and collapsed Updates bundles; the order Shift ranges and
+    /// Select All work in.
     private var visibleRowIDs: [MessageHeader.ID] {
-        let snapshot = presentationSnapshot
-        if showsPeopleUpdatesBar && activePeopleUpdatesTab == .updates {
-            return renderedSelectableHeaders(in: snapshot).map(\.id)
-        }
-        return groupByDate
-            ? snapshot.dateSections.flatMap(\.visibleHeaders).map(\.id)
-            : snapshot.headers.map(\.id)
+        renderedSelectableHeaders(in: presentationSnapshot).map(\.id)
     }
 
     private func applySelection(_ result: MessageListSelectionMath.Result) {

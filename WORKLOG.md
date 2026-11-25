@@ -17,7 +17,11 @@
     - Full `BrevMacOS` Debug build (`Brev.xcworkspace`, `platform=macOS,arch=arm64`) — `** BUILD SUCCEEDED **`.
     - Full `BrevIOS` Debug build (`Brev.xcworkspace`, iOS 27.2 Simulator `iPhone 18 Pro`) — `** BUILD SUCCEEDED **`.
 - Skipped: live interactive native macOS app run against Apple Intelligence (off-main actor-hop fix is proven deterministically by `MailboxChatControllerTests.searchBridgeHopsToMainActorOffMain` asserting `dispatchPrecondition(condition: .onQueue(.main))` from `Task.detached` and through `MailboxChatController.send(userText:)`; interactive QA remains for Henrik).
-- Next: commit and push `fix/polish-assistant-palette-subscriptions`, move `#369` to `In review`, and open PR targeting `main` with `Fixes #369`.
+- Review fixes round 1 (PR #370 — Devin 🔴 + 🟡 + 🔍 findings; Codex 0 findings):
+  - `PRRT_kwDOUHC-Ds68BFYK`: added `MailboxChatStarterIntent` (`.needsMeToday`, `.whoHasntReplied`, `.summarizeRecentThreads`, `.findRecentAttachments`) in `MailboxChatScopeContext.swift`, routed `AssistantStarterPrompt` through `AssistantDestinationView.submit` and `MailboxChatController.send(userText:starterIntent:referenceDate:)` into structured bounded cache-only metadata queries (`dateRange` + `hasAttachments: true` for attachments, empty `text`) instead of literal card-title FTS searches; added `MailboxChatControllerTests.assistantStarterIntentsRetrieveRelevantCachedMailWithoutMatchingCardWording`.
+  - `PRRT_kwDOUHC-Ds68BFZi`: added shared `PeopleUpdatesListLayoutPolicy.selectableHeaders(...)` used by both `MessageListView.renderedSelectableHeaders` (bulk action bar / Select All) and `visibleRowIDs` (keyboard selection) so collapsed date sections in `People` and `All` are excluded while preserving `Updates` sender-bundle projection, and pruned `navigation.bulkSelection` on date-section collapse in `toggleDateSection(_:)`; added `PeopleUpdatesClassifierTests.collapsedPeopleDateSectionExcludedFromBulkSelectAndVisibleRows`.
+  - `PRRT_kwDOUHC-Ds68BFbO`: confirmed `MailCommands` / `MailMessageCommandActions` has no focused Snooze command; kept `MailCommands` scope unchanged while retaining proactive `mailActionPriority` ranking when Snooze is present.
+- Next: verify review fixes locally (headless) and on `macmini-devbox` (`/tmp/brev-polish-a-r1`, cleaned up afterwards), commit, push once, and reply + resolve all 3 review threads on PR #370.
 
 ## 2026-11-25 — Agent — Issues #360, #362, #363 (iOS Settings Menu, Landscape/AXL Clipping, `nb` AX Hints)
 

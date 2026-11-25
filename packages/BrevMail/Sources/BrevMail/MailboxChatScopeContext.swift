@@ -116,20 +116,78 @@ struct MailboxChatScopeContext: Equatable, Sendable {
     }
 }
 
+/// Explicit retrieval intent for built-in Assistant starter prompts so clicking
+/// a starter queries cached mailbox metadata (date range, attachments) instead
+/// of searching FTS5 for the localized card wording (#294, #370).
+enum MailboxChatStarterIntent: String, Equatable, Sendable {
+    case needsMeToday
+    case whoHasntReplied
+    case summarizeRecentThreads
+    case findRecentAttachments
+}
+
 /// Builds cache-only search queries for mailbox chat Q&A by scope.
 enum MailboxChatScopeSearchPolicy {
+    private static let dayInterval: TimeInterval = 24 * 60 * 60
+
     static func answerSearchQuery(
         question: String,
         scope: MailboxChatScope,
-        folderID: String?
+        folderID: String?,
+        starterIntent: MailboxChatStarterIntent? = nil,
+        referenceDate: Date = Date()
     ) -> SearchQuery {
+        let queryText: String
+        let dateRange: ClosedRange<Date>?
+        let hasAttachments: Bool?
+
+        switch starterIntent {
+        case .needsMeToday:
+            queryText = ""
+            dateRange = referenceDate.addingTimeInterval(-7 * dayInterval) ... referenceDate
+            hasAttachments = nil
+        case .whoHasntReplied:
+            queryText = ""
+            dateRange = referenceDate.addingTimeInterval(-30 * dayInterval) ... referenceDate
+            hasAttachments = nil
+        case .summarizeRecentThreads:
+            queryText = ""
+            dateRange = referenceDate.addingTimeInterval(-14 * dayInterval) ... referenceDate
+            hasAttachments = nil
+        case .findRecentAttachments:
+            queryText = ""
+            dateRange = referenceDate.addingTimeInterval(-30 * dayInterval) ... referenceDate
+            hasAttachments = true
+        case nil:
+            queryText = question
+            dateRange = nil
+            hasAttachments = nil
+        }
+
         switch scope {
         case .sender(let email):
-            return SearchQuery(text: question, from: email, execution: .cacheOnly)
+            return SearchQuery(
+                text: queryText,
+                from: email,
+                dateRange: dateRange,
+                hasAttachments: hasAttachments,
+                execution: .cacheOnly
+            )
         case .folder:
-            return SearchQuery(text: question, folderID: folderID, execution: .cacheOnly)
+            return SearchQuery(
+                text: queryText,
+                folderID: folderID,
+                dateRange: dateRange,
+                hasAttachments: hasAttachments,
+                execution: .cacheOnly
+            )
         case .account:
-            return SearchQuery(text: question, execution: .cacheOnly)
+            return SearchQuery(
+                text: queryText,
+                dateRange: dateRange,
+                hasAttachments: hasAttachments,
+                execution: .cacheOnly
+            )
         }
     }
 

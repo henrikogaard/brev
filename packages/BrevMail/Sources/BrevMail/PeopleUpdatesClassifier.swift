@@ -149,8 +149,9 @@ final class InboxSenderCategoryOverrideStore: Equatable, @unchecked Sendable {
     }
 }
 
-/// Determines whether the message list renders date section headers under
-/// the active People / Updates / All inbox split (#295).
+/// Determines whether the message list renders date section headers and which
+/// rows are currently visible and selectable under the active People / Updates / All
+/// inbox split (#295, #370).
 enum PeopleUpdatesListLayoutPolicy {
     static func usesDateSectionHeaders(
         showsPeopleUpdatesBar: Bool,
@@ -162,6 +163,36 @@ enum PeopleUpdatesListLayoutPolicy {
             return false
         }
         return true
+    }
+
+    /// Returns the exact visible, selectable headers matching what is currently
+    /// rendered in the list — excluding rows hidden inside collapsed date
+    /// sections (People, All, or standard list) and preserving the sender-bundle
+    /// projection for Updates (#295, #370).
+    static func selectableHeaders(
+        in presentation: MessageListPresentationSnapshot,
+        showsPeopleUpdatesBar: Bool,
+        activeTab: InboxSplitTab,
+        groupByDate: Bool,
+        sourceID: MailSourceID?,
+        expandedUpdateBundleIDs: Set<String>
+    ) -> [MessageHeader] {
+        if showsPeopleUpdatesBar && activeTab == .updates {
+            return UpdatesSenderBundler.selectableHeaders(
+                from: presentation.filteredUngroupedHeaders,
+                sourceID: sourceID,
+                expandedBundleIDs: expandedUpdateBundleIDs,
+                effectiveDateOverrides: presentation.ungroupedDateOverrides
+            )
+        }
+        if usesDateSectionHeaders(
+            showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+            activeTab: activeTab,
+            groupByDate: groupByDate
+        ) {
+            return presentation.dateSections.flatMap(\.visibleHeaders)
+        }
+        return presentation.headers
     }
 }
 

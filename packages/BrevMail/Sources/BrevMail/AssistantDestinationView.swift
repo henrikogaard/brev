@@ -48,6 +48,7 @@ enum AssistantPromptSubmissionGate {
 /// Grounded starter prompt displayed in the empty Assistant hero (#294).
 struct AssistantStarterPrompt: Identifiable, Equatable {
     let id: String
+    let intent: MailboxChatStarterIntent
     let icon: String
     let title: String
     let subtitle: String
@@ -56,6 +57,7 @@ struct AssistantStarterPrompt: Identifiable, Equatable {
         [
             Self(
                 id: "needs-me-today",
+                intent: .needsMeToday,
                 icon: "sun.max",
                 title: String(localized: "What needs me today?", bundle: .module, locale: locale),
                 subtitle: String(
@@ -66,6 +68,7 @@ struct AssistantStarterPrompt: Identifiable, Equatable {
             ),
             Self(
                 id: "who-hasnt-replied",
+                intent: .whoHasntReplied,
                 icon: "clock.arrow.circlepath",
                 title: String(localized: "Who hasn't replied?", bundle: .module, locale: locale),
                 subtitle: String(
@@ -76,6 +79,7 @@ struct AssistantStarterPrompt: Identifiable, Equatable {
             ),
             Self(
                 id: "summarize-recent",
+                intent: .summarizeRecentThreads,
                 icon: "text.alignleft",
                 title: String(localized: "Summarize recent threads", bundle: .module, locale: locale),
                 subtitle: String(
@@ -86,6 +90,7 @@ struct AssistantStarterPrompt: Identifiable, Equatable {
             ),
             Self(
                 id: "find-attachments",
+                intent: .findRecentAttachments,
                 icon: "paperclip",
                 title: String(localized: "Find recent attachments", bundle: .module, locale: locale),
                 subtitle: String(
@@ -344,7 +349,7 @@ struct AssistantDestinationView: View {
             LazyVGrid(columns: columns, spacing: BrevSpacing.sm) {
                 ForEach(starters) { starter in
                     Button {
-                        submit(starter.title)
+                        submit(starter.title, starterIntent: starter.intent)
                     } label: {
                         HStack(alignment: .top, spacing: BrevSpacing.sm) {
                             Image(systemName: starter.icon)
@@ -639,7 +644,7 @@ struct AssistantDestinationView: View {
         )
     }
 
-    private func submit(_ prompt: String) {
+    private func submit(_ prompt: String, starterIntent: MailboxChatStarterIntent? = nil) {
         switch AssistantPromptSubmissionGate.evaluate(
             prompt: prompt,
             isSending: controller.isSending,
@@ -654,7 +659,7 @@ struct AssistantDestinationView: View {
         case .send(let trimmed):
             draftPrompt = ""
             Task {
-                await controller.send(userText: trimmed)
+                await controller.send(userText: trimmed, starterIntent: starterIntent)
             }
         }
     }

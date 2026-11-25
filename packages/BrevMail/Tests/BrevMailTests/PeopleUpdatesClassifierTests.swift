@@ -184,6 +184,106 @@ struct PeopleUpdatesClassifierTests {
         ))
     }
 
+    @Test("Collapsed People date sections are excluded from both bulk selectable headers and visible row IDs (#370)")
+    func collapsedPeopleDateSectionExcludedFromBulkSelectAndVisibleRows() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = calendar.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: 15, minute: 0))!
+
+        let todayMsg = MessageHeader(
+            id: "today-1",
+            threadID: "t-today",
+            folderID: "inbox",
+            from: Correspondent(name: "Maya", email: "maya@example.com"),
+            subject: "Today's check-in",
+            snippet: "Quick sync at 4?",
+            date: referenceDate.addingTimeInterval(-1800)
+        )
+        let yesterdayMsg = MessageHeader(
+            id: "yesterday-1",
+            threadID: "t-yesterday",
+            folderID: "inbox",
+            from: Correspondent(name: "Daniel", email: "daniel@example.com"),
+            subject: "Yesterday's notes",
+            snippet: "Following up on Monday.",
+            date: referenceDate.addingTimeInterval(-86400)
+        )
+        let snapshot = MessageListPresentationSnapshot(
+            headers: [todayMsg, yesterdayMsg],
+            pinnedMessageIDs: [],
+            groupByDate: true,
+            collapsedDateSectionIDs: ["Yesterday"],
+            referenceDate: referenceDate,
+            calendar: calendar,
+            sourceHeaders: [todayMsg, yesterdayMsg],
+            filteredUngroupedHeaders: [todayMsg, yesterdayMsg],
+            navigationHeaders: [todayMsg, yesterdayMsg],
+            sourceID: Self.source,
+            groupsThreads: true
+        )
+
+        // People tab: both bulk Select All projection and visible date-section rows exclude collapsed Yesterday.
+        let peopleSelectable = PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: snapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .people,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: []
+        )
+        let expectedVisibleIDs = snapshot.dateSections.flatMap(\.visibleHeaders).map(\.id)
+        #expect(expectedVisibleIDs == ["today-1"])
+        #expect(peopleSelectable.map(\.id) == expectedVisibleIDs)
+
+        // All tab: matches the exact same collapsed-section visibility.
+        let allSelectable = PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: snapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .all,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: []
+        )
+        #expect(allSelectable.map(\.id) == ["today-1"])
+
+        // Updates tab: preserves the sender-bundle projection rather than date sections.
+        let update1 = Self.header(id: "u1", fromName: "Linear", fromEmail: "notifications@linear.app", subject: "One")
+        let update2 = Self.header(id: "u2", fromName: "Linear", fromEmail: "notifications@linear.app", subject: "Two")
+        let updateSolo = Self.header(id: "u3", fromName: "Vercel", fromEmail: "deployments@vercel.com", subject: "Deploy")
+        let updatesSnapshot = MessageListPresentationSnapshot(
+            headers: [update1, update2, updateSolo],
+            pinnedMessageIDs: [],
+            groupByDate: true,
+            collapsedDateSectionIDs: ["Today"],
+            referenceDate: Self.now,
+            calendar: calendar,
+            sourceHeaders: [update1, update2, updateSolo],
+            filteredUngroupedHeaders: [update1, update2, updateSolo],
+            navigationHeaders: [update1, update2, updateSolo],
+            sourceID: Self.source,
+            groupsThreads: true
+        )
+        let updatesSelectableCollapsed = PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: updatesSnapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .updates,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: []
+        )
+        #expect(updatesSelectableCollapsed.map(\.id) == ["u3"])
+
+        let updatesSelectableExpanded = PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: updatesSnapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .updates,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: ["notifications@linear.app"]
+        )
+        #expect(updatesSelectableExpanded.map(\.id) == ["u1", "u2", "u3"])
+    }
+
     @Test("Sender overrides persist across reloads and take precedence over heuristics")
     func senderOverridesPersistAndWin() {
         let suite = "PeopleUpdatesOverride-\(UUID().uuidString)"
