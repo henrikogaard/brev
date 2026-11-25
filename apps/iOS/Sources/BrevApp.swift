@@ -722,6 +722,28 @@ final class BrevIOSAppDelegate: NSObject, UIApplicationDelegate {
         BrevBackgroundRefreshCoordinator.register()
         return true
     }
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        guard let payload = PushWakePayload(userInfo: userInfo) else {
+            completionHandler(.noData)
+            return
+        }
+        Task { @MainActor in
+            let result = await Self.sharedSession.pushWakeCoordinator.handleWake(payload)
+            switch result.fetchOutcome {
+            case .newData:
+                completionHandler(.newData)
+            case .noData:
+                completionHandler(.noData)
+            case .failed:
+                completionHandler(.failed)
+            }
+        }
+    }
 }
 
 /// Encapsulates the `BGAppRefreshTask` identifier, registration, and scheduling

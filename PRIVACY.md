@@ -114,6 +114,44 @@ local presentation settings.
 **How to disable:** Settings → Notifications → "Enable notifications".
 Defaults to off.
 
+### Closed-app push relay (self-hosted / JMAP WebPush)
+
+Brev never operates a Brev-hosted mail proxy or push relay and never sends your
+mail passwords, OAuth tokens, or message bodies to a relay.
+
+If you explicitly opt in under Settings → Notifications → **Closed-App Push (Self-Hosted)**,
+Brev registers only an opaque per-device client identifier, a real platform-supplied
+device push token (for user-hosted relays) or a distinct HTTPS WebPush delivery
+receiver URL (for JMAP RFC 8620 §7.2), randomly generated device-local opaque
+account tokens (`acct-<uuid>`, never your email address or internal `imap-smtp:`
+account ID), and locally generated RFC 8291 P-256 public encryption keys (`p256dh`
+and `auth`) with the HTTPS endpoint you configure.
+
+- Plaintext `http://` URLs and URLs containing embedded credentials are
+  rejected and never written to preferences; HTTP redirects are blocked so
+  registration payloads and bearer tokens can never be forwarded to another origin.
+- Optional relay bearer tokens (scoped per normalized relay origin so switching
+  servers never reuses an earlier server's token) and RFC 8291 P-256 private keys
+  are stored exclusively in this device's Keychain (`ThisDeviceOnly`) and never
+  written to `UserDefaults`, logs, `.brevbackup` exports, or iCloud preference sync.
+- Relay configuration, opaque account token mappings, and per-account opt-ins
+  stay strictly device-local and are excluded from backups and iCloud preference sync.
+- JMAP WebPush subscriptions stay in `pendingVerification` until you complete
+  the RFC 8620 §7.2.2 verification step, which sends only the subscription ID
+  and the one-time `verificationCode` challenge (plus your optional origin-scoped
+  Bearer header) to your configured JMAP API endpoint in a `PushSubscription/set`
+  `update` request.
+- Incoming wakes are opaque triggers (device-local opaque account tokens and
+  optional state tokens, including RFC 8620 §7.1 `StateChange` maps forwarded by
+  your WebPush delivery bridge); Brev reverse-maps the token locally and verifies
+  that closed-app push and the targeted account are opted in on this device
+  before running its normal local sync and arrival-diffed notification pipeline
+  directly against your mail server.
+
+**How to disable:** Leave Settings → Notifications → **Closed-App Push (Self-Hosted)**
+turned off, or toggle it off / click **Unregister** to remove the subscription
+from your relay. Defaults to off.
+
 ### Home Screen widgets
 
 The optional macOS `--isolated-mock` development profile uses a fresh sandbox

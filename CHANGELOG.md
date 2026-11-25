@@ -4,6 +4,15 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Closed-app push options with zero Brev proxy (#11): added opt-in, device-local
+  **Settings → Notifications → Closed-App Push (Self-Hosted)** (off by default,
+  excluded from `.brevbackup` and iCloud preference sync) supporting both
+  user-hosted HTTPS push relays and RFC 8620 §7.2 JMAP WebPush
+  `PushSubscription/set` registration with locally generated RFC 8291 P-256
+  encryption keys, Keychain-only bearer and private-key storage, strict HTTPS
+  endpoint validation (rejecting `http://` and embedded URL credentials), and
+  `PushWakeCoordinator` handling opaque wake triggers to run bounded local sync
+  strictly for opted-in accounts.
 - iOS outbound S/MIME signing & encryption (`docs/design/privacy-and-security.md`): added a cross-platform pure-Swift RFC 8551 / RFC 5652 CMS DER encoder (`PureSwiftCMSEncoder` + `ASN1DER` / `X509CertificateParser`) in `BrevCrypto` built solely on Apple's `Security`, `CryptoKit`, and `CommonCrypto` frameworks (SHA-256 detached `SignedData` for RSA and ECDSA signing keys; AES-256-CBC + RSA PKCS#1 `EnvelopedData` for single and multiple recipients), removed the macOS-only gates on `SMIMEOutboundMessagePreparer`, `OutboundMessagePreparerFactory`, `KeychainSMIMEResolver`, and `Settings → Security`, and kept fail-closed local-Keychain behavior on both platforms without downgrading to plaintext.
 - Onboarding privacy & convenience choices: added an optional, plain-language **Privacy & Convenience Choices** walkthrough presented once after first-run account setup (suppressed in demo/mock mode, automated tests, and for existing users) and re-openable anytime from **Settings → Privacy & Security → Privacy → Review Privacy & Convenience Choices…** (also indexed in Settings Search). Every opt-in convenience starts strictly off by default (sender domain/Gravatar avatars, trusted-sender remote images, iCloud preference sync, macOS background mail checks, background recent-mail & attachment indexing, and zero-network on-device Apple Intelligence + optional proactive triage; no cloud/BYOK providers), with explicit **Keep defaults (all off)** and **Save choices** actions and a device-local completion flag excluded from iCloud sync and `.brevbackup` exports.
 - Rich HTML compose beyond MVP (#3):

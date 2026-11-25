@@ -113,7 +113,8 @@ struct SettingsFormSnapshotTests {
                 NotificationSection(
                     settingsStore: fixture.store,
                     accounts: [fixture.account],
-                    authorizationStatus: { .denied }
+                    authorizationStatus: { .denied },
+                    showPushRelaySection: false
                 )
                 .navigationTitle("Notifications")
             }

@@ -19,7 +19,7 @@ import Foundation
 /// operations update the in-memory state and emit `MailEvent`s on the
 /// stream returned by `subscribeToChanges()`.
 public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManaging, ContactLookupProviding, MailImporting,
-    SyncHealthReporting, SyncHealthRepairing, SyncConflictManaging,
+    SyncHealthReporting, SyncHealthRepairing, SyncConflictManaging, CachedMessageHeaderProviding,
     CachedConversationProviding, RelatedConversationLoading, LocalDraftAttachmentProviding, CachedListUnsubscribeProviding,
     ScheduledSendManaging, ScheduledSendEditing, @unchecked Sendable {
     public let account: BrevAccount
@@ -32,6 +32,11 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     /// Test/preview hook for suspending or failing cache-only header reads.
     public var cachedMessageHeadersHandler:
         (@Sendable (Folder, MailSourceID) async throws -> [MessageHeader])?
+    /// Test/preview hook for live paged message fetches (`messages(in:pageToken:)`).
+    public var messagesHandler:
+        (@Sendable (Folder, String?) async throws -> (headers: [MessageHeader], nextPageToken: String?))?
+    /// Test/preview hook for provider fresh-delivery message IDs since a timestamp.
+    public var freshDeliveryMessageIDsHandler: (@Sendable (Date) async -> Set<MessageHeader.ID>)?
     /// Test/preview hook for consented remote related-header loading.
     public var relatedConversationHandler:
         (@Sendable (ConversationMember, Bool, String?,
@@ -221,6 +226,9 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
 
     public func messages(in folder: Folder, pageToken: String?) async throws
         -> (headers: [MessageHeader], nextPageToken: String?) {
+        if let messagesHandler {
+            return try await messagesHandler(folder, pageToken)
+        }
         let all = try await store.messages(in: folder.id)
         return (all, nil)
     }
@@ -549,6 +557,21 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         return await store.cachedAttachmentMessages(in: folders, mailboxID: mailbox)
     }
 
+    /// Returns one cached header by ID and folder without touching network seams.
+    public func cachedMessageHeader(
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID
+    ) async -> MessageHeader? {
+        let mailboxID = await (try? currentMailbox().id) ?? account.id
+        let all = await (try? store.allMessages(in: mailboxID)) ?? []
+        return all.first { $0.folderID == folderID && $0.id == messageID }
+    }
+
+    /// Returns test-injected fresh delivery IDs observed at or after `since`.
+    public func freshDeliveryMessageIDs(since: Date) async -> Set<MessageHeader.ID> {
+        await freshDeliveryMessageIDsHandler?(since) ?? []
+    }
+
     /// Returns every seeded header owned by the requested mailbox and folder.
     public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
         if let cachedMessageHeadersHandler {
@@ -648,6 +671,9 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         case ObjectIdentifier(SyncConflictManaging.self):
             return self as? Service
         case ObjectIdentifier(CachedMessageBodyProviding.self):
+            return self as? Service
+        case ObjectIdentifier(CachedMessageHeaderProviding.self)
+            where extendedCapabilities.contains(.cachedMessageHeaders):
             return self as? Service
         case ObjectIdentifier(CachedConversationProviding.self)
             where extendedCapabilities.contains(.cachedConversations):

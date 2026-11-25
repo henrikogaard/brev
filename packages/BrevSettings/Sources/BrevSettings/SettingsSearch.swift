@@ -291,6 +291,10 @@ extension SettingsSection {
                 String(localized: "Enable quiet hours", bundle: .module),
                 String(localized: "Starts at", bundle: .module),
                 String(localized: "Ends at", bundle: .module),
+                String(localized: "Closed-App Push (Self-Hosted)", bundle: .module),
+                String(localized: "Enable self-hosted closed-app push", bundle: .module),
+                String(localized: "Push relay URL", bundle: .module),
+                String(localized: "JMAP WebPush", bundle: .module),
             ]
         case .updates: return [
                 String(localized: "Updates", bundle: .module),
@@ -316,6 +320,18 @@ extension SettingsSection {
             ]
         }
     }
+
+    func searchScrollTarget(for controlTitle: String) -> String {
+        guard self == .notifications else { return controlTitle }
+        let pushRelayGroupTitle = String(localized: "Closed-App Push (Self-Hosted)", bundle: .module)
+        let pushRelayAliases: Set<String> = [
+            pushRelayGroupTitle,
+            String(localized: "Enable self-hosted closed-app push", bundle: .module),
+            String(localized: "Push relay URL", bundle: .module),
+            String(localized: "JMAP WebPush", bundle: .module)
+        ]
+        return pushRelayAliases.contains(controlTitle) ? pushRelayGroupTitle : controlTitle
+    }
 }
 
 extension SettingsSearchResult {
@@ -327,7 +343,13 @@ extension SettingsSearchResult {
                 $0.localizedStandardContains(query)
             }
             if !controls.isEmpty {
-                return controls.map { Self(section: section, title: $0, target: $0) }
+                return controls.map {
+                    Self(
+                        section: section,
+                        title: $0,
+                        target: section.searchScrollTarget(for: $0)
+                    )
+                }
             }
             return section.matches(searchQuery: query)
                 ? [Self(section: section, title: section.title, target: nil)] : []

@@ -89,6 +89,24 @@ public final class AppSession {
     private var backgroundIndexingPowerObserver: NSObjectProtocol?
     private var backgroundIndexingSyncObserver: NSObjectProtocol?
     private var backgroundIndexingInvalidationObserver: NSObjectProtocol?
+    /// Handles opaque incoming wakes from an opted-in self-hosted push relay
+    /// or JMAP WebPush subscription (#11). Ignores wakes when disabled.
+    public let pushWakeCoordinator: PushWakeCoordinator
+    private struct PendingJMAPVerificationChallenge {
+        let subscriptionID: String
+        let verificationCode: String
+        let receivedAt: Date
+    }
+
+    private static let maxBufferedJMAPChallenges = 8
+    private static let bufferedJMAPChallengeTTL: TimeInterval = 5 * 60
+    private var bufferedJMAPVerificationChallenges: [String: PendingJMAPVerificationChallenge] = [:]
+    private var pushRelaySettingsStore: SettingsPersistenceStore = .standard
+    private var pushRelaySecretStore: any PushRelaySecretStore = PushRelayKeychainSecretStore()
+    private var pushRelayClient = PushRelayClient()
+    private var pushRelayNow: () -> Date = { Date() }
+    private var pushRelayObservedDefaults: UserDefaults = .standard
+    private var pushRelaySettingsObserverToken: AppSessionNotificationObserverToken?
     /// Session-owned executor for Mark-as-read and Archive notification
     /// actions (#307, ADR-0075). Works even when no mail window is open.
     public let notificationActionExecutor: NotificationActionExecutor
@@ -449,6 +467,7 @@ public final class AppSession {
         self.localBackend = localBackend
         backgroundMail = BackgroundMailCoordinator()
         backgroundIndexing = BackgroundRecentIndexingCoordinator()
+        pushWakeCoordinator = PushWakeCoordinator()
         notificationActionExecutor = NotificationActionExecutor()
         let panelController = SignInCodePanelController()
         let notificationPresenter = SignInCodeNotificationPresenter()
@@ -511,6 +530,18 @@ public final class AppSession {
                 backgroundIndexing.invalidateAttachmentProgress(accountID: accountID)
             }
         }
+        pushWakeCoordinator.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
+        pushWakeCoordinator.ensureAccountsRestored = { [weak self] in
+            await self?.ensureAccountsRestored()
+        }
+        pushWakeCoordinator.onJMAPVerificationChallenge = { [weak self] subscriptionID, verificationCode in
+            guard let self else { return }
+            await handleJMAPVerificationChallenge(
+                subscriptionID: subscriptionID,
+                verificationCode: verificationCode
+            )
+        }
+        installPushRelaySettingsObserver()
         notificationActionExecutor.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         notificationActionExecutor.prepareBackends = { [weak self] in
             await self?.ensureAccountsRestored()
@@ -658,6 +689,188 @@ public final class AppSession {
         let connected = visibleBackends
         for backend in connected {
             await backend.replayOfflineMutations()
+        }
+    }
+
+    /// Reconfigures the push relay verification dependencies and `.brevPushRelaySettingsDidChange`
+    /// observer target for isolated unit tests (#11).
+    func configurePushRelayVerificationForTesting(
+        defaults: UserDefaults,
+        secretStore: any PushRelaySecretStore,
+        client: PushRelayClient,
+        now: @escaping () -> Date = { Date() }
+    ) {
+        pushRelaySettingsStore = SettingsPersistenceStore(defaults: defaults)
+        pushRelaySecretStore = secretStore
+        pushRelayClient = client
+        pushRelayNow = now
+        pushRelayObservedDefaults = defaults
+        installPushRelaySettingsObserver()
+    }
+
+    private func installPushRelaySettingsObserver() {
+        let pushRelayObserver = NotificationCenter.default.addObserver(
+            forName: .brevPushRelaySettingsDidChange,
+            object: pushRelayObservedDefaults,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.consumeBufferedJMAPVerificationChallengeIfNeeded()
+            }
+        }
+        pushRelaySettingsObserverToken = AppSessionNotificationObserverToken(pushRelayObserver)
+    }
+
+    /// Completes an incoming RFC 8620 §7.2.2 JMAP `PushVerification` challenge when it
+    /// matches this device's active `.pendingVerification` JMAP subscription, or briefly
+    /// buffers early challenges (bounded count/TTL, cleared on disable) until registration
+    /// persists the new subscription (#11).
+    func handleJMAPVerificationChallenge(
+        subscriptionID: String,
+        verificationCode: String,
+        settingsStore: SettingsPersistenceStore? = nil,
+        secretStore: (any PushRelaySecretStore)? = nil,
+        client: PushRelayClient? = nil,
+        now: (() -> Date)? = nil
+    ) async {
+        let resolvedStore = settingsStore ?? pushRelaySettingsStore
+        let resolvedSecretStore = secretStore ?? pushRelaySecretStore
+        let resolvedClient = client ?? pushRelayClient
+        let resolvedNow = now ?? pushRelayNow
+
+        let currentTime = resolvedNow()
+        pruneExpiredJMAPVerificationChallenges(now: currentTime)
+
+        let settings = resolvedStore.pushRelaySettings()
+        guard settings.isEnabled else {
+            bufferedJMAPVerificationChallenges.removeAll()
+            return
+        }
+
+        guard let active = settings.activeRegistration,
+              active.mode == .jmapWebPush,
+              active.state == .pendingVerification,
+              active.subscriptionID == subscriptionID
+        else {
+            // Buffer early unmatched challenge in case the JMAP server delivered
+            // PushVerification before `register()` finished persisting `sub-new`.
+            bufferJMAPVerificationChallenge(
+                subscriptionID: subscriptionID,
+                verificationCode: verificationCode,
+                receivedAt: currentTime
+            )
+            return
+        }
+
+        bufferedJMAPVerificationChallenges.removeValue(forKey: subscriptionID)
+        do {
+            let bearerToken = try active.endpointOrigin.flatMap {
+                try resolvedSecretStore.bearerToken(forOrigin: $0)
+            }
+            let verified = try await resolvedClient.verifyJMAPSubscription(
+                endpointURLString: active.endpointURLString,
+                subscriptionID: active.subscriptionID,
+                verificationCode: verificationCode,
+                bearerToken: bearerToken
+            )
+            // Re-read persisted settings after awaiting network so a concurrent
+            // disable or target switch is never overwritten.
+            var latest = resolvedStore.pushRelaySettings()
+            guard latest.isEnabled,
+                  var latestActive = latest.activeRegistration,
+                  latestActive.mode == .jmapWebPush,
+                  latestActive.subscriptionID == subscriptionID
+            else {
+                return
+            }
+            latestActive.state = verified.state
+            latestActive.registeredAt = resolvedNow()
+            latest.activeRegistration = latestActive
+            latest.lastRegistrationError = nil
+            resolvedStore.save(latest)
+        } catch {
+            var latest = resolvedStore.pushRelaySettings()
+            guard latest.activeRegistration?.subscriptionID == subscriptionID else { return }
+            latest.lastRegistrationError = error.localizedDescription
+            resolvedStore.save(latest)
+        }
+    }
+
+    /// Consumes any buffered RFC 8620 §7.2.2 JMAP `PushVerification` challenge matching
+    /// the newly persisted `.pendingVerification` subscription, or clears the buffer if
+    /// closed-app push has been turned off.
+    func consumeBufferedJMAPVerificationChallengeIfNeeded(
+        settingsStore: SettingsPersistenceStore? = nil,
+        secretStore: (any PushRelaySecretStore)? = nil,
+        client: PushRelayClient? = nil,
+        now: (() -> Date)? = nil
+    ) async {
+        let resolvedStore = settingsStore ?? pushRelaySettingsStore
+        let resolvedSecretStore = secretStore ?? pushRelaySecretStore
+        let resolvedClient = client ?? pushRelayClient
+        let resolvedNow = now ?? pushRelayNow
+
+        let currentTime = resolvedNow()
+        pruneExpiredJMAPVerificationChallenges(now: currentTime)
+
+        let settings = resolvedStore.pushRelaySettings()
+        guard settings.isEnabled else {
+            bufferedJMAPVerificationChallenges.removeAll()
+            return
+        }
+        guard let active = settings.activeRegistration,
+              active.mode == .jmapWebPush,
+              active.state == .pendingVerification,
+              let buffered = bufferedJMAPVerificationChallenges.removeValue(forKey: active.subscriptionID)
+        else {
+            return
+        }
+        await handleJMAPVerificationChallenge(
+            subscriptionID: buffered.subscriptionID,
+            verificationCode: buffered.verificationCode,
+            settingsStore: resolvedStore,
+            secretStore: resolvedSecretStore,
+            client: resolvedClient,
+            now: resolvedNow
+        )
+    }
+
+    private func pruneExpiredJMAPVerificationChallenges(now: Date) {
+        let cutoff = now.addingTimeInterval(-Self.bufferedJMAPChallengeTTL)
+        bufferedJMAPVerificationChallenges = bufferedJMAPVerificationChallenges.filter {
+            $0.value.receivedAt >= cutoff
+        }
+    }
+
+    private func bufferJMAPVerificationChallenge(
+        subscriptionID: String,
+        verificationCode: String,
+        receivedAt: Date
+    ) {
+        bufferedJMAPVerificationChallenges[subscriptionID] = PendingJMAPVerificationChallenge(
+            subscriptionID: subscriptionID,
+            verificationCode: verificationCode,
+            receivedAt: receivedAt
+        )
+        while bufferedJMAPVerificationChallenges.count > Self.maxBufferedJMAPChallenges {
+            guard let oldestKey = bufferedJMAPVerificationChallenges
+                .min(by: { $0.value.receivedAt < $1.value.receivedAt })?.key
+            else {
+                break
+            }
+            bufferedJMAPVerificationChallenges.removeValue(forKey: oldestKey)
+        }
+    }
+
+    private final class AppSessionNotificationObserverToken: @unchecked Sendable {
+        private let token: NSObjectProtocol
+
+        init(_ token: NSObjectProtocol) {
+            self.token = token
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(token)
         }
     }
 

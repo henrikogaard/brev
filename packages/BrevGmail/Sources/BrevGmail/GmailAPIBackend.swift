@@ -764,6 +764,11 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         return Self.header(from: message, folderID: folderID, labels: labels)
     }
 
+    /// Returns unexpired Gmail History fresh-delivery message IDs observed at or after `since`.
+    public func freshDeliveryMessageIDs(since: Date) async -> Set<MessageHeader.ID> {
+        freshDeliveryRegistry.messageIDs(since: since)
+    }
+
     /// Reads cached label membership without fetching MIME data or using the primary folder.
     public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
         try validateSource(sourceID)

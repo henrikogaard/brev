@@ -25,6 +25,8 @@ import Foundation
 /// - `SecurityKeyMaterialSettings` — key material must never leave the device.
 /// - `NotificationSettings.backgroundMailEnabled` / `launchAtLoginRequested` —
 ///   device-bound per ADR-0075, stripped via `NotificationBackupSettings`.
+/// - `PushRelaySettings` — device-local closed-app push relay endpoint,
+///   device client ID, and account opt-ins (#11); never exported or synced.
 /// - `CalDAVSettings.credentialAccount` — Keychain credential pointer,
 ///   stripped via `CalDAVBackupSettings`.
 struct SettingsBackupPayload: Codable, Equatable {
