@@ -279,13 +279,16 @@ actor RequestCounter {
 final class MockJMAPHTTPTransport: JMAPHTTPTransport, @unchecked Sendable {
     private let handler: @Sendable (JMAPHTTPRequest) async throws -> JMAPHTTPResponse
     private let sseHandler: @Sendable (JMAPHTTPRequest) -> AsyncThrowingStream<JMAPEventSourceEvent, Error>
+    private let openSSEHandler: (@Sendable (JMAPHTTPRequest) async throws -> AsyncThrowingStream<JMAPEventSourceEvent, Error>)?
 
     init(
         handler: @escaping @Sendable (JMAPHTTPRequest) async throws -> JMAPHTTPResponse,
-        sseHandler: (@Sendable (JMAPHTTPRequest) -> AsyncThrowingStream<JMAPEventSourceEvent, Error>)? = nil
+        sseHandler: (@Sendable (JMAPHTTPRequest) -> AsyncThrowingStream<JMAPEventSourceEvent, Error>)? = nil,
+        openSSEHandler: (@Sendable (JMAPHTTPRequest) async throws -> AsyncThrowingStream<JMAPEventSourceEvent, Error>)? = nil
     ) {
         self.handler = handler
         self.sseHandler = sseHandler ?? { _ in AsyncThrowingStream { $0.finish() } }
+        self.openSSEHandler = openSSEHandler
     }
 
     func send(_ request: JMAPHTTPRequest) async throws -> JMAPHTTPResponse {
@@ -294,6 +297,13 @@ final class MockJMAPHTTPTransport: JMAPHTTPTransport, @unchecked Sendable {
 
     func streamEvents(_ request: JMAPHTTPRequest) -> AsyncThrowingStream<JMAPEventSourceEvent, Error> {
         sseHandler(request)
+    }
+
+    func openEventStream(_ request: JMAPHTTPRequest) async throws -> AsyncThrowingStream<JMAPEventSourceEvent, Error> {
+        if let openSSEHandler {
+            return try await openSSEHandler(request)
+        }
+        return sseHandler(request)
     }
 }
 

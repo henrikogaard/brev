@@ -1555,7 +1555,9 @@ struct JMAPBackendTests {
                                                 "type": .string("application/pdf"),
                                                 "name": .string("spec.pdf"),
                                                 "size": .int(9),
-                                                "disposition": .string("attachment")
+                                                "disposition": .string("attachment"),
+                                                // Unreferenced Content-ID on a regular attachment must NOT make it inline.
+                                                "cid": .string("<unreferenced-pdf@example.org>")
                                             ]),
                                             .object([
                                                 "partId": .string("p-img"),
@@ -1640,7 +1642,10 @@ struct JMAPBackendTests {
         let restoredPayloads = try await attachmentService2.localDraftAttachments(for: reopened, sourceID: sourceID)
         #expect(restoredPayloads.count == 2)
         #expect(restoredPayloads[0].data == Data("PDF-BYTES".utf8))
+        #expect(restoredPayloads[0].isInline == false)
+        #expect(restoredPayloads[0].contentID == nil)
         #expect(restoredPayloads[1].data == Data("PNG-BYTES".utf8))
+        #expect(restoredPayloads[1].isInline == true)
         #expect(restoredPayloads[1].contentID == "img1")
     }
 
@@ -2007,14 +2012,38 @@ struct JMAPBackendTests {
     @Test("server search paginates beyond 50 matches and returns every matching header")
     func serverSearchPaginatesBeyondFiftyMatches() async throws {
         let totalMatches = 120
+        let pageCappedSessionJSON = Data("""
+        {
+          "capabilities": {
+            "urn:ietf:params:jmap:core": {
+              "maxSizeUpload": 50000000,
+              "maxCallsInRequest": 32,
+              "maxObjectsInGet": 50
+            },
+            "urn:ietf:params:jmap:mail": {}
+          },
+          "accounts": {
+            "u123": { "name": "henrik@fastmail.com", "isPersonal": true, "isReadOnly": false,
+                      "accountCapabilities": { "urn:ietf:params:jmap:mail": {} } }
+          },
+          "primaryAccounts": { "urn:ietf:params:jmap:mail": "u123" },
+          "username": "henrik@fastmail.com",
+          "apiUrl": "https://api.fastmail.com/jmap/api/",
+          "downloadUrl": "https://api.fastmail.com/jmap/download/{accountId}/{blobId}/{name}?accept={type}",
+          "uploadUrl": "https://api.fastmail.com/jmap/upload/{accountId}/",
+          "state": "sess-1"
+        }
+        """.utf8)
+        let pageQueries = RequestCounter()
         let transport = MockJMAPHTTPTransport { request in
             if request.url == Self.sessionURL {
-                return JMAPHTTPResponse(statusCode: 200, body: Self.sampleSessionJSON, finalURL: request.url)
+                return JMAPHTTPResponse(statusCode: 200, body: pageCappedSessionJSON, finalURL: request.url)
             }
             let decoded = try JSONDecoder().decode(JMAPRequest.self, from: request.body ?? Data())
             if decoded.methodCalls.first?.name == "Mailbox/get" {
                 return try Self.jsonResponse(Self.initialBootstrapResponse())
             }
+            await pageQueries.increment()
             let position = decoded.methodCalls[0].arguments["position"]?.intValue ?? 0
             let limit = decoded.methodCalls[0].arguments["limit"]?.intValue ?? 50
             let end = min(position + limit, totalMatches)
@@ -2065,6 +2094,7 @@ struct JMAPBackendTests {
         try await backend.connect()
         let results = try await backend.search(SearchQuery(text: "Match"))
         #expect(results.count == totalMatches)
+        #expect(await pageQueries.count == 3)
         #expect(results.first?.id == "e-search-0")
         #expect(results.last?.id == "e-search-119")
     }
@@ -2319,6 +2349,729 @@ struct JMAPBackendTests {
         #expect(caughtGapMessage)
         #expect(await streamOpens.count >= 2)
         #expect(await retryAttempts.values.contains(1))
+        await backend.disconnect()
+    }
+
+    @Test("accepted submission followed by implicit Sent-move error tuple reports warning without deleting sent copy")
+    func acceptedSubmissionFollowedByImplicitErrorReportsSentCopyWarning() async throws {
+        let destroyedIDs = RecordedStrings()
+        let transport = MockJMAPHTTPTransport { request in
+            if request.url == Self.sessionURL {
+                return JMAPHTTPResponse(statusCode: 200, body: Self.sampleSessionJSON, finalURL: request.url)
+            }
+            let decoded = try JSONDecoder().decode(JMAPRequest.self, from: request.body ?? Data())
+            let first = decoded.methodCalls.first?.name ?? ""
+            if first == "Mailbox/get" {
+                return try Self.jsonResponse(Self.initialBootstrapResponse())
+            }
+            if decoded.methodCalls.count == 2, decoded.methodCalls[1].name == "EmailSubmission/set" {
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Email/set",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "created": .object(["draft": .object(["id": .string("e-sent-wire-1")])])
+                                ],
+                                callID: "es0"
+                            ),
+                            JMAPInvocation(
+                                name: "EmailSubmission/set",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "created": .object(["send": .object(["id": .string("sub-wire-1")])])
+                                ],
+                                callID: "sub0"
+                            ),
+                            // Method-level error for implicit onSuccessUpdateEmail under the same callID.
+                            JMAPInvocation(
+                                name: "error",
+                                arguments: [
+                                    "type": .string("serverFail"),
+                                    "description": .string("Sent mailbox temporarily unavailable")
+                                ],
+                                callID: "sub0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            if case .array(let ids) = decoded.methodCalls.first?.arguments["destroy"] {
+                for id in ids {
+                    if let str = id.stringValue { await destroyedIDs.append(str) }
+                }
+            }
+            return try Self.jsonResponse(Self.initialBootstrapResponse())
+        }
+
+        let backend = JMAPBackend(
+            account: Self.makeAccount(),
+            sessionURL: Self.sessionURL,
+            tokenProvider: StaticJMAPAccessTokenProvider(token: "tok-123"),
+            transport: transport
+        )
+        try await backend.connect()
+        let result = try await backend.send(
+            draft: Draft(
+                id: "d-wire-err",
+                to: [Correspondent(email: "bob@example.org")],
+                subject: "Important",
+                htmlBody: "<p>Sent once</p>"
+            )
+        )
+        #expect(result.sentMessageID == "e-sent-wire-1")
+        #expect(result.warnings == [.sentCopyAppendFailed])
+        // Must NOT enter failed-submission cleanup and destroy e-sent-wire-1.
+        #expect(await destroyedIDs.values.isEmpty)
+    }
+
+    @Test("delta sync chunks Email/get and Mailbox/get by maxObjectsInGet after bulk updates")
+    func deltaSyncChunksEmailAndMailboxGetByMaxObjectsInGet() async throws {
+        let cappedGetSessionJSON = Data("""
+        {
+          "capabilities": {
+            "urn:ietf:params:jmap:core": {
+              "maxSizeUpload": 50000000,
+              "maxCallsInRequest": 32,
+              "maxObjectsInGet": 2,
+              "maxObjectsInSet": 100
+            },
+            "urn:ietf:params:jmap:mail": {}
+          },
+          "accounts": {
+            "u123": { "name": "henrik@fastmail.com", "isPersonal": true, "isReadOnly": false,
+                      "accountCapabilities": { "urn:ietf:params:jmap:mail": {} } }
+          },
+          "primaryAccounts": { "urn:ietf:params:jmap:mail": "u123" },
+          "username": "henrik@fastmail.com",
+          "apiUrl": "https://api.fastmail.com/jmap/api/",
+          "downloadUrl": "https://api.fastmail.com/jmap/download/{accountId}/{blobId}/{name}?accept={type}",
+          "uploadUrl": "https://api.fastmail.com/jmap/upload/{accountId}/",
+          "state": "sess-1"
+        }
+        """.utf8)
+
+        let emailGetBatchSizes = RecordedInts()
+        let mailboxGetBatchSizes = RecordedInts()
+        let transport = MockJMAPHTTPTransport { request in
+            if request.url == Self.sessionURL {
+                return JMAPHTTPResponse(statusCode: 200, body: cappedGetSessionJSON, finalURL: request.url)
+            }
+            let decoded = try JSONDecoder().decode(JMAPRequest.self, from: request.body ?? Data())
+            let first = decoded.methodCalls.first?.name ?? ""
+            if first == "Mailbox/get" {
+                if case .array(let idVals) = decoded.methodCalls[0].arguments["ids"] {
+                    let ids = idVals.compactMap(\.stringValue)
+                    await mailboxGetBatchSizes.append(ids.count)
+                    if ids.count > 2 {
+                        return try Self.jsonResponse(
+                            JMAPResponse(
+                                methodResponses: [
+                                    JMAPInvocation(name: "error", arguments: ["type": .string("requestTooLarge")], callID: "m0")
+                                ],
+                                sessionState: "sess-1"
+                            )
+                        )
+                    }
+                    let list: [JMAPJSONValue] = ids.map { id in
+                        .object([
+                            "id": .string(id),
+                            "name": .string("Folder \(id)"),
+                            "totalEmails": .int(10),
+                            "unreadEmails": .int(0)
+                        ])
+                    }
+                    return try Self.jsonResponse(
+                        JMAPResponse(
+                            methodResponses: [
+                                JMAPInvocation(
+                                    name: "Mailbox/get",
+                                    arguments: [
+                                        "accountId": .string("u123"),
+                                        "state": .string("mb-state-2"),
+                                        "list": .array(list)
+                                    ],
+                                    callID: "m0"
+                                )
+                            ],
+                            sessionState: "sess-1"
+                        )
+                    )
+                }
+                return try Self.jsonResponse(Self.initialBootstrapResponse())
+            }
+            if first == "Email/query" {
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Email/query",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "position": .int(0),
+                                    "ids": .array([.string("e1")]),
+                                    "total": .int(1)
+                                ],
+                                callID: "q0"
+                            ),
+                            JMAPInvocation(
+                                name: "Email/get",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "state": .string("es-1"),
+                                    "list": .array([
+                                        .object([
+                                            "id": .string("e1"),
+                                            "mailboxIds": .object(["mb-inbox": .bool(true)]),
+                                            "receivedAt": .string("2026-11-25T09:00:00Z"),
+                                            "from": .array([.object(["email": .string("a@example.org")])]),
+                                            "subject": .string("Seed")
+                                        ])
+                                    ])
+                                ],
+                                callID: "g0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            if first == "Mailbox/changes" {
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Mailbox/changes",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "oldState": .string("mb-state-1"),
+                                    "newState": .string("mb-state-2"),
+                                    "updated": .array([.string("mb-inbox"), .string("mb-archive"), .string("mb-custom")])
+                                ],
+                                callID: "mc0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            if first == "Email/changes" {
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Email/changes",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "oldState": .string("es-1"),
+                                    "newState": .string("es-bulk-2"),
+                                    "updated": .array([
+                                        .string("e1"), .string("e2"), .string("e3"), .string("e4"), .string("e5")
+                                    ])
+                                ],
+                                callID: "ec0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            if first == "Email/get",
+               case .array(let idVals) = decoded.methodCalls[0].arguments["ids"] {
+                let ids = idVals.compactMap(\.stringValue)
+                await emailGetBatchSizes.append(ids.count)
+                if ids.count > 2 {
+                    return try Self.jsonResponse(
+                        JMAPResponse(
+                            methodResponses: [
+                                JMAPInvocation(name: "error", arguments: ["type": .string("requestTooLarge")], callID: "g0")
+                            ],
+                            sessionState: "sess-1"
+                        )
+                    )
+                }
+                let list: [JMAPJSONValue] = ids.map { id in
+                    .object([
+                        "id": .string(id),
+                        "mailboxIds": .object(["mb-inbox": .bool(true)]),
+                        "keywords": .object(["$seen": .bool(true)]),
+                        "receivedAt": .string("2026-11-25T09:00:00Z"),
+                        "from": .array([.object(["email": .string("a@example.org")])]),
+                        "subject": .string("Bulk \(id)")
+                    ])
+                }
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Email/get",
+                                arguments: ["accountId": .string("u123"), "state": .string("es-bulk-2"), "list": .array(list)],
+                                callID: "g0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            return try Self.jsonResponse(Self.initialBootstrapResponse())
+        }
+
+        let backend = JMAPBackend(
+            account: Self.makeAccount(),
+            sessionURL: Self.sessionURL,
+            tokenProvider: StaticJMAPAccessTokenProvider(token: "tok-123"),
+            transport: transport
+        )
+        try await backend.connect()
+        let inbox = Folder(id: "mb-inbox", name: "Inbox", role: .inbox)
+        _ = try await backend.messages(in: inbox, pageToken: nil)
+        try await backend.refresh(folder: inbox)
+
+        #expect(backend.currentEmailState == "es-bulk-2")
+        #expect(backend.currentMailboxState == "mb-state-2")
+        let emailBatches = await emailGetBatchSizes.values
+        let mbBatches = await mailboxGetBatchSizes.values
+        #expect(emailBatches.count == 3)
+        #expect(emailBatches.allSatisfy { $0 <= 2 })
+        #expect(mbBatches.count == 2)
+        #expect(mbBatches.allSatisfy { $0 <= 2 })
+    }
+
+    @Test("reopening a remote plain-text draft HTML-escapes angle brackets and entities and preserves line breaks")
+    func plainTextRemoteDraftEscapesMarkupAndPreservesLineBreaks() async throws {
+        let transport = MockJMAPHTTPTransport { request in
+            if request.url == Self.sessionURL {
+                return JMAPHTTPResponse(statusCode: 200, body: Self.sampleSessionJSON, finalURL: request.url)
+            }
+            let decoded = try JSONDecoder().decode(JMAPRequest.self, from: request.body ?? Data())
+            if decoded.methodCalls.first?.name == "Mailbox/get" {
+                return try Self.jsonResponse(Self.initialBootstrapResponse())
+            }
+            return try Self.jsonResponse(
+                JMAPResponse(
+                    methodResponses: [
+                        JMAPInvocation(
+                            name: "Email/get",
+                            arguments: [
+                                "accountId": .string("u123"),
+                                "state": .string("es-1"),
+                                "list": .array([
+                                    .object([
+                                        "id": .string("e-plain-draft"),
+                                        "mailboxIds": .object(["mb-drafts": .bool(true)]),
+                                        "keywords": .object(["$draft": .bool(true)]),
+                                        "subject": .string("Plain template"),
+                                        "textBody": .array([.object(["partId": .string("t1"), "type": .string("text/plain")])]),
+                                        "bodyValues": .object([
+                                            "t1": .object([
+                                                "value": .string("Replace <your-name> & \"company\"'s info\r\nLine 2")
+                                            ])
+                                        ])
+                                    ])
+                                ])
+                            ],
+                            callID: "g0"
+                        )
+                    ],
+                    sessionState: "sess-1"
+                )
+            )
+        }
+
+        let backend = JMAPBackend(
+            account: Self.makeAccount(),
+            sessionURL: Self.sessionURL,
+            tokenProvider: StaticJMAPAccessTokenProvider(token: "tok-123"),
+            transport: transport
+        )
+        try await backend.connect()
+        let restored = try #require(try await backend.draft(for: "e-plain-draft"))
+        #expect(restored.htmlBody == "Replace &lt;your-name&gt; &amp; &quot;company&quot;&#39;s info<br>Line 2")
+    }
+
+    @Test("reopening and sending a remote attachment-bearing draft preserves its non-default sender identity")
+    func reopenedRemoteDraftPreservesNonDefaultSenderIdentityOnSend() async throws {
+        let recordedSubmissionIdentity = RecordedStrings()
+        let recordedMailFrom = RecordedStrings()
+        let transport = MockJMAPHTTPTransport { request in
+            if request.url == Self.sessionURL {
+                return JMAPHTTPResponse(statusCode: 200, body: Self.sampleSessionJSON, finalURL: request.url)
+            }
+            if request.url.absoluteString.contains("/jmap/download/") {
+                return JMAPHTTPResponse(statusCode: 200, body: Data("PDF".utf8), finalURL: request.url)
+            }
+            let decoded = try JSONDecoder().decode(JMAPRequest.self, from: request.body ?? Data())
+            let first = decoded.methodCalls.first?.name ?? ""
+            if first == "Mailbox/get" {
+                return try Self.jsonResponse(Self.initialBootstrapResponse())
+            }
+            if first == "Email/get" {
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Email/get",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "state": .string("es-1"),
+                                    "list": .array([
+                                        .object([
+                                            "id": .string("e-alias-draft"),
+                                            "mailboxIds": .object(["mb-drafts": .bool(true)]),
+                                            "keywords": .object(["$draft": .bool(true)]),
+                                            "from": .array([.object([
+                                                "name": .string("Henrik Work"),
+                                                "email": .string("work@example.org")
+                                            ])]),
+                                            "to": .array([.object(["email": .string("client@example.org")])]),
+                                            "subject": .string("Proposal"),
+                                            "htmlBody": .array([.object([
+                                                "partId": .string("h1"),
+                                                "type": .string("text/html")
+                                            ])]),
+                                            "bodyValues": .object(["h1": .object(["value": .string("<p>Attached</p>")])]),
+                                            "attachments": .array([
+                                                .object([
+                                                    "partId": .string("p1"),
+                                                    "blobId": .string("blob-prop-1"),
+                                                    "type": .string("application/pdf"),
+                                                    "name": .string("proposal.pdf"),
+                                                    "size": .int(3),
+                                                    "disposition": .string("attachment")
+                                                ])
+                                            ])
+                                        ])
+                                    ])
+                                ],
+                                callID: "g0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            if decoded.methodCalls.count == 2, decoded.methodCalls[1].name == "EmailSubmission/set" {
+                if let sendObj = decoded.methodCalls[1].arguments["create"]?.objectValue?["send"]?.objectValue {
+                    if let identityID = sendObj["identityId"]?.stringValue {
+                        await recordedSubmissionIdentity.append(identityID)
+                    }
+                    if let mailFrom = sendObj["envelope"]?.objectValue?["mailFrom"]?.objectValue?["email"]?.stringValue {
+                        await recordedMailFrom.append(mailFrom)
+                    }
+                }
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Email/set",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "created": .object(["draft": .object(["id": .string("e-sent-alias")])])
+                                ],
+                                callID: "es0"
+                            ),
+                            JMAPInvocation(
+                                name: "EmailSubmission/set",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "created": .object(["send": .object(["id": .string("sub-alias")])])
+                                ],
+                                callID: "sub0"
+                            ),
+                            JMAPInvocation(
+                                name: "Email/set",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "updated": .object(["e-sent-alias": .null])
+                                ],
+                                callID: "sub0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            return try Self.jsonResponse(
+                JMAPResponse(
+                    methodResponses: [
+                        JMAPInvocation(
+                            name: "Email/set",
+                            arguments: ["accountId": .string("u123"), "destroyed": .array([.string("e-alias-draft")])],
+                            callID: "es0"
+                        )
+                    ],
+                    sessionState: "sess-1"
+                )
+            )
+        }
+
+        let backend = JMAPBackend(
+            account: Self.makeAccount(),
+            sessionURL: Self.sessionURL,
+            tokenProvider: StaticJMAPAccessTokenProvider(token: "tok-123"),
+            transport: transport
+        )
+        try await backend.connect()
+        let sourceID = MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        let reopened = try #require(try await backend.draft(for: "e-alias-draft", sourceID: sourceID))
+        #expect(reopened.identityID == "id-2")
+
+        let sendResult = try await backend.send(draft: reopened)
+        #expect(sendResult.sentMessageID == "e-sent-alias")
+        #expect(await recordedSubmissionIdentity.values == ["id-2"])
+        #expect(await recordedMailFrom.values == ["work@example.org"])
+    }
+
+    @Test("flushFolder reconciles partial destroyed IDs before surfacing notDestroyed error")
+    func flushFolderReconcilesPartialDestroyedBeforeSurfacingNotDestroyedError() async throws {
+        let transport = MockJMAPHTTPTransport { request in
+            if request.url == Self.sessionURL {
+                return JMAPHTTPResponse(statusCode: 200, body: Self.sampleSessionJSON, finalURL: request.url)
+            }
+            let decoded = try JSONDecoder().decode(JMAPRequest.self, from: request.body ?? Data())
+            let first = decoded.methodCalls.first?.name ?? ""
+            if first == "Mailbox/get" {
+                return try Self.jsonResponse(Self.initialBootstrapResponse())
+            }
+            if first == "Email/query", decoded.methodCalls.count == 2 {
+                // Initial Trash cache seed.
+                let ids = ["t1", "t2", "t3"]
+                let list: [JMAPJSONValue] = ids.map { id in
+                    .object([
+                        "id": .string(id),
+                        "mailboxIds": .object(["mb-trash": .bool(true)]),
+                        "receivedAt": .string("2026-11-25T09:00:00Z"),
+                        "from": .array([.object(["email": .string("trash@example.org")])]),
+                        "subject": .string("Trash \(id)")
+                    ])
+                }
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Email/query",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "position": .int(0),
+                                    "ids": .array(ids.map { .string($0) }),
+                                    "total": .int(3)
+                                ],
+                                callID: "q0"
+                            ),
+                            JMAPInvocation(
+                                name: "Email/get",
+                                arguments: ["accountId": .string("u123"), "state": .string("es-trash-1"), "list": .array(list)],
+                                callID: "g0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            if first == "Email/query" {
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Email/query",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "position": .int(0),
+                                    "ids": .array([.string("t1"), .string("t2"), .string("t3")])
+                                ],
+                                callID: "q0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            }
+            // Partial success: t1 and t2 destroyed, t3 rejected.
+            return try Self.jsonResponse(
+                JMAPResponse(
+                    methodResponses: [
+                        JMAPInvocation(
+                            name: "Email/set",
+                            arguments: [
+                                "accountId": .string("u123"),
+                                "destroyed": .array([.string("t1"), .string("t2")]),
+                                "notDestroyed": .object(["t3": .object(["type": .string("cannotDestroy")])])
+                            ],
+                            callID: "es0"
+                        )
+                    ],
+                    sessionState: "sess-1"
+                )
+            )
+        }
+
+        let backend = JMAPBackend(
+            account: Self.makeAccount(),
+            sessionURL: Self.sessionURL,
+            tokenProvider: StaticJMAPAccessTokenProvider(token: "tok-123"),
+            transport: transport
+        )
+        try await backend.connect()
+        let trash = Folder(id: "mb-trash", name: "Trash", role: .trash)
+        _ = try await backend.messages(in: trash, pageToken: nil)
+
+        await #expect(throws: MailBackendError.self) {
+            try await backend.flushFolder(id: "mb-trash")
+        }
+        let sourceID = MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        let remaining = try await backend.cachedMessageHeaders(in: trash, sourceID: sourceID)
+        #expect(remaining.map(\.id) == ["t3"])
+    }
+
+    @Test("EventSource reconnect catch-up delta sync waits until stream HTTP readiness completes")
+    func eventSourceReconnectCatchUpWaitsForStreamReadiness() async throws {
+        let timeline = RecordedStrings()
+        let streamOpens = RequestCounter()
+        let transport = MockJMAPHTTPTransport(
+            handler: { request in
+                if request.url == Self.sessionURL {
+                    return JMAPHTTPResponse(statusCode: 200, body: Self.sampleSessionJSON, finalURL: request.url)
+                }
+                let decoded = try JSONDecoder().decode(JMAPRequest.self, from: request.body ?? Data())
+                let first = decoded.methodCalls.first?.name ?? ""
+                if first == "Mailbox/get" {
+                    return try Self.jsonResponse(Self.initialBootstrapResponse())
+                }
+                if first == "Email/query" {
+                    return try Self.jsonResponse(
+                        JMAPResponse(
+                            methodResponses: [
+                                JMAPInvocation(
+                                    name: "Email/query",
+                                    arguments: [
+                                        "accountId": .string("u123"),
+                                        "position": .int(0),
+                                        "ids": .array([.string("e-init")]),
+                                        "total": .int(1)
+                                    ],
+                                    callID: "q0"
+                                ),
+                                JMAPInvocation(
+                                    name: "Email/get",
+                                    arguments: [
+                                        "accountId": .string("u123"),
+                                        "state": .string("es-r1"),
+                                        "list": .array([
+                                            .object([
+                                                "id": .string("e-init"),
+                                                "mailboxIds": .object(["mb-inbox": .bool(true)]),
+                                                "receivedAt": .string("2026-11-25T09:00:00Z"),
+                                                "from": .array([.object(["email": .string("a@example.org")])]),
+                                                "subject": .string("Init")
+                                            ])
+                                        ])
+                                    ],
+                                    callID: "g0"
+                                )
+                            ],
+                            sessionState: "sess-1"
+                        )
+                    )
+                }
+                if first == "Mailbox/changes" {
+                    return try Self.jsonResponse(
+                        JMAPResponse(
+                            methodResponses: [
+                                JMAPInvocation(
+                                    name: "Mailbox/changes",
+                                    arguments: [
+                                        "accountId": .string("u123"),
+                                        "oldState": .string("mb-state-1"),
+                                        "newState": .string("mb-state-1")
+                                    ],
+                                    callID: "mc0"
+                                )
+                            ],
+                            sessionState: "sess-1"
+                        )
+                    )
+                }
+                if first == "Email/changes" {
+                    await timeline.append("delta-sync")
+                    return try Self.jsonResponse(
+                        JMAPResponse(
+                            methodResponses: [
+                                JMAPInvocation(
+                                    name: "Email/changes",
+                                    arguments: [
+                                        "accountId": .string("u123"),
+                                        "oldState": .string("es-r1"),
+                                        "newState": .string("es-r2"),
+                                        "created": .array([.string("e-after-ready")])
+                                    ],
+                                    callID: "ec0"
+                                )
+                            ],
+                            sessionState: "sess-1"
+                        )
+                    )
+                }
+                return try Self.jsonResponse(
+                    JMAPResponse(
+                        methodResponses: [
+                            JMAPInvocation(
+                                name: "Email/get",
+                                arguments: [
+                                    "accountId": .string("u123"),
+                                    "state": .string("es-r2"),
+                                    "list": .array([
+                                        .object([
+                                            "id": .string("e-after-ready"),
+                                            "mailboxIds": .object(["mb-inbox": .bool(true)]),
+                                            "receivedAt": .string("2026-11-25T09:05:00Z"),
+                                            "from": .array([.object(["email": .string("ready@example.org")])]),
+                                            "subject": .string("Ready gap message")
+                                        ])
+                                    ])
+                                ],
+                                callID: "g0"
+                            )
+                        ],
+                        sessionState: "sess-1"
+                    )
+                )
+            },
+            openSSEHandler: { _ in
+                await streamOpens.increment()
+                let openIndex = await streamOpens.count
+                if openIndex == 1 {
+                    return AsyncThrowingStream { $0.finish() }
+                }
+                // Simulate async HTTP 200 handshake delay before the stream becomes ready.
+                try await Task.sleep(nanoseconds: 25_000_000)
+                await timeline.append("stream-ready")
+                return AsyncThrowingStream { _ in
+                    // Silent live stream until disconnected.
+                }
+            }
+        )
+
+        let backend = JMAPBackend(
+            account: Self.makeAccount(),
+            sessionURL: Self.sessionURL,
+            tokenProvider: StaticJMAPAccessTokenProvider(token: "tok-123"),
+            transport: transport,
+            eventSourceRetryDelay: { _ in 5_000_000 }
+        )
+        try await backend.connect()
+        let inbox = Folder(id: "mb-inbox", name: "Inbox", role: .inbox)
+        _ = try await backend.messages(in: inbox, pageToken: nil)
+
+        for await event in backend.subscribeToChanges() {
+            if case .messagesAdded(let folderID, let ids) = event,
+               folderID == "mb-inbox",
+               ids.contains("e-after-ready") {
+                break
+            }
+        }
+        #expect(await timeline.values == ["stream-ready", "delta-sync"])
         await backend.disconnect()
     }
 }

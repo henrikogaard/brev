@@ -4,6 +4,12 @@
     "Enter a JMAP server URL or domain.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a JMAP server URL or domain."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -15,6 +21,12 @@
     "The JMAP server URL is not valid.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server URL is not valid."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -26,6 +38,12 @@
     "JMAP server URLs must use https://.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP server URLs must use https://."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -37,6 +55,12 @@
     "Do not include credentials in the JMAP server URL. Use the API token field instead.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Do not include credentials in the JMAP server URL. Use the API token field instead."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -48,6 +72,12 @@
     "The JMAP server URL must include a host name.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server URL must include a host name."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -59,6 +89,12 @@
     "The JMAP server redirected to an insecure address.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server redirected to an insecure address."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -70,6 +106,12 @@
     "The JMAP server redirected to a different host.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server redirected to a different host."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -81,6 +123,12 @@
     "The JMAP server redirected too many times.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server redirected too many times."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -92,6 +140,12 @@
     "JMAP sign-in failed or the API token was rejected.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP sign-in failed or the API token was rejected."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -103,6 +157,12 @@
     "The JMAP server denied access to this mailbox.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server denied access to this mailbox."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -114,6 +174,12 @@
     "The JMAP server rate-limited requests. Try again in %lld seconds.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server rate-limited requests. Try again in %lld seconds."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -125,6 +191,12 @@
     "The JMAP server rate-limited requests. Try again later.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server rate-limited requests. Try again later."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -136,6 +208,12 @@
     "The JMAP server is temporarily unavailable (HTTP %lld).": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server is temporarily unavailable (HTTP %lld)."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -147,6 +225,12 @@
     "The JMAP server rejected the request (HTTP %lld).": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server rejected the request (HTTP %lld)."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -158,6 +242,12 @@
     "Brev could not reach the JMAP server.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev could not reach the JMAP server."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -169,6 +259,12 @@
     "The JMAP server returned a response Brev could not read.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server returned a response Brev could not read."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -180,6 +276,12 @@
     "The JMAP server did not advertise a primary mail account.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server did not advertise a primary mail account."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -191,6 +293,12 @@
     "The JMAP server reported an error (%@).": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server reported an error (%@)."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -202,6 +310,12 @@
     "The JMAP mailbox needs a full refresh.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP mailbox needs a full refresh."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -213,6 +327,12 @@
     "The requested JMAP item could not be found.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The requested JMAP item could not be found."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -224,6 +344,12 @@
     "The attachment exceeds the JMAP server upload limit (%lld bytes).": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The attachment exceeds the JMAP server upload limit (%lld bytes)."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -235,6 +361,12 @@
     "No sending identity is available on this JMAP account.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No sending identity is available on this JMAP account."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -246,6 +378,12 @@
     "Could not find a Drafts folder on this JMAP account.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not find a Drafts folder on this JMAP account."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -257,6 +395,12 @@
     "Could not find a Sent folder on this JMAP account.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not find a Sent folder on this JMAP account."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -268,6 +412,12 @@
     "The JMAP server advertised an invalid download address.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server advertised an invalid download address."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -279,6 +429,12 @@
     "The JMAP server advertised an invalid upload address.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server advertised an invalid upload address."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -290,6 +446,12 @@
     "Saved JMAP account settings are incomplete or invalid.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved JMAP account settings are incomplete or invalid."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -301,6 +463,12 @@
     "JMAP API token is unavailable in Keychain.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP API token is unavailable in Keychain."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",

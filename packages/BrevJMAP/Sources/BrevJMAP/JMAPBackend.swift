@@ -406,28 +406,38 @@ public final class JMAPBackend: MailBackend,
                     let setResult = try await client.setEmails(
                         session: session,
                         accountId: accountId,
-                        destroy: chunk
+                        destroy: chunk,
+                        validateResult: false
                     )
                     let confirmed = setResult.destroyed ?? []
+                    if !confirmed.isEmpty {
+                        let confirmedSet = Set(confirmed)
+                        lock.withLock {
+                            for removedID in confirmed {
+                                emailsByID.removeValue(forKey: removedID)
+                                bodiesByID.removeValue(forKey: removedID)
+                                rawSourceDataByID.removeValue(forKey: removedID)
+                            }
+                            if let existing = headersByFolderID[id] {
+                                headersByFolderID[id] = existing.filter { !confirmedSet.contains($0.id) }
+                            }
+                        }
+                        destroyedInRound.append(contentsOf: confirmed)
+                        allDestroyed.append(contentsOf: confirmed)
+                    }
+                    if let setError = JMAPClient.firstSetError(in: setResult) {
+                        if !allDestroyed.isEmpty {
+                            broadcast(.messagesRemoved(folderID: id, messageIDs: allDestroyed))
+                            broadcast(.folderRefreshed(folderID: id))
+                        }
+                        throw setError
+                    }
                     guard !confirmed.isEmpty else {
                         throw JMAPError.methodError(
                             type: "serverFail",
                             description: "Email/set destroy made no progress"
                         )
                     }
-                    let confirmedSet = Set(confirmed)
-                    lock.withLock {
-                        for removedID in confirmed {
-                            emailsByID.removeValue(forKey: removedID)
-                            bodiesByID.removeValue(forKey: removedID)
-                            rawSourceDataByID.removeValue(forKey: removedID)
-                        }
-                        if let existing = headersByFolderID[id] {
-                            headersByFolderID[id] = existing.filter { !confirmedSet.contains($0.id) }
-                        }
-                    }
-                    destroyedInRound.append(contentsOf: confirmed)
-                    allDestroyed.append(contentsOf: confirmed)
                 }
                 guard !destroyedInRound.isEmpty else {
                     throw JMAPError.methodError(
@@ -896,6 +906,12 @@ public final class JMAPBackend: MailBackend,
             }
 
             let mappedBody = email.toMessageBody()
+            let htmlBody: String = if let html = mappedBody.html {
+                html
+            } else {
+                Self.escapedHTMLFromPlainText(mappedBody.plainText ?? "")
+            }
+            let referencedCIDs = Self.referencedContentIDs(inHTML: htmlBody)
             let draftLocalID = UUID().uuidString
             var stagedAttachments: [StagedAttachment] = []
             for attachment in mappedBody.attachments {
@@ -909,7 +925,11 @@ public final class JMAPBackend: MailBackend,
                     name: attachment.name,
                     mimeType: attachment.mimeType
                 )
-                let inlineCID: String? = if let cid = attachment.contentID, !cid.isEmpty {
+                // Only stage a part as inline when the editable HTML actually references its
+                // normalized Content-ID; unreferenced attachment CIDs stay regular attachments.
+                let inlineCID: String? = if let cid = attachment.contentID,
+                                            !cid.isEmpty,
+                                            referencedCIDs.contains(Self.normalizedContentID(cid)) {
                     cid
                 } else {
                     nil
@@ -930,10 +950,15 @@ public final class JMAPBackend: MailBackend,
                 )
             }
 
-            let htmlBody = mappedBody.html ?? mappedBody.plainText ?? ""
+            let matchedIdentityID = try await resolveIdentityID(
+                forFromAddress: email.from?.first,
+                session: session,
+                accountId: accountId
+            )
             let reconstructed = Draft(
                 id: draftLocalID,
                 remoteID: email.id,
+                identityID: matchedIdentityID,
                 threadID: email.threadId,
                 inReplyToMessageID: email.inReplyTo?.first,
                 to: (email.to ?? []).map { $0.toCorrespondent() },
@@ -1137,7 +1162,7 @@ public final class JMAPBackend: MailBackend,
                 onSuccessPatch["mailboxIds/\(targetSentMailbox.id)"] = .bool(true)
             }
 
-            let (emailSet, _, onSuccessEmailSet) = try await client.createAndSubmitEmail(
+            let (emailSet, _, _, onSuccessUpdateFailed) = try await client.createAndSubmitEmail(
                 session: session,
                 accountId: accountId,
                 creationID: "draft",
@@ -1149,7 +1174,7 @@ public final class JMAPBackend: MailBackend,
             )
             let sentMessageID = emailSet.created?["draft"]?["id"]?.stringValue
             var warnings: [SendResultWarning] = []
-            if let notUpdated = onSuccessEmailSet?.notUpdated, !notUpdated.isEmpty {
+            if onSuccessUpdateFailed {
                 warnings.append(.sentCopyAppendFailed)
             }
 
@@ -1260,7 +1285,7 @@ public final class JMAPBackend: MailBackend,
         }
         let (session, accountId) = try requireConnectedSession()
         let filter = Self.buildSearchFilter(for: query)
-        let pageLimit = max(1, min(Self.pageSize, session.maxObjectsInGet ?? Self.pageSize))
+        let pageLimit = max(1, min(500, session.maxObjectsInGet ?? 500))
         let fallbackFolderID = query.folderID ?? lock.withLock {
             mailboxesByID.values.first(where: { $0.folderRole == .inbox })?.id
         } ?? ""
@@ -1268,8 +1293,7 @@ public final class JMAPBackend: MailBackend,
             var position = 0
             var seenIDs: Set<String> = []
             var headers: [MessageHeader] = []
-            let maxPages = 100
-            for _ in 0 ..< maxPages {
+            while true {
                 try Task.checkCancellation()
                 let (queryResponse, getResponse) = try await client.queryAndGetEmails(
                     session: session,
@@ -1280,7 +1304,9 @@ public final class JMAPBackend: MailBackend,
                 )
                 guard !queryResponse.ids.isEmpty else { break }
                 let byID = Dictionary(uniqueKeysWithValues: getResponse.list.map { ($0.id, $0) })
+                var addedOnPage = 0
                 for id in queryResponse.ids where seenIDs.insert(id).inserted {
+                    addedOnPage += 1
                     guard let email = byID[id] else { continue }
                     let folderID = query.folderID
                         ?? email.mailboxIds.first(where: { $0.value })?.key
@@ -1288,7 +1314,8 @@ public final class JMAPBackend: MailBackend,
                     headers.append(email.toMessageHeader(folderID: folderID))
                 }
                 let nextPosition = queryResponse.position + queryResponse.ids.count
-                guard nextPosition > position else { break }
+                // Guard against buggy servers that ignore `position` or repeat pages forever.
+                guard nextPosition > position, addedOnPage > 0 else { break }
                 position = nextPosition
                 if let total = queryResponse.total, position >= total {
                     break
@@ -1635,6 +1662,7 @@ public final class JMAPBackend: MailBackend,
         let maxChangePages = 50
 
         // 1. Mailbox delta sync.
+        let getBatchLimit = max(1, min(500, session.maxObjectsInGet ?? 500))
         if let initialMailboxState = priorMailboxState, !initialMailboxState.isEmpty {
             do {
                 var sinceState = initialMailboxState
@@ -1644,20 +1672,21 @@ public final class JMAPBackend: MailBackend,
                         accountId: accountId,
                         sinceState: sinceState
                     )
-                    let changedMailboxIDs = mbChanges.created + mbChanges.updated
-                    if !changedMailboxIDs.isEmpty {
+                    let changedMailboxIDs = Array(Set(mbChanges.created + mbChanges.updated))
+                    var fetchedMailboxes: [JMAPMailbox] = []
+                    for chunk in Self.chunked(changedMailboxIDs, maxSize: getBatchLimit) {
                         let fetched = try await client.getMailboxes(
                             session: session,
                             accountId: accountId,
-                            ids: changedMailboxIDs
+                            ids: chunk
                         )
-                        lock.withLock {
-                            for mailbox in fetched.list {
-                                mailboxesByID[mailbox.id] = mailbox
-                            }
-                        }
+                        fetchedMailboxes.append(contentsOf: fetched.list)
                     }
+                    // Commit updated mailboxes and advance mailboxState only after every chunk succeeds.
                     lock.withLock {
+                        for mailbox in fetchedMailboxes {
+                            mailboxesByID[mailbox.id] = mailbox
+                        }
                         for destroyedID in mbChanges.destroyed {
                             mailboxesByID.removeValue(forKey: destroyedID)
                             headersByFolderID.removeValue(forKey: destroyedID)
@@ -1734,15 +1763,16 @@ public final class JMAPBackend: MailBackend,
         accountId: String
     ) async throws {
         let fetchIDs = Array(Set(changes.created + changes.updated))
+        let getBatchLimit = max(1, min(500, session.maxObjectsInGet ?? 500))
         var fetchedEmails: [JMAPEmail] = []
-        if !fetchIDs.isEmpty {
+        for chunk in Self.chunked(fetchIDs, maxSize: getBatchLimit) {
             let getResponse = try await client.getEmails(
                 session: session,
                 accountId: accountId,
-                ids: fetchIDs,
+                ids: chunk,
                 properties: JMAPClient.headerProperties
             )
-            fetchedEmails = getResponse.list
+            fetchedEmails.append(contentsOf: getResponse.list)
         }
 
         let createdSet = Set(changes.created)
@@ -1962,6 +1992,103 @@ public final class JMAPBackend: MailBackend,
             return matchedEmail
         }
         return candidates.first
+    }
+
+    private func resolveIdentityID(
+        forFromAddress fromAddress: JMAPEmailAddress?,
+        session: JMAPSession,
+        accountId: String
+    ) async throws -> String? {
+        guard let rawEmail = fromAddress?.email.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawEmail.isEmpty
+        else {
+            return nil
+        }
+        let cached = lock.withLock { identities }
+        let candidates: [JMAPIdentity]
+        if !cached.isEmpty {
+            candidates = cached
+        } else if session.supportsSubmission {
+            let response = try await client.getIdentities(session: session, accountId: accountId)
+            lock.withLock { identities = response.list }
+            candidates = response.list
+        } else {
+            candidates = []
+        }
+        let emailMatches = candidates.filter {
+            $0.email.caseInsensitiveCompare(rawEmail) == .orderedSame
+        }
+        if emailMatches.count == 1 {
+            return emailMatches[0].id
+        }
+        if emailMatches.count > 1,
+           let rawName = fromAddress?.name?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawName.isEmpty {
+            let nameMatches = emailMatches.filter {
+                $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare(rawName) == .orderedSame
+            }
+            if nameMatches.count == 1 {
+                return nameMatches[0].id
+            }
+        }
+        return nil
+    }
+
+    private static func escapedHTMLFromPlainText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
+            .replacingOccurrences(of: "\n", with: "<br>")
+    }
+
+    private static func normalizedContentID(_ raw: String) -> String {
+        var value = (raw.removingPercentEncoding ?? raw)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("<") {
+            value.removeFirst()
+        }
+        if value.hasSuffix(">") {
+            value.removeLast()
+        }
+        return value.lowercased()
+    }
+
+    private static func referencedContentIDs(inHTML html: String) -> Set<String> {
+        let pattern = #"(?i)\bcid:([^"'\s<>)]+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(html.startIndex ..< html.endIndex, in: html)
+        var result: Set<String> = []
+        for match in regex.matches(in: html, range: range) {
+            guard match.numberOfRanges > 1,
+                  let captureRange = Range(match.range(at: 1), in: html)
+            else {
+                continue
+            }
+            let normalized = normalizedContentID(String(html[captureRange]))
+            if !normalized.isEmpty {
+                result.insert(normalized)
+            }
+        }
+        return result
+    }
+
+    private static func chunked<T>(_ items: [T], maxSize: Int) -> [[T]] {
+        guard !items.isEmpty else { return [] }
+        let limit = max(1, maxSize)
+        var chunks: [[T]] = []
+        var index = 0
+        while index < items.count {
+            let end = min(index + limit, items.count)
+            chunks.append(Array(items[index ..< end]))
+            index = end
+        }
+        return chunks
     }
 
     private func uploadStagedAttachments(

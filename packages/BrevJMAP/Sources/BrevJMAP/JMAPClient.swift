@@ -356,12 +356,16 @@ public struct JMAPClient: Sendable {
     }
 
     /// Creates, updates, or destroys emails (`Email/set`).
+    ///
+    /// Pass `validateResult: false` when the caller needs to inspect partial `destroyed`/`notDestroyed`
+    /// results before surfacing errors.
     public func setEmails(
         session: JMAPSession,
         accountId: String,
         create: [String: [String: JMAPJSONValue]]? = nil,
         update: [String: [String: JMAPJSONValue]]? = nil,
-        destroy: [String]? = nil
+        destroy: [String]? = nil,
+        validateResult: Bool = true
     ) async throws -> JMAPSetResponse {
         var arguments: [String: JMAPJSONValue] = ["accountId": .string(accountId)]
         if let create, !create.isEmpty {
@@ -381,7 +385,9 @@ public struct JMAPClient: Sendable {
             session: session
         )
         let result = try response.response(forCallID: "es0").decodeArguments(JMAPSetResponse.self)
-        try validateSetResponse(result)
+        if validateResult {
+            try validateSetResponse(result)
+        }
         return result
     }
 
@@ -410,6 +416,8 @@ public struct JMAPClient: Sendable {
     ///
     /// Leaves any previously saved draft untouched until submission is confirmed; if `EmailSubmission/set`
     /// fails after `Email/set` created a staging copy, best-effort destroys the staging copy before rethrowing.
+    /// Once `EmailSubmission/set` succeeds, any subsequent error or `notUpdated` failure for the implicit
+    /// `onSuccessUpdateEmail` Sent move is reported via `onSuccessUpdateFailed` without failing delivery.
     public func createAndSubmitEmail(
         session: JMAPSession,
         accountId: String,
@@ -422,7 +430,8 @@ public struct JMAPClient: Sendable {
     ) async throws -> (
         emailSet: JMAPSetResponse,
         submissionSet: JMAPSetResponse,
-        onSuccessEmailSet: JMAPSetResponse?
+        onSuccessEmailSet: JMAPSetResponse?,
+        onSuccessUpdateFailed: Bool
     ) {
         let emailSetArgs: [String: JMAPJSONValue] = [
             "accountId": .string(accountId),
@@ -459,17 +468,42 @@ public struct JMAPClient: Sendable {
         try validateSetResponse(emailSet)
         let createdEmailID = emailSet.created?[creationID]?["id"]?.stringValue
 
-        let submissionResponses: [JMAPInvocation]
+        // Inspect `sub0` response tuples strictly in wire order so an error on the implicit
+        // `onSuccessUpdateEmail` tuple NEVER causes a confirmed submission to throw or delete
+        // the submitted email copy.
+        let rawSubResponses = response.methodResponses.filter { $0.callID == "sub0" }
+        let submissionIndex: Int
         let submissionSet: JMAPSetResponse
         do {
-            submissionResponses = try response.responses(forCallID: "sub0")
-            guard let submissionInvocation = submissionResponses.first(where: { $0.name == "EmailSubmission/set" }) else {
+            guard !rawSubResponses.isEmpty else {
                 throw JMAPError.invalidResponse
             }
-            submissionSet = try submissionInvocation.decodeArguments(JMAPSetResponse.self)
+            var matchedIndex: Int?
+            for (index, invocation) in rawSubResponses.enumerated() {
+                if invocation.name == "error" {
+                    let type = invocation.arguments["type"]?.stringValue ?? "unknown"
+                    let description = invocation.arguments["description"]?.stringValue
+                    if type == "cannotCalculateChanges" {
+                        throw JMAPError.cannotCalculateChanges
+                    }
+                    throw JMAPError.methodError(type: type, description: description)
+                }
+                if invocation.name == "EmailSubmission/set" {
+                    matchedIndex = index
+                    break
+                }
+            }
+            guard let resolvedIndex = matchedIndex else {
+                throw JMAPError.invalidResponse
+            }
+            submissionIndex = resolvedIndex
+            submissionSet = try rawSubResponses[resolvedIndex].decodeArguments(JMAPSetResponse.self)
             try validateSetResponse(submissionSet)
+            guard submissionSet.created?["send"] != nil else {
+                throw JMAPError.invalidResponse
+            }
         } catch {
-            // Submission failed after Email/set created a staging copy — clean up the orphan copy
+            // Submission itself failed after Email/set created a staging copy — clean up the orphan copy
             // without touching any previously saved draft so retries stay clean.
             if let createdEmailID, !createdEmailID.isEmpty {
                 _ = try? await setEmails(session: session, accountId: accountId, destroy: [createdEmailID])
@@ -477,12 +511,27 @@ public struct JMAPClient: Sendable {
             throw error
         }
 
-        // RFC 8621 §7.3: onSuccessUpdateEmail produces an implicit Email/set response with the same callID.
-        let onSuccessEmailSet = submissionResponses
-            .first(where: { $0.name == "Email/set" })
-            .flatMap { try? $0.decodeArguments(JMAPSetResponse.self) }
+        // RFC 8621 §7.3: onSuccessUpdateEmail produces an implicit Email/set (or error) tuple after
+        // EmailSubmission/set under the same callID. Treat any failure here as non-fatal.
+        let trailingResponses = rawSubResponses.dropFirst(submissionIndex + 1)
+        var onSuccessEmailSet: JMAPSetResponse?
+        var onSuccessUpdateFailed = false
+        for invocation in trailingResponses {
+            if invocation.name == "error" {
+                onSuccessUpdateFailed = true
+            } else if invocation.name == "Email/set" {
+                if let decoded = try? invocation.decodeArguments(JMAPSetResponse.self) {
+                    onSuccessEmailSet = decoded
+                    if decoded.notUpdated?.isEmpty == false || decoded.notDestroyed?.isEmpty == false {
+                        onSuccessUpdateFailed = true
+                    }
+                } else {
+                    onSuccessUpdateFailed = true
+                }
+            }
+        }
 
-        return (emailSet, submissionSet, onSuccessEmailSet)
+        return (emailSet, submissionSet, onSuccessEmailSet, onSuccessUpdateFailed)
     }
 
     // MARK: - Blobs (Upload & Download)
@@ -620,26 +669,34 @@ public struct JMAPClient: Sendable {
             ],
             allowCrossOriginRedirects: false
         )
-        return transport.streamEvents(request)
+        return try await transport.openEventStream(request)
     }
 
     // MARK: - Helpers
 
-    private func validateSetResponse(_ response: JMAPSetResponse) throws {
+    /// Returns the first typed error inside a `*/set` response, or `nil` when all operations succeeded.
+    public static func firstSetError(in response: JMAPSetResponse) -> JMAPError? {
         if let failure = response.notCreated?.values.first {
-            throw JMAPError.methodError(type: failure.type, description: failure.description)
+            return .methodError(type: failure.type, description: failure.description)
         }
         if let failure = response.notUpdated?.values.first {
             if failure.type == "notFound" {
-                throw JMAPError.notFound(id: response.notUpdated?.keys.first ?? "")
+                return .notFound(id: response.notUpdated?.keys.first ?? "")
             }
-            throw JMAPError.methodError(type: failure.type, description: failure.description)
+            return .methodError(type: failure.type, description: failure.description)
         }
         if let failure = response.notDestroyed?.values.first {
             if failure.type == "notFound" {
-                throw JMAPError.notFound(id: response.notDestroyed?.keys.first ?? "")
+                return .notFound(id: response.notDestroyed?.keys.first ?? "")
             }
-            throw JMAPError.methodError(type: failure.type, description: failure.description)
+            return .methodError(type: failure.type, description: failure.description)
+        }
+        return nil
+    }
+
+    private func validateSetResponse(_ response: JMAPSetResponse) throws {
+        if let error = Self.firstSetError(in: response) {
+            throw error
         }
     }
 }

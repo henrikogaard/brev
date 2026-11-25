@@ -111,6 +111,15 @@ public protocol JMAPHTTPTransport: Sendable {
     func send(_ request: JMAPHTTPRequest) async throws -> JMAPHTTPResponse
     /// Opens a streaming RFC 8620 §7.3 `EventSource` SSE connection.
     func streamEvents(_ request: JMAPHTTPRequest) -> AsyncThrowingStream<JMAPEventSourceEvent, Error>
+    /// Opens an RFC 8620 §7.3 `EventSource` SSE stream and suspends until the HTTP 200 handshake completes.
+    func openEventStream(_ request: JMAPHTTPRequest) async throws -> AsyncThrowingStream<JMAPEventSourceEvent, Error>
+}
+
+public extension JMAPHTTPTransport {
+    /// Default fallback delegating to `streamEvents(_:)` for lightweight transports.
+    func openEventStream(_ request: JMAPHTTPRequest) async throws -> AsyncThrowingStream<JMAPEventSourceEvent, Error> {
+        streamEvents(request)
+    }
 }
 
 /// Strict HTTPS validator, RFC 8620 §2 well-known URL resolver, and RFC 6570 template expander.
@@ -393,29 +402,47 @@ public final class URLSessionJMAPHTTPTransport: NSObject, JMAPHTTPTransport, @un
         )
     }
 
-    /// Streams Server-Sent Events from an RFC 8620 §7.3 `EventSource` endpoint.
-    public func streamEvents(_ request: JMAPHTTPRequest) -> AsyncThrowingStream<JMAPEventSourceEvent, Error> {
-        AsyncThrowingStream { continuation in
+    /// Opens an RFC 8620 §7.3 `EventSource` endpoint and awaits HTTP 200 readiness before returning the stream.
+    public func openEventStream(
+        _ request: JMAPHTTPRequest
+    ) async throws -> AsyncThrowingStream<JMAPEventSourceEvent, Error> {
+        let validatedURL = try JMAPURLValidator.validateHTTPSURL(request.url)
+        var urlRequest = URLRequest(url: validatedURL)
+        urlRequest.httpMethod = request.method
+        urlRequest.timeoutInterval = 300
+        for (field, value) in request.headers {
+            urlRequest.setValue(value, forHTTPHeaderField: field)
+        }
+        let targetSession: URLSession = request.allowCrossOriginRedirects ? session : strictOriginSession
+        let bytes: URLSession.AsyncBytes
+        let rawResponse: URLResponse
+        do {
+            (bytes, rawResponse) = try await targetSession.bytes(for: urlRequest)
+        } catch {
+            if let captured = takeLastRedirectError() {
+                throw captured
+            }
+            if error is CancellationError {
+                throw error
+            }
+            throw JMAPError.networkFailure
+        }
+        if let captured = takeLastRedirectError() {
+            throw captured
+        }
+        guard let http = rawResponse as? HTTPURLResponse else {
+            throw JMAPError.invalidResponse
+        }
+        if let finalURL = http.url,
+           !request.allowCrossOriginRedirects,
+           !JMAPURLValidator.isSameOrigin(validatedURL, finalURL) {
+            throw JMAPError.untrustedRedirect
+        }
+        try Self.throwIfNonSuccessStatus(http.statusCode, retryAfter: nil)
+
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let validatedURL = try JMAPURLValidator.validateHTTPSURL(request.url)
-                    var urlRequest = URLRequest(url: validatedURL)
-                    urlRequest.httpMethod = request.method
-                    urlRequest.timeoutInterval = 300
-                    for (field, value) in request.headers {
-                        urlRequest.setValue(value, forHTTPHeaderField: field)
-                    }
-                    let targetSession: URLSession = request.allowCrossOriginRedirects ? session : strictOriginSession
-                    let (bytes, rawResponse) = try await targetSession.bytes(for: urlRequest)
-                    guard let http = rawResponse as? HTTPURLResponse else {
-                        throw JMAPError.invalidResponse
-                    }
-                    if let finalURL = http.url,
-                       !request.allowCrossOriginRedirects,
-                       !JMAPURLValidator.isSameOrigin(validatedURL, finalURL) {
-                        throw JMAPError.untrustedRedirect
-                    }
-                    try Self.throwIfNonSuccessStatus(http.statusCode, retryAfter: nil)
                     var parser = JMAPEventSourceParser()
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
@@ -434,6 +461,33 @@ public final class URLSessionJMAPHTTPTransport: NSObject, JMAPHTTPTransport, @un
                         continuation.finish(throwing: error)
                     } else if error is CancellationError {
                         continuation.finish()
+                    } else {
+                        continuation.finish(throwing: JMAPError.networkFailure)
+                    }
+                }
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
+    /// Streams Server-Sent Events from an RFC 8620 §7.3 `EventSource` endpoint.
+    public func streamEvents(_ request: JMAPHTTPRequest) -> AsyncThrowingStream<JMAPEventSourceEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let readyStream = try await self.openEventStream(request)
+                    for try await event in readyStream {
+                        if Task.isCancelled { break }
+                        continuation.yield(event)
+                    }
+                    continuation.finish()
+                } catch {
+                    if error is CancellationError {
+                        continuation.finish()
+                    } else if error is JMAPError {
+                        continuation.finish(throwing: error)
                     } else {
                         continuation.finish(throwing: JMAPError.networkFailure)
                     }
