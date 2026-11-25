@@ -4,6 +4,22 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Native JMAP mail backend (`BrevJMAP`, RFC 8620 / RFC 8621): added the MIT-licensed
+  `packages/BrevJMAP/` SPM package implementing strict-HTTPS session discovery
+  (`/.well-known/jmap` or explicit HTTPS session URL, rejecting non-HTTPS URLs,
+  embedded credentials, and insecure redirects, and stripping `Authorization` headers
+  on cross-origin redirects), batched JSON API calls with `#resultRef` back-references,
+  `Mailbox/get` + `Mailbox/set` folder management, single-round-trip `Email/query` +
+  `Email/get` listing and structured server search, body/attachment/raw-source
+  downloads via percent-encoded `downloadUrl` templates, `Email/set` mutations
+  (read, flag, Apple `$MailFlagBit0..2` flag colors, move, copy, trash/destroy),
+  `Blob/upload` + `Email/set` drafts and batched `EmailSubmission/set` outbound send,
+  `Mailbox/changes` + `Email/changes` delta sync with `cannotCalculateChanges` recovery,
+  RFC 8620 §7.3 `EventSource` SSE live updates with bounded backoff, and RFC 8620 §7.2
+  `PushSubscription/set` WebPush hooks; added Keychain-only `JMAPAccountConnector`
+  wiring across `BrevMail`, `BrevMacOS`, and `BrevIOS`, plus the `JMAPAccountSetupView`
+  (one-click Fastmail preset and custom JMAP server entry) in English and Norwegian (`nb`).
+
 - On-device AI downloaded local models (#304, Slice 2): added
   `LocalModelCatalog` (curated open-weights models with parameter count,
   quantization, size, SPDX license, HTTPS URL, RAM note, and SHA-256 digest),

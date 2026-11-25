@@ -198,6 +198,7 @@ struct AppSessionFactoryTests {
         #expect(session.backend == nil)
         #expect(session.canUseIMAPAccountSetup)
         #expect(session.canValidateIMAPAccountSetup)
+        #expect(session.canUseJMAPAccountSetup)
         #expect(session.canUseIMAPOAuthSetup)
         #expect(session.canStartIMAPOAuthBrowserSetup)
         #expect(session.canDiscoverIMAPSettings)

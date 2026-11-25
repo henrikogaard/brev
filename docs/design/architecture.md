@@ -6,7 +6,7 @@
 
 These architectural boundaries are permanent across macOS and iOS:
 
-1. **`MailBackend` is the single domain boundary.** Every mail adapter (`IMAPSMTPBackend`, `GmailAPIBackend`, `MockBackend`, and future Graph/JMAP backends) conforms to `MailBackend` and translates provider DTOs into plain Swift domain models (`BrevAccount`, `Folder`, `MessageHeader`, `MessageBody`, `Draft`, `SearchQuery`, `MailEvent`).
+1. **`MailBackend` is the single domain boundary.** Every mail adapter (`IMAPSMTPBackend`, `GmailAPIBackend`, `JMAPBackend`, `MockBackend`, and future Graph backends) conforms to `MailBackend` and translates provider DTOs into plain Swift domain models (`BrevAccount`, `Folder`, `MessageHeader`, `MessageBody`, `Draft`, `SearchQuery`, `MailEvent`).
 2. **Capability-driven UI, never backend type-checks.** Views inspect `backend.capabilities`, `extendedCapabilities`, and `extensionService(_:)` rather than switching on concrete backend types (`if backend is GmailAPIBackend` is forbidden).
 3. **Zero persistence types in views.** View targets and UI packages never import `RealmSwift`, SQLite drivers, or provider SDKs, and never see `Object`, `Results<>`, or `@ObservedResults`.
 4. **Shared UI lives in packages, not app targets.** `apps/macOS/` and `apps/iOS/` are thin platform shells (windowing, AppKit/UIKit bridges, entitlements, lifecycle, embedded helpers/extensions). Reusable mail, settings, and design-system views live in SPM packages.
@@ -22,6 +22,7 @@ Brev uses **Tuist** for Xcode project generation (`Workspace.swift`, `apps/*/Pro
 | `apps/iOS/` | Native iOS/iPadOS SwiftUI shell (`BrevIOS`), `BrevMailWidgets`, `BrevShareExtension`, `BrevNotificationContent` |
 | `packages/BrevBackend/` | Domain models, `MailBackend` protocol, extension services (`CachedMessageBodyProviding`, raw-source/copy seams, search progress), `IMAPSMTPBackend`, `LocalMailBackend`, `MockBackend` |
 | `packages/BrevGmail/` | Native Gmail API adapter (`GmailAPIBackend`) and Google OAuth/account wiring |
+| `packages/BrevJMAP/` | Native RFC 8620 / RFC 8621 JMAP adapter (`JMAPBackend`), strict-HTTPS session discovery, batched JSON transport, EventSource SSE, and account connector |
 | `packages/BrevSyncEngine/` | IMAP sync orchestration, SQLite storage, CONDSTORE/IDLE/polling, offline mutation queue |
 | `packages/BrevMail/` | Composite mail UI (folder sidebar, message list, conversation reader, compose, search, triage, assistant, local MCP broker/socket) |
 | `packages/BrevSettings/` | Shared typed settings persistence, backup codec, iCloud preference sync, macOS/iOS Settings UI |

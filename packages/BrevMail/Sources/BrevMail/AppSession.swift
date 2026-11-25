@@ -197,6 +197,9 @@ public final class AppSession {
         @MainActor (IMAPAccountSetupRequest) async throws -> LoginResult
     public typealias IMAPAccountValidationCoordinator =
         @MainActor (IMAPAccountSetupRequest) async throws -> Void
+    /// Provisions and connects a native JMAP account from a validated setup request.
+    public typealias JMAPAccountSetupCoordinator =
+        @MainActor (JMAPAccountSetupRequest) async throws -> LoginResult
     /// Drives the OAuth2 account provisioning flow for Gmail and Outlook.
     ///
     /// The closure receives an `IMAPOAuthSetupRequest` carrying the access token
@@ -240,6 +243,7 @@ public final class AppSession {
     private let loginCoordinator: LoginCoordinator?
     private let imapAccountSetupCoordinator: IMAPAccountSetupCoordinator?
     private let imapAccountValidationCoordinator: IMAPAccountValidationCoordinator?
+    private let jmapAccountSetupCoordinator: JMAPAccountSetupCoordinator?
     private let imapOAuthSetupCoordinator: IMAPOAuthSetupCoordinator?
     private let imapOAuthBrowserCoordinator: IMAPOAuthBrowserCoordinator?
     private let googleOAuthLoginCoordinator: GoogleOAuthLoginCoordinator?
@@ -275,6 +279,17 @@ public final class AppSession {
 
     public var canValidateIMAPAccountSetup: Bool {
         imapAccountValidationCoordinator != nil
+    }
+
+    /// Whether the session can add or repair a native JMAP account.
+    public var canUseJMAPAccountSetup: Bool {
+        jmapAccountSetupCoordinator != nil
+    }
+
+    /// Whether the account awaiting re-authentication uses the native JMAP
+    /// backend and needs an API token update rather than an IMAP password sheet.
+    public var authFailureRequiresJMAPTokenUpdate: Bool {
+        authFailedAccountBackendIdentifier == BrevAccount.jmapBackendIdentifier
     }
 
     public var canUseIMAPOAuthSetup: Bool {
@@ -407,6 +422,7 @@ public final class AppSession {
         loginCoordinator: LoginCoordinator? = nil,
         imapAccountSetupCoordinator: IMAPAccountSetupCoordinator? = nil,
         imapAccountValidationCoordinator: IMAPAccountValidationCoordinator? = nil,
+        jmapAccountSetupCoordinator: JMAPAccountSetupCoordinator? = nil,
         imapOAuthSetupCoordinator: IMAPOAuthSetupCoordinator? = nil,
         imapOAuthBrowserCoordinator: IMAPOAuthBrowserCoordinator? = nil,
         googleOAuthLoginCoordinator: GoogleOAuthLoginCoordinator? = nil,
@@ -461,6 +477,7 @@ public final class AppSession {
         self.loginCoordinator = loginCoordinator
         self.imapAccountSetupCoordinator = imapAccountSetupCoordinator
         self.imapAccountValidationCoordinator = imapAccountValidationCoordinator
+        self.jmapAccountSetupCoordinator = jmapAccountSetupCoordinator
         self.imapOAuthSetupCoordinator = imapOAuthSetupCoordinator
         self.imapOAuthBrowserCoordinator = imapOAuthBrowserCoordinator
         self.googleOAuthLoginCoordinator = googleOAuthLoginCoordinator
@@ -1146,6 +1163,42 @@ public final class AppSession {
         }
     }
 
+    /// Connects and installs a native JMAP account from a user-submitted setup request.
+    public func signIn(
+        with request: JMAPAccountSetupRequest,
+        requestInitialMailboxSelection: Bool = true
+    ) async {
+        guard let jmapAccountSetupCoordinator,
+              !isSigningIn,
+              !isSigningOut else { return }
+        invalidateRestore()
+        let signInRequest = startSignInRequest(kind: .interactive)
+        isSigningIn = true
+        signInError = nil
+        canRetrySessionRestore = false
+        let existingAccountIDs = await storedAccountIDs()
+        do {
+            let result = try await jmapAccountSetupCoordinator(request)
+            let isNewAccount = !existingAccountIDs.contains(result.account.id)
+            guard canApplySignInResponse(signInRequest) else {
+                await discard(result)
+                return
+            }
+            await install(result)
+            if isNewAccount && requestInitialMailboxSelection {
+                pendingInitialMailboxSelectionAccountID = result.account.id
+            }
+            finishSignIn(signInRequest)
+        } catch is CancellationError {
+            guard canApplySignInResponse(signInRequest) else { return }
+            finishSignIn(signInRequest)
+        } catch {
+            guard canApplySignInResponse(signInRequest) else { return }
+            signInError = AppSessionPresentation.signInErrorMessage(for: error)
+            finishSignIn(signInRequest)
+        }
+    }
+
     /// Signs in using a completed OAuth2 flow result (Gmail or Outlook).
     ///
     /// The caller must have already obtained an access token from `GoogleOAuthFlow`
@@ -1570,6 +1623,7 @@ public final class AppSession {
         // fresh sign-in flow.
         account.backendIdentifier != BrevAccount.imapSMTPBackendIdentifier
             && account.backendIdentifier != BrevAccount.gmailAPIBackendIdentifier
+            && account.backendIdentifier != BrevAccount.jmapBackendIdentifier
     }
 
     private func purgeStoredAccount(_ account: BrevAccount) async {

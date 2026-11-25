@@ -66,6 +66,7 @@ included:
   - packages/BrevCalendar/Sources
   - packages/BrevCrypto/Sources
   - packages/BrevDesign/Sources
+  - packages/BrevJMAP/Sources
   - packages/BrevMail/Sources
   - packages/BrevPlugins/Sources
   - packages/BrevSettings/Sources

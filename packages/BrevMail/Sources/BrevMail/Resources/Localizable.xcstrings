@@ -17693,6 +17693,329 @@
           }
         }
       }
+    },
+    "Add JMAP account": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add JMAP account"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legg til JMAP-konto"
+          }
+        }
+      }
+    },
+    "Update JMAP API token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update JMAP API token"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdater JMAP API-token"
+          }
+        }
+      }
+    },
+    "Connect": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til"
+          }
+        }
+      }
+    },
+    "Connect Fastmail, Stalwart, Cyrus, or any standards-compliant JMAP server.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect Fastmail, Stalwart, Cyrus, or any standards-compliant JMAP server."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til Fastmail, Stalwart, Cyrus eller en hvilken som helst standard JMAP-tjener."
+          }
+        }
+      }
+    },
+    "Your API token stays in Keychain and is sent only to your JMAP server over HTTPS.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your API token stays in Keychain and is sent only to your JMAP server over HTTPS."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API-tokenet ditt lagres i Nøkkelring og sendes kun til JMAP-tjeneren din over HTTPS."
+          }
+        }
+      }
+    },
+    "JMAP provider": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP provider"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP-leverandør"
+          }
+        }
+      }
+    },
+    "Fastmail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fastmail"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fastmail"
+          }
+        }
+      }
+    },
+    "api.fastmail.com": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "api.fastmail.com"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "api.fastmail.com"
+          }
+        }
+      }
+    },
+    "Custom JMAP server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom JMAP server"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Egendefinert JMAP-tjener"
+          }
+        }
+      }
+    },
+    "Stalwart, Cyrus, or self-hosted": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stalwart, Cyrus, or self-hosted"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stalwart, Cyrus eller egen tjener"
+          }
+        }
+      }
+    },
+    "JMAP session URL or domain": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP session URL or domain"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP-øktadresse eller domene"
+          }
+        }
+      }
+    },
+    "Requires HTTPS. Enter an explicit session URL or a domain for /.well-known/jmap discovery.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requires HTTPS. Enter an explicit session URL or a domain for /.well-known/jmap discovery."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krever HTTPS. Skriv inn en øktadresse eller et domene for /.well-known/jmap-oppdagelse."
+          }
+        }
+      }
+    },
+    "API token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API token"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API-token"
+          }
+        }
+      }
+    },
+    "Create an app-specific API token with mail access in your JMAP provider settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create an app-specific API token with mail access in your JMAP provider settings."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opprett et app-spesifikt API-token med e-posttilgang i innstillingene hos JMAP-leverandøren din."
+          }
+        }
+      }
+    },
+    "Mail protocol": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mail protocol"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-postprotokoll"
+          }
+        }
+      }
+    },
+    "IMAP / SMTP": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP / SMTP"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP / SMTP"
+          }
+        }
+      }
+    },
+    "JMAP": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP"
+          }
+        }
+      }
+    },
+    "Connect with JMAP": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect with JMAP"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til med JMAP"
+          }
+        }
+      }
+    },
+    "For Fastmail, Stalwart, Cyrus, or any JMAP server.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For Fastmail, Stalwart, Cyrus, or any JMAP server."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For Fastmail, Stalwart, Cyrus eller en hvilken som helst JMAP-tjener."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
