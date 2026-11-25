@@ -154,14 +154,18 @@ struct DeveloperSettingsTests {
 
         let keyView = try #require(findKeyViewProxy(in: enabledHost.host))
         #expect(enabledHost.window.makeFirstResponder(keyView))
-        try sendSpaceKey(to: enabledHost.window)
+
+        // Initial Space press flips false -> true; repeat events while Space
+        // stays held down (before keyUp) must not flip the switch again.
+        try sendSpaceKeyDown(to: enabledHost.window, isRepeat: false)
+        #expect(enabledBox.isOn == true)
+        try sendSpaceKeyDown(to: enabledHost.window, isRepeat: true)
+        #expect(enabledBox.isOn == true)
+        try sendSpaceKeyUp(to: enabledHost.window)
         #expect(enabledBox.isOn == true)
 
-        // Holding Space (key repeat) must not repeatedly flip the switch.
-        try sendSpaceKey(to: enabledHost.window, isRepeat: true)
-        #expect(enabledBox.isOn == true)
-
-        try sendSpaceKey(to: enabledHost.window)
+        try sendSpaceKeyDown(to: enabledHost.window, isRepeat: false)
+        try sendSpaceKeyUp(to: enabledHost.window)
         #expect(enabledBox.isOn == false)
 
         let disabledBox = SwitchToggleStateBox(isOn: false)
@@ -169,7 +173,8 @@ struct DeveloperSettingsTests {
         defer { disabledHost.cleanup() }
 
         #expect(findKeyViewProxy(in: disabledHost.host) == nil)
-        try sendSpaceKey(to: disabledHost.window)
+        try sendSpaceKeyDown(to: disabledHost.window, isRepeat: false)
+        try sendSpaceKeyUp(to: disabledHost.window)
         #expect(disabledBox.isOn == false)
     }
 
@@ -203,7 +208,7 @@ struct DeveloperSettingsTests {
     }
 
     @MainActor
-    private func sendSpaceKey(to window: NSWindow, isRepeat: Bool = false) throws {
+    private func sendSpaceKeyDown(to window: NSWindow, isRepeat: Bool) throws {
         let keyDown = try #require(NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
@@ -217,21 +222,24 @@ struct DeveloperSettingsTests {
             keyCode: 49
         ))
         window.sendEvent(keyDown)
-        if !isRepeat {
-            let keyUp = try #require(NSEvent.keyEvent(
-                with: .keyUp,
-                location: .zero,
-                modifierFlags: [],
-                timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: window.windowNumber,
-                context: nil,
-                characters: " ",
-                charactersIgnoringModifiers: " ",
-                isARepeat: false,
-                keyCode: 49
-            ))
-            window.sendEvent(keyUp)
-        }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    }
+
+    @MainActor
+    private func sendSpaceKeyUp(to window: NSWindow) throws {
+        let keyUp = try #require(NSEvent.keyEvent(
+            with: .keyUp,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: " ",
+            charactersIgnoringModifiers: " ",
+            isARepeat: false,
+            keyCode: 49
+        ))
+        window.sendEvent(keyUp)
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     }
 

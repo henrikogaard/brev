@@ -8769,3 +8769,7 @@ buttons, and package-aware localization.
   - Scoped `SettingsHighContrastSwitchToggleStyle` Space handling to `.onKeyPress(.space, phases: .down)` (`PRRT_kwDOUHC-Ds68CZzq`) so held-Space key repeats do not repeatedly flip the toggle, with a key-repeat assertion in `DeveloperSettingsTests`.
   - Aligned `BrevMailRootView.readingPaneContent` quick-reply routing with `visibleSourceSections` (`PRRT_kwDOUHC-Ds68CZ2L`) so quick-reply and expanded compose match within the same active profile scope on both macOS and iPad.
   - Verified on `macmini-devbox` (`/tmp/brev-polish-b-r3`, cleaned up afterwards): `DeveloperSettingsTests` and `ComposeSenderIdentityTests`.
+- **Review fixes round 4 (PR #372 — Devin Review, 2 threads):**
+  - Kept the quick-reply bar's pinned sending source stable when expanding into the macOS inline dock (`PRRT_kwDOUHC-Ds68ClAN`) via `ComposeReplyAccountRouting.effectiveComposeSourceID` in `ComposeSenderIdentity.swift` and `BrevMailRootView.composeEditor`, preventing `.inline` from rematching against accounts hidden by the active profile; added `inlineReplyDockKeepsVisibleCcSenderWhenProfileHidesToAccount` in `ComposeSenderIdentityTests`.
+  - Updated `DeveloperSettingsTests` (`PRRT_kwDOUHC-Ds68ClCb`) to send Space `keyDown(isRepeat: false)` → `keyDown(isRepeat: true)` → `keyUp` so key repeat is exercised while Space is held down.
+  - Verified on `macmini-devbox` (`/tmp/brev-polish-b-r4`, removed afterwards): `ComposeSenderIdentityTests` and `DeveloperSettingsTests`.

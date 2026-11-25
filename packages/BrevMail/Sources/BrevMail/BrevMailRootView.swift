@@ -5262,15 +5262,14 @@ public struct BrevMailRootView: View {
         let selectedSourceID = anchorSourceID
         // A docked reply keeps its account even if a profile switch hides it.
         let candidateSections = hostStyle == .inline ? sourceSections : visibleSourceSections
-        let matchedReplySourceID = replyingTo.flatMap { header in
-            ComposeSenderIdentity.replySourceID(
-                for: header,
-                in: candidateSections,
-                selectedSourceID: selectedSourceID,
-                defaultSourceID: preferredDefaultSection(in: candidateSections)?.id
-            )
-        }
-        let effectiveSelectedSourceID = matchedReplySourceID ?? selectedSourceID
+        let preservesPinnedInlineSender = hostStyle == .inline && selectedSourceID != nil
+        let effectiveSelectedSourceID = ComposeReplyAccountRouting.effectiveComposeSourceID(
+            hostStyle: hostStyle,
+            anchorSourceID: selectedSourceID,
+            candidateSections: candidateSections,
+            defaultSourceID: preferredDefaultSection(in: candidateSections)?.id,
+            replyingTo: replyingTo
+        )
         let effectiveAccountID = effectiveSelectedSourceID?.accountID ?? activeBackend.account.id
         let effectiveAccountBackend = effectiveSelectedSourceID.map { backend(for: $0) } ?? activeBackend
         let senderSections = candidateSections.filter { $0.account.id == effectiveAccountID }
@@ -5279,7 +5278,7 @@ public struct BrevMailRootView: View {
             fallbackAccount: effectiveAccountBackend.account,
             selectedSourceID: effectiveSelectedSourceID,
             defaultSourceID: preferredDefaultSection(in: senderSections)?.id,
-            replyingTo: replyingTo
+            replyingTo: preservesPinnedInlineSender ? nil : replyingTo
         )
         let sourceID = senderResolution.sourceID
         let composeBackend = sourceID.map { backend(for: $0) } ?? effectiveAccountBackend

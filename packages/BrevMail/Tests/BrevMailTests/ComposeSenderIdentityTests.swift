@@ -588,6 +588,94 @@ struct ComposeSenderIdentityTests {
         #expect(workBackend.bodyLookups.isEmpty)
     }
 
+    @Test("expanding macOS inline dock keeps visible Cc sender when active profile hides To account")
+    @MainActor
+    func inlineReplyDockKeepsVisibleCcSenderWhenProfileHidesToAccount() throws {
+        let personalAccount = Self.account(
+            id: "personal-acct",
+            email: "henrik@personal.example",
+            name: "Henrik (personal)"
+        )
+        let workAccount = Self.account(
+            id: "work-acct",
+            email: "henrik@work.example",
+            name: "Henrik (work)"
+        )
+        let personal = Self.section(
+            account: personalAccount,
+            mailboxID: "personal-acct",
+            email: "henrik@personal.example",
+            displayName: "Henrik (personal)"
+        )
+        let work = Self.section(
+            account: workAccount,
+            mailboxID: "work-acct",
+            email: "henrik@work.example",
+            displayName: "Henrik (work)"
+        )
+        let allSections = [personal, work]
+        // Active profile exposes Work and hides Personal.
+        let visibleSections = [work]
+        let headerWithHiddenToAndVisibleCc = MessageHeader(
+            id: "INBOX:99",
+            threadID: "thread-99",
+            folderID: "INBOX",
+            from: Correspondent(name: "Sigrid", email: "sigrid@partner.example"),
+            to: [Correspondent(name: "Henrik (personal)", email: "henrik@personal.example")],
+            cc: [Correspondent(name: "Henrik (work)", email: "henrik@work.example")],
+            subject: "Profile-scoped reply check",
+            snippet: "Checking sender consistency",
+            date: Date(timeIntervalSince1970: 1_780_001_000)
+        )
+
+        // Quick-reply bar matches within visibleSections and picks Work (Cc).
+        let barRouting = ComposeReplyAccountRouting.resolve(
+            replyingTo: headerWithHiddenToAndVisibleCc,
+            in: visibleSections,
+            messageOwnerSourceID: work.id,
+            defaultSourceID: work.id
+        )
+        #expect(barRouting.sendingSourceID == work.id)
+        #expect(barRouting.quotedMessageSourceID == work.id)
+
+        // Expanding pins Work into InlineReplyContext.
+        let navigation = MailNavigationState()
+        navigation.presentInlineReply(
+            to: headerWithHiddenToAndVisibleCc,
+            sourceID: barRouting.sendingSourceID,
+            quotedMessageSourceID: barRouting.quotedMessageSourceID,
+            prefillBodyText: "Expanding reply"
+        )
+        let context = try #require(navigation.inlineReply)
+
+        // Inline composeEditor sees allSections (so profile switches don't drop
+        // the docked account) yet must keep the pinned Work sender instead of
+        // rematching hidden Personal in To.
+        let expandedSourceID = ComposeReplyAccountRouting.effectiveComposeSourceID(
+            hostStyle: .inline,
+            anchorSourceID: context.sourceID,
+            candidateSections: allSections,
+            defaultSourceID: personal.id,
+            replyingTo: context.replyTo
+        )
+        #expect(expandedSourceID == barRouting.sendingSourceID)
+        #expect(expandedSourceID == work.id)
+
+        let senderSections = allSections.filter { $0.account.id == expandedSourceID?.accountID }
+        let expandedResolution = ComposeSenderIdentity.resolution(
+            from: senderSections,
+            fallbackAccount: workAccount,
+            selectedSourceID: expandedSourceID,
+            defaultSourceID: senderSections.first?.id,
+            replyingTo: nil
+        )
+        #expect(expandedResolution.sourceID == work.id)
+        #expect(expandedResolution.initialSender?.correspondent == Correspondent(
+            name: "Henrik (work)",
+            email: "henrik@work.example"
+        ))
+    }
+
     private static func account(
         id: BrevAccount.ID = "account-1",
         email: String = "henrik@example.org",

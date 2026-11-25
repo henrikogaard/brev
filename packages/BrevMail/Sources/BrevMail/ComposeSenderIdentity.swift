@@ -78,6 +78,31 @@ struct ComposeReplyAccountRouting: Equatable, Sendable {
             quotedMessageSourceID: messageOwnerSourceID ?? defaultSourceID
         )
     }
+
+    /// Resolves the sending source for `composeEditor`. When expanding a
+    /// quick-reply into the macOS inline dock (`hostStyle == .inline`) with a
+    /// pinned sending source, keeps that source stable instead of rematching
+    /// against accounts hidden by the active profile.
+    static func effectiveComposeSourceID(
+        hostStyle: ComposeHostStyle,
+        anchorSourceID: MailSourceID?,
+        candidateSections: [MailSourceSection],
+        defaultSourceID: MailSourceID?,
+        replyingTo: MessageHeader?
+    ) -> MailSourceID? {
+        if hostStyle == .inline, let anchorSourceID {
+            return anchorSourceID
+        }
+        if let replyingTo {
+            return ComposeSenderIdentity.replySourceID(
+                for: replyingTo,
+                in: candidateSections,
+                selectedSourceID: anchorSourceID,
+                defaultSourceID: defaultSourceID
+            ) ?? anchorSourceID
+        }
+        return anchorSourceID
+    }
 }
 
 enum ComposeSenderIdentity {
