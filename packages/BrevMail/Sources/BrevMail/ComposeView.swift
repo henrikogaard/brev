@@ -1012,7 +1012,14 @@ public struct ComposeView: View {
                     // proposals still stretch it to the real width.
                     .frame(idealWidth: isAccessibilityFieldLayout ? ComposeLayout.compactSheetIdealWidth : nil)
                 }
-                .scrollDisabled(!usesScrollableFieldLayout)
+                // Avoid `.scrollDisabled(!usesScrollableFieldLayout)`, which
+                // propagates through the environment and disables nested
+                // preview ScrollViews (`aiPreviewBody`,
+                // `ComposePreservedQuoteSection`) in portrait (#366). Pinning
+                // content height to `scrollArea.size.height` in portrait plus
+                // `.scrollBounceBehavior(.basedOnSize)` keeps the outer scroll
+                // view stationary while nested previews stay scrollable.
+                .scrollBounceBehavior(.basedOnSize)
                 .clipped()
                 .scrollDismissesKeyboard(.interactively)
             }
@@ -2805,6 +2812,13 @@ public struct ComposeView: View {
     }
 
     #endif
+
+    /// Seeds an initial AI preview state for internal layout tests (#366).
+    func initialAIPreview(_ preview: ComposeAIPreviewState) -> ComposeView {
+        var copy = self
+        copy._aiPreview = State(initialValue: preview)
+        return copy
+    }
 
     @ViewBuilder
     private var aiPreviewPanel: some View {

@@ -107,7 +107,15 @@ struct ComposeAccessibilityBoundsTests {
 
         let allViews = descendants(of: host.view)
         let scrollViews = allViews.compactMap { $0 as? UIScrollView }.filter { !($0 is UITextView) }
-        #expect(!scrollViews.isEmpty, "Landscape compose should wrap header fields and body in a ScrollView")
+        let scrollView = try #require(
+            scrollViews.first,
+            "Landscape compose should wrap header fields and body in a ScrollView"
+        )
+        #expect(
+            scrollView.keyboardDismissMode == .interactive
+                || scrollView.keyboardDismissMode == .interactiveWithAccessory,
+            "Landscape compose ScrollView should dismiss the keyboard interactively (got \(scrollView.keyboardDismissMode.rawValue))"
+        )
 
         let scrollFrame = try #require(
             controlFrames[.scrollArea],
@@ -119,6 +127,12 @@ struct ComposeAccessibilityBoundsTests {
             scrollFrame.maxY <= viewport.height - 43.5,
             "Bottom utility bar should remain pinned below ScrollView: \(scrollFrame) in \(viewport)"
         )
+        if viewport.height <= 200 {
+            #expect(
+                scrollView.contentSize.height > scrollFrame.height,
+                "ScrollView content (\(scrollView.contentSize.height)) should exceed compact viewport (\(scrollFrame.height)) so header fields scroll out of the way to reach the body"
+            )
+        }
 
         // Verify the actual rendered top-bar and bottom utility controls sit
         // inside the visible viewport bounds with tappable dimensions (#366).
@@ -243,6 +257,72 @@ struct ComposeAccessibilityBoundsTests {
             portraitTextView.textStorage.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
         )
         #expect(fontBackInPortrait.fontDescriptor.symbolicTraits.contains(.traitBold))
+    }
+
+    @Test("regular portrait compose keeps nested preview ScrollViews scrollable (#366)")
+    func portraitComposePreservesNestedPreviewScrolling() throws {
+        let backend = MockBackend()
+        let longGeneratedText = (1 ... 30)
+            .map { "Line \($0): Follow-up summary for the quarterly review meeting." }
+            .joined(separator: "\n")
+        let request = ComposeAIShortcutRequest(
+            action: .formal,
+            bodyText: "Quick note",
+            target: .wholeDraft
+        )
+        let preview = ComposeAIPreviewState(
+            id: 1,
+            action: .shortcut(.formal, scope: .wholeDraft),
+            request: request,
+            providerLabel: "On-device",
+            phase: .loading
+        ).succeeded(with: longGeneratedText)
+
+        let viewport = CGSize(width: 393, height: 852)
+        let view = ComposeView(
+            backend: backend,
+            from: backend.account,
+            prefill: ComposePrefill(
+                to: ["qa@example.test"],
+                subject: "Portrait preview scroll check",
+                bodyText: "Quick note"
+            )
+        )
+        .initialAIPreview(preview)
+        .environment(\.horizontalSizeClass, .compact)
+        .environment(\.verticalSizeClass, .regular)
+        .brevTheme(.brevMonoLight)
+        .htmlBodyRenderTarget(.staticSnapshot)
+
+        let host = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: viewport))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        host.view.frame = CGRect(origin: .zero, size: viewport)
+        host.view.layoutIfNeeded()
+        window.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        window.layoutIfNeeded()
+
+        let scrollViews = descendants(of: host.view)
+            .compactMap { $0 as? UIScrollView }
+            .filter { !($0 is UITextView) }
+        let outerScrollView = try #require(scrollViews.first, "Expected outer compose UIScrollView")
+        let nestedPreviewScrollView = try #require(
+            scrollViews.first { $0 !== outerScrollView && $0.isDescendant(of: outerScrollView) },
+            "Expected nested AI preview UIScrollView inside portrait compose"
+        )
+
+        #expect(
+            nestedPreviewScrollView.isScrollEnabled,
+            "Nested preview ScrollView must remain scrollable in regular portrait compose"
+        )
+        #expect(
+            nestedPreviewScrollView.contentSize.height > nestedPreviewScrollView.bounds.height,
+            "Long AI preview content (\(nestedPreviewScrollView.contentSize.height)) should exceed capped height (\(nestedPreviewScrollView.bounds.height)) so it scrolls"
+        )
     }
 
     private func descendants(of view: UIView) -> [UIView] {

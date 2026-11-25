@@ -24,6 +24,10 @@
   - Updated `PrivacyOnboardingAXLLayoutIOSTests` to test true `AXL` (`.accessibility3` / `.accessibilityExtraLarge`) and `AX5` (`.accessibility5` / `.accessibilityExtraExtraExtraLarge`) across `.firstRun`/`.reviewFromSettings` and `393×852`/`320×852` (8 cases), and registered `PrivacyOnboardingAXLLayoutIOSTests` in `.github/workflows/build.yml`'s iOS settings job.
   - Re-verified locally (`scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`) and on `macmini-devbox` (`/tmp/brev-fix-366-r1`, cleaned up afterwards): `PrivacyOnboardingTests` + `PrivacyOnboardingSnapshotTests` (19/19 macOS), `PrivacyOnboardingAXLLayoutIOSTests` (8/8 iOS 27.2 Simulator), and `ComposePresentationTests` + `ComposeAccessibilityBoundsTests` + `ComposeHeaderAlignmentIOSTests` (29/29 iOS 27.2 Simulator).
 - Next: push review round 1 commit to `fix/ios-settings-layout-and-nb-ax`, reply to and resolve all 7 review threads on PR #366.
+- Review fixes round 2 (PR #366 — Devin 🟡 + 🔍 findings):
+  - Removed `.scrollDisabled(!usesScrollableFieldLayout)` from the outer iOS `ComposeView` `ScrollView` (which propagated through SwiftUI's environment into nested preview `ScrollView`s such as `aiPreviewBody` and `ComposePreservedQuoteSection`) and replaced it with `.scrollBounceBehavior(.basedOnSize)` while keeping the portrait height pinned to `scrollArea.size.height`.
+  - Added `ComposeAccessibilityBoundsTests.portraitComposePreservesNestedPreviewScrolling` verifying nested AI preview `UIScrollView`s retain `isScrollEnabled == true` and scrollable `contentSize.height > bounds.height` in regular portrait (`393×852`), and asserted `scrollView.keyboardDismissMode == .interactive` plus `scrollView.contentSize.height > scrollFrame.height` in compact landscape (`852×185`).
+  - Verified locally (`scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`) and on `macmini-devbox` (`/tmp/brev-fix-366-r2`, cleaned up afterwards): `ComposePresentationTests` + `ComposeAccessibilityBoundsTests` + `ComposeHeaderAlignmentIOSTests` on iOS 27.2 Simulator (`iPhone 18 Pro`).
 
 ## 2026-11-25 — Agent — Track 3: Native JMAP Mail Backend (`BrevJMAP`)
 
