@@ -4981,21 +4981,6 @@ private extension View {
         #endif
     }
 
-    /// iOS renders the bottom-bar toolbar as a floating pill the List doesn't
-    /// inset for inside a split-view column, so at rest the pill covers the
-    /// last visible row. Reserve real layout space for it — not just extra
-    /// scroll room — so a row is never born underneath the pill.
-    @ViewBuilder
-    func brevBottomBarScrollInset() -> some View {
-        #if os(iOS)
-        safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: MessageListPresentation.bottomBarScrollInset)
-        }
-        #else
-        self
-        #endif
-    }
-
     @ViewBuilder
     func accessibilityCompactStatusValue(
         _ enabled: Bool,
@@ -5032,6 +5017,51 @@ private extension View {
         }
     }
 }
+
+extension View {
+    /// iOS renders the bottom-bar toolbar as a floating glass pill the List
+    /// doesn't inset for inside a split-view column, so at rest the pill covers
+    /// the last visible row. Reserve real layout space for it and paint a soft
+    /// theme-aware bottom fade behind the glass dock so rows dissolve smoothly
+    /// underneath without sender or snippet collision.
+    @ViewBuilder
+    func brevBottomBarScrollInset() -> some View {
+        #if os(iOS)
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            MessageListBottomBarFade()
+        }
+        #else
+        self
+        #endif
+    }
+}
+
+#if os(iOS)
+private struct MessageListBottomBarFade: View {
+    @Environment(\.brevTheme) private var theme
+
+    var body: some View {
+        Color.clear
+            .frame(height: MessageListPresentation.bottomBarScrollInset)
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .top) {
+                LinearGradient(
+                    stops: [
+                        .init(color: Color.clear, location: 0.0),
+                        .init(color: theme.bgPrimary.color.opacity(0.75), location: 0.45),
+                        .init(color: theme.bgPrimary.color, location: 0.78),
+                        .init(color: theme.bgPrimary.color, location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea(edges: .bottom)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+#endif
 
 struct MessageListRow: View {
     @Environment(\.brevTheme) private var theme

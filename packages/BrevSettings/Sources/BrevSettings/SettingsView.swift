@@ -335,6 +335,7 @@ public struct SettingsView: View {
             #endif
             #if os(iOS)
             .listStyle(.insetGrouped)
+            .settingsScrollEdgeChrome()
             #else
             .listStyle(.plain)
             #endif
@@ -423,7 +424,10 @@ public struct SettingsView: View {
             prompt: String(localized: "Search Settings", bundle: .module)
         )
         .scrollContentBackground(.hidden)
-        .background(BrevWindowSurfaceBackground(role: .sidebar).ignoresSafeArea())
+        #if os(iOS)
+            .settingsScrollEdgeChrome()
+        #endif
+            .background(BrevWindowSurfaceBackground(role: .sidebar).ignoresSafeArea())
         #if os(macOS)
             .background(BrevSplitViewColumnTransparencyFixer())
             // Handle arrows when the native sidebar list itself holds keyboard focus.
@@ -748,7 +752,7 @@ public struct SettingsView: View {
         detail(for: section)
             .environment(\.settingsScopeCaption, settingsScopeCaption(for: section))
             .environment(\.settingsScopeAccessory, inlineSettingsScope(for: section))
-            .background(BrevWindowSurfaceBackground(role: .content).ignoresSafeArea())
+            .background(theme.bgSecondary.color.ignoresSafeArea())
         #else
         VStack(spacing: 0) {
             settingsScope(for: section)

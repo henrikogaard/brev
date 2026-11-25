@@ -232,13 +232,25 @@ enum MailRootQuickReplyPolicy {
     }
 }
 
+enum MailRootSidebarLeadingControl: Equatable, Sendable {
+    case none
+    case directSettingsButton
+}
+
+enum MailRootSidebarProfileSwitcherPlacement: Equatable, Sendable {
+    case none
+    case navigationTitleMenu
+    case sidebarHeader
+}
+
 enum MailRootSettingsToolbarPolicy {
     static func showsSettingsButton(
         on surface: MailRootToolbarSurface,
         platform: MailRootToolbarPlatform
     ) -> Bool {
         // macOS reaches Settings through the app menu (Cmd-,). On iOS the
-        // sidebar's leading control provides access without a duplicate item.
+        // sidebar's leading gear button provides direct 1-tap access without a
+        // duplicate item.
         switch surface {
         case .sidebar:
             false
@@ -249,10 +261,10 @@ enum MailRootSettingsToolbarPolicy {
 
     /// Resolves the `FolderSidebar` Settings action for the current platform (#360).
     ///
-    /// On iOS (iPhone and iPad), `FolderSidebar` surfaces Settings inside its
-    /// leading gear menu when `onOpenSettings` is provided. On macOS, Settings
-    /// lives in the dedicated `FolderSidebarFooter` and the app menu, so the
-    /// sidebar menu callback stays `nil`.
+    /// On iOS (iPhone and iPad), `FolderSidebar` exposes a direct 1-tap
+    /// leading gear button when `onOpenSettings` is provided. On macOS,
+    /// Settings lives in the dedicated `FolderSidebarFooter` and the app menu,
+    /// so the sidebar callback stays `nil`.
     static func sidebarSettingsAction(
         platform: MailRootToolbarPlatform,
         hasExternalSettingsHandler: Bool,
@@ -260,6 +272,49 @@ enum MailRootSettingsToolbarPolicy {
     ) -> (() -> Void)? {
         guard platform == .iOS, hasExternalSettingsHandler else { return nil }
         return presentSettings
+    }
+
+    /// What control occupies the leading navigation-bar slot of `FolderSidebar`.
+    ///
+    /// Separating Settings into a direct 1-tap button avoids burying Settings
+    /// inside the Profile switcher menu on iPhone and iPad (#360).
+    static func sidebarLeadingControl(
+        platform: MailRootToolbarPlatform,
+        hasSettingsAction: Bool
+    ) -> MailRootSidebarLeadingControl {
+        guard platform == .iOS, hasSettingsAction else { return .none }
+        return .directSettingsButton
+    }
+
+    /// Where the Profile switcher (`All Mailboxes`, profiles, `Manage Profiles`)
+    /// is hosted in `FolderSidebar`.
+    static func sidebarProfileSwitcherPlacement(
+        platform: MailRootToolbarPlatform,
+        hasProfiles: Bool,
+        canManageProfiles: Bool
+    ) -> MailRootSidebarProfileSwitcherPlacement {
+        guard hasProfiles || canManageProfiles else { return .none }
+        switch platform {
+        case .iOS:
+            return .navigationTitleMenu
+        case .macOS:
+            return .sidebarHeader
+        }
+    }
+
+    /// Whether the iOS Mailboxes bar switches to inline title mode so the
+    /// `Mailboxes ⌄` profile title menu sits cleanly between Settings and Edit
+    /// without duplicating a large title directly underneath.
+    static func usesInlineProfileTitleMenu(
+        platform: MailRootToolbarPlatform,
+        hasProfiles: Bool,
+        canManageProfiles: Bool
+    ) -> Bool {
+        sidebarProfileSwitcherPlacement(
+            platform: platform,
+            hasProfiles: hasProfiles,
+            canManageProfiles: canManageProfiles
+        ) == .navigationTitleMenu
     }
 }
 

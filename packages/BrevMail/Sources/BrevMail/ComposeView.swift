@@ -1975,10 +1975,13 @@ public struct ComposeView: View {
                 .background(Circle().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
                 .accessibilityHidden(true)
             #else
+            let circleDiameter = ComposeLayoutPolicy.sendButtonVisualDiameter(for: composeLayoutPlatform)
             Image(systemName: "arrow.up")
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
-                .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
+                .frame(width: circleDiameter, height: circleDiameter)
                 .background(Circle().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
+                .frame(minWidth: toolbarMetrics.hitTargetSize, minHeight: toolbarMetrics.hitTargetSize)
                 .contentShape(Rectangle())
             #endif
         }

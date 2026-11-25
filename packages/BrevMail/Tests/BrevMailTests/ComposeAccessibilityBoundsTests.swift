@@ -148,6 +148,12 @@ struct ComposeAccessibilityBoundsTests {
                 "Top control \(key) horizontal overflow: \(frame)"
             )
         }
+        if let cancelFrame = controlFrames[.cancel], let sendFrame = controlFrames[.send] {
+            #expect(
+                abs(cancelFrame.midY - sendFrame.midY) <= 1.5,
+                "Send (\(sendFrame.midY)) should stay vertically centered with Cancel (\(cancelFrame.midY))"
+            )
+        }
 
         for key in [ComposeChromeControlKey.attach, .format, .moreActions] {
             let frame = try #require(
