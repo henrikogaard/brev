@@ -12,12 +12,13 @@
 
 import BrevAvatars
 import BrevBackend
+import BrevDesign
 import BrevThemes
 import SwiftUI
 
-/// Which theme token tints a mailbox icon in the sidebar (#306). Roles get a
-/// colour so the common mailboxes can be found at a glance; custom folders
-/// stay neutral so a long folder tree does not turn into confetti.
+/// Which theme token tints a sidebar icon or status symbol (#306).
+/// Mailbox roles stay monochrome (`.neutral`) on macOS so unread counts and
+/// selection carry the visual hierarchy; status symbols retain semantic tints.
 enum FolderSidebarIconTint: Equatable, Sendable {
     case accent
     case info
@@ -26,16 +27,16 @@ enum FolderSidebarIconTint: Equatable, Sendable {
     case danger
     case neutral
 
-    /// The tint for a folder role.
+    /// Monochrome tint for mailbox roles in the sidebar.
     static func tint(for role: FolderRole) -> FolderSidebarIconTint {
-        switch role {
-        case .inbox, .sent: .accent
-        case .drafts, .scheduled: .info
-        case .starred, .snoozed: .warning
-        case .archive: .success
-        case .spam: .danger
-        case .trash, .allMail, .custom: .neutral
-        }
+        _ = role
+        return .neutral
+    }
+
+    /// Monochrome SF Symbol colour for macOS sidebar rows: muted secondary at
+    /// rest, elevated to primary when selected (Apple Mail style).
+    static func macOSRowColor(isSelected: Bool, in theme: BrevTheme) -> Color {
+        isSelected ? theme.textPrimary.color : theme.textSecondary.color
     }
 
     /// The resolved theme colour.
@@ -48,6 +49,69 @@ enum FolderSidebarIconTint: Equatable, Sendable {
         case .danger: theme.danger.color
         case .neutral: theme.textSecondary.color
         }
+    }
+}
+
+/// How the macOS sidebar column renders its backing surface inside
+/// `NavigationSplitView`.
+enum FolderSidebarSurfaceStyle: Equatable, Sendable {
+    /// Let macOS 26 `NavigationSplitView` provide its native floating
+    /// Liquid Glass sidebar column without painting a flat slab over it.
+    case nativeFloatingGlass
+    /// Render the legacy themed pane surface (`BrevWindowSurfaceBackground`).
+    /// Used on macOS < 26 and whenever Reduce Transparency is enabled.
+    case themedSurface
+}
+
+/// Decides whether the macOS sidebar lets macOS 26's native floating Liquid
+/// Glass chrome shine cleanly or falls back to the themed surface.
+enum FolderSidebarSurfacePolicy {
+    static func style(
+        isMacOS26OrLater: Bool,
+        reduceTransparency: Bool,
+        translucencyMode: WindowTranslucencyMode
+    ) -> FolderSidebarSurfaceStyle {
+        guard isMacOS26OrLater, !reduceTransparency else {
+            return .themedSurface
+        }
+        // On macOS 26+, NavigationSplitView renders a native floating
+        // translucent Liquid Glass sidebar across appearance modes unless
+        // Reduce Transparency requests an opaque surface.
+        _ = translucencyMode
+        return .nativeFloatingGlass
+    }
+
+    /// Uses native macOS 26 soft scroll-edge chrome instead of the legacy
+    /// manual top blur overlay when native floating glass is active.
+    static func usesSoftScrollEdgeEffect(
+        isMacOS26OrLater: Bool,
+        reduceTransparency: Bool
+    ) -> Bool {
+        isMacOS26OrLater && !reduceTransparency
+    }
+}
+
+/// Controls when the macOS sidebar shows the top profile switcher bar.
+/// Single-profile (or All Mailboxes only) sessions omit the top banner so
+/// Favorites sit cleanly at the top edge like Apple Mail, while profile
+/// management stays reachable via section context menus and Settings.
+enum FolderSidebarProfileSwitcherPolicy {
+    static func showsTopBar(profileCount: Int) -> Bool {
+        profileCount > 1
+    }
+}
+
+/// Controls hover-revealed accessories on macOS sidebar section headers so
+/// resting headers stay quiet while keeping VoiceOver and keyboard access intact.
+enum FolderSidebarSectionHeaderActionVisibility {
+    /// Trailing opacity for hover-only header actions (`•••`, `+`).
+    static func trailingActionOpacity(isHovered: Bool) -> Double {
+        isHovered ? 1 : 0
+    }
+
+    /// Disclosure chevron opacity for collapsible account section headers.
+    static func accountDisclosureChevronOpacity(isHovered: Bool) -> Double {
+        isHovered ? 1 : 0
     }
 }
 
@@ -145,3 +209,69 @@ struct FolderSidebarFooter {
     let status: FolderSidebarSyncStatus
     let onOpenSettings: (() -> Void)?
 }
+
+#if os(macOS)
+extension View {
+    /// Applies the macOS sidebar backing surface: lets macOS 26's native
+    /// floating Liquid Glass column shine cleanly unless Reduce Transparency
+    /// or macOS < 26 requires the themed surface fallback.
+    func brevMacSidebarPaneSurface() -> some View {
+        modifier(MacSidebarPaneSurfaceModifier())
+    }
+
+    /// Applies the legacy top scroll-edge blur overlay only when native
+    /// macOS 26 soft scroll-edge chrome is unavailable or disabled.
+    func brevMacSidebarScrollEdgeChrome() -> some View {
+        modifier(MacSidebarScrollEdgeChromeModifier())
+    }
+}
+
+private struct MacSidebarPaneSurfaceModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @AppStorage(WindowAppearancePreferenceKey.mode) private var translucencyModeRaw = WindowTranslucencyMode.solid.rawValue
+
+    private var translucencyMode: WindowTranslucencyMode {
+        WindowTranslucencyMode(rawValue: translucencyModeRaw) ?? .solid
+    }
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *),
+           FolderSidebarSurfacePolicy.style(
+               isMacOS26OrLater: true,
+               reduceTransparency: reduceTransparency,
+               translucencyMode: translucencyMode
+           ) == .nativeFloatingGlass {
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            content.brevMailPaneSurface(.sidebar)
+        }
+        #else
+        content.brevMailPaneSurface(.sidebar)
+        #endif
+    }
+}
+
+private struct MacSidebarScrollEdgeChromeModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *),
+           FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(
+               isMacOS26OrLater: true,
+               reduceTransparency: reduceTransparency
+           ) {
+            content
+        } else {
+            content.brevMailPaneScrollEdgeBlur()
+        }
+        #else
+        content.brevMailPaneScrollEdgeBlur()
+        #endif
+    }
+}
+#endif

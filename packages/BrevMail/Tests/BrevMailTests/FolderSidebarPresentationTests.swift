@@ -13,6 +13,7 @@
 import BrevBackend
 import BrevDesign
 @testable import BrevMail
+import Foundation
 import Testing
 
 @Suite("FolderSidebarPresentation")
@@ -638,5 +639,74 @@ struct FolderSidebarPresentationTests {
         #expect(FolderSidebarPresentation.navigationTitle(
             activeProfileID: "focused", profiles: []
         ) == "Mailboxes")
+    }
+
+    @Test("fresh macOS disclosure state collapses nested subfolders by default")
+    func freshDisclosureStateDefaultsNestedSubfoldersCollapsed() throws {
+        let sourceID = MailSourceID(accountID: "acct-1", mailboxID: "personal")
+        let folders = MockBackend.previewFolders
+        var state = FolderDisclosureState.load(from: Data(), defaultCollapsed: true)
+
+        let collapsed = state.collapsedFolderIDs(for: sourceID, folders: folders)
+        #expect(collapsed == ["archive", "archive-receipts", "mailspring"])
+
+        let initialRows = FolderSidebarPresentation.visibleRows(
+            folders: folders,
+            collapsedFolderIDs: collapsed
+        )
+        #expect(initialRows.map { $0.folder.id } == [
+            "inbox",
+            "drafts",
+            "sent",
+            "archive",
+            "mailspring",
+            "promotions",
+            "social-networks",
+            "spam",
+            "trash",
+        ])
+
+        // Expanding Archive reveals direct children while keeping nested Receipts collapsed.
+        state.toggle("archive", sourceID: sourceID)
+        #expect(state.isExpanded("archive", sourceID: sourceID, folders: folders))
+        #expect(!state.isExpanded("archive-receipts", sourceID: sourceID, folders: folders))
+        let afterArchiveExpand = FolderSidebarPresentation.visibleRows(
+            folders: folders,
+            collapsedFolderIDs: state.collapsedFolderIDs(for: sourceID, folders: folders)
+        )
+        #expect(afterArchiveExpand.contains { $0.folder.id == "archive-receipts" })
+        #expect(!afterArchiveExpand.contains { $0.folder.id == "archive-receipts-licenses" })
+
+        // Round-trip persistence preserves the default-collapsed mode and expanded set.
+        let encoded = try JSONEncoder().encode(state)
+        let restored = FolderDisclosureState.load(from: encoded, defaultCollapsed: true)
+        #expect(restored == state)
+
+        // Expand All and Collapse All cover every collapsible folder in the source.
+        state.setAllExpanded(true, sourceID: sourceID, folders: folders)
+        #expect(state.collapsedFolderIDs(for: sourceID, folders: folders).isEmpty)
+        state.setAllExpanded(false, sourceID: sourceID, folders: folders)
+        #expect(state.collapsedFolderIDs(for: sourceID, folders: folders) == [
+            "archive",
+            "archive-receipts",
+            "mailspring",
+        ])
+    }
+
+    @Test("legacy persisted disclosure payloads preserve open-by-default semantics")
+    func legacyDisclosurePayloadPreservesExplicitCollapsedSet() throws {
+        struct LegacyDisclosurePayload: Encodable {
+            let bySource: [MailSourceID: Set<Folder.ID>]
+            let withoutSource: Set<Folder.ID>
+        }
+        let legacyJSON = try JSONEncoder().encode(
+            LegacyDisclosurePayload(bySource: [:], withoutSource: ["archive"])
+        )
+        let state = FolderDisclosureState.load(from: legacyJSON, defaultCollapsed: true)
+
+        #expect(!state.usesDefaultCollapsed)
+        #expect(state.collapsedFolderIDs(for: nil, folders: MockBackend.previewFolders) == ["archive"])
+        #expect(!state.isExpanded("archive", sourceID: nil, folders: MockBackend.previewFolders))
+        #expect(state.isExpanded("mailspring", sourceID: nil, folders: MockBackend.previewFolders))
     }
 }

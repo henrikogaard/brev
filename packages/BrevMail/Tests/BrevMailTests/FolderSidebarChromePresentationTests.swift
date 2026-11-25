@@ -11,22 +11,67 @@
  */
 
 import BrevBackend
+import BrevDesign
 @testable import BrevMail
+import BrevThemes
 import Testing
 
 @Suite("Folder sidebar chrome presentation")
 struct FolderSidebarChromePresentationTests {
-    @Test("mailbox roles get theme-token tints; custom folders stay neutral")
+    @Test("mailbox roles stay monochrome neutral so selection and unread counts carry hierarchy")
     func roleTints() {
-        #expect(FolderSidebarIconTint.tint(for: .inbox) == .accent)
-        #expect(FolderSidebarIconTint.tint(for: .sent) == .accent)
-        #expect(FolderSidebarIconTint.tint(for: .drafts) == .info)
-        #expect(FolderSidebarIconTint.tint(for: .starred) == .warning)
-        #expect(FolderSidebarIconTint.tint(for: .snoozed) == .warning)
-        #expect(FolderSidebarIconTint.tint(for: .archive) == .success)
-        #expect(FolderSidebarIconTint.tint(for: .spam) == .danger)
-        #expect(FolderSidebarIconTint.tint(for: .trash) == .neutral)
-        #expect(FolderSidebarIconTint.tint(for: .custom) == .neutral)
+        for role in FolderRole.allCases {
+            #expect(FolderSidebarIconTint.tint(for: role) == .neutral)
+        }
+        let dark = BrevTheme.brevMonoDark
+        #expect(FolderSidebarIconTint.macOSRowColor(isSelected: false, in: dark) == dark.textSecondary.color)
+        #expect(FolderSidebarIconTint.macOSRowColor(isSelected: true, in: dark) == dark.textPrimary.color)
+    }
+
+    @Test("macOS 26 sidebar uses native floating Liquid Glass unless Reduce Transparency or older macOS")
+    func surfacePolicy() {
+        for mode in WindowTranslucencyMode.allCases {
+            #expect(
+                FolderSidebarSurfacePolicy.style(
+                    isMacOS26OrLater: true,
+                    reduceTransparency: false,
+                    translucencyMode: mode
+                ) == .nativeFloatingGlass
+            )
+            #expect(
+                FolderSidebarSurfacePolicy.style(
+                    isMacOS26OrLater: true,
+                    reduceTransparency: true,
+                    translucencyMode: mode
+                ) == .themedSurface
+            )
+            #expect(
+                FolderSidebarSurfacePolicy.style(
+                    isMacOS26OrLater: false,
+                    reduceTransparency: false,
+                    translucencyMode: mode
+                ) == .themedSurface
+            )
+        }
+        #expect(FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(isMacOS26OrLater: true, reduceTransparency: false))
+        #expect(!FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(isMacOS26OrLater: true, reduceTransparency: true))
+        #expect(!FolderSidebarSurfacePolicy.usesSoftScrollEdgeEffect(isMacOS26OrLater: false, reduceTransparency: false))
+    }
+
+    @Test("macOS top profile switcher hides for single-profile workspaces and shows for multi-profile")
+    func profileSwitcherVisibility() {
+        #expect(!FolderSidebarProfileSwitcherPolicy.showsTopBar(profileCount: 0))
+        #expect(!FolderSidebarProfileSwitcherPolicy.showsTopBar(profileCount: 1))
+        #expect(FolderSidebarProfileSwitcherPolicy.showsTopBar(profileCount: 2))
+        #expect(FolderSidebarProfileSwitcherPolicy.showsTopBar(profileCount: 5))
+    }
+
+    @Test("section header actions and account chevrons stay quiet at rest and reveal on hover")
+    func sectionHeaderHoverVisibility() {
+        #expect(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: false) == 0)
+        #expect(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: true) == 1)
+        #expect(FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(isHovered: false) == 0)
+        #expect(FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(isHovered: true) == 1)
     }
 
     @Test("footer status says offline before anything else")
