@@ -40,18 +40,24 @@ public struct StaticJMAPAccessTokenProvider: JMAPAccessTokenProvider {
 
 /// Reads the JMAP account's Bearer / API token strictly from `TokenStore` (Keychain).
 public struct JMAPTokenStoreAccessTokenProvider: JMAPAccessTokenProvider {
-    private let accountID: String
+    private let credentialID: String
     private let tokenStore: any TokenStore
 
-    /// Creates a Keychain-backed token provider for `accountID`.
+    /// Creates a Keychain-backed token provider scoped to a connection-specific `credentialID`.
+    public init(credentialID: String, tokenStore: any TokenStore) {
+        self.credentialID = credentialID
+        self.tokenStore = tokenStore
+    }
+
+    /// Creates a Keychain-backed token provider keyed by `accountID`.
     public init(accountID: String, tokenStore: any TokenStore) {
-        self.accountID = accountID
+        credentialID = accountID
         self.tokenStore = tokenStore
     }
 
     /// Reads the stored Bearer token without logging or caching it on disk.
     public func bearerToken() async throws -> String {
-        guard let token = await tokenStore.token(for: accountID) else {
+        guard let token = await tokenStore.token(for: credentialID) else {
             throw JMAPError.missingToken
         }
         let trimmed = token.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -102,10 +108,16 @@ public struct JMAPSessionClient: Sendable {
             headers: [
                 "Authorization": "Bearer \(trimmedToken)",
                 "Accept": "application/json"
-            ]
+            ],
+            allowCrossOriginRedirects: false
         )
         let response = try await transport.send(request)
         try Self.validateHTTPStatus(response)
+        // Reject cross-origin discovery redirects: an unauthenticated redirect destination must never
+        // supply session endpoints that subsequently receive the user's original bearer token.
+        guard JMAPURLValidator.isSameOrigin(validatedURL, response.finalURL) else {
+            throw JMAPError.untrustedRedirect
+        }
 
         let session: JMAPSession
         do {

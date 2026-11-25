@@ -67,6 +67,17 @@
         }
       }
     },
+    "The JMAP server redirected to a different host.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP-tjeneren viderekoblet til en annen vert."
+          }
+        }
+      }
+    },
     "The JMAP server redirected too many times.": {
       "extractionState": "manual",
       "localizations": {

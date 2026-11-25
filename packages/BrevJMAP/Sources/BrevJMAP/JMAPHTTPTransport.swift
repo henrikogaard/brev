@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import Foundation
 
 /// Value-type HTTP request passed through `JMAPHTTPTransport`.
@@ -22,18 +23,24 @@ public struct JMAPHTTPRequest: Sendable, Equatable {
     public let headers: [String: String]
     /// Optional HTTP request body bytes.
     public let body: Data?
+    /// Whether cross-origin redirects are permitted (with credentials stripped).
+    /// Set `false` for session discovery and authenticated API calls so redirect destinations
+    /// cannot supply spoofed endpoints or hijack credentialed flows.
+    public let allowCrossOriginRedirects: Bool
 
     /// Creates an HTTP request descriptor.
     public init(
         url: URL,
         method: String = "GET",
         headers: [String: String] = [:],
-        body: Data? = nil
+        body: Data? = nil,
+        allowCrossOriginRedirects: Bool = true
     ) {
         self.url = url
         self.method = method
         self.headers = headers
         self.body = body
+        self.allowCrossOriginRedirects = allowCrossOriginRedirects
     }
 }
 
@@ -114,24 +121,14 @@ public enum JMAPURLValidator {
 
     /// Validates that `url` uses strict `https://`, has a non-empty host, and carries no embedded credentials.
     public static func validateHTTPSURL(_ url: URL) throws -> URL {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
-            throw JMAPError.invalidSessionURL(.malformed)
+        do {
+            return try JMAPSetupURLValidator.validateHTTPSURL(url)
+        } catch let error as JMAPSetupURLValidationError {
+            switch error {
+            case .invalid(let reason):
+                throw JMAPError.invalidSessionURL(reason)
+            }
         }
-        guard components.scheme?.lowercased() == "https" else {
-            throw JMAPError.invalidSessionURL(.httpsRequired)
-        }
-        if components.user != nil || components.password != nil {
-            throw JMAPError.invalidSessionURL(.embeddedCredentialsForbidden)
-        }
-        guard let host = components.host?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !host.isEmpty
-        else {
-            throw JMAPError.invalidSessionURL(.missingHost)
-        }
-        guard let validated = components.url else {
-            throw JMAPError.invalidSessionURL(.malformed)
-        }
-        return validated
     }
 
     /// Resolves a user-entered JMAP session URL or bare domain/host into a strict HTTPS discovery URL.
@@ -142,49 +139,14 @@ public enum JMAPURLValidator {
     ///   `https://<host>/.well-known/jmap`.
     /// - Non-HTTPS schemes (such as `http://`) and embedded credentials are rejected.
     public static func discoveryURL(from rawInput: String) throws -> URL {
-        let trimmed = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            throw JMAPError.invalidSessionURL(.empty)
+        do {
+            return try JMAPSetupURLValidator.discoveryURL(from: rawInput)
+        } catch let error as JMAPSetupURLValidationError {
+            switch error {
+            case .invalid(let reason):
+                throw JMAPError.invalidSessionURL(reason)
+            }
         }
-        guard !trimmed.contains(where: \.isWhitespace) else {
-            throw JMAPError.invalidSessionURL(.malformed)
-        }
-
-        let candidateString: String
-        if trimmed.contains("://") {
-            candidateString = trimmed
-        } else if trimmed.contains("@") {
-            throw JMAPError.invalidSessionURL(.embeddedCredentialsForbidden)
-        } else if let colonIndex = trimmed.firstIndex(of: ":"),
-                  !trimmed[..<colonIndex].contains("."),
-                  Int(trimmed[trimmed.index(after: colonIndex)...].prefix(while: \.isNumber)) == nil {
-            // Non-HTTPS scheme without `//`, e.g. `javascript:alert(1)` or `mailto:a@b`.
-            throw JMAPError.invalidSessionURL(.httpsRequired)
-        } else {
-            candidateString = "https://\(trimmed)"
-        }
-
-        guard var components = URLComponents(string: candidateString) else {
-            throw JMAPError.invalidSessionURL(.malformed)
-        }
-        guard components.scheme?.lowercased() == "https" else {
-            throw JMAPError.invalidSessionURL(.httpsRequired)
-        }
-        if components.user != nil || components.password != nil {
-            throw JMAPError.invalidSessionURL(.embeddedCredentialsForbidden)
-        }
-        guard let host = components.host?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !host.isEmpty
-        else {
-            throw JMAPError.invalidSessionURL(.missingHost)
-        }
-        if components.path.isEmpty || components.path == "/" {
-            components.path = "/.well-known/jmap"
-        }
-        guard let url = components.url else {
-            throw JMAPError.invalidSessionURL(.malformed)
-        }
-        return try validateHTTPSURL(url)
     }
 
     /// Returns canonical `(scheme, lowercased host, effective port)` origin string for redirect comparison.
@@ -316,11 +278,13 @@ public enum JMAPRedirectPolicy {
     ///   - originalRequest: The request prior to redirection.
     ///   - proposedRequest: The system-proposed redirected request.
     ///   - redirectCount: Number of redirects already followed for this task.
+    ///   - allowCrossOrigin: When `false`, cross-origin redirects throw `JMAPError.untrustedRedirect`.
     /// - Returns: The sanitized redirected request, with `Authorization` stripped on cross-origin hops.
     public static func evaluateRedirect(
         from originalRequest: URLRequest,
         to proposedRequest: URLRequest,
-        redirectCount: Int
+        redirectCount: Int,
+        allowCrossOrigin: Bool = true
     ) throws -> URLRequest {
         guard redirectCount < maxRedirects else {
             throw JMAPError.tooManyRedirects
@@ -336,6 +300,9 @@ public enum JMAPRedirectPolicy {
         var sanitized = proposedRequest
         if let originalURL = originalRequest.url,
            !JMAPURLValidator.isSameOrigin(originalURL, targetURL) {
+            guard allowCrossOrigin else {
+                throw JMAPError.untrustedRedirect
+            }
             sanitized.setValue(nil, forHTTPHeaderField: "Authorization")
             sanitized.setValue(nil, forHTTPHeaderField: "Cookie")
         }
@@ -352,9 +319,10 @@ public final class URLSessionJMAPHTTPTransport: NSObject, JMAPHTTPTransport, @un
     private var redirectCounts: [Int: Int] = [:]
     private var redirectErrors: [Int: JMAPError] = [:]
     private var session: URLSession!
+    private var strictOriginSession: URLSession!
     private let ownsSession: Bool
 
-    /// Creates a transport with a dedicated ephemeral `URLSession`.
+    /// Creates a transport with dedicated ephemeral `URLSession`s.
     public init(configuration: URLSessionConfiguration = .ephemeral) {
         ownsSession = true
         super.init()
@@ -363,12 +331,15 @@ public final class URLSessionJMAPHTTPTransport: NSObject, JMAPHTTPTransport, @un
         copy.httpCookieAcceptPolicy = .never
         copy.timeoutIntervalForRequest = 30
         copy.timeoutIntervalForResource = 120
+        let strictCopy = copy.copy() as? URLSessionConfiguration ?? .ephemeral
         session = URLSession(configuration: copy, delegate: self, delegateQueue: nil)
+        strictOriginSession = URLSession(configuration: strictCopy, delegate: self, delegateQueue: nil)
     }
 
     deinit {
         if ownsSession {
             session?.invalidateAndCancel()
+            strictOriginSession?.invalidateAndCancel()
         }
     }
 
@@ -382,10 +353,11 @@ public final class URLSessionJMAPHTTPTransport: NSObject, JMAPHTTPTransport, @un
             urlRequest.setValue(value, forHTTPHeaderField: field)
         }
 
+        let targetSession: URLSession = request.allowCrossOriginRedirects ? session : strictOriginSession
         let data: Data
         let rawResponse: URLResponse
         do {
-            (data, rawResponse) = try await session.data(for: urlRequest)
+            (data, rawResponse) = try await targetSession.data(for: urlRequest)
         } catch {
             if let captured = takeLastRedirectError() {
                 throw captured
@@ -405,6 +377,10 @@ public final class URLSessionJMAPHTTPTransport: NSObject, JMAPHTTPTransport, @un
             throw JMAPError.invalidResponse
         }
         _ = try JMAPURLValidator.validateHTTPSURL(finalURL)
+        if !request.allowCrossOriginRedirects,
+           !JMAPURLValidator.isSameOrigin(validatedURL, finalURL) {
+            throw JMAPError.untrustedRedirect
+        }
         var headers: [String: String] = [:]
         for (key, value) in http.allHeaderFields {
             headers[String(describing: key)] = String(describing: value)
@@ -429,9 +405,15 @@ public final class URLSessionJMAPHTTPTransport: NSObject, JMAPHTTPTransport, @un
                     for (field, value) in request.headers {
                         urlRequest.setValue(value, forHTTPHeaderField: field)
                     }
-                    let (bytes, rawResponse) = try await session.bytes(for: urlRequest)
+                    let targetSession: URLSession = request.allowCrossOriginRedirects ? session : strictOriginSession
+                    let (bytes, rawResponse) = try await targetSession.bytes(for: urlRequest)
                     guard let http = rawResponse as? HTTPURLResponse else {
                         throw JMAPError.invalidResponse
+                    }
+                    if let finalURL = http.url,
+                       !request.allowCrossOriginRedirects,
+                       !JMAPURLValidator.isSameOrigin(validatedURL, finalURL) {
+                        throw JMAPError.untrustedRedirect
                     }
                     try Self.throwIfNonSuccessStatus(http.statusCode, retryAfter: nil)
                     var parser = JMAPEventSourceParser()
@@ -490,7 +472,7 @@ public final class URLSessionJMAPHTTPTransport: NSObject, JMAPHTTPTransport, @un
 
 extension URLSessionJMAPHTTPTransport: URLSessionTaskDelegate {
     public func urlSession(
-        _: URLSession,
+        _ urlSession: URLSession,
         task: URLSessionTask,
         willPerformHTTPRedirection _: HTTPURLResponse,
         newRequest request: URLRequest,
@@ -498,12 +480,14 @@ extension URLSessionJMAPHTTPTransport: URLSessionTaskDelegate {
     ) {
         let taskID = task.taskIdentifier
         let currentCount = lock.withLock { redirectCounts[taskID] ?? 0 }
+        let allowCrossOrigin = (urlSession !== strictOriginSession)
         do {
             let sourceRequest = task.currentRequest ?? task.originalRequest ?? request
             let nextRequest = try JMAPRedirectPolicy.evaluateRedirect(
                 from: sourceRequest,
                 to: request,
-                redirectCount: currentCount
+                redirectCount: currentCount,
+                allowCrossOrigin: allowCrossOrigin
             )
             lock.withLock {
                 redirectCounts[taskID] = currentCount + 1

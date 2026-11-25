@@ -77,7 +77,9 @@ public struct JMAPAccountConnector: Sendable {
         let accountID = BrevAccount.jmapAccountID(forEmailAddress: email)
 
         let previousConfiguration = await configurationStore.configuration(for: accountID)
-        let previousToken = await tokenStore.token(for: accountID)
+        // Allocate a fresh credential slot per provisioned session so an already-connected
+        // backend bound to a prior origin can never read the replacement token.
+        let credentialID = "\(accountID)::\(UUID().uuidString)"
         let newToken = Token(
             accessToken: bearerToken,
             refreshToken: "",
@@ -92,9 +94,9 @@ public struct JMAPAccountConnector: Sendable {
         )
 
         do {
-            try await tokenStore.setToken(newToken, for: accountID)
+            try await tokenStore.setToken(newToken, for: credentialID)
             let tokenProvider = JMAPTokenStoreAccessTokenProvider(
-                accountID: accountID,
+                credentialID: credentialID,
                 tokenStore: tokenStore
             )
             let backend = JMAPBackend(
@@ -111,22 +113,21 @@ public struct JMAPAccountConnector: Sendable {
                 emailAddress: email,
                 displayName: displayName,
                 sessionURL: discoveryURL,
+                credentialID: credentialID,
                 jmapAccountID: session?.primaryMailAccountID,
                 username: session?.username
             )
             try await configurationStore.setConfiguration(persistedConfiguration)
-            return JMAPConnectedAccount(account: account, backend: backend)
-        } catch {
-            if let previousToken {
-                try? await tokenStore.setToken(previousToken, for: accountID)
-            } else {
+            if let previousCredentialID = previousConfiguration?.credentialID,
+               previousCredentialID != credentialID {
+                await tokenStore.clearToken(for: previousCredentialID)
+            }
+            if previousConfiguration?.credentialID != accountID {
                 await tokenStore.clearToken(for: accountID)
             }
-            if let previousConfiguration {
-                try? await configurationStore.setConfiguration(previousConfiguration)
-            } else {
-                await configurationStore.clearConfiguration(for: accountID)
-            }
+            return JMAPConnectedAccount(account: account, backend: backend)
+        } catch {
+            await tokenStore.clearToken(for: credentialID)
             throw error
         }
     }
@@ -141,11 +142,11 @@ public struct JMAPAccountConnector: Sendable {
         else {
             throw JMAPError.invalidConfiguration
         }
-        guard await tokenStore.token(for: account.id) != nil else {
+        guard await tokenStore.token(for: configuration.credentialID) != nil else {
             throw MailBackendError.authenticationRequired
         }
         let tokenProvider = JMAPTokenStoreAccessTokenProvider(
-            accountID: account.id,
+            credentialID: configuration.credentialID,
             tokenStore: tokenStore
         )
         let backend = JMAPBackend(
@@ -160,6 +161,10 @@ public struct JMAPAccountConnector: Sendable {
 
     /// Removes the JMAP account's Keychain bearer token and non-secret metadata.
     public func remove(accountID: String) async throws {
+        let configuration = await configurationStore.configuration(for: accountID)
+        if let credentialID = configuration?.credentialID, credentialID != accountID {
+            try await tokenStore.clearTokenChecked(for: credentialID)
+        }
         try await tokenStore.clearTokenChecked(for: accountID)
         await configurationStore.clearConfiguration(for: accountID)
     }

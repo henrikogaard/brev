@@ -23,6 +23,7 @@ public final class JMAPBackend: MailBackend,
     CachedMessageHeaderProviding,
     CachedMessageBodyProviding,
     CachedListUnsubscribeProviding,
+    LocalDraftAttachmentProviding,
     SyncHealthReporting,
     @unchecked Sendable {
     private static let pageSize = 50
@@ -64,6 +65,8 @@ public final class JMAPBackend: MailBackend,
     private var freshDeliveryTimestamps: [String: Date] = [:]
     private var stagedAttachmentsByID: [String: StagedAttachment] = [:]
     private var stagedDraftsByRemoteID: [String: Draft] = [:]
+    private var stagedDraftsByLocalID: [String: Draft] = [:]
+    private var remoteDraftIDByLocalID: [String: String] = [:]
     private var subscribers: [UUID: AsyncStream<MailEvent>.Continuation] = [:]
     private var eventSourceTask: Task<Void, Never>?
     private var lastSuccessfulSyncAt: Date?
@@ -176,6 +179,7 @@ public final class JMAPBackend: MailBackend,
         if type == CachedMessageHeaderProviding.self { return self as? Service }
         if type == CachedMessageBodyProviding.self { return self as? Service }
         if type == CachedListUnsubscribeProviding.self { return self as? Service }
+        if type == LocalDraftAttachmentProviding.self { return self as? Service }
         if type == SyncHealthReporting.self { return self as? Service }
         return nil
     }
@@ -297,7 +301,6 @@ public final class JMAPBackend: MailBackend,
                 parentId: parentID
             )
             lock.withLock {
-                if let newState = result.newState { mailboxState = newState }
                 mailboxesByID[createdID] = mailbox
             }
             let folder = mailbox.toFolder()
@@ -317,13 +320,12 @@ public final class JMAPBackend: MailBackend,
             throw MailBackendError.backendSpecific(message: JMAPError.invalidConfiguration.localizedDescription)
         }
         do {
-            let result = try await client.setMailboxes(
+            _ = try await client.setMailboxes(
                 session: session,
                 accountId: accountId,
                 update: [id: ["name": .string(trimmedName)]]
             )
             let updatedMailbox: JMAPMailbox = lock.withLock {
-                if let newState = result.newState { mailboxState = newState }
                 if let existing = mailboxesByID[id] {
                     let renamed = JMAPMailbox(
                         id: existing.id,
@@ -357,13 +359,12 @@ public final class JMAPBackend: MailBackend,
     public func deleteFolder(id: Folder.ID) async throws {
         let (session, accountId) = try requireConnectedSession()
         do {
-            let result = try await client.setMailboxes(
+            _ = try await client.setMailboxes(
                 session: session,
                 accountId: accountId,
                 destroy: [id]
             )
             lock.withLock {
-                if let newState = result.newState { mailboxState = newState }
                 mailboxesByID.removeValue(forKey: id)
                 headersByFolderID.removeValue(forKey: id)
             }
@@ -375,35 +376,68 @@ public final class JMAPBackend: MailBackend,
     }
 
     /// Purges all emails from a mailbox (such as Trash or Junk) via `Email/query` + `Email/set` `destroy`.
+    ///
+    /// Respects server-advertised `maxObjectsInSet`, loops from position 0 until the folder is genuinely
+    /// empty (even when the server caps query pages), verifies deletion progress, and reconciles only
+    /// IDs confirmed in `destroyed`.
     public func flushFolder(id: Folder.ID) async throws {
         let (session, accountId) = try requireConnectedSession()
+        let setBatchLimit = max(1, min(500, session.maxObjectsInSet ?? 500))
         do {
             var allDestroyed: [String] = []
             while true {
+                try Task.checkCancellation()
                 let query = try await client.queryEmailIDs(
                     session: session,
                     accountId: accountId,
                     filter: ["inMailbox": .string(id)],
                     position: 0,
-                    limit: 500
+                    limit: setBatchLimit
                 )
                 guard !query.ids.isEmpty else { break }
-                let setResult = try await client.setEmails(
-                    session: session,
-                    accountId: accountId,
-                    destroy: query.ids
-                )
-                lock.withLock {
-                    if let newState = setResult.newState { emailState = newState }
-                    for removedID in query.ids {
-                        emailsByID.removeValue(forKey: removedID)
-                        bodiesByID.removeValue(forKey: removedID)
-                        rawSourceDataByID.removeValue(forKey: removedID)
+
+                var destroyedInRound: [String] = []
+                var chunkStart = 0
+                while chunkStart < query.ids.count {
+                    let chunkEnd = min(chunkStart + setBatchLimit, query.ids.count)
+                    let chunk = Array(query.ids[chunkStart ..< chunkEnd])
+                    chunkStart = chunkEnd
+
+                    let setResult = try await client.setEmails(
+                        session: session,
+                        accountId: accountId,
+                        destroy: chunk
+                    )
+                    let confirmed = setResult.destroyed ?? []
+                    guard !confirmed.isEmpty else {
+                        throw JMAPError.methodError(
+                            type: "serverFail",
+                            description: "Email/set destroy made no progress"
+                        )
                     }
-                    headersByFolderID[id] = []
+                    let confirmedSet = Set(confirmed)
+                    lock.withLock {
+                        for removedID in confirmed {
+                            emailsByID.removeValue(forKey: removedID)
+                            bodiesByID.removeValue(forKey: removedID)
+                            rawSourceDataByID.removeValue(forKey: removedID)
+                        }
+                        if let existing = headersByFolderID[id] {
+                            headersByFolderID[id] = existing.filter { !confirmedSet.contains($0.id) }
+                        }
+                    }
+                    destroyedInRound.append(contentsOf: confirmed)
+                    allDestroyed.append(contentsOf: confirmed)
                 }
-                allDestroyed.append(contentsOf: query.ids)
-                if query.ids.count < 500 { break }
+                guard !destroyedInRound.isEmpty else {
+                    throw JMAPError.methodError(
+                        type: "serverFail",
+                        description: "Email/set destroy made no progress"
+                    )
+                }
+            }
+            lock.withLock {
+                headersByFolderID[id] = []
             }
             if !allDestroyed.isEmpty {
                 broadcast(.messagesRemoved(folderID: id, messageIDs: allDestroyed))
@@ -446,7 +480,7 @@ public final class JMAPBackend: MailBackend,
             }
             let mapped = email.toMessageBody()
             lock.withLock {
-                if !response.state.isEmpty { emailState = response.state }
+                // Do not advance the reconciled emailState cursor on single-message body fetches.
                 emailsByID[messageID] = email
                 bodiesByID[messageID] = mapped
             }
@@ -531,8 +565,8 @@ public final class JMAPBackend: MailBackend,
         let patchValue: JMAPJSONValue = isRead ? .bool(true) : .null
         let updates = Dictionary(uniqueKeysWithValues: messageIDs.map { ($0, ["keywords/$seen": patchValue]) })
         do {
-            let response = try await client.setEmails(session: session, accountId: accountId, update: updates)
-            let affectedFolders = updateCachedHeaders(messageIDs: Set(messageIDs), newState: response.newState) { header in
+            _ = try await client.setEmails(session: session, accountId: accountId, update: updates)
+            let affectedFolders = updateCachedHeaders(messageIDs: Set(messageIDs)) { header in
                 header.isRead = isRead
             }
             for folderID in affectedFolders {
@@ -558,8 +592,8 @@ public final class JMAPBackend: MailBackend,
         }
         let updates = Dictionary(uniqueKeysWithValues: messageIDs.map { ($0, patch) })
         do {
-            let response = try await client.setEmails(session: session, accountId: accountId, update: updates)
-            let affectedFolders = updateCachedHeaders(messageIDs: Set(messageIDs), newState: response.newState) { header in
+            _ = try await client.setEmails(session: session, accountId: accountId, update: updates)
+            let affectedFolders = updateCachedHeaders(messageIDs: Set(messageIDs)) { header in
                 header.isFlagged = isFlagged
                 if !isFlagged { header.flagColor = nil }
             }
@@ -586,8 +620,8 @@ public final class JMAPBackend: MailBackend,
         }
         let updates = Dictionary(uniqueKeysWithValues: messageIDs.map { ($0, patch) })
         do {
-            let response = try await client.setEmails(session: session, accountId: accountId, update: updates)
-            let affectedFolders = updateCachedHeaders(messageIDs: Set(messageIDs), newState: response.newState) { header in
+            _ = try await client.setEmails(session: session, accountId: accountId, update: updates)
+            let affectedFolders = updateCachedHeaders(messageIDs: Set(messageIDs)) { header in
                 if color != nil { header.isFlagged = true }
                 header.flagColor = color
             }
@@ -609,12 +643,11 @@ public final class JMAPBackend: MailBackend,
         ]
         let updates = Dictionary(uniqueKeysWithValues: messageIDs.map { ($0, patch) })
         do {
-            let response = try await client.setEmails(session: session, accountId: accountId, update: updates)
+            _ = try await client.setEmails(session: session, accountId: accountId, update: updates)
             let idSet = Set(messageIDs)
             var removedFromFolders: [String: [String]] = [:]
             var movedHeaders: [MessageHeader] = []
             lock.withLock {
-                if let newState = response.newState { emailState = newState }
                 for (folderID, list) in headersByFolderID where folderID != folder.id {
                     let removed = list.filter { idSet.contains($0.id) }
                     if !removed.isEmpty {
@@ -650,10 +683,7 @@ public final class JMAPBackend: MailBackend,
         ]
         let updates = Dictionary(uniqueKeysWithValues: messageIDs.map { ($0, patch) })
         do {
-            let response = try await client.setEmails(session: session, accountId: accountId, update: updates)
-            lock.withLock {
-                if let newState = response.newState { emailState = newState }
-            }
+            _ = try await client.setEmails(session: session, accountId: accountId, update: updates)
             broadcast(.messagesAdded(folderID: folder.id, messageIDs: messageIDs))
         } catch let error as JMAPError {
             recordSyncFailure(error)
@@ -689,7 +719,7 @@ public final class JMAPBackend: MailBackend,
         }
 
         do {
-            let response = try await client.setEmails(
+            _ = try await client.setEmails(
                 session: session,
                 accountId: accountId,
                 destroy: messageIDs
@@ -697,7 +727,6 @@ public final class JMAPBackend: MailBackend,
             let idSet = Set(messageIDs)
             var removedFromFolders: [String: [String]] = [:]
             lock.withLock {
-                if let newState = response.newState { emailState = newState }
                 for id in messageIDs {
                     emailsByID.removeValue(forKey: id)
                     bodiesByID.removeValue(forKey: id)
@@ -792,16 +821,11 @@ public final class JMAPBackend: MailBackend,
                 isDraft: true,
                 attachments: uploadedAttachments
             )
-            let destroyIDs: [String]? = if let existingRemoteID = draft.remoteID, !existingRemoteID.isEmpty {
-                [existingRemoteID]
-            } else {
-                nil
-            }
+            // Create the new draft version FIRST so a rejected edit never erases the prior saved draft.
             let setResult = try await client.setEmails(
                 session: session,
                 accountId: accountId,
-                create: ["draft": emailObject],
-                destroy: destroyIDs
+                create: ["draft": emailObject]
             )
             guard let createdMeta = setResult.created?["draft"],
                   let createdID = createdMeta["id"]?.stringValue
@@ -814,11 +838,20 @@ public final class JMAPBackend: MailBackend,
                 updatedDraft.threadID = threadID
             }
             lock.withLock {
-                if let newState = setResult.newState { emailState = newState }
-                if let oldRemote = draft.remoteID {
+                if let oldRemote = draft.remoteID, oldRemote != createdID {
                     stagedDraftsByRemoteID.removeValue(forKey: oldRemote)
                 }
                 stagedDraftsByRemoteID[createdID] = updatedDraft
+                stagedDraftsByLocalID[updatedDraft.id] = updatedDraft
+                remoteDraftIDByLocalID[updatedDraft.id] = createdID
+            }
+            // Destroy the superseded remote draft separately; cleanup failure must not lose the new remoteID.
+            if let existingRemoteID = draft.remoteID, !existingRemoteID.isEmpty, existingRemoteID != createdID {
+                _ = try? await client.setEmails(
+                    session: session,
+                    accountId: accountId,
+                    destroy: [existingRemoteID]
+                )
             }
             broadcast(.folderRefreshed(folderID: draftsMailbox.id))
             return updatedDraft
@@ -828,38 +861,234 @@ public final class JMAPBackend: MailBackend,
         }
     }
 
-    /// Returns a locally staged copy of a draft saved during this session, if available.
+    /// Returns a staged copy of a draft (reconstructing and locally staging remote JMAP drafts after restart).
     public func draft(for messageID: String) async throws -> Draft? {
-        lock.withLock { stagedDraftsByRemoteID[messageID] }
-    }
-
-    /// Destroys a remote JMAP draft and clears any staged attachments.
-    public func discard(draftID: String) async throws {
-        let (session, accountId) = try requireConnectedSession()
-        let remoteID: String = lock.withLock {
-            let matching = stagedDraftsByRemoteID.first(where: { $0.value.id == draftID })
-            let resolved = matching?.key ?? draftID
-            stagedDraftsByRemoteID.removeValue(forKey: resolved)
-            stagedAttachmentsByID = stagedAttachmentsByID.filter { $0.value.draftID != draftID }
-            return resolved
+        if let existing = lock.withLock({ stagedDraftsByRemoteID[messageID] ?? stagedDraftsByLocalID[messageID] }) {
+            return existing
         }
+        let connectedSession: (JMAPSession, String)? = lock.withLock {
+            guard isConnected, let session, let primaryAccountID else { return nil }
+            return (session, primaryAccountID)
+        }
+        guard let (session, accountId) = connectedSession else {
+            return nil
+        }
+
         do {
-            let result = try await client.setEmails(
+            let response = try await client.getEmails(
                 session: session,
                 accountId: accountId,
-                destroy: [remoteID]
+                ids: [messageID],
+                properties: JMAPClient.draftProperties,
+                fetchTextBodyValues: true,
+                fetchHTMLBodyValues: true
+            )
+            guard let email = response.list.first else {
+                return nil
+            }
+            let draftsMailboxIDs = lock.withLock {
+                Set(mailboxesByID.values.filter { $0.folderRole == .drafts }.map(\.id))
+            }
+            let isDraft = email.keywords["$draft"] == true
+                || email.mailboxIds.contains { $0.value && draftsMailboxIDs.contains($0.key) }
+            guard isDraft else {
+                return nil
+            }
+
+            let mappedBody = email.toMessageBody()
+            let draftLocalID = UUID().uuidString
+            var stagedAttachments: [StagedAttachment] = []
+            for attachment in mappedBody.attachments {
+                guard let blobId = attachment.resource, !blobId.isEmpty else {
+                    throw JMAPError.invalidDownloadURL
+                }
+                let bytes = try await client.downloadBlob(
+                    session: session,
+                    accountId: accountId,
+                    blobId: blobId,
+                    name: attachment.name,
+                    mimeType: attachment.mimeType
+                )
+                let inlineCID: String? = if let cid = attachment.contentID, !cid.isEmpty {
+                    cid
+                } else {
+                    nil
+                }
+                let stagedID = inlineCID != nil
+                    ? "jmap-cid-\(UUID().uuidString)"
+                    : "jmap-att-\(UUID().uuidString)"
+                stagedAttachments.append(
+                    StagedAttachment(
+                        id: stagedID,
+                        draftID: draftLocalID,
+                        filename: attachment.name,
+                        mimeType: attachment.mimeType,
+                        data: bytes,
+                        contentID: inlineCID,
+                        uploadedBlobID: blobId
+                    )
+                )
+            }
+
+            let htmlBody = mappedBody.html ?? mappedBody.plainText ?? ""
+            let reconstructed = Draft(
+                id: draftLocalID,
+                remoteID: email.id,
+                threadID: email.threadId,
+                inReplyToMessageID: email.inReplyTo?.first,
+                to: (email.to ?? []).map { $0.toCorrespondent() },
+                cc: (email.cc ?? []).map { $0.toCorrespondent() },
+                bcc: (email.bcc ?? []).map { $0.toCorrespondent() },
+                subject: email.subject ?? "",
+                htmlBody: htmlBody,
+                attachmentIDs: stagedAttachments.map(\.id)
             )
             lock.withLock {
-                if let newState = result.newState { emailState = newState }
+                for attachment in stagedAttachments {
+                    stagedAttachmentsByID[attachment.id] = attachment
+                }
+                stagedDraftsByRemoteID[email.id] = reconstructed
+                stagedDraftsByLocalID[draftLocalID] = reconstructed
+                remoteDraftIDByLocalID[draftLocalID] = email.id
             }
+            return reconstructed
         } catch let error as JMAPError {
-            if case .notFound = error { return }
             recordSyncFailure(error)
             throw error.asMailBackendError()
         }
     }
 
+    /// Source-scoped draft lookup validating account ownership before returning or restoring a staged draft.
+    public func draft(for messageID: String, sourceID: MailSourceID) async throws -> Draft? {
+        try validateSource(sourceID)
+        return try await draft(for: messageID)
+    }
+
+    /// Read-only access to locally staged canonical draft attachments without performing network I/O.
+    public func localDraftAttachments(for draft: Draft) async throws -> [MIMEMessageAttachment] {
+        try lock.withLock {
+            let canonical: Draft? = if let remoteID = draft.remoteID, let byRemote = stagedDraftsByRemoteID[remoteID] {
+                byRemote
+            } else if let remoteID = remoteDraftIDByLocalID[draft.id], let byRemote = stagedDraftsByRemoteID[remoteID] {
+                byRemote
+            } else {
+                stagedDraftsByLocalID[draft.id]
+            }
+            guard canonical == draft else {
+                throw MailBackendError.notFound(id: draft.id)
+            }
+            var result: [MIMEMessageAttachment] = []
+            for id in draft.attachmentIDs {
+                guard let staged = stagedAttachmentsByID[id], staged.draftID == draft.id else {
+                    throw MailBackendError.notFound(id: id)
+                }
+                result.append(
+                    MIMEMessageAttachment(
+                        id: staged.id,
+                        filename: staged.filename,
+                        mimeType: staged.mimeType,
+                        data: staged.data,
+                        isInline: staged.contentID != nil,
+                        contentID: staged.contentID
+                    )
+                )
+            }
+            return result
+        }
+    }
+
+    /// Source-scoped read-only access to locally staged canonical draft attachments.
+    public func localDraftAttachments(for draft: Draft, sourceID: MailSourceID) async throws -> [MIMEMessageAttachment] {
+        try validateSource(sourceID)
+        return try await localDraftAttachments(for: draft)
+    }
+
+    /// Destroys a remote JMAP draft (resolving restored local draft IDs to their canonical server ID) and clears staging.
+    public func discard(draftID: String) async throws {
+        let (session, accountId) = try requireConnectedSession()
+        enum DiscardTarget {
+            case remote(remoteID: String, localID: String?)
+            case localOnly(localID: String)
+        }
+        let target: DiscardTarget = lock.withLock {
+            if let mappedRemoteID = remoteDraftIDByLocalID[draftID] {
+                return .remote(remoteID: mappedRemoteID, localID: draftID)
+            }
+            if let stagedByRemote = stagedDraftsByRemoteID[draftID] {
+                return .remote(remoteID: draftID, localID: stagedByRemote.id)
+            }
+            if let matching = stagedDraftsByRemoteID.first(where: { $0.value.id == draftID }) {
+                return .remote(remoteID: matching.key, localID: draftID)
+            }
+            if let localOnly = stagedDraftsByLocalID[draftID], localOnly.remoteID == nil {
+                return .localOnly(localID: draftID)
+            }
+            if UUID(uuidString: draftID) == nil || emailsByID[draftID] != nil {
+                return .remote(remoteID: draftID, localID: nil)
+            }
+            return .localOnly(localID: draftID)
+        }
+
+        switch target {
+        case .localOnly(let localID):
+            lock.withLock {
+                stagedDraftsByLocalID.removeValue(forKey: localID)
+                remoteDraftIDByLocalID.removeValue(forKey: localID)
+                stagedAttachmentsByID = stagedAttachmentsByID.filter { $0.value.draftID != localID }
+            }
+            return
+        case .remote(let remoteID, let localID):
+            do {
+                _ = try await client.setEmails(
+                    session: session,
+                    accountId: accountId,
+                    destroy: [remoteID]
+                )
+            } catch let error as JMAPError {
+                if case .notFound = error {
+                    // Remote draft was already removed on the server; proceed to clear local staging.
+                } else {
+                    recordSyncFailure(error)
+                    throw error.asMailBackendError()
+                }
+            }
+            var removedFromFolders: [String] = []
+            lock.withLock {
+                stagedDraftsByRemoteID.removeValue(forKey: remoteID)
+                if let localID {
+                    stagedDraftsByLocalID.removeValue(forKey: localID)
+                    remoteDraftIDByLocalID.removeValue(forKey: localID)
+                    stagedAttachmentsByID = stagedAttachmentsByID.filter { $0.value.draftID != localID }
+                } else {
+                    stagedAttachmentsByID = stagedAttachmentsByID.filter { $0.value.draftID != draftID }
+                }
+                emailsByID.removeValue(forKey: remoteID)
+                bodiesByID.removeValue(forKey: remoteID)
+                rawSourceDataByID.removeValue(forKey: remoteID)
+                for (folderID, list) in headersByFolderID where list.contains(where: { $0.id == remoteID }) {
+                    headersByFolderID[folderID] = list.filter { $0.id != remoteID }
+                    removedFromFolders.append(folderID)
+                }
+            }
+            for folderID in removedFromFolders {
+                broadcast(.messagesRemoved(folderID: folderID, messageIDs: [remoteID]))
+            }
+            if let draftsMailboxID = lock.withLock({ mailboxesByID.values.first(where: { $0.folderRole == .drafts })?.id }) {
+                broadcast(.folderRefreshed(folderID: draftsMailboxID))
+            }
+        }
+    }
+
+    /// Source-scoped draft discard validating account ownership.
+    public func discard(draftID: String, sourceID: MailSourceID) async throws {
+        try validateSource(sourceID)
+        try await discard(draftID: draftID)
+    }
+
     /// Sends a draft using `Identity/get` + batched `Email/set` + `EmailSubmission/set`, moving the sent copy to Sent.
+    ///
+    /// Keeps any previously saved draft intact until submission succeeds so retries never lose the draft,
+    /// and reports post-delivery cleanup issues as non-fatal `SendResultWarning` entries.
     public func send(draft: Draft) async throws -> SendResult {
         let allRecipients = (draft.to + draft.cc + draft.bcc)
             .map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -908,27 +1137,53 @@ public final class JMAPBackend: MailBackend,
                 onSuccessPatch["mailboxIds/\(targetSentMailbox.id)"] = .bool(true)
             }
 
-            let (emailSet, _) = try await client.createAndSubmitEmail(
+            let (emailSet, _, onSuccessEmailSet) = try await client.createAndSubmitEmail(
                 session: session,
                 accountId: accountId,
                 creationID: "draft",
                 emailObject: emailObject,
-                destroyPreviousDraftID: draft.remoteID,
                 identityId: identity.id,
                 mailFrom: identity.email,
                 rcptTo: allRecipients,
                 onSuccessUpdateEmail: onSuccessPatch
             )
             let sentMessageID = emailSet.created?["draft"]?["id"]?.stringValue
-            lock.withLock {
-                if let newState = emailSet.newState { emailState = newState }
-                if let oldRemote = draft.remoteID {
-                    stagedDraftsByRemoteID.removeValue(forKey: oldRemote)
+            var warnings: [SendResultWarning] = []
+            if let notUpdated = onSuccessEmailSet?.notUpdated, !notUpdated.isEmpty {
+                warnings.append(.sentCopyAppendFailed)
+            }
+
+            // Destroy the prior saved draft only AFTER submission is confirmed.
+            // Never turn a post-delivery cleanup error into a failed send.
+            let priorRemoteID = draft.remoteID ?? lock.withLock { remoteDraftIDByLocalID[draft.id] }
+            if let priorRemoteID, !priorRemoteID.isEmpty, priorRemoteID != sentMessageID {
+                do {
+                    _ = try await client.setEmails(
+                        session: session,
+                        accountId: accountId,
+                        destroy: [priorRemoteID]
+                    )
+                } catch let error as JMAPError {
+                    if case .notFound = error {
+                        // Already deleted on the server.
+                    } else {
+                        warnings.append(.remoteDraftCleanupFailed)
+                    }
+                } catch {
+                    warnings.append(.remoteDraftCleanupFailed)
                 }
+            }
+
+            lock.withLock {
+                if let priorRemoteID {
+                    stagedDraftsByRemoteID.removeValue(forKey: priorRemoteID)
+                }
+                stagedDraftsByLocalID.removeValue(forKey: draft.id)
+                remoteDraftIDByLocalID.removeValue(forKey: draft.id)
                 stagedAttachmentsByID = stagedAttachmentsByID.filter { $0.value.draftID != draft.id }
             }
             broadcast(.folderRefreshed(folderID: targetSentMailbox.id))
-            return SendResult(sentMessageID: sentMessageID)
+            return SendResult(sentMessageID: sentMessageID, warnings: warnings)
         } catch let error as JMAPError {
             recordSyncFailure(error)
             throw error.asMailBackendError()
@@ -1005,25 +1260,41 @@ public final class JMAPBackend: MailBackend,
         }
         let (session, accountId) = try requireConnectedSession()
         let filter = Self.buildSearchFilter(for: query)
+        let pageLimit = max(1, min(Self.pageSize, session.maxObjectsInGet ?? Self.pageSize))
+        let fallbackFolderID = query.folderID ?? lock.withLock {
+            mailboxesByID.values.first(where: { $0.folderRole == .inbox })?.id
+        } ?? ""
         do {
-            let (queryResponse, getResponse) = try await client.queryAndGetEmails(
-                session: session,
-                accountId: accountId,
-                filter: filter,
-                position: 0,
-                limit: Self.pageSize
-            )
-            let byID = Dictionary(uniqueKeysWithValues: getResponse.list.map { ($0.id, $0) })
-            let fallbackFolderID = query.folderID ?? lock.withLock {
-                mailboxesByID.values.first(where: { $0.folderRole == .inbox })?.id
-            } ?? ""
-            return queryResponse.ids.compactMap { id -> MessageHeader? in
-                guard let email = byID[id] else { return nil }
-                let folderID = query.folderID
-                    ?? email.mailboxIds.first(where: { $0.value })?.key
-                    ?? fallbackFolderID
-                return email.toMessageHeader(folderID: folderID)
+            var position = 0
+            var seenIDs: Set<String> = []
+            var headers: [MessageHeader] = []
+            let maxPages = 100
+            for _ in 0 ..< maxPages {
+                try Task.checkCancellation()
+                let (queryResponse, getResponse) = try await client.queryAndGetEmails(
+                    session: session,
+                    accountId: accountId,
+                    filter: filter,
+                    position: position,
+                    limit: pageLimit
+                )
+                guard !queryResponse.ids.isEmpty else { break }
+                let byID = Dictionary(uniqueKeysWithValues: getResponse.list.map { ($0.id, $0) })
+                for id in queryResponse.ids where seenIDs.insert(id).inserted {
+                    guard let email = byID[id] else { continue }
+                    let folderID = query.folderID
+                        ?? email.mailboxIds.first(where: { $0.value })?.key
+                        ?? fallbackFolderID
+                    headers.append(email.toMessageHeader(folderID: folderID))
+                }
+                let nextPosition = queryResponse.position + queryResponse.ids.count
+                guard nextPosition > position else { break }
+                position = nextPosition
+                if let total = queryResponse.total, position >= total {
+                    break
+                }
             }
+            return headers
         } catch let error as JMAPError {
             recordSyncFailure(error)
             throw error.asMailBackendError()
@@ -1292,6 +1563,12 @@ public final class JMAPBackend: MailBackend,
         }
     }
 
+    private func validateSource(_ sourceID: MailSourceID) throws {
+        guard sourceID.accountID == account.id else {
+            throw MailBackendError.notFound(id: sourceID.accountID)
+        }
+    }
+
     private func fetchMessagesPage(
         in folder: Folder,
         pageToken: String?
@@ -1319,7 +1596,12 @@ public final class JMAPBackend: MailBackend,
             }
             let timestamp = now()
             lock.withLock {
-                if !get.state.isEmpty { emailState = get.state }
+                // Seed the reconciled emailState only when establishing the initial baseline
+                // (or immediately after full invalidation); never advance an existing delta cursor
+                // on a single-folder page read.
+                if position == 0, emailState == nil, !get.state.isEmpty {
+                    emailState = get.state
+                }
                 for email in get.list {
                     emailsByID[email.id] = email
                 }
@@ -1350,34 +1632,40 @@ public final class JMAPBackend: MailBackend,
         let (priorMailboxState, priorEmailState) = lock.withLock { (mailboxState, emailState) }
 
         var fellBackToFull = false
+        let maxChangePages = 50
 
         // 1. Mailbox delta sync.
-        if let priorMailboxState, !priorMailboxState.isEmpty {
+        if let initialMailboxState = priorMailboxState, !initialMailboxState.isEmpty {
             do {
-                let mbChanges = try await client.mailboxChanges(
-                    session: session,
-                    accountId: accountId,
-                    sinceState: priorMailboxState
-                )
-                let changedMailboxIDs = mbChanges.created + mbChanges.updated
-                if !changedMailboxIDs.isEmpty {
-                    let fetched = try await client.getMailboxes(
+                var sinceState = initialMailboxState
+                for _ in 0 ..< maxChangePages {
+                    let mbChanges = try await client.mailboxChanges(
                         session: session,
                         accountId: accountId,
-                        ids: changedMailboxIDs
+                        sinceState: sinceState
                     )
-                    lock.withLock {
-                        for mailbox in fetched.list {
-                            mailboxesByID[mailbox.id] = mailbox
+                    let changedMailboxIDs = mbChanges.created + mbChanges.updated
+                    if !changedMailboxIDs.isEmpty {
+                        let fetched = try await client.getMailboxes(
+                            session: session,
+                            accountId: accountId,
+                            ids: changedMailboxIDs
+                        )
+                        lock.withLock {
+                            for mailbox in fetched.list {
+                                mailboxesByID[mailbox.id] = mailbox
+                            }
                         }
                     }
-                }
-                lock.withLock {
-                    for destroyedID in mbChanges.destroyed {
-                        mailboxesByID.removeValue(forKey: destroyedID)
-                        headersByFolderID.removeValue(forKey: destroyedID)
+                    lock.withLock {
+                        for destroyedID in mbChanges.destroyed {
+                            mailboxesByID.removeValue(forKey: destroyedID)
+                            headersByFolderID.removeValue(forKey: destroyedID)
+                        }
+                        mailboxState = mbChanges.newState
                     }
-                    mailboxState = mbChanges.newState
+                    guard mbChanges.hasMoreChanges, mbChanges.newState != sinceState else { break }
+                    sinceState = mbChanges.newState
                 }
             } catch JMAPError.cannotCalculateChanges {
                 fellBackToFull = true
@@ -1396,16 +1684,27 @@ public final class JMAPBackend: MailBackend,
         }
 
         // 2. Email delta sync.
-        if let priorEmailState, !priorEmailState.isEmpty {
+        if let initialEmailState = priorEmailState, !initialEmailState.isEmpty {
             do {
-                let changes = try await client.emailChanges(
-                    session: session,
-                    accountId: accountId,
-                    sinceState: priorEmailState
-                )
-                try await applyEmailChanges(changes, session: session, accountId: accountId)
+                var sinceState = initialEmailState
+                for _ in 0 ..< maxChangePages {
+                    let changes = try await client.emailChanges(
+                        session: session,
+                        accountId: accountId,
+                        sinceState: sinceState
+                    )
+                    try await applyEmailChanges(changes, session: session, accountId: accountId)
+                    guard changes.hasMoreChanges, changes.newState != sinceState else { break }
+                    sinceState = changes.newState
+                }
             } catch JMAPError.cannotCalculateChanges {
                 fellBackToFull = true
+                // Invalidate all cached folder header lists and clear the delta cursor before rebuilding
+                // so no previously cached folder retains stale state behind a newer cursor.
+                lock.withLock {
+                    emailState = nil
+                    headersByFolderID.removeAll()
+                }
                 let targetFolder = fallbackFolder ?? lock.withLock {
                     mailboxesByID.values.first(where: { $0.folderRole == .inbox })?.toFolder()
                 }
@@ -1527,7 +1826,8 @@ public final class JMAPBackend: MailBackend,
         guard shouldStart else { return }
 
         let task = Task { [weak self] in
-            var consecutiveFailures = 0
+            var consecutiveInterruptions = 0
+            var needsReconnectCatchUp = false
             while !Task.isCancelled {
                 guard let self else { break }
                 let activeSession: (JMAPSession, String)? = lock.withLock {
@@ -1543,9 +1843,21 @@ public final class JMAPBackend: MailBackend,
 
                 do {
                     let stream = try await client.openEventSource(session: session)
-                    consecutiveFailures = 0
+                    if needsReconnectCatchUp {
+                        // Reconcile any mail delivered during the EventSource disconnect gap
+                        // even if no further SSE state frame arrives after reconnection.
+                        do {
+                            _ = try await performDeltaSync(fallbackFolder: nil)
+                            needsReconnectCatchUp = false
+                        } catch JMAPError.authenticationRequired {
+                            throw JMAPError.authenticationRequired
+                        } catch {
+                            // Keep needsReconnectCatchUp armed so the next reconnect retries.
+                        }
+                    }
                     for try await event in stream {
                         if Task.isCancelled { break }
+                        consecutiveInterruptions = 0
                         guard event.event == "state" || event.event == nil,
                               let data = event.data.data(using: .utf8),
                               let stateChange = try? JSONDecoder().decode(JMAPStateChange.self, from: data),
@@ -1556,14 +1868,21 @@ public final class JMAPBackend: MailBackend,
                         }
                         _ = try? await performDeltaSync(fallbackFolder: nil)
                     }
+                    if Task.isCancelled { break }
+                    // Stream closed cleanly (EOF / server recycle): reconcile on reconnect with bounded backoff.
+                    needsReconnectCatchUp = true
+                    consecutiveInterruptions += 1
+                    let delay = eventSourceRetryDelay(consecutiveInterruptions)
+                    try? await Task.sleep(nanoseconds: delay)
                 } catch is CancellationError {
                     break
                 } catch JMAPError.authenticationRequired {
                     recordSyncFailure(.authenticationRequired)
                     break
                 } catch {
-                    consecutiveFailures += 1
-                    let delay = eventSourceRetryDelay(consecutiveFailures)
+                    needsReconnectCatchUp = true
+                    consecutiveInterruptions += 1
+                    let delay = eventSourceRetryDelay(consecutiveInterruptions)
                     try? await Task.sleep(nanoseconds: delay)
                 }
             }
@@ -1600,11 +1919,9 @@ public final class JMAPBackend: MailBackend,
 
     private func updateCachedHeaders(
         messageIDs: Set<String>,
-        newState: String?,
         mutate: (inout MessageHeader) -> Void
     ) -> [String] {
         lock.withLock {
-            if let newState { emailState = newState }
             var affected: [String] = []
             for (folderID, var list) in headersByFolderID {
                 var didMutate = false

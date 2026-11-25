@@ -70,7 +70,7 @@ struct JMAPSessionAndTransportTests {
         )
         #expect(sameOriginResult.value(forHTTPHeaderField: "Authorization") == "Bearer super-secret-token")
 
-        // Cross-origin redirect strips Authorization and Cookie.
+        // Cross-origin redirect strips Authorization and Cookie when permitted (e.g. blob CDN downloads).
         var crossOriginProposed = original
         crossOriginProposed.url = URL(string: "https://api.example.org/jmap/session")!
         let crossOriginResult = try JMAPRedirectPolicy.evaluateRedirect(
@@ -80,6 +80,16 @@ struct JMAPSessionAndTransportTests {
         )
         #expect(crossOriginResult.value(forHTTPHeaderField: "Authorization") == nil)
         #expect(crossOriginResult.value(forHTTPHeaderField: "Cookie") == nil)
+
+        // Cross-origin redirect is rejected outright on strict-origin requests (discovery/API).
+        #expect(throws: JMAPError.untrustedRedirect) {
+            _ = try JMAPRedirectPolicy.evaluateRedirect(
+                from: original,
+                to: crossOriginProposed,
+                redirectCount: 0,
+                allowCrossOrigin: false
+            )
+        }
 
         // Downgrade to HTTP is rejected.
         var insecureProposed = original
@@ -175,6 +185,44 @@ struct JMAPSessionAndTransportTests {
         let redacted = JMAPSecretRedactor.redact("Failed with \(secretToken) on server", secrets: [secretToken])
         #expect(redacted == "Failed with [REDACTED] on server")
         #expect(!redacted.contains(secretToken))
+    }
+
+    @Test("session discovery rejects cross-origin redirect destinations so bearer tokens are never forwarded to spoofed APIs")
+    func sessionDiscoveryRejectsCrossOriginRedirect() async throws {
+        let spoofedSessionJSON = Data("""
+        {
+          "capabilities": {
+            "urn:ietf:params:jmap:core": {},
+            "urn:ietf:params:jmap:mail": {}
+          },
+          "accounts": {
+            "u-evil": { "name": "evil", "isPersonal": true, "isReadOnly": false, "accountCapabilities": { "urn:ietf:params:jmap:mail": {} } }
+          },
+          "primaryAccounts": { "urn:ietf:params:jmap:mail": "u-evil" },
+          "username": "victim@example.org",
+          "apiUrl": "https://attacker.example.net/jmap/api/",
+          "downloadUrl": "https://attacker.example.net/jmap/download/{accountId}/{blobId}/{name}?accept={type}",
+          "uploadUrl": "https://attacker.example.net/jmap/upload/{accountId}/",
+          "state": "evil-1"
+        }
+        """.utf8)
+
+        let transport = MockJMAPHTTPTransport { request in
+            #expect(request.allowCrossOriginRedirects == false)
+            // Simulate a cross-origin redirect landing on an untrusted host returning 200 OK.
+            return JMAPHTTPResponse(
+                statusCode: 200,
+                body: spoofedSessionJSON,
+                finalURL: URL(string: "https://attacker.example.net/jmap/session")!
+            )
+        }
+        let client = JMAPSessionClient(transport: transport)
+        await #expect(throws: JMAPError.untrustedRedirect) {
+            _ = try await client.discoverSession(
+                from: "https://mail.example.org/.well-known/jmap",
+                bearerToken: "secret-bearer-token"
+            )
+        }
     }
 
     @Test("EventSource parser handles comments, multi-line data, event names, and IDs")

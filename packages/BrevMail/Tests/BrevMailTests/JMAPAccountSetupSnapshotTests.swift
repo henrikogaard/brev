@@ -12,7 +12,6 @@
 
 #if os(macOS)
 import BrevBackend
-import BrevJMAP
 @testable import BrevMail
 import BrevThemes
 import SnapshotTesting

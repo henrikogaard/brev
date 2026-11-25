@@ -12,7 +12,6 @@
 
 import BrevBackend
 import BrevDesign
-import BrevJMAP
 import BrevThemes
 import SwiftUI
 
@@ -381,7 +380,7 @@ public struct JMAPAccountSetupView: View {
         let trimmedURL = sessionURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedURL.isEmpty {
             do {
-                _ = try JMAPURLValidator.discoveryURL(from: trimmedURL)
+                _ = try JMAPSetupURLValidator.discoveryURL(from: trimmedURL)
             } catch {
                 return error.localizedDescription
             }
@@ -396,7 +395,7 @@ public struct JMAPAccountSetupView: View {
         guard trimmedEmail.contains("@"), !trimmedToken.isEmpty, !trimmedURL.isEmpty else {
             return false
         }
-        return (try? JMAPURLValidator.discoveryURL(from: trimmedURL)) != nil
+        return (try? JMAPSetupURLValidator.discoveryURL(from: trimmedURL)) != nil
     }
 
     private func selectPreset(_ preset: JMAPServerPreset) {
@@ -416,7 +415,7 @@ public struct JMAPAccountSetupView: View {
         localErrorMessage = nil
         let trimmedURL = sessionURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            _ = try JMAPURLValidator.discoveryURL(from: trimmedURL)
+            _ = try JMAPSetupURLValidator.discoveryURL(from: trimmedURL)
         } catch {
             localErrorMessage = error.localizedDescription
             return

@@ -16,7 +16,6 @@ import AppKit
 import BrevAI
 import BrevBackend
 import BrevCalendar
-import BrevJMAP
 import BrevSettings
 import BrevThemes
 import Foundation

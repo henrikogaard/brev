@@ -27,31 +27,10 @@ public enum JMAPCapability {
     public static let sieve = "urn:ietf:params:jmap:sieve"
 }
 
-/// Built-in JMAP provider presets offered during account setup.
-public enum JMAPServerPreset: String, CaseIterable, Identifiable, Sendable, Equatable {
-    /// Fastmail's official JMAP session endpoint.
-    case fastmail
-    /// Any standards-compliant JMAP server (e.g. Stalwart, Cyrus, self-hosted).
-    case custom
-
-    /// Stable identifier for SwiftUI pickers.
-    public var id: String { rawValue }
-
-    /// Default HTTPS session URL for the preset, or empty for custom servers.
-    public var defaultSessionURLString: String {
-        switch self {
-        case .fastmail:
-            "https://api.fastmail.com/jmap/session"
-        case .custom:
-            ""
-        }
-    }
-}
-
 /// Non-secret metadata persisted for a configured JMAP account.
 ///
 /// Bearer / API tokens are never stored here; they live exclusively in
-/// `TokenStore` (Keychain).
+/// `TokenStore` (Keychain) under `credentialID`.
 public struct JMAPAccountConfiguration: Codable, Equatable, Hashable, Sendable {
     /// Stable Brev account identifier (`jmap:<normalized-email>`).
     public let accountID: String
@@ -61,6 +40,8 @@ public struct JMAPAccountConfiguration: Codable, Equatable, Hashable, Sendable {
     public let displayName: String
     /// Validated strict HTTPS JMAP session discovery URL.
     public let sessionURL: URL
+    /// Per-connection Keychain credential key isolating replaced sessions from newer tokens.
+    public let credentialID: String
     /// Discovered JMAP primary mail account identifier, if known.
     public let jmapAccountID: String?
     /// Discovered JMAP session username, if known.
@@ -72,6 +53,7 @@ public struct JMAPAccountConfiguration: Codable, Equatable, Hashable, Sendable {
         emailAddress: String,
         displayName: String,
         sessionURL: URL,
+        credentialID: String? = nil,
         jmapAccountID: String? = nil,
         username: String? = nil
     ) {
@@ -79,48 +61,32 @@ public struct JMAPAccountConfiguration: Codable, Equatable, Hashable, Sendable {
         self.emailAddress = emailAddress
         self.displayName = displayName
         self.sessionURL = sessionURL
+        self.credentialID = credentialID ?? accountID
         self.jmapAccountID = jmapAccountID
         self.username = username
     }
-}
 
-/// User-supplied credentials and server endpoint for adding or repairing a JMAP account.
-public struct JMAPAccountSetupRequest: Sendable, Equatable {
-    /// Account email address.
-    public let emailAddress: String
-    /// Optional user-visible display name (defaults to email address when blank).
-    public let displayName: String
-    /// HTTPS JMAP session URL or bare domain/host for `/.well-known/jmap` discovery.
-    public let sessionURLString: String
-    /// Bearer or API token stored strictly in Keychain (`TokenStore`).
-    public let bearerToken: String
-
-    /// Creates a JMAP account setup request.
-    public init(
-        emailAddress: String,
-        displayName: String = "",
-        sessionURLString: String,
-        bearerToken: String
-    ) {
-        self.emailAddress = emailAddress
-        self.displayName = displayName
-        self.sessionURLString = sessionURLString
-        self.bearerToken = bearerToken
+    private enum CodingKeys: String, CodingKey {
+        case accountID
+        case emailAddress
+        case displayName
+        case sessionURL
+        case credentialID
+        case jmapAccountID
+        case username
     }
-}
 
-/// Validation failure reasons for JMAP endpoint URLs.
-public enum JMAPURLValidationReason: Sendable, Equatable {
-    /// The URL or host field was empty.
-    case empty
-    /// The value could not be parsed as a valid URL.
-    case malformed
-    /// A non-HTTPS scheme such as `http://` was supplied.
-    case httpsRequired
-    /// Embedded username or password credentials were present in the URL.
-    case embeddedCredentialsForbidden
-    /// The URL did not include a valid host name.
-    case missingHost
+    /// Decodes persisted metadata, defaulting `credentialID` to `accountID` for legacy records.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accountID = try container.decode(String.self, forKey: .accountID)
+        emailAddress = try container.decode(String.self, forKey: .emailAddress)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        sessionURL = try container.decode(URL.self, forKey: .sessionURL)
+        credentialID = try container.decodeIfPresent(String.self, forKey: .credentialID) ?? accountID
+        jmapAccountID = try container.decodeIfPresent(String.self, forKey: .jmapAccountID)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+    }
 }
 
 /// Redacts sensitive bearer tokens from untrusted error or server strings before display or storage.
@@ -143,6 +109,8 @@ public enum JMAPError: Error, LocalizedError, Sendable, Equatable {
     case invalidSessionURL(JMAPURLValidationReason)
     /// Server attempted to redirect a JMAP request to an insecure non-HTTPS or credential-bearing URL.
     case insecureRedirect
+    /// Server attempted a cross-origin redirect on a credentialed discovery or API request.
+    case untrustedRedirect
     /// Too many HTTP redirects occurred while contacting the JMAP server.
     case tooManyRedirects
     /// Authentication failed (HTTP 401 or missing/revoked bearer token).
@@ -202,6 +170,8 @@ public enum JMAPError: Error, LocalizedError, Sendable, Equatable {
             String(localized: "The JMAP server URL must include a host name.", bundle: .module)
         case .insecureRedirect:
             String(localized: "The JMAP server redirected to an insecure address.", bundle: .module)
+        case .untrustedRedirect:
+            String(localized: "The JMAP server redirected to a different host.", bundle: .module)
         case .tooManyRedirects:
             String(localized: "The JMAP server redirected too many times.", bundle: .module)
         case .authenticationRequired:
@@ -518,6 +488,11 @@ public struct JMAPSession: Codable, Equatable, Sendable {
     public var maxObjectsInGet: Int? {
         capabilities[JMAPCapability.core]?.objectValue?["maxObjectsInGet"]?.intValue
     }
+
+    /// Maximum objects per `*/set` call advertised in core capabilities, if present.
+    public var maxObjectsInSet: Int? {
+        capabilities[JMAPCapability.core]?.objectValue?["maxObjectsInSet"]?.intValue
+    }
 }
 
 /// RFC 8620 §3.7 back-reference (`#property`) linking one batched method call's argument to an earlier call's result.
@@ -625,12 +600,13 @@ public struct JMAPResponse: Codable, Equatable, Sendable {
         self.createdIds = createdIds
     }
 
-    /// Returns the first method response matching `callID`, throwing a typed `JMAPError` if it is an `"error"` tuple.
-    public func response(forCallID callID: String) throws -> JMAPInvocation {
-        guard let invocation = methodResponses.first(where: { $0.callID == callID }) else {
+    /// Returns all method responses matching `callID` in wire order, throwing a typed `JMAPError` if any is an `"error"` tuple.
+    public func responses(forCallID callID: String) throws -> [JMAPInvocation] {
+        let matches = methodResponses.filter { $0.callID == callID }
+        guard !matches.isEmpty else {
             throw JMAPError.invalidResponse
         }
-        if invocation.name == "error" {
+        for invocation in matches where invocation.name == "error" {
             let type = invocation.arguments["type"]?.stringValue ?? "unknown"
             let description = invocation.arguments["description"]?.stringValue
             if type == "cannotCalculateChanges" {
@@ -638,7 +614,12 @@ public struct JMAPResponse: Codable, Equatable, Sendable {
             }
             throw JMAPError.methodError(type: type, description: description)
         }
-        return invocation
+        return matches
+    }
+
+    /// Returns the first method response matching `callID`, throwing a typed `JMAPError` if it is an `"error"` tuple.
+    public func response(forCallID callID: String) throws -> JMAPInvocation {
+        try responses(forCallID: callID)[0]
     }
 }
 

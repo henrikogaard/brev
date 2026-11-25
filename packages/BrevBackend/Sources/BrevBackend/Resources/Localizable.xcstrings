@@ -1763,6 +1763,91 @@
           }
         }
       }
+    },
+    "Enter a JMAP server URL or domain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a JMAP server URL or domain."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn en JMAP-tjeneradresse eller et domene."
+          }
+        }
+      }
+    },
+    "The JMAP server URL is not valid.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server URL is not valid."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP-tjeneradressen er ikke gyldig."
+          }
+        }
+      }
+    },
+    "JMAP server URLs must use https://.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP server URLs must use https://."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP-tjeneradresser må bruke https://."
+          }
+        }
+      }
+    },
+    "Do not include credentials in the JMAP server URL. Use the API token field instead.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Do not include credentials in the JMAP server URL. Use the API token field instead."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke inkluder påloggingsinfo i JMAP-adressen. Bruk API-token-feltet i stedet."
+          }
+        }
+      }
+    },
+    "The JMAP server URL must include a host name.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The JMAP server URL must include a host name."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JMAP-tjeneradressen må inneholde et vertsnavn."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

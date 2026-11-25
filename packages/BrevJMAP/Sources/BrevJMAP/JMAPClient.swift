@@ -64,6 +64,12 @@ public struct JMAPClient: Sendable {
         "headers"
     ]
 
+    /// Standard property list fetched when reconstructing a remote JMAP draft for editing.
+    public static let draftProperties: [String] = bodyProperties + [
+        "inReplyTo",
+        "references"
+    ]
+
     private let transport: any JMAPHTTPTransport
     private let tokenProvider: any JMAPAccessTokenProvider
 
@@ -93,7 +99,8 @@ public struct JMAPClient: Sendable {
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             ],
-            body: payload
+            body: payload,
+            allowCrossOriginRedirects: false
         )
         let response = try await transport.send(httpRequest)
         try JMAPSessionClient.validateHTTPStatus(response)
@@ -399,25 +406,28 @@ public struct JMAPClient: Sendable {
         return try response.response(forCallID: "i0").decodeArguments(JMAPGetResponse<JMAPIdentity>.self)
     }
 
-    /// Creates an outbound email and submits it atomically in a single batched `Email/set` + `EmailSubmission/set` request.
+    /// Creates an outbound email and submits it in a single batched `Email/set` + `EmailSubmission/set` request.
+    ///
+    /// Leaves any previously saved draft untouched until submission is confirmed; if `EmailSubmission/set`
+    /// fails after `Email/set` created a staging copy, best-effort destroys the staging copy before rethrowing.
     public func createAndSubmitEmail(
         session: JMAPSession,
         accountId: String,
         creationID: String = "draft",
         emailObject: [String: JMAPJSONValue],
-        destroyPreviousDraftID: String? = nil,
         identityId: String,
         mailFrom: String,
         rcptTo: [String],
         onSuccessUpdateEmail: [String: JMAPJSONValue]
-    ) async throws -> (emailSet: JMAPSetResponse, submissionSet: JMAPSetResponse) {
-        var emailSetArgs: [String: JMAPJSONValue] = [
+    ) async throws -> (
+        emailSet: JMAPSetResponse,
+        submissionSet: JMAPSetResponse,
+        onSuccessEmailSet: JMAPSetResponse?
+    ) {
+        let emailSetArgs: [String: JMAPJSONValue] = [
             "accountId": .string(accountId),
             "create": .object([creationID: .object(emailObject)])
         ]
-        if let destroyPreviousDraftID, !destroyPreviousDraftID.isEmpty {
-            emailSetArgs["destroy"] = .array([.string(destroyPreviousDraftID)])
-        }
 
         let submissionObject: [String: JMAPJSONValue] = [
             "identityId": .string(identityId),
@@ -447,9 +457,32 @@ public struct JMAPClient: Sendable {
         )
         let emailSet = try response.response(forCallID: "es0").decodeArguments(JMAPSetResponse.self)
         try validateSetResponse(emailSet)
-        let submissionSet = try response.response(forCallID: "sub0").decodeArguments(JMAPSetResponse.self)
-        try validateSetResponse(submissionSet)
-        return (emailSet, submissionSet)
+        let createdEmailID = emailSet.created?[creationID]?["id"]?.stringValue
+
+        let submissionResponses: [JMAPInvocation]
+        let submissionSet: JMAPSetResponse
+        do {
+            submissionResponses = try response.responses(forCallID: "sub0")
+            guard let submissionInvocation = submissionResponses.first(where: { $0.name == "EmailSubmission/set" }) else {
+                throw JMAPError.invalidResponse
+            }
+            submissionSet = try submissionInvocation.decodeArguments(JMAPSetResponse.self)
+            try validateSetResponse(submissionSet)
+        } catch {
+            // Submission failed after Email/set created a staging copy — clean up the orphan copy
+            // without touching any previously saved draft so retries stay clean.
+            if let createdEmailID, !createdEmailID.isEmpty {
+                _ = try? await setEmails(session: session, accountId: accountId, destroy: [createdEmailID])
+            }
+            throw error
+        }
+
+        // RFC 8621 §7.3: onSuccessUpdateEmail produces an implicit Email/set response with the same callID.
+        let onSuccessEmailSet = submissionResponses
+            .first(where: { $0.name == "Email/set" })
+            .flatMap { try? $0.decodeArguments(JMAPSetResponse.self) }
+
+        return (emailSet, submissionSet, onSuccessEmailSet)
     }
 
     // MARK: - Blobs (Upload & Download)
@@ -482,7 +515,8 @@ public struct JMAPClient: Sendable {
                 "Content-Type": mimeType,
                 "Accept": "application/json"
             ],
-            body: data
+            body: data,
+            allowCrossOriginRedirects: false
         )
         let response = try await transport.send(request)
         try JMAPSessionClient.validateHTTPStatus(response)
@@ -545,7 +579,8 @@ public struct JMAPClient: Sendable {
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             ],
-            body: requestData
+            body: requestData,
+            allowCrossOriginRedirects: false
         )
         let response = try await transport.send(request)
         try JMAPSessionClient.validateHTTPStatus(response)
@@ -582,7 +617,8 @@ public struct JMAPClient: Sendable {
                 "Authorization": "Bearer \(token)",
                 "Accept": "text/event-stream",
                 "Cache-Control": "no-cache"
-            ]
+            ],
+            allowCrossOriginRedirects: false
         )
         return transport.streamEvents(request)
     }
