@@ -365,6 +365,14 @@ private struct SettingsHighContrastSwitchToggleStyle: ToggleStyle {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
+            .focusable(isEnabled)
+            .onKeyPress(.space) {
+                guard isEnabled else { return .ignored }
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    configuration.isOn.toggle()
+                }
+                return .handled
+            }
             .disabled(!isEnabled)
         }
         .accessibilityRepresentation {

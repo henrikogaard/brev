@@ -12,6 +12,7 @@
 
 #if os(macOS)
 import AppKit
+import Observation
 #endif
 import BrevPlugins
 @testable import BrevSettings
@@ -144,37 +145,39 @@ struct DeveloperSettingsTests {
         #expect(SettingsToggleRow.usesHighContrastMonochromeSwitch(for: .brevPaper) == false)
     }
 
-    @Test("dark monochrome high-contrast switch installs a keyboard-focusable key-view control when enabled")
+    @Test("dark monochrome high-contrast switch focuses and toggles via Space when enabled and stays unchanged when disabled")
     @MainActor
-    func highContrastMonochromeSwitchKeyboardFocusability() {
-        let enabledHost = makeHostedToggleRow(isEnabled: true)
-        let disabledHost = makeHostedToggleRow(isEnabled: false)
+    func highContrastMonochromeSwitchKeyboardFocusability() throws {
+        let enabledBox = SwitchToggleStateBox(isOn: false)
+        let enabledHost = makeHostedToggleRow(state: enabledBox, isEnabled: true)
+        defer { enabledHost.cleanup() }
 
-        #expect(containsKeyViewProxy(in: enabledHost.host))
-        #expect(containsKeyViewProxy(in: disabledHost.host) == false)
+        let keyView = try #require(findKeyViewProxy(in: enabledHost.host))
+        #expect(enabledHost.window.makeFirstResponder(keyView))
+        try sendSpaceKey(to: enabledHost.window)
+        #expect(enabledBox.isOn == true)
 
-        enabledHost.cleanup()
-        disabledHost.cleanup()
+        try sendSpaceKey(to: enabledHost.window)
+        #expect(enabledBox.isOn == false)
+
+        let disabledBox = SwitchToggleStateBox(isOn: false)
+        let disabledHost = makeHostedToggleRow(state: disabledBox, isEnabled: false)
+        defer { disabledHost.cleanup() }
+
+        #expect(findKeyViewProxy(in: disabledHost.host) == nil)
+        try sendSpaceKey(to: disabledHost.window)
+        #expect(disabledBox.isOn == false)
     }
 
     @MainActor
-    private func makeHostedToggleRow(isEnabled: Bool) -> (host: NSHostingView<AnyView>, cleanup: () -> Void) {
-        let view = AnyView(
-            SettingsToggleRow(
-                symbolName: "eye.slash",
-                title: "Remove tracking pixels",
-                subtitle: "Strip hidden tracking beacons before displaying messages.",
-                isOn: .constant(false),
-                isEnabled: isEnabled
-            )
-            .frame(width: 480, height: 60)
-            .brevTheme(.brevMonoDark)
-            .environment(\.colorScheme, .dark)
-        )
+    private func makeHostedToggleRow(
+        state: SwitchToggleStateBox,
+        isEnabled: Bool
+    ) -> (host: NSHostingView<HostedToggleRowHarness>, window: NSWindow, cleanup: () -> Void) {
         _ = NSApplication.shared
-        let host = NSHostingView(rootView: view)
+        let host = NSHostingView(rootView: HostedToggleRowHarness(state: state, isEnabled: isEnabled))
         host.frame = NSRect(x: 0, y: 0, width: 480, height: 60)
-        let window = NSWindow(
+        let window = SwitchTestKeyWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 60),
             styleMask: [.titled],
             backing: .buffered,
@@ -182,26 +185,61 @@ struct DeveloperSettingsTests {
         )
         window.isReleasedWhenClosed = false
         window.contentView = host
-        window.orderBack(nil)
+        window.makeKeyAndOrderFront(nil)
         window.layoutIfNeeded()
         host.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.15))
         if let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
             host.cacheDisplay(in: host.bounds, to: bitmap)
         }
-        return (host, {
+        return (host, window, {
             window.contentView = nil
             window.close()
         })
     }
 
     @MainActor
-    private func containsKeyViewProxy(in view: NSView) -> Bool {
-        let typeName = String(describing: type(of: view))
-        if typeName.contains("KeyViewProxy") {
-            return true
+    private func sendSpaceKey(to window: NSWindow) throws {
+        let keyDown = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: " ",
+            charactersIgnoringModifiers: " ",
+            isARepeat: false,
+            keyCode: 49
+        ))
+        let keyUp = try #require(NSEvent.keyEvent(
+            with: .keyUp,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: " ",
+            charactersIgnoringModifiers: " ",
+            isARepeat: false,
+            keyCode: 49
+        ))
+        window.sendEvent(keyDown)
+        window.sendEvent(keyUp)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    }
+
+    @MainActor
+    private func findKeyViewProxy(in view: NSView) -> NSView? {
+        if String(describing: type(of: view)).contains("KeyViewProxy") {
+            return view
         }
-        return view.subviews.contains { containsKeyViewProxy(in: $0) }
+        for subview in view.subviews {
+            if let found = findKeyViewProxy(in: subview) {
+                return found
+            }
+        }
+        return nil
     }
     #endif
 
@@ -242,3 +280,38 @@ struct DeveloperSettingsTests {
         return defaults
     }
 }
+
+#if os(macOS)
+@MainActor
+@Observable
+private final class SwitchToggleStateBox {
+    var isOn: Bool
+
+    init(isOn: Bool) {
+        self.isOn = isOn
+    }
+}
+
+private struct HostedToggleRowHarness: View {
+    @Bindable var state: SwitchToggleStateBox
+    let isEnabled: Bool
+
+    var body: some View {
+        SettingsToggleRow(
+            symbolName: "eye.slash",
+            title: "Remove tracking pixels",
+            subtitle: "Strip hidden tracking beacons before displaying messages.",
+            isOn: $state.isOn,
+            isEnabled: isEnabled
+        )
+        .frame(width: 480, height: 60)
+        .brevTheme(.brevMonoDark)
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+private final class SwitchTestKeyWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var isKeyWindow: Bool { true }
+}
+#endif

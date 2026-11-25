@@ -487,6 +487,107 @@ struct ComposeSenderIdentityTests {
         #expect(workBackend.bodyLookups.isEmpty)
     }
 
+    @Test("expanding quick-reply dock preserves message owner A while sending from matched account B")
+    @MainActor
+    func inlineReplyDockExpansionPreservesMessageOwnerForQuotedBody() async throws {
+        let personalAccount = Self.account(
+            id: "personal-acct",
+            email: "henrik@personal.example",
+            name: "Henrik (personal)"
+        )
+        let workAccount = Self.account(
+            id: "work-acct",
+            email: "henrik@work.example",
+            name: "Henrik (work)"
+        )
+        let personal = Self.section(
+            account: personalAccount,
+            mailboxID: "personal-acct",
+            email: "henrik@personal.example",
+            displayName: "Henrik (personal)"
+        )
+        let work = Self.section(
+            account: workAccount,
+            mailboxID: "work-acct",
+            email: "henrik@work.example",
+            displayName: "Henrik (work)"
+        )
+        let collidingID = "INBOX:77"
+        let headerInPersonal = MessageHeader(
+            id: collidingID,
+            threadID: "thread-77",
+            folderID: "INBOX",
+            from: Correspondent(name: "Sigrid", email: "sigrid@partner.example"),
+            to: [Correspondent(name: "Henrik (work)", email: "henrik@work.example")],
+            subject: "Dock expansion cross-account check",
+            snippet: "Snippet only",
+            date: Date(timeIntervalSince1970: 1_780_000_900)
+        )
+
+        // Step 1: Resolve quick-reply routing just like readingPaneContent.
+        let routing = ComposeReplyAccountRouting.resolve(
+            replyingTo: headerInPersonal,
+            in: [personal, work],
+            messageOwnerSourceID: personal.id,
+            defaultSourceID: personal.id
+        )
+        #expect(routing.sendingSourceID == work.id)
+        #expect(routing.quotedMessageSourceID == personal.id)
+
+        // Step 2: Expand into the inline reply dock via MailNavigationState.
+        let navigation = MailNavigationState()
+        navigation.presentInlineReply(
+            to: headerInPersonal,
+            sourceID: routing.sendingSourceID,
+            quotedMessageSourceID: routing.quotedMessageSourceID,
+            prefillBodyText: "Draft reply"
+        )
+        let context = try #require(navigation.inlineReply)
+        #expect(context.sourceID == work.id)
+        #expect(context.quotedMessageSourceID == personal.id)
+
+        // Step 3: Wire ComposeView strictly from InlineReplyContext like inlineReplyDock -> composeEditor.
+        let personalBackend = QuoteRecordingMailBackend(
+            account: personalAccount,
+            bodies: [collidingID: MessageBody(messageID: collidingID, plainText: "True body in account A.")]
+        )
+        let workBackend = QuoteRecordingMailBackend(
+            account: workAccount,
+            bodies: [collidingID: MessageBody(messageID: collidingID, plainText: "Secret body in account B!")]
+        )
+        let backendFor: (MailSourceID?) -> any MailBackend = { sourceID in
+            sourceID == personal.id ? personalBackend : workBackend
+        }
+        let ownerSourceID = context.quotedMessageSourceID ?? context.sourceID
+        let senderResolution = ComposeSenderIdentity.resolution(
+            from: [work],
+            fallbackAccount: workAccount,
+            selectedSourceID: context.sourceID,
+            defaultSourceID: work.id,
+            replyingTo: context.replyTo
+        )
+        let composeView = ComposeView(
+            backend: backendFor(senderResolution.sourceID),
+            sourceID: senderResolution.sourceID,
+            quotedMessageBackend: backendFor(ownerSourceID),
+            quotedMessageSourceID: ownerSourceID,
+            from: senderResolution.initialSender?.correspondent
+                ?? Correspondent(name: workAccount.displayName, email: workAccount.emailAddress),
+            senderOptions: senderResolution.options,
+            initialSenderOption: senderResolution.initialSender,
+            backendForSenderSource: { sourceID in backendFor(sourceID) },
+            replyingTo: context.replyTo,
+            prefill: context.prefill,
+            hostStyle: .inline
+        )
+
+        #expect(senderResolution.sourceID == work.id)
+        let loadedBody = await composeView.loadQuotedOriginalBody(for: context.replyTo)
+        #expect(loadedBody?.plainText == "True body in account A.")
+        #expect(personalBackend.bodyLookups == [.init(messageID: collidingID, sourceID: personal.id)])
+        #expect(workBackend.bodyLookups.isEmpty)
+    }
+
     private static func account(
         id: BrevAccount.ID = "account-1",
         email: String = "henrik@example.org",

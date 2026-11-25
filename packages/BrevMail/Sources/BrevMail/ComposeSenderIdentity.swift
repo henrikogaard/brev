@@ -50,6 +50,36 @@ struct ComposeSenderResolution: Equatable {
     let sourceID: MailSourceID?
 }
 
+/// Separates the account/source that owns the original message (for quoted body
+/// retrieval) from the recipient-matched sending source across quick-reply dock
+/// expansion and full compose presentation.
+struct ComposeReplyAccountRouting: Equatable, Sendable {
+    let sendingSourceID: MailSourceID?
+    let quotedMessageSourceID: MailSourceID?
+
+    static func resolve(
+        replyingTo header: MessageHeader?,
+        in sections: [MailSourceSection],
+        messageOwnerSourceID: MailSourceID?,
+        defaultSourceID: MailSourceID?
+    ) -> ComposeReplyAccountRouting {
+        let matchedSendingSourceID: MailSourceID? = if let header {
+            ComposeSenderIdentity.replySourceID(
+                for: header,
+                in: sections,
+                selectedSourceID: messageOwnerSourceID,
+                defaultSourceID: defaultSourceID
+            )
+        } else {
+            messageOwnerSourceID
+        }
+        return ComposeReplyAccountRouting(
+            sendingSourceID: matchedSendingSourceID ?? messageOwnerSourceID ?? defaultSourceID,
+            quotedMessageSourceID: messageOwnerSourceID ?? defaultSourceID
+        )
+    }
+}
+
 enum ComposeSenderIdentity {
     static func senderSections(
         from sourceSections: [MailSourceSection],

@@ -2147,15 +2147,14 @@ public struct BrevMailRootView: View {
                 accountEmail: initialQuickReplyBackend?.account.emailAddress
                     ?? selectedBackend.account.emailAddress
             )
-            let quickReplySourceID: MailSourceID? = {
-                guard let quickReplyTarget else { return navigation.selectedSourceID }
-                return ComposeSenderIdentity.replySourceID(
-                    for: quickReplyTarget,
-                    in: sourceSections,
-                    selectedSourceID: navigation.selectedSourceID,
-                    defaultSourceID: preferredDefaultSection(in: visibleSourceSections)?.id
-                )
-            }()
+            let quickReplyRouting = ComposeReplyAccountRouting.resolve(
+                replyingTo: quickReplyTarget,
+                in: sourceSections,
+                messageOwnerSourceID: navigation.selectedSourceID,
+                defaultSourceID: preferredDefaultSection(in: visibleSourceSections)?.id
+            )
+            let quickReplySourceID = quickReplyRouting.sendingSourceID
+            let quickReplyOwnerSourceID = quickReplyRouting.quotedMessageSourceID
             let quickReplyBackend: (any MailBackend)? = {
                 guard let quickReplySourceID else { return selectedBackend }
                 return connectedBackend(forAccountID: quickReplySourceID.accountID)
@@ -2186,23 +2185,23 @@ public struct BrevMailRootView: View {
                             quickReplyDraftWasSaved = result.draftWasSaved
                             return result.sent
                         },
-                        onExpand: { [quickReplySourceID, quickReplyTarget] text in
+                        onExpand: { [quickReplySourceID, quickReplyOwnerSourceID, quickReplyTarget] text in
                             #if os(macOS)
                             // macOS grows the bar into the full composer in
                             // place (#302); iOS keeps the compose sheet.
                             guard canPresentCompose() else { return }
-                            // Pin the account now: a nil source would follow
-                            // whatever is selected later (#302).
+                            // Pin both sending and message-owner accounts now so
+                            // cross-account replies always quote from the owner.
                             navigation.presentInlineReply(
                                 to: quickReplyTarget,
-                                sourceID: quickReplySourceID
-                                    ?? preferredDefaultSection(in: visibleSourceSections)?.id,
+                                sourceID: quickReplySourceID,
+                                quotedMessageSourceID: quickReplyOwnerSourceID,
                                 prefillBodyText: text
                             )
                             #else
                             presentReply(
                                 to: quickReplyTarget,
-                                sourceID: quickReplySourceID,
+                                sourceID: quickReplyOwnerSourceID,
                                 prefillBodyText: text
                             )
                             #endif
@@ -2354,9 +2353,12 @@ public struct BrevMailRootView: View {
     /// through the composer's own Close or Send, which save or discard the
     /// Draft exactly as the sheet does.
     private func inlineReplyDock(_ context: InlineReplyContext) -> some View {
-        composeEditor(
+        let ownerSourceID = context.quotedMessageSourceID ?? context.sourceID
+        return composeEditor(
             anchorSourceID: context.sourceID,
             activeBackend: backend(for: context.sourceID),
+            quotedMessageSourceID: ownerSourceID,
+            quotedMessageBackend: backend(for: ownerSourceID),
             replyingTo: context.replyTo,
             replyMode: .sender,
             forwardingFrom: nil,
@@ -5240,6 +5242,8 @@ public struct BrevMailRootView: View {
     private func composeEditor(
         anchorSourceID: MailSourceID?,
         activeBackend: any MailBackend,
+        quotedMessageSourceID: MailSourceID? = nil,
+        quotedMessageBackend: (any MailBackend)? = nil,
         replyingTo: MessageHeader?,
         replyMode: ComposeReplyMode,
         forwardingFrom: MessageHeader?,
@@ -5289,11 +5293,13 @@ public struct BrevMailRootView: View {
                 forwardingFrom: forwardingFrom
             )
             : nil
+        let resolvedQuotedMessageSourceID = quotedMessageSourceID ?? selectedSourceID
+        let resolvedQuotedMessageBackend = quotedMessageBackend ?? activeBackend
         ComposeView(
             backend: composeBackend,
             sourceID: sourceID,
-            quotedMessageBackend: activeBackend,
-            quotedMessageSourceID: selectedSourceID,
+            quotedMessageBackend: resolvedQuotedMessageBackend,
+            quotedMessageSourceID: resolvedQuotedMessageSourceID,
             from: senderResolution.initialSender?.correspondent ?? ComposeSenderIdentity.sender(
                 account: composeBackend.account,
                 mailboxes: mailboxes,
