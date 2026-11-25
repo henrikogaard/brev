@@ -335,6 +335,44 @@ struct MacMailAuxiliaryWindowConfigurationTests {
         )
         #expect(darkHostingView.appearance?.name == .aqua)
     }
+
+    @Test("compose toolbar Send item toggles prominent accent style with sendAction on macOS 26+")
+    @MainActor
+    func composeToolbarSendProminenceTracksSendAction() throws {
+        let fixture = ComposeAcceleratorFixture(action: {})
+        defer { fixture.window.close() }
+        let toolbar = try #require(fixture.window.toolbar)
+
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *), !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+            fixture.delegate.updateContentViews(
+                [MacComposeToolbarItemIdentifier.send: AnyView(Button("Send") {})],
+                theme: .brevMonoDark,
+                in: toolbar
+            )
+            let sendItem = try #require(
+                toolbar.items.first { $0.itemIdentifier == MacComposeToolbarItemIdentifier.send }
+            )
+            #expect(sendItem.style == .prominent)
+            #expect(sendItem.backgroundTintColor != nil)
+
+            for identifier in [
+                MacComposeToolbarItemIdentifier.scheduleSend,
+                MacComposeToolbarItemIdentifier.format,
+                MacComposeToolbarItemIdentifier.attachment,
+                MacComposeToolbarItemIdentifier.more
+            ] {
+                let item = try #require(toolbar.items.first { $0.itemIdentifier == identifier })
+                #expect(item.style == .plain)
+                #expect(item.backgroundTintColor == nil)
+            }
+
+            fixture.delegate.sendAction = nil
+            #expect(sendItem.style == .plain)
+            #expect(sendItem.backgroundTintColor == nil)
+        }
+        #endif
+    }
 }
 
 @MainActor

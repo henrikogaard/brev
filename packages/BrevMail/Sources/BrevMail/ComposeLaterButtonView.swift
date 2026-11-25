@@ -17,6 +17,7 @@ import SwiftUI
 /// Primary compose "Later" action chip placed adjacent to Send (#297).
 struct ComposeLaterButtonView: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     let isScheduled: Bool
     let isEnabled: Bool
@@ -27,18 +28,25 @@ struct ComposeLaterButtonView: View {
     private static let selectedTintOpacity = 0.18
 
     var body: some View {
-        Button(action: action) {
-            if usesToolbarStyle {
-                toolbarLabel
+        let usesGlass = !usesToolbarStyle && ComposeLiquidGlass.isEnabled(reduceTransparency: reduceTransparency)
+        return Group {
+            if usesGlass {
+                glassPillButton
             } else {
-                Label(String(localized: "Later", bundle: .module), systemImage: "clock")
-                    .brevFont(.footnote)
-                    .brevChip(selected: isScheduled)
-                    .frame(minHeight: hitTargetSize)
-                    .contentShape(Rectangle())
+                Button(action: action) {
+                    if usesToolbarStyle {
+                        toolbarLabel
+                    } else {
+                        Label(String(localized: "Later", bundle: .module), systemImage: "clock")
+                            .brevFont(.footnote)
+                            .brevChip(selected: isScheduled)
+                            .frame(minHeight: hitTargetSize)
+                            .contentShape(Rectangle())
+                    }
+                }
+                .buttonStyle(.plain)
             }
         }
-        .buttonStyle(.plain)
         .disabled(!isEnabled)
         .opacity(usesToolbarStyle && !isEnabled ? 0.45 : 1)
         .accessibilityLabel(
@@ -54,6 +62,41 @@ struct ComposeLaterButtonView: View {
         )
     }
 
+    private var glassPillButton: some View {
+        let pillFill = isScheduled
+            ? theme.accent.color.opacity(Self.selectedTintOpacity)
+            : theme.bgSecondary.color.opacity(isEnabled ? 0.48 : 0.30)
+        let pillStroke = isScheduled
+            ? theme.accent.color.opacity(0.60)
+            : theme.border.color.opacity(isEnabled ? 0.50 : 0.30)
+        return ComposeLiquidGlass.Container(spacing: BrevSpacing.xs) {
+            Button(action: action) {
+                Label(String(localized: "Later", bundle: .module), systemImage: "clock")
+                    .brevFont(.footnote)
+                    .foregroundStyle(glassForegroundColor)
+                    .padding(.horizontal, BrevSpacing.sm)
+                    .padding(.vertical, BrevSpacing.xs)
+                    .background(Capsule().fill(pillFill))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(pillStroke, lineWidth: isScheduled ? 1 : 0.75))
+                    .composeGlassCapsule(interactive: isEnabled, clear: isScheduled)
+                    .frame(minHeight: hitTargetSize)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var glassForegroundColor: Color {
+        if !isEnabled {
+            return theme.textTertiary.color
+        }
+        if isScheduled {
+            return theme.accentTextOnTint(opacity: Self.selectedTintOpacity).color
+        }
+        return theme.textPrimary.color
+    }
+
     /// Monochrome glass-matched label for the macOS window toolbar capsule so
     /// the unselected button never paints an opaque pill inside the glass bar.
     private var toolbarLabel: some View {
@@ -62,7 +105,9 @@ struct ComposeLaterButtonView: View {
             .foregroundStyle(
                 isScheduled
                     ? theme.accentTextOnTint(opacity: Self.selectedTintOpacity).color
-                    : theme.textSecondary.color
+                    : (ComposeLiquidGlass.isEnabled(reduceTransparency: reduceTransparency)
+                        ? theme.textPrimary.color
+                        : theme.textSecondary.color)
             )
             .padding(.horizontal, BrevSpacing.sm)
             .padding(.vertical, BrevSpacing.xxs)

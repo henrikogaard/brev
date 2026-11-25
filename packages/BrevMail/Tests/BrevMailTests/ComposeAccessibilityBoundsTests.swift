@@ -331,6 +331,56 @@ struct ComposeAccessibilityBoundsTests {
         )
     }
 
+    @Test("toggling Reduce Transparency preserves iOS rich body editor identity and formatting")
+    func reduceTransparencyTogglePreservesRichBodyEditorIdentityAndFormatting() throws {
+        let model = ComposeReduceTransparencyHarnessModel(reduceTransparency: false)
+        let host = UIHostingController(rootView: ComposeReduceTransparencyHarnessView(model: model))
+        let viewport = CGSize(width: 393, height: 852)
+
+        let window = UIWindow(frame: CGRect(origin: .zero, size: viewport))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        host.view.frame = CGRect(origin: .zero, size: viewport)
+        host.view.layoutIfNeeded()
+        window.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        window.layoutIfNeeded()
+
+        let initialTextView = try #require(
+            descendants(of: host.view).compactMap { $0 as? ComposeBodyTextView }.first,
+            "Expected live ComposeBodyTextView inside compose scroll container"
+        )
+        let initialIdentity = ObjectIdentifier(initialTextView)
+
+        initialTextView.selectedRange = NSRange(location: 0, length: 7) // "Testing"
+        let richTarget = try #require(initialTextView.delegate as? ComposeIOSRichTextTarget)
+        richTarget.toggleBold()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+
+        for reduced in [true, false] {
+            model.reduceTransparency = reduced
+            host.view.layoutIfNeeded()
+            window.layoutIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            window.layoutIfNeeded()
+
+            let currentTextView = try #require(
+                descendants(of: host.view).compactMap { $0 as? ComposeBodyTextView }.first
+            )
+            #expect(
+                ObjectIdentifier(currentTextView) == initialIdentity,
+                "Toggling Reduce Transparency (\(reduced)) must not recreate ComposeBodyTextView"
+            )
+            #expect(currentTextView.text == "Testing rich editor")
+            let font = try #require(
+                currentTextView.textStorage.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+            )
+            #expect(font.fontDescriptor.symbolicTraits.contains(.traitBold))
+        }
+    }
+
     private func descendants(of view: UIView) -> [UIView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
     }
@@ -363,6 +413,40 @@ private struct ComposeRotationHarnessView: View {
         .environment(\.verticalSizeClass, model.verticalSizeClass)
         .brevTheme(.brevMonoLight)
         .htmlBodyRenderTarget(.staticSnapshot)
+    }
+}
+
+@MainActor
+private final class ComposeReduceTransparencyHarnessModel: ObservableObject {
+    @Published var reduceTransparency: Bool
+
+    init(reduceTransparency: Bool) {
+        self.reduceTransparency = reduceTransparency
+    }
+}
+
+private struct ComposeReduceTransparencyHarnessView: View {
+    @ObservedObject var model: ComposeReduceTransparencyHarnessModel
+    @State private var text = "Testing rich editor"
+    @State private var richHTML: String?
+    @State private var selection: ComposeBodyTextSelection?
+    @State private var insertionPoint: ComposeBodyInsertionPoint?
+
+    var body: some View {
+        ScrollView {
+            ComposeBodyEditor(
+                text: $text,
+                richHTML: $richHTML,
+                selection: $selection,
+                insertionPoint: $insertionPoint,
+                bodyFormat: .richTextHTML,
+                appearance: .light,
+                textCheckingConfiguration: ComposeTextCheckingPolicy.configuration(isEnabled: false)
+            )
+            .frame(minHeight: 300)
+        }
+        .modifier(ComposeSoftTopScrollEdgeModifier(reduceTransparencyOverride: model.reduceTransparency))
+        .brevTheme(.brevMonoLight)
     }
 }
 #endif

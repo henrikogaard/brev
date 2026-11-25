@@ -12,6 +12,7 @@
 
 #if os(macOS)
 import AppKit
+import BrevAI
 import BrevBackend
 @testable import BrevMail
 import BrevThemes
@@ -95,6 +96,51 @@ struct ComposeViewMacOSSnapshotTests {
             of: host,
             as: .image(size: CGSize(width: 700, height: 560)),
             named: "compose-collapsed-header-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    /// Detached macOS composer with the bottom-floating Liquid Glass rich-text
+    /// formatting pill bar visible over the body canvas.
+    @Test("detached compose renders bottom-floating formatting pill bar", arguments: ["light", "dark"])
+    func floatingFormattingBar(mode: String) throws {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let suiteName = "ComposeViewMacOSSnapshotTests-floatingFormattingBar-\(mode)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(true, forKey: AIWriterSettings.Key.isEnabled)
+        defaults.set(true, forKey: AIWriterSettings.Key.consentGiven)
+        let view = ComposeView(
+            backend: MockBackend(supportsScheduledSend: false),
+            from: Correspondent(name: "Henrik Øgård", email: "henrik@ogard.example"),
+            senderOptions: [],
+            prefill: ComposePrefill(
+                to: ["qa-recipient@example.org"],
+                subject: "Formatting bar",
+                bodyText: "Drafting a quick update for the team."
+            ),
+            aiBackend: ComposeFormattingSnapshotAIBackend(),
+            backendSupportsAIWriter: true,
+            recoveryDefaults: defaults
+        )
+        .initialFormattingBarVisible(true)
+        .frame(width: 700, height: 560)
+        .brevTheme(theme)
+        .defaultAppStorage(defaults)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        .environment(\.locale, Locale(identifier: "en_US"))
+
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        host.view.frame = CGRect(x: 0, y: 0, width: 700, height: 560)
+        host.view.needsLayout = true
+        host.view.layoutSubtreeIfNeeded()
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 700, height: 560)),
+            named: "compose-floating-formatting-bar-\(mode)",
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
@@ -289,6 +335,20 @@ struct ComposeViewMacOSSnapshotTests {
             return nil
         }
         return bitmap.representation(using: .png, properties: [:])
+    }
+}
+
+private struct ComposeFormattingSnapshotAIBackend: AIBackend {
+    let identifier = "snapshot-ai"
+    let displayName = "Snapshot AI"
+    let transparencyLabel = "Sent to: Snapshot AI"
+
+    func generateReply(to messages: [AIMessage], instruction: String?) async throws -> AIResponse {
+        AIResponse(text: "Unused")
+    }
+
+    func shortcut(_ action: AIShortcutAction, on text: String) async throws -> AIResponse {
+        AIResponse(text: "Unused")
     }
 }
 #endif
