@@ -191,6 +191,43 @@ enum MailboxChatScopeSearchPolicy {
         }
     }
 
+    /// Returns the ordered set of cache-only queries needed to gather complete
+    /// candidates for a starter intent before ranking and applying context limits
+    /// (#370). Always stays strictly `.cacheOnly` and preserves scope constraints.
+    static func answerSearchQueries(
+        question: String,
+        scope: MailboxChatScope,
+        folderID: String?,
+        sentFolderID: String? = nil,
+        starterIntent: MailboxChatStarterIntent? = nil,
+        referenceDate: Date = Date()
+    ) -> [SearchQuery] {
+        let base = answerSearchQuery(
+            question: question,
+            scope: scope,
+            folderID: folderID,
+            starterIntent: starterIntent,
+            referenceDate: referenceDate
+        )
+        switch starterIntent {
+        case .needsMeToday:
+            var flagged = base
+            flagged.isFlagged = true
+            var unread = base
+            unread.isUnread = true
+            return [flagged, unread, base]
+        case .whoHasntReplied:
+            if scope == .account, let sentFolderID {
+                var sentQuery = base
+                sentQuery.folderID = sentFolderID
+                return [sentQuery, base]
+            }
+            return [base]
+        case .summarizeRecentThreads, .findRecentAttachments, nil:
+            return [base]
+        }
+    }
+
     static func emptySearchMessage(
         scope: MailboxChatScope,
         folderName: String?
@@ -231,5 +268,201 @@ enum MailboxChatScopeSearchPolicy {
             accountLabel.map { "all folders in \($0)" }
                 ?? "all folders in the current account"
         }
+    }
+}
+
+/// Ranks and filters cached mailbox headers for structured Assistant starters
+/// before `MailboxChatAnswerContext` applies the message/byte budget (#370).
+enum MailboxChatStarterCandidateSelector {
+    static func select(
+        headers: [MessageHeader],
+        intent: MailboxChatStarterIntent?,
+        sentFolderIDs: Set<String>,
+        myEmailAddress: String?,
+        maxMessages: Int
+    ) -> [MessageHeader] {
+        // Freeform Q&A preserves the search backend's exact relevance/recency order.
+        guard let intent else { return headers }
+
+        // Deduplicate merged starter batches by message ID while keeping newest first.
+        var seenIDs = Set<MessageHeader.ID>()
+        let unique = headers
+            .sorted { lhs, rhs in
+                if lhs.date != rhs.date { return lhs.date > rhs.date }
+                return lhs.id < rhs.id
+            }
+            .filter { seenIDs.insert($0.id).inserted }
+
+        switch intent {
+        case .needsMeToday:
+            return prioritizeAttentionItems(unique)
+        case .summarizeRecentThreads:
+            return diversifyByThread(unique, maxMessages: maxMessages)
+        case .whoHasntReplied:
+            return unansweredSentMessages(
+                unique,
+                sentFolderIDs: sentFolderIDs,
+                myEmailAddress: myEmailAddress
+            )
+        case .findRecentAttachments:
+            return unique.filter(\.hasAttachments)
+        }
+    }
+
+    private static func prioritizeAttentionItems(_ headers: [MessageHeader]) -> [MessageHeader] {
+        headers.sorted { lhs, rhs in
+            let lhsRank = attentionRank(lhs)
+            let rhsRank = attentionRank(rhs)
+            if lhsRank != rhsRank { return lhsRank < rhsRank }
+            if lhs.date != rhs.date { return lhs.date > rhs.date }
+            return lhs.id < rhs.id
+        }
+    }
+
+    private static func attentionRank(_ header: MessageHeader) -> Int {
+        switch (header.isFlagged, !header.isRead) {
+        case (true, true): 0
+        case (true, false): 1
+        case (false, true): 2
+        case (false, false): 3
+        }
+    }
+
+    private static func diversifyByThread(
+        _ headers: [MessageHeader],
+        maxMessages: Int
+    ) -> [MessageHeader] {
+        guard !headers.isEmpty else { return [] }
+
+        var buckets: [String: [MessageHeader]] = [:]
+        var orderedThreadKeys: [String] = []
+        for header in headers {
+            let key = header.threadID.isEmpty ? header.id : header.threadID
+            if buckets[key] == nil {
+                orderedThreadKeys.append(key)
+                buckets[key] = [header]
+            } else {
+                buckets[key, default: []].append(header)
+            }
+        }
+
+        // Round-robin across recent threads: every distinct recent conversation
+        // gets its newest representative first before any busy thread consumes
+        // additional context slots.
+        var result: [MessageHeader] = []
+        let limit = max(maxMessages, 0)
+        var depth = 0
+        while result.count < limit {
+            var addedInRound = false
+            for key in orderedThreadKeys {
+                guard result.count < limit else { break }
+                if let members = buckets[key], depth < members.count {
+                    result.append(members[depth])
+                    addedInRound = true
+                }
+            }
+            if !addedInRound { break }
+            depth += 1
+        }
+        return result
+    }
+
+    /// Matches `TodayDigestBuilder`'s local reply-matching convention:
+    /// identifies sent headers, matches cached replies by thread timestamp or
+    /// `In-Reply-To`/`References`, and returns sent messages with external
+    /// recipients that have no known cached reply (#370).
+    private static func unansweredSentMessages(
+        _ headers: [MessageHeader],
+        sentFolderIDs: Set<String>,
+        myEmailAddress: String?
+    ) -> [MessageHeader] {
+        var myAddresses = Set<String>()
+        if let normalized = myEmailAddress?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !normalized.isEmpty {
+            myAddresses.insert(normalized)
+        }
+        for header in headers where sentFolderIDs.contains(header.folderID) {
+            let email = header.from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !email.isEmpty {
+                myAddresses.insert(email)
+            }
+        }
+
+        func isMine(_ correspondent: Correspondent) -> Bool {
+            let normalized = correspondent.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return !normalized.isEmpty && myAddresses.contains(normalized)
+        }
+
+        func isSentHeader(_ header: MessageHeader) -> Bool {
+            if sentFolderIDs.contains(header.folderID) { return true }
+            if !myAddresses.isEmpty, isMine(header.from) { return true }
+            return sentFolderIDs.isEmpty && header.folderID.lowercased().contains("sent")
+        }
+
+        var sentHeaders: [MessageHeader] = []
+        var sentMessageIDs = Set<String>()
+        for header in headers where isSentHeader(header) {
+            sentHeaders.append(header)
+            if let messageID = normalizedMessageID(header.messageID) {
+                sentMessageIDs.insert(messageID)
+            }
+        }
+        guard !sentHeaders.isEmpty else { return [] }
+
+        // Keep newest sent message per thread so repeated follow-ups don't duplicate.
+        var sentLatestByThread: [String: MessageHeader] = [:]
+        for header in sentHeaders {
+            let key = header.threadID.isEmpty ? header.id : header.threadID
+            if let existing = sentLatestByThread[key] {
+                if header.date > existing.date {
+                    sentLatestByThread[key] = header
+                }
+            } else {
+                sentLatestByThread[key] = header
+            }
+        }
+
+        var incomingByThread: [String: Date] = [:]
+        var repliedSentMessageIDs = Set<String>()
+        for header in headers where !isSentHeader(header) {
+            if let id = normalizedMessageID(header.messageID), sentMessageIDs.contains(id) {
+                continue
+            }
+            if isMine(header.from) { continue }
+            let threadKey = header.threadID.isEmpty ? header.id : header.threadID
+            incomingByThread[threadKey] = max(incomingByThread[threadKey] ?? .distantPast, header.date)
+            for ref in referencedMessageIDs(header) where sentMessageIDs.contains(ref) {
+                repliedSentMessageIDs.insert(ref)
+            }
+        }
+
+        return sentLatestByThread.values
+            .filter { header in
+                let externalRecipients = (header.to + header.cc).filter { !isMine($0) }
+                guard !externalRecipients.isEmpty else { return false }
+                let threadKey = header.threadID.isEmpty ? header.id : header.threadID
+                let repliedInThread = (incomingByThread[threadKey] ?? .distantPast) > header.date
+                let repliedByHeader = normalizedMessageID(header.messageID)
+                    .map(repliedSentMessageIDs.contains) == true
+                return !repliedInThread && !repliedByHeader
+            }
+            .sorted { lhs, rhs in
+                if lhs.date != rhs.date { return lhs.date > rhs.date }
+                return lhs.id < rhs.id
+            }
+    }
+
+    private static func referencedMessageIDs(_ header: MessageHeader) -> [String] {
+        ([header.inReplyTo] + (header.references ?? []).map(Optional.some))
+            .compactMap { normalizedMessageID($0) }
+    }
+
+    private static func normalizedMessageID(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
+            .lowercased()
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

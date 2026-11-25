@@ -284,6 +284,100 @@ struct PeopleUpdatesClassifierTests {
         #expect(updatesSelectableExpanded.map(\.id) == ["u1", "u2", "u3"])
     }
 
+    @Test(
+        "Collapsing Yesterday preserves selected inline children inside an expanded Today thread while pruning Yesterday (#370)"
+    )
+    func collapsingDateSectionPreservesVisibleInlineChildrenAndPrunesCollapsedSection() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = calendar.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: 15, minute: 0))!
+
+        let todayParent = MessageHeader(
+            id: "today-parent",
+            threadID: "t-today",
+            folderID: "inbox",
+            from: Correspondent(name: "Maya", email: "maya@example.com"),
+            subject: "Re: Q4 Launch",
+            snippet: "Latest reply today.",
+            date: referenceDate.addingTimeInterval(-1800)
+        )
+        let todayChild = MessageHeader(
+            id: "today-child",
+            threadID: "t-today",
+            folderID: "inbox",
+            from: Correspondent(name: "Daniel", email: "daniel@example.com"),
+            subject: "Q4 Launch",
+            snippet: "Original message earlier today.",
+            date: referenceDate.addingTimeInterval(-7200)
+        )
+        let yesterdayParent = MessageHeader(
+            id: "yesterday-parent",
+            threadID: "t-yesterday",
+            folderID: "inbox",
+            from: Correspondent(name: "Ingrid", email: "ingrid@northwind.example"),
+            subject: "Re: Stavanger rollout",
+            snippet: "Latest reply yesterday.",
+            date: referenceDate.addingTimeInterval(-86400)
+        )
+        let yesterdayChild = MessageHeader(
+            id: "yesterday-child",
+            threadID: "t-yesterday",
+            folderID: "inbox",
+            from: Correspondent(name: "Marte", email: "marte@northwind.example"),
+            subject: "Stavanger rollout",
+            snippet: "Earlier message yesterday.",
+            date: referenceDate.addingTimeInterval(-90000)
+        )
+
+        let allHeaders = [todayParent, todayChild, yesterdayParent, yesterdayChild]
+        let collapsedYesterdaySnapshot = MessageListPresentationSnapshot(
+            headers: [todayParent, yesterdayParent],
+            pinnedMessageIDs: [],
+            groupByDate: true,
+            collapsedDateSectionIDs: ["Yesterday"],
+            referenceDate: referenceDate,
+            calendar: calendar,
+            sourceHeaders: allHeaders,
+            filteredUngroupedHeaders: allHeaders,
+            navigationHeaders: allHeaders,
+            sourceID: Self.source,
+            groupsThreads: true
+        )
+
+        var bulkSelection: Set<MessageHeader.ID> = [
+            "today-parent",
+            "today-child",
+            "yesterday-parent",
+            "yesterday-child",
+        ]
+        let visibleBulkIDs = PeopleUpdatesListLayoutPolicy.visibleBulkRowIDs(
+            in: collapsedYesterdaySnapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .people,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: [],
+            allowsInlineThreading: true,
+            groupsThreads: true,
+            expandedThreadIDs: ["t-today", "t-yesterday"]
+        )
+        bulkSelection.formIntersection(visibleBulkIDs)
+
+        // Today's expanded parent + inline child stay selected; Yesterday's parent + child are pruned.
+        #expect(bulkSelection == Set(["today-parent", "today-child"]))
+
+        // Keyboard selection unit stays top-level rows only.
+        let keyboardRows = PeopleUpdatesListLayoutPolicy.selectableHeaders(
+            in: collapsedYesterdaySnapshot,
+            showsPeopleUpdatesBar: true,
+            activeTab: .people,
+            groupByDate: true,
+            sourceID: Self.source,
+            expandedUpdateBundleIDs: []
+        )
+        #expect(keyboardRows.map(\.id) == ["today-parent"])
+    }
+
     @Test("Sender overrides persist across reloads and take precedence over heuristics")
     func senderOverridesPersistAndWin() {
         let suite = "PeopleUpdatesOverride-\(UUID().uuidString)"

@@ -163,27 +163,44 @@ final class MailboxChatController: ObservableObject {
         let maxBytes = aiBackend.contextBudget.map { min(baseMaxBytes, $0.maxTotalContextBytes) } ?? baseMaxBytes
         let scope = scope
         let focusedFolder = focusedFolder
+        let actionFolders = actionFolders
         let actionSourceScope = actionSourceScope
+        let sentFolderIDs = Set(actionFolders.filter { $0.role == .sent }.map(\.id))
+        let primarySentFolderID = actionFolders.first(where: { $0.role == .sent })?.id
 
         let task = Task<MailboxChatTurnKind?, Never> {
             do {
-                let headers = try await search(
-                    MailboxChatScopeSearchPolicy.answerSearchQuery(
-                        question: message,
-                        scope: scope,
-                        folderID: focusedFolder?.id,
-                        starterIntent: starterIntent,
-                        referenceDate: referenceDate
-                    ),
-                    sourceID
+                let queries = MailboxChatScopeSearchPolicy.answerSearchQueries(
+                    question: message,
+                    scope: scope,
+                    folderID: focusedFolder?.id,
+                    sentFolderID: primarySentFolderID,
+                    starterIntent: starterIntent,
+                    referenceDate: referenceDate
+                )
+                var fetchedHeaders: [MessageHeader] = []
+                for query in queries {
+                    let batch = try await search(query, sourceID)
+                    fetchedHeaders.append(contentsOf: batch)
+                }
+
+                let headers = MailboxChatStarterCandidateSelector.select(
+                    headers: fetchedHeaders,
+                    intent: starterIntent,
+                    sentFolderIDs: sentFolderIDs,
+                    myEmailAddress: actionSourceScope.mailboxAddress,
+                    maxMessages: maxMessages
                 )
 
                 guard !headers.isEmpty else {
-                    return .clarification(
-                        text: MailboxChatScopeSearchPolicy.emptySearchMessage(
+                    let emptyText = starterIntent == .whoHasntReplied
+                        ? "I couldn't find any recent cached sent messages without a cached reply yet."
+                        : MailboxChatScopeSearchPolicy.emptySearchMessage(
                             scope: scope,
                             folderName: focusedFolder?.name
-                        ),
+                        )
+                    return .clarification(
+                        text: emptyText,
                         providerLabel: MailboxChatProviderLabelPolicy.localClarification()
                     )
                 }
@@ -197,6 +214,9 @@ final class MailboxChatController: ObservableObject {
                     ),
                     sourceID: sourceID,
                     headers: headers,
+                    starterIntent: starterIntent,
+                    sentFolderIDs: sentFolderIDs,
+                    myEmailAddress: actionSourceScope.mailboxAddress,
                     maxMessages: maxMessages,
                     maxBytes: maxBytes
                 )
@@ -454,6 +474,9 @@ private struct MailboxChatAnswerContext {
         scopeDescription: String,
         sourceID: MailSourceID?,
         headers: [MessageHeader],
+        starterIntent: MailboxChatStarterIntent? = nil,
+        sentFolderIDs: Set<String> = [],
+        myEmailAddress: String? = nil,
         maxMessages: Int,
         maxBytes: Int
     ) -> Self {
@@ -461,6 +484,7 @@ private struct MailboxChatAnswerContext {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
+        let normalizedMyEmail = myEmailAddress?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         var includedHeaders: [MessageHeader] = []
         var contextBlocks: [String] = []
@@ -468,9 +492,18 @@ private struct MailboxChatAnswerContext {
 
         for header in headers.prefix(maxMessages) {
             let remainingBytes = max(maxBytes - usedBytes, 0)
+            let isSentItem = sentFolderIDs.contains(header.folderID)
+                || (normalizedMyEmail?.isEmpty == false
+                    && header.from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedMyEmail)
+            let includeRecipients = starterIntent == .whoHasntReplied || isSentItem
+            let statusNote: String? = starterIntent == .whoHasntReplied
+                ? "No known cached reply (uncached folders or replies may not be checked)"
+                : nil
             let block = contextBlock(
                 for: header,
                 formatter: formatter,
+                includeRecipients: includeRecipients,
+                statusNote: statusNote,
                 maxBytes: remainingBytes
             )
             guard !block.isEmpty else {
@@ -523,12 +556,16 @@ private struct MailboxChatAnswerContext {
         ]
         .joined(separator: "\n")
 
+        let instruction = starterIntent == .whoHasntReplied
+            ? "Answer only from the provided cached sent-mail context. Name recipients from To/Cc and state that no cached reply was found rather than claiming confirmed absence outside cached mail."
+            : "Answer only from the provided cached mailbox context. Cite supporting subjects and dates when possible."
+
         return Self(
             messages: [
                 AIMessage(role: .system, content: systemPrompt),
                 AIMessage(role: .user, content: questionPrompt)
             ],
-            instruction: "Answer only from the provided cached mailbox context. Cite supporting subjects and dates when possible.",
+            instruction: instruction,
             citations: citations
         )
     }
@@ -541,22 +578,43 @@ private struct MailboxChatAnswerContext {
         return cleaned.isEmpty ? fallback : cleaned
     }
 
+    private static func formattedCorrespondents(_ correspondents: [Correspondent]) -> String {
+        correspondents
+            .map { "\($0.displayName) <\($0.email)>" }
+            .joined(separator: ", ")
+    }
+
     private static func contextBlock(
         for header: MessageHeader,
         formatter: DateFormatter,
+        includeRecipients: Bool,
+        statusNote: String?,
         maxBytes: Int
     ) -> String {
         guard maxBytes > 0 else { return "" }
 
-        let dateLine = "Date: \(formatter.string(from: header.date))"
-        let fromLine = "From: \(header.from.displayName) <\(header.from.email)>"
-        let subjectLine = "Subject: \(sanitized(header.subject, fallback: "(No subject)"))"
+        var prefixLines = [
+            "Date: \(formatter.string(from: header.date))",
+            "From: \(header.from.displayName) <\(header.from.email)>"
+        ]
+        if includeRecipients {
+            if !header.to.isEmpty {
+                prefixLines.append("To: \(formattedCorrespondents(header.to))")
+            }
+            if !header.cc.isEmpty {
+                prefixLines.append("Cc: \(formattedCorrespondents(header.cc))")
+            }
+        }
+        prefixLines.append("Subject: \(sanitized(header.subject, fallback: "(No subject)"))")
+        if let statusNote, !statusNote.isEmpty {
+            prefixLines.append("Reply status: \(statusNote)")
+        }
+
         let snippetPrefix = "Snippet: "
-        let newlines = "\n\n\n"
-        let fixedPrefix = [dateLine, fromLine, subjectLine].joined(separator: "\n")
+        let fixedPrefix = prefixLines.joined(separator: "\n")
         let availableSnippetBytes = maxBytes
             - fixedPrefix.lengthOfBytes(using: .utf8)
-            - newlines.lengthOfBytes(using: .utf8)
+            - "\n".lengthOfBytes(using: .utf8)
             - snippetPrefix.lengthOfBytes(using: .utf8)
 
         let snippet = truncatedSnippet(
@@ -564,13 +622,8 @@ private struct MailboxChatAnswerContext {
             maxBytes: max(availableSnippetBytes, 0)
         )
 
-        let block = [
-            dateLine,
-            fromLine,
-            subjectLine,
-            "\(snippetPrefix)\(snippet)"
-        ]
-        .joined(separator: "\n")
+        let block = (prefixLines + ["\(snippetPrefix)\(snippet)"])
+            .joined(separator: "\n")
 
         guard block.lengthOfBytes(using: .utf8) <= maxBytes else {
             return ""

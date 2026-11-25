@@ -94,13 +94,16 @@ struct MailboxChatControllerTests {
     func assistantStarterIntentsRetrieveRelevantCachedMailWithoutMatchingCardWording() async throws {
         let now = Date(timeIntervalSince1970: 1_794_500_000)
         let day: TimeInterval = 24 * 60 * 60
-        let sourceID = MailSourceID(accountID: "account-1", mailboxID: "mailbox-1")
+        let myEmail = "henrik@example.com"
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let sent = Folder(id: "sent", name: "Sent", role: .sent)
 
         let signedContract = MessageHeader(
             id: "msg-contract",
             threadID: "t-contract",
-            folderID: "inbox",
+            folderID: inbox.id,
             from: Correspondent(name: "Ingrid Solberg", email: "ingrid@northwind.example"),
+            to: [Correspondent(name: "Henrik", email: myEmail)],
             subject: "Signed contract",
             snippet: "Attached PDF for Q4 sign-off.",
             date: now.addingTimeInterval(-2 * day),
@@ -111,8 +114,9 @@ struct MailboxChatControllerTests {
         let budgetReview = MessageHeader(
             id: "msg-budget",
             threadID: "t-budget",
-            folderID: "inbox",
+            folderID: inbox.id,
             from: Correspondent(name: "Daniel Reyes", email: "daniel@example.com"),
+            to: [Correspondent(name: "Henrik", email: myEmail)],
             subject: "Q4 budget review",
             snippet: "Can we finalize numbers before Friday?",
             date: now.addingTimeInterval(-3 * day),
@@ -123,8 +127,9 @@ struct MailboxChatControllerTests {
         let ancientAttachment = MessageHeader(
             id: "msg-old-attachment",
             threadID: "t-old",
-            folderID: "inbox",
+            folderID: inbox.id,
             from: Correspondent(name: "Archive", email: "archive@example.com"),
+            to: [Correspondent(name: "Henrik", email: myEmail)],
             subject: "2025 lease agreement",
             snippet: "PDF copy for your records.",
             date: now.addingTimeInterval(-45 * day),
@@ -132,9 +137,16 @@ struct MailboxChatControllerTests {
             isFlagged: false,
             hasAttachments: true
         )
-        let cachedHeaders = [signedContract, budgetReview, ancientAttachment]
 
-        // Verify structured queries directly.
+        // Exercise a real MailBackend through MailboxChatSearchBridge (not a raw array filter).
+        let stubBackend = StubCachedSearchBackend(
+            accountEmail: myEmail,
+            folders: [inbox, sent],
+            cachedMessages: [signedContract, budgetReview, ancientAttachment]
+        )
+        let sourceID = MailSourceID(accountID: stubBackend.account.id, mailboxID: "primary")
+        let bridgedSearch = MailboxChatSearchBridge.makeSearch { _ in stubBackend }
+
         let summaryQuery = MailboxChatScopeSearchPolicy.answerSearchQuery(
             question: "Summarize recent threads",
             scope: .account,
@@ -161,16 +173,19 @@ struct MailboxChatControllerTests {
         #expect(attachmentsQuery.dateRange == now.addingTimeInterval(-30 * day) ... now)
         #expect(attachmentsQuery.hasSearchCriteria)
 
-        // End-to-end through MailboxChatController using real SearchQuery.matches filtering.
         let aiBackend = RecordingAIBackend(responseText: "Here is what I found.")
         let controller = MailboxChatController(
             scope: .account,
             sourceID: sourceID,
             aiBackend: aiBackend,
-            search: { query, _ in
-                guard query.hasSearchCriteria else { return [] }
-                return cachedHeaders.filter { query.matches($0) }
-            }
+            actionFolders: [inbox, sent],
+            actionSourceScope: MailboxActionAgentSourceScope(
+                sourceID: sourceID,
+                accountName: "Work",
+                mailboxName: "Primary",
+                mailboxAddress: myEmail
+            ),
+            search: bridgedSearch
         )
 
         await controller.send(
@@ -195,16 +210,307 @@ struct MailboxChatControllerTests {
         }
         #expect(recentCitations.map(\.id) == ["msg-contract", "msg-budget"])
 
+        // Also exercise real MockBackend through MailboxChatSearchBridge for attachment & recent queries.
+        let mockBackend = MockBackend()
+        let mockMailbox = try await mockBackend.currentMailbox()
+        let mockSourceID = mockBackend.sourceID(for: mockMailbox)
+        let mockFolders = try await mockBackend.folders()
+        let mockBridge = MailboxChatSearchBridge.makeSearch { _ in mockBackend }
+        let mockController = MailboxChatController(
+            scope: .account,
+            sourceID: mockSourceID,
+            aiBackend: aiBackend,
+            actionFolders: mockFolders,
+            actionSourceScope: MailboxActionAgentSourceScope(
+                sourceID: mockSourceID,
+                accountName: mockBackend.account.displayName,
+                mailboxName: mockMailbox.displayName,
+                mailboxAddress: mockMailbox.email
+            ),
+            search: mockBridge
+        )
+        await mockController.send(
+            userText: "Find recent attachments",
+            starterIntent: .findRecentAttachments
+        )
+        guard case .answer(_, let mockAttachmentCitations, _)? = mockController.turns.last else {
+            Issue.record("Expected grounded answer from real MockBackend for findRecentAttachments")
+            return
+        }
+        #expect(!mockAttachmentCitations.isEmpty)
+    }
+
+    @Test("whoHasntReplied matches sent messages against cached replies, includes recipients, and states cache caveat (#370)")
+    @MainActor
+    func whoHasntRepliedMatchesSentMailAndIncludesRecipientsInPrompt() async throws {
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let day: TimeInterval = 24 * 60 * 60
+        let me = Correspondent(name: "Henrik", email: "henrik@example.com")
+        let maya = Correspondent(name: "Maya Okafor", email: "maya@northwind.example")
+        let daniel = Correspondent(name: "Daniel Reyes", email: "daniel@example.com")
+        let ingrid = Correspondent(name: "Ingrid Solberg", email: "ingrid@northwind.example")
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let sent = Folder(id: "sent", name: "Sent", role: .sent)
+
+        // 1. Unanswered sent message to Maya (name only in To field, not in subject/snippet).
+        let unansweredToMaya = MessageHeader(
+            id: "sent-maya",
+            threadID: "t-maya",
+            folderID: sent.id,
+            from: me,
+            to: [maya],
+            subject: "Budget approval",
+            snippet: "Please approve the revised estimate.",
+            date: now.addingTimeInterval(-3 * day),
+            isRead: true,
+            messageID: "<sent-maya@example.com>"
+        )
+        // 2. Sent message to Daniel with a later cached reply in the same thread -> excluded.
+        let answeredByThread = MessageHeader(
+            id: "sent-daniel",
+            threadID: "t-daniel",
+            folderID: sent.id,
+            from: me,
+            to: [daniel],
+            subject: "Design handoff",
+            snippet: "Sending specs over.",
+            date: now.addingTimeInterval(-4 * day),
+            isRead: true,
+            messageID: "<sent-daniel@example.com>"
+        )
+        let danielReply = MessageHeader(
+            id: "inbox-daniel-reply",
+            threadID: "t-daniel",
+            folderID: inbox.id,
+            from: daniel,
+            to: [me],
+            subject: "Re: Design handoff",
+            snippet: "Received, looks great.",
+            date: now.addingTimeInterval(-2 * day),
+            isRead: true
+        )
+        // 3. Sent message to Ingrid with a reply in a DIFFERENT folder-local threadID matched by In-Reply-To -> excluded.
+        let answeredByInReplyTo = MessageHeader(
+            id: "sent-ingrid",
+            threadID: "sent-thread-ingrid",
+            folderID: sent.id,
+            from: me,
+            to: [ingrid],
+            subject: "Stavanger schedule",
+            snippet: "Does Tuesday 06:00 hold?",
+            date: now.addingTimeInterval(-5 * day),
+            isRead: true,
+            messageID: "<sent-ingrid@example.com>"
+        )
+        let ingridReply = MessageHeader(
+            id: "inbox-ingrid-reply",
+            threadID: "inbox-thread-ingrid",
+            folderID: inbox.id,
+            from: ingrid,
+            to: [me],
+            subject: "Re: Stavanger schedule",
+            snippet: "Confirmed.",
+            date: now.addingTimeInterval(-4 * day),
+            isRead: true,
+            inReplyTo: "<sent-ingrid@example.com>"
+        )
+        // 4. Note to self -> excluded.
+        let noteToSelf = MessageHeader(
+            id: "sent-self",
+            threadID: "t-self",
+            folderID: sent.id,
+            from: me,
+            to: [me],
+            subject: "Packing list",
+            snippet: "Chargers and passport.",
+            date: now.addingTimeInterval(-1 * day),
+            isRead: true
+        )
+
+        let stubBackend = StubCachedSearchBackend(
+            accountEmail: me.email,
+            folders: [inbox, sent],
+            cachedMessages: [
+                unansweredToMaya,
+                answeredByThread,
+                danielReply,
+                answeredByInReplyTo,
+                ingridReply,
+                noteToSelf,
+            ]
+        )
+        let sourceID = MailSourceID(accountID: stubBackend.account.id, mailboxID: "primary")
+        let aiBackend = RecordingAIBackend(responseText: "Maya Okafor hasn't replied in cached mail.")
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: sourceID,
+            aiBackend: aiBackend,
+            actionFolders: [inbox, sent],
+            actionSourceScope: MailboxActionAgentSourceScope(
+                sourceID: sourceID,
+                accountName: "Work",
+                mailboxName: "Primary",
+                mailboxAddress: me.email
+            ),
+            search: MailboxChatSearchBridge.makeSearch { _ in stubBackend }
+        )
+
+        await controller.send(
+            userText: "Who hasn't replied?",
+            starterIntent: .whoHasntReplied,
+            referenceDate: now
+        )
+
+        guard case .answer(_, let citations, _)? = controller.turns.last else {
+            Issue.record("Expected answer turn for whoHasntReplied")
+            return
+        }
+        #expect(citations.map(\.id) == ["sent-maya"])
+
+        let invocation = try #require(await aiBackend.lastInvocation)
+        let prompt = invocation.messages.map(\.content).joined(separator: "\n")
+        #expect(prompt.contains("To: Maya Okafor <maya@northwind.example>"))
+        #expect(prompt.contains("No known cached reply"))
+        #expect(invocation.instruction?.contains("cached") == true)
+    }
+
+    @Test("needsMeToday prioritizes flagged and unread mail ahead of newer read notifications (#370)")
+    @MainActor
+    func needsMeTodayPrioritizesFlaggedAndUnreadOverNewerReadMail() async throws {
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let hour: TimeInterval = 3600
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+
+        let newerReadNotifications = (1 ... 15).map { idx in
+            MessageHeader(
+                id: "read-\(idx)",
+                threadID: "t-read-\(idx)",
+                folderID: inbox.id,
+                from: Correspondent(name: "Updates", email: "updates@service.example"),
+                subject: "Automated digest #\(idx)",
+                snippet: "Routine status update.",
+                date: now.addingTimeInterval(-Double(idx) * 600),
+                isRead: true,
+                isFlagged: false
+            )
+        }
+        let olderFlaggedApproval = MessageHeader(
+            id: "flagged-approval",
+            threadID: "t-flagged",
+            folderID: inbox.id,
+            from: Correspondent(name: "Maya Okafor", email: "maya@northwind.example"),
+            subject: "Q4 partner sign-off needed",
+            snippet: "Please confirm before Thursday.",
+            date: now.addingTimeInterval(-48 * hour),
+            isRead: true,
+            isFlagged: true
+        )
+        let olderUnreadQuestion = MessageHeader(
+            id: "unread-question",
+            threadID: "t-unread",
+            folderID: inbox.id,
+            from: Correspondent(name: "Daniel Reyes", email: "daniel@example.com"),
+            subject: "Contract redline question",
+            snippet: "Can we change section 4?",
+            date: now.addingTimeInterval(-36 * hour),
+            isRead: false,
+            isFlagged: false
+        )
+
+        // Simulate a provider cache capping each individual query to 12 newest rows:
+        // dedicated flagged/unread cache queries still retrieve the older attention items.
+        let stubBackend = StubCachedSearchBackend(
+            accountEmail: "henrik@example.com",
+            folders: [inbox],
+            cachedMessages: newerReadNotifications + [olderFlaggedApproval, olderUnreadQuestion],
+            perQueryResultCap: 12
+        )
+        let sourceID = MailSourceID(accountID: stubBackend.account.id, mailboxID: "primary")
+        let aiBackend = RecordingAIBackend(responseText: "Two items need your attention.")
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: sourceID,
+            aiBackend: aiBackend,
+            actionFolders: [inbox],
+            maxMessages: 4,
+            search: MailboxChatSearchBridge.makeSearch { _ in stubBackend }
+        )
+
         await controller.send(
             userText: "What needs me today?",
             starterIntent: .needsMeToday,
             referenceDate: now
         )
-        guard case .answer(_, let todayCitations, _)? = controller.turns.last else {
-            Issue.record("Expected answer turn for needsMeToday starter")
+
+        guard case .answer(_, let citations, _)? = controller.turns.last else {
+            Issue.record("Expected answer turn for needsMeToday")
             return
         }
-        #expect(todayCitations.map(\.id) == ["msg-contract", "msg-budget"])
+        let citationIDs = citations.map(\.id)
+        #expect(citationIDs.count == 4)
+        #expect(citationIDs[0] == "flagged-approval")
+        #expect(citationIDs[1] == "unread-question")
+    }
+
+    @Test("summarizeRecentThreads represents each distinct recent conversation before a busy thread fills budget (#370)")
+    @MainActor
+    func summarizeRecentThreadsDiversifiesAcrossConversationsBeforeCap() async throws {
+        let now = Date(timeIntervalSince1970: 1_794_500_000)
+        let hour: TimeInterval = 3600
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+
+        let busyThreadMessages = (1 ... 12).map { idx in
+            MessageHeader(
+                id: "busy-\(idx)",
+                threadID: "thread-busy",
+                folderID: inbox.id,
+                from: Correspondent(name: "Team", email: "team@example.com"),
+                subject: "Re: Incident channel",
+                snippet: "Update \(idx)",
+                date: now.addingTimeInterval(-Double(idx) * 300),
+                isRead: false
+            )
+        }
+        let otherThreads = ["alpha", "beta", "gamma", "delta"].enumerated().map { offset, name in
+            MessageHeader(
+                id: "other-\(name)",
+                threadID: "thread-\(name)",
+                folderID: inbox.id,
+                from: Correspondent(name: name.capitalized, email: "\(name)@example.com"),
+                subject: "Topic \(name)",
+                snippet: "Key decision for \(name).",
+                date: now.addingTimeInterval(-Double(offset + 2) * hour),
+                isRead: false
+            )
+        }
+
+        let stubBackend = StubCachedSearchBackend(
+            accountEmail: "henrik@example.com",
+            folders: [inbox],
+            cachedMessages: busyThreadMessages + otherThreads
+        )
+        let sourceID = MailSourceID(accountID: stubBackend.account.id, mailboxID: "primary")
+        let aiBackend = RecordingAIBackend(responseText: "Summary of five threads.")
+        let controller = MailboxChatController(
+            scope: .account,
+            sourceID: sourceID,
+            aiBackend: aiBackend,
+            actionFolders: [inbox],
+            maxMessages: 5,
+            search: MailboxChatSearchBridge.makeSearch { _ in stubBackend }
+        )
+
+        await controller.send(
+            userText: "Summarize recent threads",
+            starterIntent: .summarizeRecentThreads,
+            referenceDate: now
+        )
+
+        guard case .answer(_, let citations, _)? = controller.turns.last else {
+            Issue.record("Expected answer turn for summarizeRecentThreads")
+            return
+        }
+        #expect(citations.map(\.id) == ["busy-1", "other-alpha", "other-beta", "other-gamma", "other-delta"])
     }
 
     @Test("account scope without source id returns a local clarification")
@@ -592,4 +898,79 @@ private actor ActionExecutionRecorder {
         callCount += 1
         return MailboxActionAgentCompletionPresentation.message(for: plan)
     }
+}
+
+/// In-memory `MailBackend` test stub exercising `MailboxChatSearchBridge` against
+/// realistic cache-only `SearchQuery` evaluation with optional per-query result caps (#370).
+private final class StubCachedSearchBackend: MailBackend, @unchecked Sendable {
+    let account: BrevAccount
+    let capabilities: BackendCapabilities = []
+    private let folderList: [Folder]
+    private let cachedMessages: [MessageHeader]
+    private let perQueryResultCap: Int?
+
+    init(
+        accountEmail: String,
+        folders: [Folder],
+        cachedMessages: [MessageHeader],
+        perQueryResultCap: Int? = nil
+    ) {
+        account = BrevAccount(id: "stub-acct", displayName: "Work", emailAddress: accountEmail)
+        folderList = folders
+        self.cachedMessages = cachedMessages
+        self.perQueryResultCap = perQueryResultCap
+    }
+
+    func connect() async throws {}
+    func disconnect() async {}
+    func folders() async throws -> [Folder] { folderList }
+    func refresh(folder: Folder) async throws {}
+    func currentMailbox() async throws -> Mailbox {
+        Mailbox(id: "primary", email: account.emailAddress, displayName: account.displayName, isPrimary: true)
+    }
+
+    func switchMailbox(id: String) async throws {}
+    func messages(
+        in folder: Folder,
+        pageToken: String?
+    ) async throws -> (headers: [MessageHeader], nextPageToken: String?) {
+        (cachedMessages.filter { $0.folderID == folder.id }, nil)
+    }
+
+    func body(for messageID: String) async throws -> MessageBody { MessageBody(messageID: messageID) }
+    func setRead(_ isRead: Bool, for messageIDs: [String]) async throws {}
+    func setFlagged(_ isFlagged: Bool, for messageIDs: [String]) async throws {}
+    func move(messageIDs: [String], to folder: Folder) async throws {}
+    func delete(messageIDs: [String]) async throws {}
+    func save(draft: Draft) async throws -> Draft { draft }
+    func discard(draftID: String) async throws {}
+    func send(draft: Draft) async throws -> SendResult { SendResult() }
+
+    func search(_ query: SearchQuery) async throws -> [MessageHeader] {
+        guard query.hasSearchCriteria else { return [] }
+        let matched = cachedMessages
+            .filter { query.matches($0) }
+            .sorted { lhs, rhs in
+                if lhs.date != rhs.date { return lhs.date > rhs.date }
+                return lhs.id < rhs.id
+            }
+        if let perQueryResultCap {
+            return Array(matched.prefix(perQueryResultCap))
+        }
+        return matched
+    }
+
+    func search(_ query: SearchQuery, sourceID: MailSourceID) async throws -> [MessageHeader] {
+        _ = sourceID
+        return try await search(query)
+    }
+
+    func calendarEvent(from attachmentID: String) async throws -> CalendarEvent {
+        throw MailBackendError.notSupported([])
+    }
+
+    func replyToCalendarInvite(messageID: String, response: AttendeeState) async throws {}
+    func subscribeToChanges() -> AsyncStream<MailEvent> { AsyncStream { $0.finish() } }
+    func sourceID(for mailbox: Mailbox) -> MailSourceID { MailSourceID(accountID: account.id, mailboxID: mailbox.id) }
+    func extensionService<Service>(_ type: Service.Type) -> Service? { nil }
 }

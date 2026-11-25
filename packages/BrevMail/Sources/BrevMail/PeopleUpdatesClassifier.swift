@@ -194,6 +194,42 @@ enum PeopleUpdatesListLayoutPolicy {
         }
         return presentation.headers
     }
+
+    /// Returns the full set of currently rendered message IDs that may stay in
+    /// `bulkSelection` — including both visible top-level rows AND visible
+    /// inline thread children inside expanded threads in open date sections,
+    /// while excluding rows and children hidden by collapsed sections or
+    /// collapsed Updates bundles (#370).
+    static func visibleBulkRowIDs(
+        in presentation: MessageListPresentationSnapshot,
+        showsPeopleUpdatesBar: Bool,
+        activeTab: InboxSplitTab,
+        groupByDate: Bool,
+        sourceID: MailSourceID?,
+        expandedUpdateBundleIDs: Set<String>,
+        allowsInlineThreading: Bool,
+        groupsThreads: Bool,
+        expandedThreadIDs: Set<String>
+    ) -> Set<MessageHeader.ID> {
+        let topLevel = selectableHeaders(
+            in: presentation,
+            showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+            activeTab: activeTab,
+            groupByDate: groupByDate,
+            sourceID: sourceID,
+            expandedUpdateBundleIDs: expandedUpdateBundleIDs
+        )
+        var visibleIDs = Set(topLevel.map(\.id))
+        guard allowsInlineThreading, groupsThreads else { return visibleIDs }
+        for header in topLevel where expandedThreadIDs.contains(header.threadID) {
+            if let members = presentation.headersByThreadID[header.threadID] {
+                for member in members {
+                    visibleIDs.insert(member.id)
+                }
+            }
+        }
+        return visibleIDs
+    }
 }
 
 /// Deterministic, local-only classifier for the People / Updates inbox split (ADR-0035 amendment).

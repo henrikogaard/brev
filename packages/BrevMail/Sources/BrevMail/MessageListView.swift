@@ -2727,7 +2727,17 @@ public struct MessageListView: View {
             collapsedDateSectionIDs.remove(sectionID)
         } else {
             collapsedDateSectionIDs.insert(sectionID)
-            let visibleIDs = Set(renderedSelectableHeaders(in: presentationSnapshot).map(\.id))
+            let visibleIDs = PeopleUpdatesListLayoutPolicy.visibleBulkRowIDs(
+                in: presentationSnapshot,
+                showsPeopleUpdatesBar: showsPeopleUpdatesBar,
+                activeTab: activePeopleUpdatesTab,
+                groupByDate: groupByDate,
+                sourceID: sourceID,
+                expandedUpdateBundleIDs: expandedUpdateBundleIDs,
+                allowsInlineThreading: allowsInlineThreadDisclosure,
+                groupsThreads: groupByThread && backend.groupsMessagesIntoThreads,
+                expandedThreadIDs: expandedThreadIDs
+            )
             navigation.bulkSelection.formIntersection(visibleIDs)
         }
     }
