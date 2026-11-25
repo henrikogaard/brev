@@ -832,7 +832,9 @@ struct DesktopInterfaceSettings: View {
 enum AppearanceReset {
     static func apply(to store: SettingsPersistenceStore) {
         store.save(AppearanceThemeSettings.defaults)
-        store.save(WindowAppearancePreferences.defaults)
+        // Clear override keys rather than writing `.solid` so macOS 26 returns
+        // to automatic native Liquid Glass instead of an explicit Off choice.
+        store.resetWindowAppearancePreferences()
         store.save(AppIconVariant.defaultVariant)
         store.defaults.set(true, forKey: AppearancePreferenceKey.transparentMainTitlebar)
         for section in BrevFontSection.allCases {

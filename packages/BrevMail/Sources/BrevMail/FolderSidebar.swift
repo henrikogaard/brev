@@ -78,7 +78,6 @@ public struct FolderSidebar: View {
     @State private var hoveredSection: SidebarHoveredSection?
     @State private var isSettingsFooterHovered = false
     @FocusState private var focusedHeaderControl: SidebarFocusedHeaderControl?
-    #endif
 
     private struct SelectedPhysicalFolderTarget: Equatable {
         let sourceID: MailSourceID?
@@ -86,6 +85,7 @@ public struct FolderSidebar: View {
     }
 
     @State private var lastRevealedFolderTarget: SelectedPhysicalFolderTarget?
+    #endif
 
     private static var defaultSubfoldersCollapsed: Bool {
         #if os(macOS)
@@ -330,14 +330,15 @@ public struct FolderSidebar: View {
             .onAppear {
                 disclosureState = loadDisclosureState()
                 restoreSourceExpansion()
-                revealSelectedFolderAncestorsIfNeeded()
                 #if os(macOS)
+                revealSelectedFolderAncestorsIfNeeded()
                 // Mail starts cold with the mailbox column as the key view,
                 // so its selection renders in the active tint at launch.
                 sidebarKeyboardFocus = true
                 #endif
             }
             .onChange(of: disclosureStateData) { disclosureState = loadDisclosureState() }
+        #if os(macOS)
             .onChange(of: selectedPhysicalFolderTarget) { _, _ in
                 revealSelectedFolderAncestorsIfNeeded()
             }
@@ -347,6 +348,7 @@ public struct FolderSidebar: View {
             .onChange(of: folders.count) { _, _ in
                 revealSelectedFolderAncestorsIfNeeded()
             }
+        #endif
             .onChange(of: expandedSourceIDs) {
                 mailboxDisclosureData = (try? JSONEncoder().encode(expandedSourceIDs)) ?? Data()
             }
@@ -2274,6 +2276,7 @@ public struct FolderSidebar: View {
         FolderDisclosureState.collapsibleFolderIDs(in: contextFolders(sourceID: sourceID))
     }
 
+    #if os(macOS)
     private var selectedPhysicalFolderTarget: SelectedPhysicalFolderTarget? {
         guard navigation.selectedCollectionFolderID == nil else { return nil }
         if let sourceFolder = navigation.browsingSourceFolderID {
@@ -2291,6 +2294,8 @@ public struct FolderSidebar: View {
     /// Expands only the collapsed ancestor chain for an externally navigated
     /// folder (e.g. opened from All Attachments, search, or Assistant) once
     /// its folder list is available, without overriding later manual collapses.
+    /// Scoped to macOS because iOS/iPadOS defaults folder branches to expanded
+    /// and preserves manual collapses across external navigation.
     private func revealSelectedFolderAncestorsIfNeeded() {
         guard let target = selectedPhysicalFolderTarget else {
             lastRevealedFolderTarget = nil
@@ -2301,11 +2306,17 @@ public struct FolderSidebar: View {
         guard targetFolders.contains(where: { $0.id == target.folderID }) else { return }
         lastRevealedFolderTarget = target
         var state = disclosureState
-        if state.revealAncestors(of: target.folderID, sourceID: target.sourceID, folders: targetFolders) {
+        if state.revealAncestorsForExternalNavigation(
+            of: target.folderID,
+            sourceID: target.sourceID,
+            folders: targetFolders,
+            isMacOS: true
+        ) {
             disclosureState = state
             saveDisclosureState(state)
         }
     }
+    #endif
 
     private func contextFolders(sourceID: MailSourceID?) -> [Folder] {
         guard let sourceID else { return folders }

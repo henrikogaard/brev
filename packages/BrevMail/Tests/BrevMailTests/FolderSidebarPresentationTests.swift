@@ -752,4 +752,33 @@ struct FolderSidebarPresentationTests {
         state.toggle("projects", sourceID: sourceID)
         #expect(!state.isExpanded("projects", sourceID: sourceID, folders: folders))
     }
+
+    @Test("iOS/iPadOS external folder navigation preserves manually collapsed parent folders")
+    func nonMacOSExternalNavigationPreservesManualCollapse() throws {
+        let sourceID = MailSourceID(accountID: "acct-1", mailboxID: "primary")
+        let folders = [
+            Folder(id: "inbox", name: "Inbox", role: .inbox),
+            Folder(id: "projects", name: "Projects", role: .custom),
+            Folder(id: "projects-2026", name: "2026", role: .custom, parentID: "projects"),
+        ]
+        // On iOS/iPadOS branches default to expanded and the user manually collapses Projects.
+        var state = FolderDisclosureState.load(from: Data(), defaultCollapsed: false)
+        state.toggle("projects", sourceID: sourceID)
+        let stateBefore = state
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let persistedBefore = try encoder.encode(state)
+        #expect(!state.isExpanded("projects", sourceID: sourceID, folders: folders))
+
+        let changed = state.revealAncestorsForExternalNavigation(
+            of: "projects-2026",
+            sourceID: sourceID,
+            folders: folders,
+            isMacOS: false
+        )
+        #expect(!changed)
+        #expect(state == stateBefore)
+        #expect(!state.isExpanded("projects", sourceID: sourceID, folders: folders))
+        #expect(try encoder.encode(state) == persistedBefore)
+    }
 }

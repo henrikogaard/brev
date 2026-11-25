@@ -977,6 +977,30 @@ struct FolderDisclosureState: Codable, Equatable, Sendable {
         return ancestors
     }
 
+    /// Whether external folder navigation should auto-reveal collapsed
+    /// ancestors on the given platform. macOS defaults nested folders to
+    /// collapsed, whereas iOS/iPadOS defaults branches to expanded and
+    /// preserves manual collapses across external navigation.
+    static func revealsAncestorsOnExternalNavigation(isMacOS: Bool) -> Bool {
+        isMacOS
+    }
+
+    /// Expands collapsed ancestors for external folder navigation only on
+    /// platforms where nested branches default to collapsed (`isMacOS == true`).
+    /// Returns `true` when state changed.
+    @discardableResult
+    mutating func revealAncestorsForExternalNavigation(
+        of folderID: Folder.ID,
+        sourceID: MailSourceID?,
+        folders: [Folder],
+        isMacOS: Bool
+    ) -> Bool {
+        guard Self.revealsAncestorsOnExternalNavigation(isMacOS: isMacOS) else {
+            return false
+        }
+        return revealAncestors(of: folderID, sourceID: sourceID, folders: folders)
+    }
+
     /// Expands only the collapsed ancestors of `folderID` within `sourceID` so
     /// an externally navigated folder (from All Attachments, search, or
     /// Assistant) becomes visible in the sidebar and reachable by arrow keys

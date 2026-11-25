@@ -337,6 +337,30 @@ struct AppearanceThemeSettingsTests {
         #expect(defaults.bool(forKey: AppearancePreferenceKey.transparentMainTitlebar))
     }
 
+    @Test("Reset to Defaults clears window appearance override keys instead of writing explicit Off")
+    func resetClearsWindowAppearanceOverrides() throws {
+        let defaults = try Self.makeDefaults()
+        let store = SettingsPersistenceStore(defaults: defaults)
+        store.save(WindowAppearancePreferences(
+            mode: .glass,
+            scope: .sidebarOnly,
+            surfaceOpacity: 0.75,
+            sidebarOpacity: 0.4,
+            messageContentOpacityMode: .opaque,
+            messageContentOpacity: 1
+        ))
+
+        AppearanceReset.apply(to: store)
+
+        #expect(store.windowAppearancePreferences() == WindowAppearancePreferences.defaults)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.mode) == nil)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.scope) == nil)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.surfaceOpacity) == nil)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.sidebarOpacity) == nil)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.messageContentOpacityMode) == nil)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.messageContentOpacity) == nil)
+    }
+
     @Test("Reset to Defaults clears every section font and the legacy message font")
     func resetClearsSectionFonts() throws {
         let defaults = try Self.makeDefaults()

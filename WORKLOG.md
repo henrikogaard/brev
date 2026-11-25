@@ -28,7 +28,11 @@
   - `PRRT_kwDOUHC-Ds68IGJK`: documented the full 32-rule privacy-audit verification (and `rg` unavailability locally / on `macmini-devbox`) in `WORKLOG.md`.
   - `PRRT_kwDOUHC-Ds68IGEj`: split-view glass chrome rendering on macOS 26 remains covered by `FolderSidebarSurfacePolicy` unit tests + `FolderSidebarSnapshotTests` (26 PNGs); live interactive `NavigationSplitView` QA on macOS 26 remains for Henrik.
   - Re-verified locally (headless `scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`, 32/32 privacy-audit mirror) and on `macmini-devbox` (`/tmp/brev-lg-w1-r1`, cleaned up afterwards): targeted `BrevMail` unit + snapshot suites plus full `BrevMacOS` and `BrevIOS` Debug builds.
-- Next: push review round 1 commit to `feat/native-liquid-glass-sidebar` and reply to + resolve all 7 review threads on PR #374.
+- Review fixes round 2 (PR #374 — 2 Devin findings on `bc1879d3`):
+  - `PRRT_kwDOUHC-Ds68IjkP`: added `WindowAppearancePreferences.reset(in:)` (`BrevDesign`) and `SettingsPersistenceStore.resetWindowAppearancePreferences()` (`BrevSettings`) and updated `AppearanceReset.apply(to:)` to clear the 6 `WindowAppearancePreferenceKey` override keys instead of writing `.solid`, so Reset to Defaults restores automatic macOS 26 Liquid Glass while explicit Off continues saving `.solid`; added persisted UserDefaults tests in `WindowAppearancePreferencesTests`, `AppearanceThemeSettingsTests`, and `FolderSidebarChromePresentationTests`.
+  - `PRRT_kwDOUHC-Ds68Ijlg`: scoped `SelectedPhysicalFolderTarget`, `lastRevealedFolderTarget`, `selectedPhysicalFolderTarget`, `revealSelectedFolderAncestorsIfNeeded()`, and its `.onAppear`/`.onChange` hooks to `#if os(macOS)` in `FolderSidebar.swift`, added `FolderDisclosureState.revealsAncestorsOnExternalNavigation(isMacOS:)` / `revealAncestorsForExternalNavigation(...)` in `FolderSidebarPresentation.swift`, and added `FolderSidebarPresentationTests.nonMacOSExternalNavigationPreservesManualCollapse` verifying iPad/iOS manual collapses stay untouched.
+  - Re-verified locally (headless `scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`) and on `macmini-devbox` (`/tmp/brev-lg-w1-r2`, cleaned up afterwards): targeted `BrevMail` (`FolderSidebar*`), `BrevSettings` (`Appearance*`), and `BrevDesign` (`WindowAppearancePreferencesTests`) suites.
+- Next: push review round 2 commit to `feat/native-liquid-glass-sidebar` and reply to + resolve both review threads on PR #374.
 
 ## 2026-11-25 — Agent — Issue #369 & UI/UX Polish Wave A (#294, #295, #300)
 

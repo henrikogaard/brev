@@ -14,6 +14,7 @@ import BrevBackend
 import BrevDesign
 @testable import BrevMail
 import BrevThemes
+import Foundation
 import Testing
 
 @Suite("Folder sidebar chrome presentation")
@@ -141,6 +142,36 @@ struct FolderSidebarChromePresentationTests {
                 preferences: glassDefault
             ) == .themedSurface
         )
+    }
+
+    @Test("persisted Appearance reset restores macOS 26 native glass while explicit Off stays solid")
+    func persistedResetRestoresNativeGlassWhileExplicitOffStaysSolid() throws {
+        let suiteName = "FolderSidebarChromePresentationTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        func resolvedStyle() -> FolderSidebarSurfaceStyle {
+            FolderSidebarSurfacePolicy.style(
+                isMacOS26OrLater: true,
+                reduceTransparency: false,
+                hasSavedMode: defaults.string(forKey: WindowAppearancePreferenceKey.mode) != nil,
+                preferences: WindowAppearancePreferences.load(from: defaults),
+                hasSavedSidebarOpacity: defaults.object(forKey: WindowAppearancePreferenceKey.sidebarOpacity) != nil
+            )
+        }
+
+        // Fresh defaults -> automatic native floating Liquid Glass.
+        #expect(resolvedStyle() == .nativeFloatingGlass(overlayOpacity: 0))
+
+        // Explicit Off saves `.solid` -> themed opaque sidebar.
+        WindowAppearancePreferences(mode: .solid, scope: .mainWindow).save(to: defaults)
+        #expect(resolvedStyle() == .themedSurface)
+
+        // Appearance reset clears override keys -> returns to automatic native Liquid Glass.
+        WindowAppearancePreferences.reset(in: defaults)
+        #expect(WindowAppearancePreferences.load(from: defaults) == .defaults)
+        #expect(resolvedStyle() == .nativeFloatingGlass(overlayOpacity: 0))
     }
 
     @Test("macOS top profile switcher hides for single-profile workspaces and shows for multi-profile")

@@ -543,6 +543,33 @@ struct WindowAppearancePreferencesTests {
         #expect(preferences == .defaults)
     }
 
+    @Test("reset clears persisted override keys while explicit solid preserves its mode override")
+    func resetClearsPersistedOverridesWhileExplicitSolidPreservesMode() throws {
+        let defaults = try Self.makeDefaults()
+        let custom = WindowAppearancePreferences(
+            mode: .frosted,
+            scope: .allWindows,
+            surfaceOpacity: 0.9,
+            sidebarOpacity: 0.34,
+            messageContentOpacityMode: .custom,
+            messageContentOpacity: 0.76
+        )
+        custom.save(to: defaults)
+
+        WindowAppearancePreferences.reset(in: defaults)
+
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.mode) == nil)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.scope) == nil)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.surfaceOpacity) == nil)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.sidebarOpacity) == nil)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.messageContentOpacityMode) == nil)
+        #expect(defaults.object(forKey: WindowAppearancePreferenceKey.messageContentOpacity) == nil)
+        #expect(WindowAppearancePreferences.load(from: defaults) == .defaults)
+
+        WindowAppearancePreferences(mode: .solid, scope: .mainWindow).save(to: defaults)
+        #expect(defaults.string(forKey: WindowAppearancePreferenceKey.mode) == WindowTranslucencyMode.solid.rawValue)
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "WindowAppearancePreferencesTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
