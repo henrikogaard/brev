@@ -187,8 +187,9 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
     /// Loads current persisted values into the walkthrough draft.
     public static func load(
         from settingsStore: SettingsPersistenceStore = .standard,
-        appleIntelligenceAvailability: AppleIntelligenceAvailability = .current()
+        appleIntelligenceAvailability: AppleIntelligenceAvailability? = nil
     ) -> PrivacyOnboardingChoices {
+        let resolvedAvailability = appleIntelligenceAvailability ?? .current()
         let avatars = settingsStore.avatarPrivacySettings()
         let mailboxView = settingsStore.mailboxViewSettings()
         let preferenceSync = settingsStore.preferenceSyncSettings()
@@ -205,7 +206,7 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
             else { return false }
             return config.isDefault || assignedProviderIDs.contains(config.id)
         }
-        let onDeviceAIActive = appleIntelligenceAvailability.isSelectable
+        let onDeviceAIActive = resolvedAvailability.isSelectable
             && aiWriter.isAvailable
             && hasActiveAppleIntelligence
 
@@ -315,8 +316,9 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
     public func apply(
         to settingsStore: SettingsPersistenceStore = .standard,
         relativeTo initial: PrivacyOnboardingChoices,
-        appleIntelligenceAvailability: AppleIntelligenceAvailability = .current()
+        appleIntelligenceAvailability: AppleIntelligenceAvailability? = nil
     ) -> ApplyResult {
+        let resolvedAvailability = appleIntelligenceAvailability ?? .current()
         var updatedAvatarPreferences: AvatarPreferences?
         if useDomainAvatars != initial.useDomainAvatars || useGravatar != initial.useGravatar {
             var avatars = settingsStore.avatarPrivacySettings()
@@ -361,7 +363,7 @@ public struct PrivacyOnboardingChoices: Equatable, Sendable {
         let aiConfigurationChanged = applyOnDeviceAIChanges(
             to: settingsStore,
             relativeTo: initial,
-            appleIntelligenceAvailability: appleIntelligenceAvailability
+            appleIntelligenceAvailability: resolvedAvailability
         )
 
         PrivacyOnboardingSettings(hasCompletedOnboarding: true).save(to: settingsStore.defaults)

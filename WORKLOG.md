@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-11-25 — Agent — PR #356 BrevIOS linker fix (Upgrade #9)
+
+- Goal: fix `build (BrevIOS)` CI linker error (`Undefined symbol` for `BrevAI.AppleIntelligenceAvailability.current()` and `BrevAvatars.AvatarResolver.shared`) caused by default parameter expressions on `PrivacyOnboardingSheet.init` emitting into caller module `BrevIOS.debug.dylib`.
+- Changes:
+  - `PrivacyOnboardingSheet.swift`: split the public initializer into a 4-parameter `public init(mode:settingsStore:onAIProviderConfigurationChanged:onDismiss:)` that resolves `AppleIntelligenceAvailability.current()` and `AvatarResolver.shared.updatePreferences` strictly inside `BrevSettings`, keeping the injectable initializer `internal` for `BrevSettingsTests`.
+  - `PrivacyOnboardingSettings.swift`: changed `appleIntelligenceAvailability` default parameters on `PrivacyOnboardingChoices.load` and `apply` to `nil` resolved inside `BrevSettings`.
+- Verification: local `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`; remote `macmini-devbox` `xcodebuild -workspace Brev.xcworkspace -scheme BrevIOS -configuration Debug -destination "$(scripts/ios-simulator-destination.sh)" -skipMacroValidation test` and `BrevSettingsTests/PrivacyOnboardingTests`, followed by `/tmp/brev-ios-fix-356` cleanup.
+
 ## 2026-11-24 — Agent — PR #356 round-2 review fixes (Upgrade #9)
 
 - Goal: address all 3 round-2 Devin Review items (`PRRT_kwDOUHC-Ds67oeMD`, `PRRT_kwDOUHC-Ds67oeOC`, `PRRT_kwDOUHC-Ds67oeP9`) on PR #356 (`feature/onboarding-privacy-choices`) in one commit.

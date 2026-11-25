@@ -35,21 +35,38 @@ public struct PrivacyOnboardingSheet: View {
 
     /// Creates the Privacy & Convenience Choices walkthrough sheet.
     ///
+    /// Resolves `BrevAI` and `BrevAvatars` defaults inside `BrevSettings` so callers such as
+    /// `BrevIOS` do not emit direct linker references to transitive packages.
+    ///
     /// - Parameters:
     ///   - mode: Whether the sheet runs after first-run setup or is reopened from Settings.
     ///   - settingsStore: Persistence boundary backing the toggles.
-    ///   - appleIntelligenceAvailability: Runtime availability of on-device Apple Intelligence.
     ///   - onAIProviderConfigurationChanged: Callback invoked when on-device AI settings change.
-    ///   - onAvatarPreferencesChanged: Callback updating live avatar resolution on save.
     ///   - onDismiss: Callback invoked after saving, keeping defaults, or cancelling.
     public init(
         mode: PrivacyOnboardingMode = .firstRun,
         settingsStore: SettingsPersistenceStore = .standard,
-        appleIntelligenceAvailability: AppleIntelligenceAvailability = .current(),
         onAIProviderConfigurationChanged: @escaping () async -> Void = {},
-        onAvatarPreferencesChanged: @escaping @Sendable (AvatarPreferences) async -> Void = { preferences in
-            await AvatarResolver.shared.updatePreferences(preferences)
-        },
+        onDismiss: @escaping () -> Void = {}
+    ) {
+        self.init(
+            mode: mode,
+            settingsStore: settingsStore,
+            appleIntelligenceAvailability: .current(),
+            onAIProviderConfigurationChanged: onAIProviderConfigurationChanged,
+            onAvatarPreferencesChanged: { preferences in
+                await AvatarResolver.shared.updatePreferences(preferences)
+            },
+            onDismiss: onDismiss
+        )
+    }
+
+    init(
+        mode: PrivacyOnboardingMode = .firstRun,
+        settingsStore: SettingsPersistenceStore = .standard,
+        appleIntelligenceAvailability: AppleIntelligenceAvailability,
+        onAIProviderConfigurationChanged: @escaping () async -> Void = {},
+        onAvatarPreferencesChanged: @escaping @Sendable (AvatarPreferences) async -> Void,
         onDismiss: @escaping () -> Void = {}
     ) {
         self.mode = mode
