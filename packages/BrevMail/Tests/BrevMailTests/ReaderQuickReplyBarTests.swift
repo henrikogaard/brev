@@ -28,6 +28,8 @@ struct ReaderQuickReplyBarTests {
         #expect(ReaderQuickReplyLayoutPolicy.sendButtonSize(isTouchPlatform: true) == 44)
         #expect(ReaderQuickReplyLayoutPolicy.auxiliaryButtonSize(isTouchPlatform: false) == 28)
         #expect(ReaderQuickReplyLayoutPolicy.auxiliaryButtonSize(isTouchPlatform: true) == 44)
+        #expect(ReaderQuickReplyLayoutPolicy.undoButtonSize(isTouchPlatform: false) == 32)
+        #expect(ReaderQuickReplyLayoutPolicy.undoButtonSize(isTouchPlatform: true) == 44)
         #expect(ReaderQuickReplyLayoutPolicy.inputCornerRadius == 20)
     }
 

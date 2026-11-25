@@ -22,9 +22,14 @@ enum ReaderQuickReplyLayoutPolicy {
         isTouchPlatform ? 44 : 34
     }
 
-    /// Touch/click target size for inline composer-expand and undo buttons.
+    /// Touch/click target size for inline composer-expand buttons.
     static func auxiliaryButtonSize(isTouchPlatform: Bool) -> CGFloat {
         isTouchPlatform ? 44 : 28
+    }
+
+    /// Touch/click target size for the Undo Send countdown button: 44 pt on iOS, 32 pt on macOS.
+    static func undoButtonSize(isTouchPlatform: Bool) -> CGFloat {
+        isTouchPlatform ? 44 : 32
     }
 
     /// Returns `true` when the quick-reply draft is non-empty and sending is allowed.
@@ -108,8 +113,13 @@ struct ReaderQuickReplyBar: View {
         isTouchPlatform: isTouchPlatform
     )
 
-    /// Inline Open in Composer and Undo button targets: 44 pt on iOS, compact on macOS.
+    /// Inline Open in Composer button target: 44 pt on iOS, compact on macOS.
     private static let auxiliaryButtonSize: CGFloat = ReaderQuickReplyLayoutPolicy.auxiliaryButtonSize(
+        isTouchPlatform: isTouchPlatform
+    )
+
+    /// Undo Send countdown button target: 44 pt on iOS, 32 pt on macOS.
+    private static let undoButtonSize: CGFloat = ReaderQuickReplyLayoutPolicy.undoButtonSize(
         isTouchPlatform: isTouchPlatform
     )
 
@@ -174,20 +184,14 @@ struct ReaderQuickReplyBar: View {
                         .brevFont(.caption)
                         .fontWeight(.semibold)
                         .foregroundStyle(theme.accent.color)
-                    #if os(iOS)
-                        .frame(minWidth: Self.auxiliaryButtonSize, minHeight: Self.auxiliaryButtonSize)
+                        .frame(minWidth: Self.undoButtonSize, minHeight: Self.undoButtonSize)
                         .contentShape(Rectangle())
-                    #endif
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, BrevSpacing.md)
-            #if os(iOS)
-                .padding(.vertical, BrevSpacing.xxs)
-            #else
-                .padding(.vertical, BrevSpacing.xs)
-            #endif
-                .brevGlassCapsule(interactive: true)
+            .padding(.vertical, BrevSpacing.xxs)
+            .brevGlassCapsule(interactive: true)
         } else if isSending {
             HStack(spacing: BrevSpacing.xs) {
                 ProgressView()
