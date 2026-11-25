@@ -1171,6 +1171,12 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
                     textView.typingAttributes.removeValue(forKey: ComposeRichTextAttribute.headingLevel)
                     textView.typingAttributes[.font] = base
                 } else {
+                    if textView.typingAttributes[ComposeRichTextAttribute.codeBlockID] != nil {
+                        textView.typingAttributes.removeValue(forKey: ComposeRichTextAttribute.codeBlockID)
+                        if (textView.typingAttributes[ComposeRichTextAttribute.inlineCode] as? Bool) != true {
+                            textView.typingAttributes.removeValue(forKey: .backgroundColor)
+                        }
+                    }
                     let scaled = NSFont(
                         descriptor: base.fontDescriptor,
                         size: base.pointSize * ComposeEditorTypography.headingScale(for: level)
@@ -1194,7 +1200,20 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
                     storage.removeAttribute(ComposeRichTextAttribute.headingLevel, range: paraRange)
                     storage.addAttribute(.font, value: base, range: paraRange)
                 } else {
+                    var codeBlockRanges: [NSRange] = []
+                    storage.enumerateAttribute(
+                        ComposeRichTextAttribute.codeBlockID,
+                        in: paraRange,
+                        options: []
+                    ) { value, runRange, _ in
+                        if value != nil {
+                            codeBlockRanges.append(runRange)
+                        }
+                    }
                     storage.removeAttribute(ComposeRichTextAttribute.codeBlockID, range: paraRange)
+                    for codeRange in codeBlockRanges {
+                        storage.removeAttribute(.backgroundColor, range: codeRange)
+                    }
                     storage.addAttribute(ComposeRichTextAttribute.headingLevel, value: level, range: paraRange)
                     let scaled = NSFont(
                         descriptor: base.fontDescriptor,
@@ -2178,6 +2197,12 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                     typing.removeValue(forKey: ComposeRichTextAttribute.headingLevel)
                     typing[.font] = baseFont
                 } else {
+                    if typing[ComposeRichTextAttribute.codeBlockID] != nil {
+                        typing.removeValue(forKey: ComposeRichTextAttribute.codeBlockID)
+                        if (typing[ComposeRichTextAttribute.inlineCode] as? Bool) != true {
+                            typing.removeValue(forKey: .backgroundColor)
+                        }
+                    }
                     typing[ComposeRichTextAttribute.headingLevel] = level
                     let scaled = baseFont.withSize(baseFont.pointSize * ComposeEditorTypography.headingScale(for: level))
                     typing[.font] = scaled.fontDescriptor.withSymbolicTraits(.traitBold).map {
@@ -2199,7 +2224,20 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                     textStorage.removeAttribute(ComposeRichTextAttribute.headingLevel, range: paraRange)
                     textStorage.addAttribute(.font, value: baseFont, range: paraRange)
                 } else {
+                    var codeBlockRanges: [NSRange] = []
+                    textStorage.enumerateAttribute(
+                        ComposeRichTextAttribute.codeBlockID,
+                        in: paraRange,
+                        options: []
+                    ) { value, runRange, _ in
+                        if value != nil {
+                            codeBlockRanges.append(runRange)
+                        }
+                    }
                     textStorage.removeAttribute(ComposeRichTextAttribute.codeBlockID, range: paraRange)
+                    for codeRange in codeBlockRanges {
+                        textStorage.removeAttribute(.backgroundColor, range: codeRange)
+                    }
                     textStorage.addAttribute(ComposeRichTextAttribute.headingLevel, value: level, range: paraRange)
                     let scaled = baseFont.withSize(baseFont.pointSize * ComposeEditorTypography.headingScale(for: level))
                     let boldFont = scaled.fontDescriptor.withSymbolicTraits(.traitBold).map {

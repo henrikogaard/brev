@@ -187,6 +187,129 @@ struct ComposeBodyEditorAppearanceIOSTests {
         }
     }
 
+    @Test("converting an imported code block to Heading 1 clears stale code background while preserving unrelated backgrounds")
+    func convertingCodeBlockToHeadingClearsCodeBackgroundAcrossDarkMode() throws {
+        let harness = Harness(text: "", format: .richTextHTML, appearance: .light)
+        let mounted = try harness.mount()
+        defer { mounted.teardown() }
+        let editor = mounted.editor
+        let storage = editor.textStorage
+        let target = try #require(harness.iosTargetBox.target)
+
+        #expect(target.insertSanitizedHTML("<p>Plain note</p><pre><code>let x = 1</code></pre>"))
+        let plainRange = Self.range("Plain note", in: editor.text)
+        let unrelatedBG = UIColor.systemYellow
+        storage.addAttribute(.backgroundColor, value: unrelatedBG, range: plainRange)
+
+        let codeRange = Self.range("let x = 1", in: editor.text)
+        let initialCodeBG = try #require(
+            storage.attribute(.backgroundColor, at: codeRange.location, effectiveRange: nil) as? UIColor
+        )
+        #expect(Self.colorsMatch(initialCodeBG, UIColor(BrevTheme.brevMonoLight.bgSecondary.color)))
+        #expect(storage.attribute(ComposeRichTextAttribute.codeBlockID, at: codeRange.location, effectiveRange: nil) != nil)
+
+        // Convert the imported code block paragraph and the plain paragraph to Heading 1.
+        editor.selectedRange = NSRange(location: codeRange.location, length: 0)
+        target.toggleHeading(1)
+        editor.selectedRange = NSRange(location: plainRange.location, length: 0)
+        target.toggleHeading(1)
+
+        // Switch Light -> Dark -> Light and verify the converted code heading has no stale code background.
+        for appearance in [ComposeBodyAppearance.dark, .light, .dark] {
+            harness.appearance = appearance
+            try harness.rerender(mounted)
+
+            let expectedText = UIColor(appearance.editorTheme.textPrimary.color)
+            let expectedCanvas = UIColor(appearance.editorTheme.bgPrimary.color)
+
+            let updatedCodeLoc = Self.range("let x = 1", in: editor.text).location
+            #expect(storage.attribute(ComposeRichTextAttribute.codeBlockID, at: updatedCodeLoc, effectiveRange: nil) == nil)
+            #expect(storage
+                .attribute(ComposeRichTextAttribute.headingLevel, at: updatedCodeLoc, effectiveRange: nil) as? Int == 1)
+            #expect(storage.attribute(.backgroundColor, at: updatedCodeLoc, effectiveRange: nil) == nil)
+            let headingFG = try #require(
+                storage.attribute(.foregroundColor, at: updatedCodeLoc, effectiveRange: nil) as? UIColor
+            )
+            #expect(Self.colorsMatch(headingFG, expectedText))
+            #expect(Self.contrastRatio(between: headingFG, and: expectedCanvas) > 4.5)
+
+            // Unrelated background on the non-code-block heading remains intact.
+            let updatedPlainLoc = Self.range("Plain note", in: editor.text).location
+            #expect(storage
+                .attribute(ComposeRichTextAttribute.headingLevel, at: updatedPlainLoc, effectiveRange: nil) as? Int == 1)
+            let preservedBG = try #require(
+                storage.attribute(.backgroundColor, at: updatedPlainLoc, effectiveRange: nil) as? UIColor
+            )
+            #expect(Self.colorsMatch(preservedBG, unrelatedBG))
+        }
+    }
+
+    @Test("ComposeView Match Theme handoff adapts rich UITextView body text across Light -> Dark -> Light")
+    func composeViewMatchThemeHandoffAdaptsRichBodyTextAcrossDarkMode() throws {
+        let suiteName = "ComposeBodyEditorAppearanceIOSTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.set(ComposeBodyAppearance.system.rawValue, forKey: ComposeBodyAppearance.storageKey)
+        defaults.set("richText", forKey: "compose.messageFormat")
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let backend = MockBackend()
+        let size = CGSize(width: 390, height: 844)
+        func makeRoot(theme: BrevTheme) -> AnyView {
+            AnyView(
+                ComposeView(
+                    backend: backend,
+                    from: Correspondent(email: backend.account.emailAddress),
+                    senderOptions: [],
+                    prefill: ComposePrefill(bodyText: "Testing rich editor"),
+                    recoveryDefaults: defaults
+                )
+                .defaultAppStorage(defaults)
+                .environment(\.horizontalSizeClass, .compact)
+                .brevTheme(theme)
+                .environment(\.colorScheme, theme.mode.colorScheme)
+                .htmlBodyRenderTarget(.staticSnapshot)
+            )
+        }
+
+        let host = UIHostingController(rootView: makeRoot(theme: .brevMonoLight))
+        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        host.view.frame = CGRect(origin: .zero, size: size)
+        host.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        let editor = try #require(Self.editor(in: host.view))
+        #expect(editor.text == "Testing rich editor")
+
+        for (theme, style) in [
+            (BrevTheme.brevMonoLight, UIUserInterfaceStyle.light),
+            (.brevMonoDark, .dark),
+            (.brevMonoLight, .light)
+        ] {
+            host.traitOverrides.userInterfaceStyle = style
+            host.rootView = makeRoot(theme: theme)
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+            let currentEditor = try #require(Self.editor(in: host.view))
+            #expect(currentEditor === editor)
+            let expectedText = UIColor(theme.textPrimary.color)
+            let expectedCanvas = UIColor(theme.bgPrimary.color)
+            let fg = try #require(
+                editor.textStorage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
+            )
+            #expect(Self.colorsMatch(fg, expectedText))
+            #expect(Self.contrastRatio(between: fg, and: expectedCanvas) > 4.5)
+            #expect(Self.colorsMatch(editor.typingAttributes[.foregroundColor] as? UIColor, expectedText))
+        }
+    }
+
     // MARK: - Helpers
 
     private static func richFixture() -> NSMutableAttributedString {

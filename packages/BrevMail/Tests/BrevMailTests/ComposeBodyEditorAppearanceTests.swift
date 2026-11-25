@@ -420,6 +420,55 @@ struct ComposeBodyEditorAppearanceTests {
         #expect(Self.contrastRatio(between: codeFG, and: codeBG) > 4.5)
     }
 
+    @Test("converting a code block to Heading 1 clears code-block marker and background while preserving unrelated backgrounds")
+    func convertingCodeBlockToHeadingClearsCodeBackgroundAcrossDarkMode() throws {
+        let harness = Harness(text: "", format: .richTextHTML)
+        let host = harness.host()
+        let editor = try #require(Self.editor(in: host))
+        let storage = try #require(editor.textStorage)
+
+        #expect(editor.brevInsertSanitizedHTML("<p>Plain note</p><pre><code>let x = 1</code></pre>"))
+        let plainRange = Self.range("Plain note", in: editor.string)
+        let codeRange = Self.range("let x = 1", in: editor.string)
+        let unrelatedBG = NSColor.systemYellow
+        storage.addAttribute(.backgroundColor, value: unrelatedBG, range: plainRange)
+        storage.addAttribute(
+            .backgroundColor,
+            value: NSColor(ComposeBodyAppearance.light.editorTheme.bgSecondary.color),
+            range: codeRange
+        )
+
+        editor.setSelectedRange(NSRange(location: codeRange.location, length: 0))
+        try #require(editor.tryToPerform(#selector(ComposeBodyEditorRichActions.brevToggleHeading1(_:)), with: nil))
+        editor.setSelectedRange(NSRange(location: plainRange.location, length: 0))
+        try #require(editor.tryToPerform(#selector(ComposeBodyEditorRichActions.brevToggleHeading1(_:)), with: nil))
+
+        for appearance in [ComposeBodyAppearance.dark, .light, .dark] {
+            harness.appearance = appearance
+            try harness.rerender(host, editor: editor)
+
+            let expectedText = NSColor(appearance.editorTheme.textPrimary.color)
+            let expectedCanvas = NSColor(appearance.editorTheme.bgPrimary.color)
+
+            let updatedCodeLoc = Self.range("let x = 1", in: editor.string).location
+            #expect(storage.attribute(ComposeRichTextAttribute.codeBlockID, at: updatedCodeLoc, effectiveRange: nil) == nil)
+            #expect(storage
+                .attribute(ComposeRichTextAttribute.headingLevel, at: updatedCodeLoc, effectiveRange: nil) as? Int == 1)
+            #expect(storage.attribute(.backgroundColor, at: updatedCodeLoc, effectiveRange: nil) == nil)
+            let headingFG = try #require(
+                storage.attribute(.foregroundColor, at: updatedCodeLoc, effectiveRange: nil) as? NSColor
+            )
+            #expect(Self.colorsMatch(headingFG, expectedText))
+            #expect(Self.contrastRatio(between: headingFG, and: expectedCanvas) > 4.5)
+
+            let updatedPlainLoc = Self.range("Plain note", in: editor.string).location
+            let preservedBG = try #require(
+                storage.attribute(.backgroundColor, at: updatedPlainLoc, effectiveRange: nil) as? NSColor
+            )
+            #expect(Self.colorsMatch(preservedBG, unrelatedBG))
+        }
+    }
+
     private static func colorsMatch(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
         guard let lhs, let rhs,
               let left = lhs.usingColorSpace(.sRGB),

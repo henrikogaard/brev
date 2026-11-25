@@ -8722,3 +8722,7 @@ buttons, and package-aware localization.
     - `xcodebuild -scheme BrevMail -destination "platform=iOS Simulator,id=B6A6D491-7E97-4A99-95F0-CC29BE01BCAC" -skipMacroValidation -testLanguage en -testRegion en_US -only-testing:BrevMailTests/ComposeBodyEditorAppearanceIOSTests test` — 3/3 tests passed on iOS 27.2 Simulator (`iPhone 18 Pro`).
     - `tuist install && tuist generate --no-open`, `BrevMacOS` Debug build (`** BUILD SUCCEEDED **`), and `BrevIOS` Simulator Debug build (`** BUILD SUCCEEDED **`).
 - **Next:** Open PR targeting `main` linking `Fixes #361` and move issue #361 to `In review`.
+- **Review fixes round 1 (PR #367 — Devin Review):**
+  - Cleared `.backgroundColor` only on runs carrying `ComposeRichTextAttribute.codeBlockID` (and pending code-block `typingAttributes`) when `toggleHeading` removes `codeBlockID` on both iOS and macOS, preserving unrelated backgrounds, with Light → Dark → Light regression tests in `ComposeBodyEditorAppearanceIOSTests` and `ComposeBodyEditorAppearanceTests`.
+  - Registered `-only-testing:BrevMailTests/ComposeBodyEditorAppearanceIOSTests` in `.github/workflows/build.yml` (both the unconditional Release iOS Simulator step and the iOS 27+ Debug step).
+  - Added end-to-end `ComposeView` Match Theme `.light` → `.dark` → `.light` handoff test in `ComposeBodyEditorAppearanceIOSTests`.

@@ -238,7 +238,7 @@ jobs:
       # Debug opaque-view erasure and the simulator's larger stack can hide
       # release-only phone launch crashes. This non-pixel test runs on every
       # supported iOS runtime, independently of the snapshot baseline gate.
-      - name: Test Release mailbox launch with the iPhone stack budget
+      - name: Test Release mailbox launch and iOS compose appearance
         working-directory: packages/BrevMail
         run: |
           xcodebuild \
@@ -249,6 +249,7 @@ jobs:
             -skipMacroValidation \
             -parallel-testing-enabled NO \
             -only-testing:BrevMailTests/BrevMailRootLaunchTests \
+            -only-testing:BrevMailTests/ComposeBodyEditorAppearanceIOSTests \
             test
 
       - name: Test stable non-WebKit BrevMail snapshots on iOS Simulator
@@ -274,6 +275,7 @@ jobs:
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/emptyCompose()' \
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/replyCompose()' \
             '-only-testing:BrevMailTests/ComposeAccessibilityBoundsTests' \
+            '-only-testing:BrevMailTests/ComposeBodyEditorAppearanceIOSTests' \
             '-only-testing:BrevMailTests/ComposeHeaderAlignmentIOSTests' \
             '-only-testing:BrevMailTests/ComposeNativeSheetsSnapshotTests' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/noSelectionPlaceholder()' \
