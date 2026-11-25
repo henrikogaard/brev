@@ -308,6 +308,16 @@ public struct SettingsPersistenceStore: Equatable {
         settings.save(to: defaults)
     }
 
+    /// Loads device-local Privacy & Convenience walkthrough completion state.
+    public func privacyOnboardingSettings() -> PrivacyOnboardingSettings {
+        PrivacyOnboardingSettings.load(from: defaults)
+    }
+
+    /// Saves device-local Privacy & Convenience walkthrough completion state.
+    public func save(_ settings: PrivacyOnboardingSettings) {
+        settings.save(to: defaults)
+    }
+
     public func removeAccountScopedState(accountID: String) {
         RecentRecipientStore(defaults: defaults).removeAccount(accountID)
         RelatedConversationConsentStore(defaults: defaults).revokeConsent(accountID: accountID)

@@ -25,15 +25,21 @@ struct PrivacySection: View {
     @State private var avatarSettings: AvatarPrivacySettings
     @State private var mailboxSettings: MailboxViewSettings
     @State private var remoteContentPolicy: RemoteContentPolicy
+    @State private var isShowingPrivacyOnboarding = false
     #if os(iOS)
     /// The allowlist entry the user asked to remove, awaiting confirmation.
     @State private var pendingRevocation: PendingAllowlistRevocation?
     #endif
 
     private let settingsStore: SettingsPersistenceStore
+    private let onAIProviderConfigurationChanged: () async -> Void
 
-    init(settingsStore: SettingsPersistenceStore = .standard) {
+    init(
+        settingsStore: SettingsPersistenceStore = .standard,
+        onAIProviderConfigurationChanged: @escaping () async -> Void = {}
+    ) {
         self.settingsStore = settingsStore
+        self.onAIProviderConfigurationChanged = onAIProviderConfigurationChanged
         _avatarSettings = State(initialValue: settingsStore.avatarPrivacySettings())
         _mailboxSettings = State(initialValue: settingsStore.mailboxViewSettings())
         _remoteContentPolicy = State(initialValue: settingsStore.remoteContentPolicy())
@@ -51,10 +57,24 @@ struct PrivacySection: View {
                 privacyDefaults
             }
             .onAppear {
-                avatarSettings = settingsStore.avatarPrivacySettings()
-                mailboxSettings = settingsStore.mailboxViewSettings()
-                remoteContentPolicy = settingsStore.remoteContentPolicy()
+                refreshState()
             }
+        }
+        .sheet(isPresented: $isShowingPrivacyOnboarding, onDismiss: refreshState) {
+            PrivacyOnboardingSheet(
+                mode: .reviewFromSettings,
+                settingsStore: settingsStore,
+                onAIProviderConfigurationChanged: onAIProviderConfigurationChanged,
+                onDismiss: {
+                    isShowingPrivacyOnboarding = false
+                    refreshState()
+                }
+            )
+            .environment(\.brevTheme, theme)
+            .tint(theme.accent.color)
+            #if os(iOS)
+                .presentationBackground(theme.bgPrimary.color)
+            #endif
         }
         #if os(iOS)
         .confirmationDialog(
@@ -107,8 +127,24 @@ struct PrivacySection: View {
                         bundle: .module
                     )
                 )
+
+                SettingsButtonRow {
+                    SettingsButton(
+                        String(localized: "Review Privacy & Convenience Choices…", bundle: .module),
+                        style: .secondary
+                    ) {
+                        isShowingPrivacyOnboarding = true
+                    }
+                    .id(String(localized: "Review Privacy & Convenience Choices…", bundle: .module))
+                }
             }
         }
+    }
+
+    private func refreshState() {
+        avatarSettings = settingsStore.avatarPrivacySettings()
+        mailboxSettings = settingsStore.mailboxViewSettings()
+        remoteContentPolicy = settingsStore.remoteContentPolicy()
     }
 
     private var remoteContentAllowlist: some View {

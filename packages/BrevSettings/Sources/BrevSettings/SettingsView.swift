@@ -664,7 +664,10 @@ public struct SettingsView: View {
         case .preferenceSync:
             PreferenceSyncSection(settingsStore: settingsStore)
         case .privacy:
-            PrivacySection(settingsStore: settingsStore)
+            PrivacySection(
+                settingsStore: settingsStore,
+                onAIProviderConfigurationChanged: onAIProviderConfigurationChanged
+            )
         case .notifications:
             NotificationSection(
                 settingsStore: settingsStore,

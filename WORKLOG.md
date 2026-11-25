@@ -1,5 +1,52 @@
 # Worklog
 
+## 2026-11-25 — Agent — PR #356 BrevIOS linker fix (Upgrade #9)
+
+- Goal: fix `build (BrevIOS)` CI linker error (`Undefined symbol` for `BrevAI.AppleIntelligenceAvailability.current()` and `BrevAvatars.AvatarResolver.shared`) caused by default parameter expressions on `PrivacyOnboardingSheet.init` emitting into caller module `BrevIOS.debug.dylib`.
+- Changes:
+  - `PrivacyOnboardingSheet.swift`: split the public initializer into a 4-parameter `public init(mode:settingsStore:onAIProviderConfigurationChanged:onDismiss:)` that resolves `AppleIntelligenceAvailability.current()` and `AvatarResolver.shared.updatePreferences` strictly inside `BrevSettings`, keeping the injectable initializer `internal` for `BrevSettingsTests`.
+  - `PrivacyOnboardingSettings.swift`: changed `appleIntelligenceAvailability` default parameters on `PrivacyOnboardingChoices.load` and `apply` to `nil` resolved inside `BrevSettings`.
+- Verification: local `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check origin/main`; remote `macmini-devbox` `xcodebuild -workspace Brev.xcworkspace -scheme BrevIOS -configuration Debug -destination "$(scripts/ios-simulator-destination.sh)" -skipMacroValidation test` and `BrevSettingsTests/PrivacyOnboardingTests`, followed by `/tmp/brev-ios-fix-356` cleanup.
+
+## 2026-11-24 — Agent — PR #356 round-2 review fixes (Upgrade #9)
+
+- Goal: address all 3 round-2 Devin Review items (`PRRT_kwDOUHC-Ds67oeMD`, `PRRT_kwDOUHC-Ds67oeOC`, `PRRT_kwDOUHC-Ds67oeP9`) on PR #356 (`feature/onboarding-privacy-choices`) in one commit.
+- Changes:
+  - `PrivacyOnboardingSettings.swift` & `PrivacyOnboardingSheet.swift`:
+    - Aligned all AI override checks (`load`, `onDeviceAIBlockReason`, and alternate-route detection on opt-out) strictly with `AIProviderAccountAssignments` (matching `AIProviderResolver.resolve`), ignoring stale `AIProviderConfiguration.assignedAccountID` profile metadata.
+    - Added `PrivacyOnboardingAIControlBlockReason.appleIntelligenceAccountOverrideWithOtherDefault` so per-account Apple Intelligence alongside another usable default fails closed (directing to Settings → Writing → AI Writer instead of leaving a dead override or silently rerouting to a cloud default); when no other default exists, opting out cleans Apple Intelligence entries from `AIProviderAccountAssignments` via `removeAIProviderAssignments(providerID:)`.
+  - `Localizable.xcstrings`: added `en`/`nb` entry for `customPerAccountAIRoutingMessage`.
+  - `PrivacyOnboardingTests.swift`: replaced English-only substring assertions with catalog-backed `String(localized:bundle: PrivacySection.resourceBundle)` comparisons and added `AIProviderResolver.resolve`-backed regression tests for stale `assignedAccountID`, fail-closed account override alongside a cloud default, and clean override removal when no other default exists.
+- Verification: local `.xcstrings` JSON + `nb` coverage, `scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`, and privacy-audit regex verification; remote `macmini-devbox` `BrevSettingsTests` (`PrivacyOnboardingTests`, `PrivacyOnboardingSnapshotTests`, `BackupTests`, `SettingsSearchPlatformTests`) and `/tmp/brev-wave4a` cleanup.
+
+## 2026-11-24 — Agent — PR #356 round-1 review fixes (Upgrade #9)
+
+- Goal: address all 8 round-1 Codex + Devin review threads on PR #356 (`feature/onboarding-privacy-choices`) in one commit.
+- Changes:
+  - `AIProviderAccountRouting.swift`: exposed `AIProviderAccountAssignments.assignedProviderIDs` so settings can inspect active per-account AI routes.
+  - `PrivacyOnboardingSettings.swift` & `PrivacyOnboardingSheet.swift`:
+    - Fail-closed guard (`blocksOnDeviceAIOptInDueToExternalAccountRoutes`) disabling on-device AI opt-in with localized guidance whenever AI Writer is disabled and an external per-account AI override exists (prevents granting global AI consent that would activate a cloud route under an on-device prompt).
+    - Preserved displaced default AI provider ID + prior AI availability in device-local keys so opting back out of Apple Intelligence restores the prior default when no newer explicit default superseded it and never silently activates a previously disabled external provider.
+    - Updated `load(...)` to detect active account-assigned (non-default) Apple Intelligence overrides and disable Apple Intelligence cleanly without touching unrelated defaults/assignments.
+    - Mirrored `PrivacySection`'s `useRichRenderer` gate on the trusted-sender remote images toggle (leaving persisted opt-in unchanged when plain-text mode is active) and added accurate localized warning copy in `PrivacyOnboardingCopy.trustedSendersSubtitle(useRichRenderer:stripTrackingPixels:)` when `stripTrackingPixels` is off.
+    - Hardened `PrivacyOnboardingPresentationPolicy` with `didStartWithoutAccounts(...)` (checking persisted `AccountStore` accounts + restore error/retry state) and `isSigningIn`/`isRestoringSession` guards wired into both macOS and iOS `BrevApp.swift`.
+  - Added `en`/`nb` translations for the 3 new strings in `Localizable.xcstrings` and 6 new regression unit tests in `PrivacyOnboardingTests.swift`.
+- Verification: local `swift test --package-path packages/BrevAI`, `.xcstrings` JSON + `nb` coverage, `scripts/format.sh`, `scripts/lint.sh`, `git diff --check origin/main`, and privacy-audit regex verification; remote `macmini-devbox` `BrevSettingsTests/PrivacyOnboardingTests` (15 tests), `PrivacyOnboardingSnapshotTests`, and `BrevIOS` simulator build, followed by `/tmp/brev-wave4a` cleanup.
+
+## 2026-11-24 — Agent — Upgrade #9: Onboarding privacy & convenience choices (`feature/onboarding-privacy-choices`)
+
+- Goal: implement an optional, plain-language Privacy & Convenience Choices walkthrough presented once after first-run account setup and re-openable anytime from Settings → Privacy, keeping every opt-in setting strictly `false` by default and preserving all `privacy-audit.sh` invariants.
+- Changes:
+  - Added `PrivacyOnboardingSettings`, `PrivacyOnboardingMode`, `PrivacyOnboardingChoices`, and `PrivacyOnboardingPresentationPolicy` in `packages/BrevSettings/Sources/BrevSettings/PrivacyOnboardingSettings.swift` with device-local completion key `onboarding.privacyChoices.completed` (excluded from `PreferenceSyncAllowlist` and `.brevbackup`), diff-based `apply(to:relativeTo:appleIntelligenceAvailability:)` that preserves untouched granular settings and never flips `allowRemoteContent` on or disables `stripTrackingPixels`, and suppression rules for demo/mock mode, automated tests, snapshot runs, and existing users.
+  - Added `PrivacyOnboardingSheet` in `packages/BrevSettings/Sources/BrevSettings/PrivacyOnboardingSheet.swift` covering Sender Avatars (domain BIMI/favicons + Gravatar), Trusted-Sender Remote Images, iCloud Preference Sync, Background Mail (macOS) & Recent-Mail Indexing, and zero-network On-Device AI (Apple Intelligence + optional proactive triage, unavailable-state explanation, zero cloud/BYOK providers), using semantic `@Environment(\.brevTheme)` tokens only and full `en` + `nb` String Catalog entries.
+  - Wired **"Review Privacy & Convenience Choices…"** into `PrivacySection`, `SettingsView`, and `SettingsSearch`, and wired first-run presentation (after first real account setup completes and any `InitialMailboxSelectionSheet` settles) into `apps/macOS/Sources/BrevApp.swift` and `apps/iOS/Sources/BrevApp.swift`.
+  - Added unit tests (`PrivacyOnboardingTests`) and macOS 26+ light/dark pixel-snapshot tests (`PrivacyOnboardingSnapshotTests`), registered in both the macOS<26 skip list and `snapshot-macos` `-only-testing` list in `.github/workflows/build.yml`.
+  - Updated `docs/design/privacy-and-security.md`, `docs/design/design-system-and-ui.md`, and `CHANGELOG.md`.
+- Verification:
+  - Local zero-window checks: `python3 -m json.tool` + `en`/`nb` key coverage check on `Localizable.xcstrings`, `scripts/format.sh`, `scripts/lint.sh`, privacy-audit regex verification, and `git diff --check origin/main`.
+  - Remote `macmini-devbox` (macOS 27.0 / Xcode 27.2, isolated `/tmp/brev-wave4a`, removed afterward): `BrevSettingsTests/PrivacyOnboardingTests`, `BackupTests`, `SettingsSearchPlatformTests`, `AvatarPrivacySettingsTests`, `MailboxViewSettingsTests`, `PreferenceSyncStoreTests`, `PrivacyOnboardingSnapshotTests` (record + verify in light & dark modes, all 4 PNGs visually inspected), and `BrevMacOS` / `BrevIOS` build verification.
+- Skipped: local `BrevSettings`/`BrevMail` `swift test` and `xcodebuild` runs (per desktop-isolation rule; executed on `macmini-devbox` instead); full iOS Simulator test suite left for GitHub Actions CI.
+
 ## 2026-11-24 — Agent — Roadmap #3 (Rich HTML compose beyond MVP)
 
 - Goal: implement rich HTML compose beyond MVP on `feature/rich-html-compose-v2` targeting `main` — inline `cid:` images (PNG/JPEG/GIF/WebP, byte caps, HTML preview rendering, lossless draft save/autosave/reopen, clean RFC 2387 `multipart/related` MIME), deterministic rich-HTML paste sanitization, and semantic HTML tables, `<pre><code>` code blocks, inline `<code>`, headings (`h1`–`h3`), and strikethrough (`<s>`) while preserving all PR #350 quoted-thread invariants.

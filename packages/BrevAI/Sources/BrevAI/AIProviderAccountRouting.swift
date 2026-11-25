@@ -23,6 +23,11 @@ public struct AIProviderAccountAssignments: Codable, Equatable, Sendable {
         providerIDsByAccountID[accountID]
     }
 
+    /// All provider identifiers currently assigned to at least one account.
+    public var assignedProviderIDs: Set<AIProviderID> {
+        Set(providerIDsByAccountID.values)
+    }
+
     public mutating func assign(providerID: AIProviderID, toAccountID accountID: String) {
         providerIDsByAccountID[accountID] = providerID
     }

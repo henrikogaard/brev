@@ -14676,6 +14676,369 @@
           }
         }
       }
+    },
+    "Privacy & Convenience": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Personvern og bekvemmelighet"
+          }
+        }
+      }
+    },
+    "Privacy & Convenience Choices": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valg for personvern og bekvemmelighet"
+          }
+        }
+      }
+    },
+    "Review Privacy & Convenience Choices…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjennomgå valg for personvern og bekvemmelighet…"
+          }
+        }
+      }
+    },
+    "Skip": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hopp over"
+          }
+        }
+      }
+    },
+    "Every optional feature starts off. Turn on only the conveniences you want — you can change these anytime in Settings → Privacy.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle valgfrie funksjoner er av som standard. Slå bare på funksjonene du ønsker — du kan endre dette når som helst i Innstillinger → Personvern."
+          }
+        }
+      }
+    },
+    "Review your current opt-in conveniences. Unchanged choices stay as they are, and Cancel discards edits.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjennomgå dine valgte bekvemmelighetsfunksjoner. Uendrede valg forblir som de er, og Avbryt forkaster endringer."
+          }
+        }
+      }
+    },
+    "Keep defaults (all off)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Behold standardvalg (alt av)"
+          }
+        }
+      }
+    },
+    "Save choices": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagre valg"
+          }
+        }
+      }
+    },
+    "Sender Avatars": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avsenderavatarer"
+          }
+        }
+      }
+    },
+    "External lookup": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksternt oppslag"
+          }
+        }
+      }
+    },
+    "Brand logos & domain icons": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merkevarelogoer og domeneikoner"
+          }
+        }
+      }
+    },
+    "Checks BIMI DNS records and fetches favicons from sender domains during sync. Never shares sender email addresses with a third party.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sjekker BIMI DNS-oppføringer og henter favikoner fra avsenderdomener under synkronisering. Deler aldri avsendernes e-postadresser med en tredjepart."
+          }
+        }
+      }
+    },
+    "Gravatar avatars": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gravatar-avatarer"
+          }
+        }
+      }
+    },
+    "Sends a SHA-256 hash of each sender’s email address to gravatar.com to fetch a profile photo.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sender en SHA-256-hash av hver avsenders e-postadresse til gravatar.com for å hente profilbilde."
+          }
+        }
+      }
+    },
+    "Trusted-Sender Remote Images": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksterne bilder fra betrodde avsendere"
+          }
+        }
+      }
+    },
+    "Trusted senders only": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kun betrodde avsendere"
+          }
+        }
+      }
+    },
+    "Loads remote images automatically only for Contacts and senders you have replied to. Unknown senders stay blocked and tracking-pixel removal stays on.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster eksterne bilder automatisk kun for kontakter og avsendere du har svart. Ukjente avsendere forblir blokkert, og fjerning av sporingspiksler forblir på."
+          }
+        }
+      }
+    },
+    "iCloud Preference Sync": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud-synkronisering av innstillinger"
+          }
+        }
+      }
+    },
+    "Your Apple ID": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Din Apple-ID"
+          }
+        }
+      }
+    },
+    "Mirrors non-secret preferences (VIPs, signatures, snoozes, smart views, compose and sidebar settings) via your iCloud Key-Value Storage. Never syncs mail bodies or credentials.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speiler ikke-hemmelige innstillinger (VIP-er, signaturer, slumring, smartvisninger, skrive- og sidefeltinnstillinger) via din iCloud nøkkel-verdi-lagring. Synkroniserer aldri e-postinnhold eller påloggingsdata."
+          }
+        }
+      }
+    },
+    "Background Mail & Search Indexing": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bakgrunnssjekk og søkeindeksering"
+          }
+        }
+      }
+    },
+    "Your mail server only": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kun din e-posttjener"
+          }
+        }
+      }
+    },
+    "Keeps checking your configured mail servers when no window is open and shows status in the menu bar.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsetter å sjekke dine konfigurerte e-posttjenere når ingen vinduer er åpne, og viser status i menylinjen."
+          }
+        }
+      }
+    },
+    "Politely indexes recent message bodies and eligible text attachments on this device for instant offline search. Wi-Fi & power friendly; excludes Trash and Spam.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekserer skånsomt nylige meldingstekster og støttede tekstvedlegg på denne enheten for umiddelbart søk uten nett. Skånsom mot Wi-Fi og batteri; utelater Papirkurv og Søppelpost."
+          }
+        }
+      }
+    },
+    "On-Device AI": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI på enheten"
+          }
+        }
+      }
+    },
+    "On-device · Zero network": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På enheten · Ingen nettverk"
+          }
+        }
+      }
+    },
+    "Enable on-device Apple Intelligence": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktiver Apple Intelligence på enheten"
+          }
+        }
+      }
+    },
+    "Runs AI Writer, thread summaries, and mailbox Assistant locally (%@) with zero network calls and no API key. Cloud and custom providers are never configured here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kjører AI-skrivehjelp, trådsammendrag og e-postassistent lokalt (%@) uten nettverkskall og uten API-nøkkel. Sky- og egendefinerte leverandører konfigureres aldri her."
+          }
+        }
+      }
+    },
+    "Generates short local thread summaries and Urgent or Needs reply badges from cached mail only. Never contacts any server.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genererer korte lokale trådsammendrag og merkene Haster eller Trenger svar kun fra lokalt lagret e-post. Kontakter aldri noen tjener."
+          }
+        }
+      }
+    },
+    "Requires the rich HTML reader in Settings → Reading → Mailbox View before remote images can load automatically.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krever rik HTML-leser i Innstillinger → Lesing → Postkassevisning før eksterne bilder kan lastes automatisk."
+          }
+        }
+      }
+    },
+    "Loads remote images automatically only for Contacts and senders you have replied to. Tracking-pixel removal is currently off in Settings → Privacy, so trusted senders may load tracking images.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster eksterne bilder automatisk kun for kontakter og avsendere du har svart. Fjerning av sporingspiksler er for øyeblikket av i Innstillinger → Personvern, så betrodde avsendere kan laste sporingsbilder."
+          }
+        }
+      }
+    },
+    "An external AI provider is assigned to an account. Review per-account routing in Settings → Writing → AI Writer before turning AI on.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En ekstern AI-leverandør er tilordnet en konto. Gjennomgå ruting per konto i Innstillinger → Skriving → AI-skrivehjelp før du slår på AI."
+          }
+        }
+      }
+    },
+    "Apple Intelligence is assigned to a specific account alongside another default provider. Manage per-account routing in Settings → Writing → AI Writer.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Intelligence er tilordnet en bestemt konto sammen med en annen standardleverandør. Administrer ruting per konto i Innstillinger → Skriving → AI-skrivehjelp."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

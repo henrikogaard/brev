@@ -4,6 +4,7 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Onboarding privacy & convenience choices: added an optional, plain-language **Privacy & Convenience Choices** walkthrough presented once after first-run account setup (suppressed in demo/mock mode, automated tests, and for existing users) and re-openable anytime from **Settings → Privacy & Security → Privacy → Review Privacy & Convenience Choices…** (also indexed in Settings Search). Every opt-in convenience starts strictly off by default (sender domain/Gravatar avatars, trusted-sender remote images, iCloud preference sync, macOS background mail checks, background recent-mail & attachment indexing, and zero-network on-device Apple Intelligence + optional proactive triage; no cloud/BYOK providers), with explicit **Keep defaults (all off)** and **Save choices** actions and a device-local completion flag excluded from iCloud sync and `.brevbackup` exports.
 - Rich HTML compose beyond MVP (#3):
   - **Inline images (`cid:`):** Added WebP support alongside PNG, JPEG, and GIF
     (with magic-byte sniffing, 10 MiB per-image and 25 MiB aggregate caps, and
