@@ -4,6 +4,9 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- SQLite sync-store performance and SQLite 3.54 query-plan fixes (#358, #359):
+  - Added schema v11 `message_search_index` (`(account_id, message_id) -> fts_rowid`, plus `idx_message_search_folder`) and the partial covering index `idx_msg_dirty` (`WHERE is_dirty = 1`) in `SQLiteSyncStore`, with transactional v10→v11 backfill and duplicate-row pruning. Eliminated O(N²) full FTS5 table scans on `UNINDEXED` columns during bulk `upsertHeaders` and O(N) scans during flag-only updates, body updates, deletes, metrics counts, and tokenless body joins (reducing 50k `IMAPHeaderReadBaselineTests` runtime from 399.4 s to 4.03 s and 50k `flag-persist` median latency from 5.587 ms to 0.176 ms in Release on Apple M6 / macOS 27.0 / SQLite 3.54.0).
+  - Pinned `INDEXED BY idx_imap_attachment_headers` on the left `UNION` branch of `SQLiteSyncStore.attachmentOrCachedBodyHeadersSQL` so SQLite 3.54's `MERGE (UNION)` planner cannot regress attachment candidate selection to a folder-wide primary-key scan.
 - Native JMAP mail backend (`BrevJMAP`, RFC 8620 / RFC 8621): added the MIT-licensed
   `packages/BrevJMAP/` SPM package implementing strict-HTTPS session discovery
   (`/.well-known/jmap` or explicit HTTPS session URL, rejecting non-HTTPS URLs,

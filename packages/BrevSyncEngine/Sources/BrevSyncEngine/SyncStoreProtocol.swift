@@ -204,7 +204,7 @@ extension SyncStoreProtocol {
 /// Used in unit tests so that `BrevSyncEngine` can be exercised without a
 /// real SQLite database file.
 actor InMemorySyncStore: SyncStoreProtocol {
-    let currentSchemaVersion = 10
+    let currentSchemaVersion = 11
 
     private var syncStates: [String: FolderSyncState] = [:]
     private struct RecoveryRecord {
