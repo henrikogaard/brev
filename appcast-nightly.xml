@@ -1,5 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.8-nightly.20261124</title><pubDate>Tue, 24 Nov 2026 00:19:37 GMT</pubDate><sparkle:version>2026112400</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261124</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at dc1c5a65bdcc81c7cc6adb987ac80b09fc7bd78e.
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.8-nightly.20261126</title><pubDate>Thu, 26 Nov 2026 18:51:48 GMT</pubDate><sparkle:version>2026112618</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261126</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at d535a6032d87c15c6fdde8958523a70934a1a7b2.
+
+- fix(macos): set SKIP_INSTALL on BrevMCPHelper for release archives (#379) (d535a603)
+- feat(ios): add iPhone Duo adaptive layout and iOS 26 HIG polish (#378) (caa90569)
+- feat(ui): polish macOS sidebar hierarchy, section header tone, and row indentation (#377) (960868d1)
+- fix(ui): resolve Liquid Glass quick-reply veil and dark inline pill contrast (#376) (b7409ade)
+- feat(compose): adopt native macOS 26 and iOS 26 Liquid Glass composer chrome (#375) (ad7acf52)
+- feat(ui): declutter macOS 26 sidebar for native floating Liquid Glass (#374) (761ce15d)
+- feat(ui): add Liquid Glass primitives, floating quick reply, command palette, and undo toasts (#373) (2e179908)
+- feat(ui): polish macOS reader dock, typography, dark compose, and settings (#372) (d5d366e9)
+- feat(ui): fix Assistant crash (#369) and polish macOS palette, hero, and Subscriptions (#370) (8bc2e443)
+- feat(ios): polish inbox glass fade, reader header alignment, compose bar, and 1-tap settings (#371) (37926616)
+- fix(compose): adapt iOS rich body text and macOS table headers to Dark Mode (#367) (d19636c7)
+- fix(ui): wire iOS Settings menu, fix landscape/AXL clipping, and localize nb AX hints (#366) (bde43548)
+- chore(settings): refresh remaining AIWriterSectionMacSnapshotTests baselines (#368) (2d6b86bd)
+- fix(sync): eliminate O(N^2) FTS5 scans and pin attachment index on SQLite 3.54 (#365) (ec438984)
+- chore(settings): refresh AIWriterSection provider-setup snapshot baseline (#364) (40ca565d)
+- feat(jmap): add native JMAP mail backend and account setup (#357) (dc28efdf)
+- feat(ai): add user-initiated downloaded local model catalog, verifier, and backend (#304) (#354) (208b7580)
+- feat(signin): support generic IMAP sign-in code verification (#348) (d62c853c)
+- feat(notifications): add opt-in self-hosted push relay and JMAP WebPush hooks (#351) (1a57803f)
+- feat(crypto): implement RFC 8551 CMS outbound S/MIME signing and encryption on iOS (#349) (55081a37)
+- feat(onboarding): add opt-in privacy and convenience choices walkthrough (#356) (6ca94d6d)
+- feat(compose): rich HTML compose v2 (inline images, paste sanitizer, tables, code blocks) (#355) (fbbb0170)
+- feat(search): add opt-in background recent-mail and attachment indexing (#353) (5914149f)
+- feat(ai): add opt-in proactive on-device summaries and priority triage (#352) (67b915a5)
+- feat(compose): preserve nested and styled quoted HTML when reopening drafts (#278) (#350) (d675ece5)
+- feat(privacy): add opt-in trusted-sender remote image tier (#8) (#346) (ac2c7fd2)
+- feat(mcp): add approval-gated create_draft tool (#6) (#347) (9492a7ce)
+- docs(design): replace 95 ADRs with 10 living subsystem design documents (#345) (f8b6a237)
+- feat(mcp): add local MCP server and macOS Agent access settings (#305) (#343) (23b0fe55)
+- feat(ai): add on-device Apple Intelligence backend and AI settings (#304) (#342) (730b0fa2)
+- feat(search): search across visible accounts by default (#296) (#344) (0ac785c4)
+- feat(search): find PDFs using downloaded attachment metadata (#332) (d52e6164)
+- feat(search): resolve folder phrases within each mailbox (#331) (54dc00f2)
+- feat(ios): add lock-screen-safe sign-in code and link notifications (#239) (#341) (1e19348d)
+- feat(search): recognize names and Norwegian phrases in query chips (#330) (71acab37)
+- feat(mail): explain suspicious sender domains in the reader (#329) (23dd76e8)
+- feat(macos): search commands and mail destinations with a palette (#328) (be0e8fe0)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261126.dmg" length="34330993" type="application/octet-stream" sparkle:edSignature="nO7jsG4K4nZoOWvKID3uCK1LjTbXX+VSd3P2+3rMEssQ7pLd8YsKqoKHyERsE1Sa8Nq3vxPwjHx4qRCR0aLlCQ==" /></item><item><title>0.2.8-nightly.20261124</title><pubDate>Tue, 24 Nov 2026 00:19:37 GMT</pubDate><sparkle:version>2026112400</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261124</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at dc1c5a65bdcc81c7cc6adb987ac80b09fc7bd78e.
 
 - feat(mail): add single-key shortcuts for the focused list and reader (#327) (dc1c5a65)
 - feat(mail): add no-reply follow-ups with Waiting and Today (#326) (08c42c97)
@@ -13,7 +51,7 @@
 - feat(mail): add macOS sign-in code panel, surfaces, and iOS privacy ADR proposal (#239) (#338) (dc23ce5f)
 - feat(mail): add Assistant sidebar destination with grounded answer cards (#294) (#336) (6cc572c9)
 - feat(notifications): add background notification actions and opt-in macOS drop-down panel (#307) (#337) (bd502fd6)
-- feat(mail): add sequential triage mode with single-key decisions (#334) (ef2256e9)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261124.dmg" length="30155258" type="application/octet-stream" sparkle:edSignature="Vkpl7ku9W0meHshGVjmjQR9xG+MA2vXR835rkqwZXvlHjdVlr5gKvSpm2+vm06SsG+tIFo+I2Z+b8PxutiTJBA==" /></item><item><title>0.2.8-nightly.20261122</title><pubDate>Mon, 23 Nov 2026 00:06:46 GMT</pubDate><sparkle:version>2026112223</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261122</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at c4e34e2ff4d6aa9b4181d07debc6d461a2a16129.
+- feat(mail): add sequential triage mode with single-key decisions (#334) (ef2256e9)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261124.dmg" length="30155258" type="application/octet-stream" sparkle:edSignature="Vkpl7ku9W0meHshGVjmjQR9xG+MA2vXR835rkqwZXvlHjdVlr5gKvSpm2+vm06SsG+tIFo+I2Z+b8PxutiTJBA==" /></item><item><title>0.2.8-nightly.20261122</title><pubDate>Mon, 23 Nov 2026 00:06:46 GMT</pubDate><sparkle:version>2026112223</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261122</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at c4e34e2ff4d6aa9b4181d07debc6d461a2a16129.
 
 - docs(agents): one issue gets one branch and one pull request (#333) (c4e34e2f)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261122.dmg" length="27946097" type="application/octet-stream" sparkle:edSignature="4jjIuhwrInEi79Cs6CBIb/CJbul1V6Nuq3Z2FfXDwc+kB7Xflyq8RGYQtyFCL4AQ27dcdGH0h8etr8qZdn71Bw==" /></item><item><title>0.2.8-nightly.20261121</title><pubDate>Sun, 22 Nov 2026 00:09:54 GMT</pubDate><sparkle:version>2026112123</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261121</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 4e6a0d0ccea0208564e72f8d105c9456531573a4.
 
@@ -197,6 +235,4 @@
 - docs: add macOS and iOS demo screenshots (#243) (3a553dd)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261014.dmg" length="26460887" type="application/octet-stream" sparkle:edSignature="Ph5TDLu+2xitQ0Wdhpe8pmeqk+VYtcZRd6q9z0RX6RWxUffFp6nabM4gGisnoojUuR7IiYF2V5N/oFIIVs0yBg==" /></item><item><title>0.2.8-nightly.20261013</title><pubDate>Tue, 13 Oct 2026 04:08:21 GMT</pubDate><sparkle:version>2026101303</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261013</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 941086e47c4e6a7b13582d80c11a049804d7c6c7.
 
 - feat(release): add one-command iOS beta release to TestFlight (#242) (941086e)
-- chore(release): cut 0.2.8 (a112c87)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261013.dmg" length="26460752" type="application/octet-stream" sparkle:edSignature="jeE+KeHDLThGwVKpxrq25MEbfHqZ2Fmm1/4azOblcGkqK2MQM0RHx+Z8TTrjN8OUqCqZ/qLtGHShFM4QUNKIBg==" /></item><item><title>0.2.7-nightly.20261012</title><pubDate>Mon, 12 Oct 2026 02:54:53 GMT</pubDate><sparkle:version>2026101202</sparkle:version><sparkle:shortVersionString>0.2.7-nightly.20261012</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 8817037c9908aa551c723c74ebb377fd98683fb4.
-
-- fix(macos): quiet the related-mail bar above the reader (#238) (8817037)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261012.dmg" length="26460825" type="application/octet-stream" sparkle:edSignature="sdwQyppl7w+CtItyxs683tzE/pzaHNbdbOm5zp9xjKb294JQ1u9PXaN54VlWtXlWepX/htcHRvy70/2lPv8IDg==" /></item></channel></rss>
+- chore(release): cut 0.2.8 (a112c87)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261013.dmg" length="26460752" type="application/octet-stream" sparkle:edSignature="jeE+KeHDLThGwVKpxrq25MEbfHqZ2Fmm1/4azOblcGkqK2MQM0RHx+Z8TTrjN8OUqCqZ/qLtGHShFM4QUNKIBg==" /></item></channel></rss>
