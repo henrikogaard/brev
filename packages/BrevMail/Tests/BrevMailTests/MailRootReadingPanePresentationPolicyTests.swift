@@ -10,8 +10,10 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevDesign
 @testable import BrevMail
+import Foundation
 import Testing
 
 @Suite("MailRootReadingPanePresentationPolicy")
@@ -62,5 +64,141 @@ struct MailRootReadingPanePresentationPolicyTests {
         #expect(MailRootReadingPanePresentationPolicy.messageSelectionPresentation(
             horizontalSizeClass: .regular
         ) == .splitInPlace)
+    }
+
+    @Test("unfolding from compact reader clears compactReaderHeader and keeps selection intact")
+    func unfoldingFromCompactReaderClearsCompactHeaderAndPreservesSelection() {
+        let header = Self.sampleHeader(id: "msg-1")
+
+        let alreadySelected = MailRootSizeClassTransitionPolicy.transition(
+            from: .compact,
+            to: .regular,
+            compactReaderHeader: header,
+            selectedHeader: header,
+            selectedMessageID: header.id,
+            hasSelectedMessageDestination: true,
+            readingPanePresentation: .splitDetailColumn
+        )
+        #expect(alreadySelected == MailRootSizeClassTransitionOutcome(
+            selectedMessageIDToPreserve: nil,
+            compactReaderHeader: nil,
+            preferredCompactColumn: nil
+        ))
+
+        let selectionCleared = MailRootSizeClassTransitionPolicy.transition(
+            from: .compact,
+            to: .regular,
+            compactReaderHeader: header,
+            selectedHeader: nil,
+            selectedMessageID: nil,
+            hasSelectedMessageDestination: true,
+            readingPanePresentation: .splitDetailColumn
+        )
+        #expect(selectionCleared == MailRootSizeClassTransitionOutcome(
+            selectedMessageIDToPreserve: "msg-1",
+            compactReaderHeader: nil,
+            preferredCompactColumn: nil
+        ))
+
+        let nothingOpen = MailRootSizeClassTransitionPolicy.transition(
+            from: .compact,
+            to: .regular,
+            compactReaderHeader: nil,
+            selectedHeader: header,
+            selectedMessageID: header.id,
+            hasSelectedMessageDestination: true,
+            readingPanePresentation: .splitDetailColumn
+        )
+        #expect(nothingOpen == nil)
+    }
+
+    @Test("folding from regular split preserves an actively read message in the compact reader")
+    func foldingFromRegularSplitPreservesActiveMessage() {
+        let header = Self.sampleHeader(id: "msg-2")
+
+        let outcome = MailRootSizeClassTransitionPolicy.transition(
+            from: .regular,
+            to: .compact,
+            compactReaderHeader: nil,
+            selectedHeader: header,
+            selectedMessageID: header.id,
+            hasSelectedMessageDestination: true,
+            readingPanePresentation: .splitDetailColumn
+        )
+        #expect(outcome == MailRootSizeClassTransitionOutcome(
+            selectedMessageIDToPreserve: nil,
+            compactReaderHeader: header,
+            preferredCompactColumn: .detail
+        ))
+    }
+
+    @Test("folding with no selected message lands cleanly on the message list or sidebar")
+    func foldingWithNoSelectedMessageLandsOnListOrSidebar() {
+        let withMailbox = MailRootSizeClassTransitionPolicy.transition(
+            from: .regular,
+            to: .compact,
+            compactReaderHeader: nil,
+            selectedHeader: nil,
+            selectedMessageID: nil,
+            hasSelectedMessageDestination: true,
+            readingPanePresentation: .splitDetailColumn
+        )
+        #expect(withMailbox == MailRootSizeClassTransitionOutcome(
+            selectedMessageIDToPreserve: nil,
+            compactReaderHeader: nil,
+            preferredCompactColumn: .content
+        ))
+
+        let withoutMailbox = MailRootSizeClassTransitionPolicy.transition(
+            from: .regular,
+            to: .compact,
+            compactReaderHeader: nil,
+            selectedHeader: nil,
+            selectedMessageID: nil,
+            hasSelectedMessageDestination: false,
+            readingPanePresentation: .splitDetailColumn
+        )
+        #expect(withoutMailbox == MailRootSizeClassTransitionOutcome(
+            selectedMessageIDToPreserve: nil,
+            compactReaderHeader: nil,
+            preferredCompactColumn: .sidebar
+        ))
+    }
+
+    @Test("unchanged or nil size-class updates produce no transition")
+    func unchangedOrNilSizeClassIsNoOp() {
+        let header = Self.sampleHeader(id: "msg-3")
+
+        #expect(MailRootSizeClassTransitionPolicy.transition(
+            from: .compact,
+            to: .compact,
+            compactReaderHeader: header,
+            selectedHeader: header,
+            selectedMessageID: header.id,
+            hasSelectedMessageDestination: true,
+            readingPanePresentation: .splitDetailColumn
+        ) == nil)
+        #expect(MailRootSizeClassTransitionPolicy.transition(
+            from: .regular,
+            to: nil,
+            compactReaderHeader: nil,
+            selectedHeader: header,
+            selectedMessageID: header.id,
+            hasSelectedMessageDestination: true,
+            readingPanePresentation: .splitDetailColumn
+        ) == nil)
+    }
+
+    private static func sampleHeader(id: String) -> MessageHeader {
+        MessageHeader(
+            id: id,
+            threadID: "thread-\(id)",
+            folderID: "inbox",
+            from: Correspondent(name: "Sigrid Moen", email: "sigrid@example.org"),
+            to: [Correspondent(name: "Henrik", email: "henrik@example.org")],
+            subject: "Fold transition test",
+            snippet: "Continuity across fold and unfold.",
+            date: Date(timeIntervalSince1970: 1_779_960_600)
+        )
     }
 }

@@ -44,16 +44,15 @@ enum ComposeLayoutPolicy {
     static func platform(
         horizontalSizeClassIsCompact: Bool,
         isAccessibilitySize: Bool,
-        deviceClass: ComposeDeviceClass
+        deviceClass: ComposeDeviceClass,
+        verticalSizeClassIsCompact: Bool = false
     ) -> ComposeLayoutPlatform {
         switch deviceClass {
-        case .phone:
-            return isAccessibilitySize ? .compactIOSAccessibility : .compactIOS
-        case .pad:
-            if horizontalSizeClassIsCompact {
+        case .phone, .pad:
+            if horizontalSizeClassIsCompact || verticalSizeClassIsCompact {
                 return isAccessibilitySize ? .compactIOSAccessibility : .compactIOS
             }
-            return .regularIOS
+            return isAccessibilitySize ? .compactIOSAccessibility : .regularIOS
         case .mac:
             return .macOS
         }
@@ -61,11 +60,11 @@ enum ComposeLayoutPolicy {
 
     static func frameMetrics(for platform: ComposeLayoutPlatform) -> ComposeFrameMetrics {
         switch platform {
-        case .compactIOS, .compactIOSAccessibility:
+        case .compactIOS, .compactIOSAccessibility, .regularIOS:
+            // Let UIKit's native sheet container size compose on iPhone, iPad,
+            // and unfolded foldables (e.g. 669 pt iPhone Duo where modal form
+            // sheets are ~540–620 pt wide and a 660 pt floor would clip).
             ComposeFrameMetrics(minWidth: nil, minHeight: nil)
-        case .regularIOS:
-            // ~660 fits the narrowest regular-width iPad scene (~678 pt).
-            ComposeFrameMetrics(minWidth: 660, minHeight: 560)
         case .macOS:
             ComposeFrameMetrics(minWidth: 680, minHeight: 560)
         }

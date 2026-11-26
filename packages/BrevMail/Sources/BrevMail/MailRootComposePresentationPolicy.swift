@@ -288,12 +288,16 @@ enum MailRootSettingsToolbarPolicy {
 
     /// Where the Profile switcher (`All Mailboxes`, profiles, `Manage Profiles`)
     /// is hosted in `FolderSidebar`.
+    ///
+    /// Single-profile workspaces (`profileCount <= 1`) hide the inline menu so
+    /// iOS Mailboxes uses Apple's native collapsing `.large` `"Mailboxes"`
+    /// navigation title instead of an inline dropdown pill for one choice.
     static func sidebarProfileSwitcherPlacement(
         platform: MailRootToolbarPlatform,
-        hasProfiles: Bool,
-        canManageProfiles: Bool
+        profileCount: Int,
+        canManageProfiles _: Bool
     ) -> MailRootSidebarProfileSwitcherPlacement {
-        guard hasProfiles || canManageProfiles else { return .none }
+        guard profileCount > 1 else { return .none }
         switch platform {
         case .iOS:
             return .navigationTitleMenu
@@ -303,18 +307,27 @@ enum MailRootSettingsToolbarPolicy {
     }
 
     /// Whether the iOS Mailboxes bar switches to inline title mode so the
-    /// `Mailboxes ⌄` profile title menu sits cleanly between Settings and Edit
-    /// without duplicating a large title directly underneath.
+    /// multi-profile `Mailboxes ⌄` title menu sits cleanly between Settings
+    /// and Edit without duplicating a large title directly underneath.
     static func usesInlineProfileTitleMenu(
         platform: MailRootToolbarPlatform,
-        hasProfiles: Bool,
+        profileCount: Int,
         canManageProfiles: Bool
     ) -> Bool {
         sidebarProfileSwitcherPlacement(
             platform: platform,
-            hasProfiles: hasProfiles,
+            profileCount: profileCount,
             canManageProfiles: canManageProfiles
         ) == .navigationTitleMenu
+    }
+
+    /// Whether the Mailboxes screen mounts Apple Mail's bottom status + Compose
+    /// bar on iOS.
+    static func showsSidebarBottomBar(
+        platform: MailRootToolbarPlatform,
+        hasContent: Bool
+    ) -> Bool {
+        platform == .iOS && hasContent
     }
 }
 
