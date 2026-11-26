@@ -9004,3 +9004,13 @@ buttons, and package-aware localization.
     - `Products/Applications/Brev.app/Contents/Helpers/brev-mcp` exists and is executable (universal `x86_64` + `arm64`, 109,576 bytes).
 - **Skipped:** Full `scripts/test.sh --self-tests-only` stopped at `scripts/desktop-compact-layout-check.sh` on both hosts because `rg` (ripgrep) is not installed on PATH; CI installs ripgrep in `repository-self-tests`.
 - **Next:** Push `fix/macos-mcp-helper-skip-install` and open PR targeting `main`.
+
+## 2026-11-26 — Agent — chore/release-0.3.0
+
+- **Goal:** Prepare stable release `0.3.0` (`v0.3.0`) per Henrik's explicit request to cut a new release built cleanly via `.github/workflows/release.yml` (not from nightly artifacts).
+- **Changes:**
+  - `Tuist/ProjectDescriptionHelpers/BrevConstants.swift`: bumped `marketingVersion` from `0.2.8` to `0.3.0`.
+  - `apps/iOS/BrevIOS.xcodeproj/project.pbxproj` and `apps/macOS/BrevMacOS.xcodeproj/project.pbxproj`: updated `MARKETING_VERSION` to `0.3.0` in Debug and Release configurations (matching `tuist generate --no-open`).
+  - `CHANGELOG.md`: cut `## [0.3.0] - 2026-11-26` section below `## [Unreleased]`.
+- **Verification:** Local `scripts/format.sh`, `scripts/lint.sh`, `scripts/test-developer-id-release-config.sh`, `release.yml` changelog-extractor `awk` check for `0.3.0`, and `git diff --check origin/main`. Local `scripts/privacy-audit.sh` skipped because `rg` (ripgrep) is not installed on PATH here; privacy audit runs in CI via the `Lint` workflow (`.github/workflows/lint.yml`), alongside full builds and tests in the `Build` workflow before tagging `v0.3.0`.
+- **Next:** Merge PR to `main` after both `Lint` (including `scripts/privacy-audit.sh`) and `Build` pass, wait for `Build` on `main` to pass on the release commit, then push annotated tag `v0.3.0` to trigger `.github/workflows/release.yml`.

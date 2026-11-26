@@ -4,6 +4,8 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-26
+
 - iOS 26/27 HIG polish and iPhone Duo (`iPhone19,4`) foldable adaptive support:
   - Added `MailRootSizeClassTransitionPolicy` and live `horizontalSizeClass` handling in `BrevMailRootView` so unfolding from a compact message reader to regular split view clears `compactReaderHeader`, preserves live or fallback selection, restores `.doubleColumn` split visibility when compact navigation had set `.detailOnly`, and renders the active message instead of a blank pane; folding back preserves an actively read message in the compact reader (or keeps `.bottomStack` mounted directly) and returns cleanly to the message list / sidebar when no message is selected.
   - Replaced `.userInterfaceIdiom == .pad` layout gates with size-class-driven policies (`MailPanePlatformPolicy`, `MessageDetailView.readerLayout`, `FolderSidebar.sidebarMetrics`, and `ComposeLayoutPolicy`) so unfolded foldable phones (`horizontalSizeClass == .regular`, `verticalSizeClass == .regular`) receive split-view column bounds (`220/250/360 pt` sidebar, `280/340/460 pt` message list fitting `669 pt` portrait and `951 pt` landscape cleanly), bounded reader margins, and non-clipping regular-width compose sheets while keeping `MailDetachWindowPolicy` gated to iPad multi-window scenes.
