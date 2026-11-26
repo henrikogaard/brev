@@ -1283,21 +1283,40 @@ public struct ComposeView: View {
     @ViewBuilder
     private func inlineLaterButton(usesGlass: Bool) -> some View {
         let isScheduled = scheduledSendDate != nil
+        let isEnabled = !isInteractionBlocked
         let helpText = scheduledSendDate == nil
             ? ComposeToolbarAction.scheduleSend.accessibilityLabel
             : String(localized: "Edit scheduled send", bundle: .module)
         if usesGlass {
+            let selectedTintOpacity = 0.18
+            let pillFill = isScheduled
+                ? theme.accent.color.opacity(selectedTintOpacity)
+                : theme.bgSecondary.color.opacity(isEnabled ? 0.32 : 0.20)
+            let pillStroke = isScheduled
+                ? theme.accent.color.opacity(0.60)
+                : theme.border.color.opacity(isEnabled ? 0.40 : 0.25)
+            let foregroundColor: Color = if !isEnabled {
+                theme.textTertiary.color
+            } else if isScheduled {
+                theme.accentTextOnTint(opacity: selectedTintOpacity).color
+            } else {
+                theme.textPrimary.color
+            }
             Button {
                 isScheduleSheetPresented = true
             } label: {
                 Label(String(localized: "Later", bundle: .module), systemImage: "clock")
                     .brevFont(.footnote)
-                    .foregroundStyle(isScheduled ? theme.accent.color : theme.textPrimary.color)
+                    .foregroundStyle(foregroundColor)
+                    .padding(.horizontal, BrevSpacing.sm)
+                    .padding(.vertical, BrevSpacing.xs)
+                    .background(Capsule().fill(pillFill))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(pillStroke, lineWidth: isScheduled ? 1 : 0.75))
+                    .composeGlassCapsule(interactive: isEnabled, clear: isScheduled)
+                    .contentShape(Capsule())
             }
-            .composeGlassButton(
-                prominent: false,
-                tint: isScheduled ? theme.accent.color : nil
-            )
+            .buttonStyle(.plain)
             .disabled(isInteractionBlocked)
             .help(helpText)
         } else {
@@ -1317,14 +1336,23 @@ public struct ComposeView: View {
     @ViewBuilder
     private func inlineWriteMenu(usesGlass: Bool) -> some View {
         if usesGlass {
+            let isEnabled = !aiWriterMenuDisabled
             Menu {
                 aiWriterMenuContent
             } label: {
                 Label(String(localized: "Write", bundle: .module), systemImage: "sparkles")
                     .brevFont(.footnote)
+                    .foregroundStyle(isEnabled ? theme.textPrimary.color : theme.textTertiary.color)
+                    .padding(.horizontal, BrevSpacing.sm)
+                    .padding(.vertical, BrevSpacing.xs)
+                    .background(Capsule().fill(theme.bgSecondary.color.opacity(isEnabled ? 0.32 : 0.20)))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(theme.border.color.opacity(isEnabled ? 0.40 : 0.25), lineWidth: 0.75))
+                    .composeGlassCapsule(interactive: isEnabled)
+                    .contentShape(Capsule())
             }
             .menuStyle(.button)
-            .composeGlassButton(prominent: false, tint: nil)
+            .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
             .disabled(aiWriterMenuDisabled)

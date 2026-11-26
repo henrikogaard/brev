@@ -1,5 +1,24 @@
 # Worklog
 
+## 2026-11-26 — Agent — Liquid Glass Contrast Polish (`fix/liquid-glass-contrast-polish`)
+
+- Goal: fix two macOS 27.0 / iPadOS 27.2 Liquid Glass contrast bugs caught during live native QA on `origin/main` (`ad7acf52`): veiled foreground text/icons inside `BrevGlassContainer` (`ReaderQuickReplyBar`) and white-on-white `Later`/`Write` pills in macOS docked inline reply Dark Mode (`ComposeView.inlineBottomBar`).
+- Changes:
+  - `packages/BrevDesign/Sources/BrevDesign/Components/BrevLiquidGlass.swift`: updated `BrevGlassCapsuleModifier` and the untinted branch of `BrevGlassRoundedSurfaceModifier` on OS 26+ (`!reduceTransparency`) to apply `.glassEffect(...)` directly to `content` instead of `Color.clear.glassEffect(...)` with an `.overlay` surface fill inside `.background` (which composited over foreground content inside `GlassEffectContainer`). Preserved the tinted `BrevGlassRoundedSurfaceModifier` backing for dense floating panels like `MailCommandPalette` and kept all `< 26` and `reduceTransparency` fallbacks untouched.
+  - `packages/BrevMail/Sources/BrevMail/ReaderQuickReplyBar.swift`: unified `quickReplyField` across macOS and iOS to use explicit `prompt: Text(placeholder).foregroundStyle(theme.textSecondary.color)`.
+  - `packages/BrevMail/Sources/BrevMail/ComposeView.swift`: updated `inlineLaterButton(usesGlass:)` and `inlineWriteMenu(usesGlass:)` to use `.buttonStyle(.plain)` + `.composeGlassCapsule(...)` with `theme.textPrimary.color` foreground (and scheduled accent tint/stroke matching `ComposeLaterButtonView.glassPillButton`), avoiding macOS `.buttonStyle(.glass)` inheriting monochrome dark accent tinting. Kept `ComposeGlassButtonStyleModifier` intact since `inlineSendButton` still uses both `prominent` states.
+  - Refreshed the 12 affected `InlineReplySnapshotTests` macOS baselines (`dockedReplyWithStarters` and `dockedReplyWithAIPreview` across 6 themes) reflecting the updated `Write` glass capsule. Updated `CHANGELOG.md` and `WORKLOG.md`; no architecture, privacy, or external network call changes, so `docs/design/` and `PRIVACY.md` required no updates.
+- Verification:
+  - Local Mac Studio (headless only): `scripts/format.sh`, `scripts/lint.sh` (`swiftformat --lint`, `swiftlint --strict`, `test-swiftlint-coverage`), `git diff --check origin/main`.
+  - Remote `macmini-devbox` (isolated `/tmp/brev-lg-fix`, cleaned up afterwards; appearance restored to Light):
+    - `swift test --package-path packages/BrevDesign` — 56/56 tests in 8 suites passed.
+    - `swift test --package-path packages/BrevMail --filter 'ReaderQuickReplyBarTests|ComposePresentationTests|MailCommandPaletteTests'` — 36/36 tests in 3 suites passed.
+    - `swift test --package-path packages/BrevMail --filter 'MailCommandPaletteSnapshotTests'` — 2/2 passed; `InlineReplySnapshotTests` — recorded and deterministically verified 18/18 passed.
+    - iOS Simulator (`iPad Pro 13-inch (M5)`, iPadOS 27.2) `xcodebuild test -scheme BrevMail -only-testing:BrevMailTests/ComposeAccessibilityBoundsTests -only-testing:BrevMailTests/ReaderQuickReplyBarTests` — 8/8 tests in 2 suites passed.
+    - Full Debug builds for `BrevMacOS` (`platform=macOS,arch=arm64`) and `BrevIOS` (`iPad Pro 13-inch (M5)` iOS Simulator) — both `** BUILD SUCCEEDED **`.
+    - Live macOS 27.0 (`BREV_USE_MOCK=1`, `reduceTransparency=0`) and iPadOS 27.2 Simulator (`iPad Pro 11-inch (M5)`) visual verification: refreshed and visually inspected all 5 PNGs (`macos-sidebar-quickreply-dark.png`, `macos-sidebar-quickreply-light.png`, `macos-palette-glass-light.png`, `macos-inline-reply-dark.png`, `ios-reader-quickreply-dark.png`).
+- Next: open PR targeting `main` from `fix/liquid-glass-contrast-polish`.
+
 ## 2026-11-25 — Agent — Native Liquid Glass Wave 1 (macOS 26 Sidebar Declutter & Floating Liquid Glass Column)
 
 - Goal: bring the macOS 26 folder sidebar to Apple Mail visual polish on `feat/native-liquid-glass-sidebar` from `origin/main` (`d5d366e9`): native floating Liquid Glass sidebar column inside `NavigationSplitView`, single-profile top banner removal, hover-only section header actions, calm collapsible account section headers, monochrome muted SF Symbols + regular/medium typography + leading subfolder disclosure + default-collapsed nested subfolders, and a borderless whisper footer.

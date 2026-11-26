@@ -131,29 +131,12 @@ private struct BrevGlassCapsuleModifier: ViewModifier {
                reduceTransparency: reduceTransparency,
                isAvailableOnOS: true
            ) {
-            let baseGlass = tint.map { Glass.regular.tint($0) } ?? Glass.regular
+            let baseGlass = tint.map { Glass.regular.tint($0.opacity(0.18)) } ?? Glass.regular
             content
-                .background {
-                    Color.clear
-                        .glassEffect(
-                            interactive ? baseGlass.interactive() : baseGlass,
-                            in: Capsule()
-                        )
-                        .overlay {
-                            Capsule()
-                                .fill(theme.bgSecondary.color.opacity(0.68))
-                                .overlay {
-                                    if let tint {
-                                        Capsule().fill(tint.opacity(0.14))
-                                    }
-                                }
-                        }
-                        .overlay {
-                            Capsule()
-                                .strokeBorder(theme.border.color.opacity(0.65), lineWidth: 0.5)
-                        }
-                }
-                .clipShape(Capsule())
+                .glassEffect(
+                    interactive ? baseGlass.interactive() : baseGlass,
+                    in: Capsule()
+                )
         } else {
             fallback(content)
         }
@@ -222,22 +205,37 @@ private struct BrevGlassRoundedSurfaceModifier: ViewModifier {
                reduceTransparency: reduceTransparency,
                isAvailableOnOS: true
            ) {
-            let baseGlass = tint.map { Glass.regular.tint($0.opacity(0.18)) } ?? Glass.regular
-            content
-                .background {
-                    Color.clear
-                        .glassEffect(
-                            interactive ? baseGlass.interactive() : baseGlass,
-                            in: shape
-                        )
-                        .overlay {
-                            shape.fill(surfaceTint.opacity(tint != nil ? 0.82 : 0.62))
-                        }
-                        .overlay {
-                            shape.strokeBorder(theme.border.color.opacity(0.65), lineWidth: 0.5)
-                        }
-                }
-                .clipShape(shape)
+            if let tint {
+                // Tinted sheet surfaces (e.g. Command Palette) keep the glass
+                // backing behind content with an 82% themed surface fill so
+                // dense floating panels remain high-contrast over busy mail.
+                let baseGlass = Glass.regular.tint(tint.opacity(0.18))
+                content
+                    .background {
+                        Color.clear
+                            .glassEffect(
+                                interactive ? baseGlass.interactive() : baseGlass,
+                                in: shape
+                            )
+                            .overlay {
+                                shape.fill(tint.opacity(0.82))
+                            }
+                            .overlay {
+                                shape.strokeBorder(theme.border.color.opacity(0.65), lineWidth: 0.5)
+                            }
+                    }
+                    .clipShape(shape)
+            } else {
+                // Untinted glass surfaces inside GlassEffectContainer must apply
+                // `.glassEffect` directly to `content`; wrapping `Color.clear`
+                // in `.background` with an overlay fill veils foreground text.
+                let baseGlass = Glass.regular
+                content
+                    .glassEffect(
+                        interactive ? baseGlass.interactive() : baseGlass,
+                        in: shape
+                    )
+            }
         } else {
             fallback(content, shape: shape)
         }
