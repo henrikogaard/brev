@@ -409,22 +409,29 @@ struct MailRootSettingsToolbarPolicyTests {
             hasSettingsAction: true
         ) == .none)
 
-        // Single-profile workspaces use Apple's native large "Mailboxes" title on iOS
-        // and hide the profile switcher header on macOS.
+        // iOS keeps Manage Profiles reachable through the title menu whenever
+        // profile management or multiple profiles are present, and uses Apple's
+        // collapsing large "Mailboxes" title when neither is active. macOS omits
+        // the top switcher for single-profile workspaces.
         #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
             platform: .iOS,
             profileCount: 0,
-            canManageProfiles: true
+            canManageProfiles: false
+        ) == .none)
+        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
+            platform: .iOS,
+            profileCount: 1,
+            canManageProfiles: false
         ) == .none)
         #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
             platform: .iOS,
             profileCount: 1,
             canManageProfiles: true
-        ) == .none)
+        ) == .navigationTitleMenu)
         #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
             platform: .iOS,
             profileCount: 2,
-            canManageProfiles: true
+            canManageProfiles: false
         ) == .navigationTitleMenu)
         #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
             platform: .macOS,
@@ -438,6 +445,11 @@ struct MailRootSettingsToolbarPolicyTests {
         ) == .sidebarHeader)
 
         #expect(!MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
+            platform: .iOS,
+            profileCount: 1,
+            canManageProfiles: false
+        ))
+        #expect(MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
             platform: .iOS,
             profileCount: 1,
             canManageProfiles: true

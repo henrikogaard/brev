@@ -36,6 +36,9 @@ struct MailRootSizeClassTransitionOutcome: Equatable, Sendable {
     let compactReaderHeader: MessageHeader?
     /// Preferred compact column to activate on fold, or `nil` when unchanged.
     let preferredCompactColumn: NavigationSplitViewColumn?
+    /// Split visibility update on unfold (restores `.doubleColumn` when compact
+    /// folder navigation had previously set `.detailOnly`), or `nil` when unchanged.
+    let splitViewVisibility: NavigationSplitViewVisibility?
 }
 
 /// Keeps reading continuity across live `.compact` <-> `.regular` horizontal
@@ -49,27 +52,52 @@ enum MailRootSizeClassTransitionPolicy {
         selectedHeader: MessageHeader?,
         selectedMessageID: MessageHeader.ID?,
         hasSelectedMessageDestination: Bool,
-        readingPanePresentation: MailRootReadingPanePresentation
+        readingPanePresentation: MailRootReadingPanePresentation,
+        currentSplitViewVisibility: NavigationSplitViewVisibility = .automatic
     ) -> MailRootSizeClassTransitionOutcome? {
         guard let newSizeClass, oldSizeClass != newSizeClass else { return nil }
 
         switch newSizeClass {
         case .regular:
-            guard let compactReaderHeader else { return nil }
+            let nextSplitVisibility: NavigationSplitViewVisibility? =
+                currentSplitViewVisibility == .detailOnly ? .doubleColumn : nil
+            guard compactReaderHeader != nil || nextSplitVisibility != nil else { return nil }
+            // Match the compact reader's own priority (`selectedHeader ?? fallbackHeader`):
+            // keep a live selection (e.g. restored by Undo) and fall back to
+            // `compactReaderHeader` only when no live header is selected.
+            let preservedMessageID: MessageHeader.ID? =
+                if let compactReaderHeader,
+                selectedHeader == nil,
+                selectedMessageID != compactReaderHeader.id {
+                    compactReaderHeader.id
+                } else {
+                    nil
+                }
             return MailRootSizeClassTransitionOutcome(
-                selectedMessageIDToPreserve: selectedMessageID == compactReaderHeader.id
-                    ? nil
-                    : compactReaderHeader.id,
+                selectedMessageIDToPreserve: preservedMessageID,
                 compactReaderHeader: nil,
-                preferredCompactColumn: nil
+                preferredCompactColumn: nil,
+                splitViewVisibility: nextSplitVisibility
             )
 
         case .compact:
+            // Bottom-stack layouts render `bottomReadingPane` directly instead of
+            // `splitDetailPane`; leaving `compactReaderHeader` nil keeps its reader
+            // mounted rather than collapsing `backgroundReadingPaneContent` to clear.
+            if readingPanePresentation == .bottomStack {
+                return MailRootSizeClassTransitionOutcome(
+                    selectedMessageIDToPreserve: nil,
+                    compactReaderHeader: nil,
+                    preferredCompactColumn: hasSelectedMessageDestination ? .detail : .sidebar,
+                    splitViewVisibility: nil
+                )
+            }
             if let selectedHeader {
                 return MailRootSizeClassTransitionOutcome(
                     selectedMessageIDToPreserve: nil,
                     compactReaderHeader: selectedHeader,
-                    preferredCompactColumn: .detail
+                    preferredCompactColumn: .detail,
+                    splitViewVisibility: nil
                 )
             }
             let targetColumn: NavigationSplitViewColumn = hasSelectedMessageDestination
@@ -80,7 +108,8 @@ enum MailRootSizeClassTransitionPolicy {
             return MailRootSizeClassTransitionOutcome(
                 selectedMessageIDToPreserve: nil,
                 compactReaderHeader: nil,
-                preferredCompactColumn: targetColumn
+                preferredCompactColumn: targetColumn,
+                splitViewVisibility: nil
             )
 
         @unknown default:

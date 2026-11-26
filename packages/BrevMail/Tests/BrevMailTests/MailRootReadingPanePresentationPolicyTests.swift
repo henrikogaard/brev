@@ -82,7 +82,8 @@ struct MailRootReadingPanePresentationPolicyTests {
         #expect(alreadySelected == MailRootSizeClassTransitionOutcome(
             selectedMessageIDToPreserve: nil,
             compactReaderHeader: nil,
-            preferredCompactColumn: nil
+            preferredCompactColumn: nil,
+            splitViewVisibility: nil
         ))
 
         let selectionCleared = MailRootSizeClassTransitionPolicy.transition(
@@ -97,7 +98,42 @@ struct MailRootReadingPanePresentationPolicyTests {
         #expect(selectionCleared == MailRootSizeClassTransitionOutcome(
             selectedMessageIDToPreserve: "msg-1",
             compactReaderHeader: nil,
-            preferredCompactColumn: nil
+            preferredCompactColumn: nil,
+            splitViewVisibility: nil
+        ))
+
+        let restoredHeader = Self.sampleHeader(id: "msg-restored")
+        let undoRestored = MailRootSizeClassTransitionPolicy.transition(
+            from: .compact,
+            to: .regular,
+            compactReaderHeader: header,
+            selectedHeader: restoredHeader,
+            selectedMessageID: restoredHeader.id,
+            hasSelectedMessageDestination: true,
+            readingPanePresentation: .splitDetailColumn
+        )
+        #expect(undoRestored == MailRootSizeClassTransitionOutcome(
+            selectedMessageIDToPreserve: nil,
+            compactReaderHeader: nil,
+            preferredCompactColumn: nil,
+            splitViewVisibility: nil
+        ))
+
+        let restoredFromDetailOnly = MailRootSizeClassTransitionPolicy.transition(
+            from: .compact,
+            to: .regular,
+            compactReaderHeader: nil,
+            selectedHeader: header,
+            selectedMessageID: header.id,
+            hasSelectedMessageDestination: true,
+            readingPanePresentation: .splitDetailColumn,
+            currentSplitViewVisibility: .detailOnly
+        )
+        #expect(restoredFromDetailOnly == MailRootSizeClassTransitionOutcome(
+            selectedMessageIDToPreserve: nil,
+            compactReaderHeader: nil,
+            preferredCompactColumn: nil,
+            splitViewVisibility: .doubleColumn
         ))
 
         let nothingOpen = MailRootSizeClassTransitionPolicy.transition(
@@ -128,7 +164,24 @@ struct MailRootReadingPanePresentationPolicyTests {
         #expect(outcome == MailRootSizeClassTransitionOutcome(
             selectedMessageIDToPreserve: nil,
             compactReaderHeader: header,
-            preferredCompactColumn: .detail
+            preferredCompactColumn: .detail,
+            splitViewVisibility: nil
+        ))
+
+        let bottomStackOutcome = MailRootSizeClassTransitionPolicy.transition(
+            from: .regular,
+            to: .compact,
+            compactReaderHeader: nil,
+            selectedHeader: header,
+            selectedMessageID: header.id,
+            hasSelectedMessageDestination: true,
+            readingPanePresentation: .bottomStack
+        )
+        #expect(bottomStackOutcome == MailRootSizeClassTransitionOutcome(
+            selectedMessageIDToPreserve: nil,
+            compactReaderHeader: nil,
+            preferredCompactColumn: .detail,
+            splitViewVisibility: nil
         ))
     }
 
@@ -146,7 +199,8 @@ struct MailRootReadingPanePresentationPolicyTests {
         #expect(withMailbox == MailRootSizeClassTransitionOutcome(
             selectedMessageIDToPreserve: nil,
             compactReaderHeader: nil,
-            preferredCompactColumn: .content
+            preferredCompactColumn: .content,
+            splitViewVisibility: nil
         ))
 
         let withoutMailbox = MailRootSizeClassTransitionPolicy.transition(
@@ -161,7 +215,8 @@ struct MailRootReadingPanePresentationPolicyTests {
         #expect(withoutMailbox == MailRootSizeClassTransitionOutcome(
             selectedMessageIDToPreserve: nil,
             compactReaderHeader: nil,
-            preferredCompactColumn: .sidebar
+            preferredCompactColumn: .sidebar,
+            splitViewVisibility: nil
         ))
     }
 

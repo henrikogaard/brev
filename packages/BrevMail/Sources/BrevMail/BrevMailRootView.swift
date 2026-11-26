@@ -737,7 +737,8 @@ public struct BrevMailRootView: View {
                     selectedHeader: navigation.selectedHeader,
                     selectedMessageID: navigation.selectedMessageID,
                     hasSelectedMessageDestination: hasSelectedMessageDestination,
-                    readingPanePresentation: readingPanePresentation
+                    readingPanePresentation: readingPanePresentation,
+                    currentSplitViewVisibility: splitViewVisibility
                 ) else { return }
                 if let messageID = outcome.selectedMessageIDToPreserve,
                    navigation.selectedMessageID != messageID {
@@ -746,6 +747,9 @@ public struct BrevMailRootView: View {
                 compactReaderHeader = outcome.compactReaderHeader
                 if let column = outcome.preferredCompactColumn {
                     preferredCompactColumn = column
+                }
+                if let visibility = outcome.splitViewVisibility {
+                    splitViewVisibility = visibility
                 }
             }
         #endif

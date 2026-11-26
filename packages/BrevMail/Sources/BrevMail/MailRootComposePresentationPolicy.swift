@@ -289,19 +289,22 @@ enum MailRootSettingsToolbarPolicy {
     /// Where the Profile switcher (`All Mailboxes`, profiles, `Manage Profiles`)
     /// is hosted in `FolderSidebar`.
     ///
-    /// Single-profile workspaces (`profileCount <= 1`) hide the inline menu so
-    /// iOS Mailboxes uses Apple's native collapsing `.large` `"Mailboxes"`
-    /// navigation title instead of an inline dropdown pill for one choice.
+    /// On iOS, keep the inline `Mailboxes ⌄` title menu whenever multiple profiles
+    /// exist or `Manage Profiles` is wired (so users with only `All Mailboxes` can
+    /// still create their first custom profile); fall back to Apple's collapsing
+    /// `.large` `"Mailboxes"` title when neither is active. On macOS, single-profile
+    /// sessions keep `Manage Profiles` in section context menus and omit the top bar.
     static func sidebarProfileSwitcherPlacement(
         platform: MailRootToolbarPlatform,
         profileCount: Int,
-        canManageProfiles _: Bool
+        canManageProfiles: Bool
     ) -> MailRootSidebarProfileSwitcherPlacement {
-        guard profileCount > 1 else { return .none }
         switch platform {
         case .iOS:
+            guard profileCount > 1 || canManageProfiles else { return .none }
             return .navigationTitleMenu
         case .macOS:
+            guard profileCount > 1 else { return .none }
             return .sidebarHeader
         }
     }
