@@ -4,6 +4,11 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- macOS 26/27 sidebar visual hierarchy and indentation polish:
+  - Softened macOS sidebar section titles (`Favorites`, `Smart Views`, and account headings) to `.brevFont(.footnote).fontWeight(.medium)` using `FolderSidebarSectionHeaderStyle.titleColor(in:)` (`theme.textTertiary.color.opacity(0.76)`) and hid the resting `Smart Views` disclosure chevron until hover or keyboard focus (`FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity`).
+  - Separated macOS section headers onto an outer left rail (`FolderSidebarLayoutMetrics.macOSSectionHeaderLeadingInset = 4 pt`, shared with the profile switcher pill and whisper footer) and indented all top-level row icons (`Favorites`, `Smart Views` items, `Assistant`, `Outbox`, `Plugins`, and depth-0 folders) cleanly inward past the leading subfolder disclosure gutter (`macOSRowLeadingInset = 18 pt`, 14 pt inward) so subfolder `>` chevrons tuck neatly beneath section titles.
+  - Increased macOS sidebar icon-to-label spacing to `BrevSpacing.sm` (`8 pt`), softened monochrome row icon tones (`theme.textTertiary.color.opacity(0.82)` at rest, `theme.textSecondary.color` when selected), elevated selected row labels to `.semibold`, updated row selection and hover pills to smooth continuous `10 pt` corners (`FolderSidebarSelectionPresentation.cornerRadius`), and added calm `BrevSpacing.md` (`12 pt`) inter-section vertical breathing room (`BrevSpacing.xxs` below section headers).
+
 - Liquid Glass contrast polish (macOS 26/27 & iPadOS 26/27):
   - Fixed `BrevGlassCapsuleModifier` and untinted `BrevGlassRoundedSurfaceModifier` in `BrevDesign` (`BrevLiquidGlass.swift`) to apply `.glassEffect(...)` directly to `content` instead of wrapping `Color.clear.glassEffect(...)` + an opaque `.overlay` fill inside `.background`, eliminating the gray veil over `ReaderQuickReplyBar` placeholder text and expand icons inside `GlassEffectContainer` while keeping tinted panels (`MailCommandPalette`) high-contrast over mail content.
   - Applied explicit `prompt: Text(placeholder).foregroundStyle(theme.textSecondary.color)` in `ReaderQuickReplyBar` on both macOS and iOS for consistent placeholder legibility.

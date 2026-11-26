@@ -19,11 +19,27 @@ import Testing
 
 @Suite("Folder sidebar chrome presentation")
 struct FolderSidebarChromePresentationTests {
-    @Test("macOS row icons use monochrome secondary at rest and primary when selected across light and dark themes")
+    @Test("macOS row icons use soft muted tertiary at rest and secondary when selected across light and dark themes")
     func macOSRowIconColors() {
-        for theme in [BrevTheme.brevMonoDark, .brevMonoLight] {
-            #expect(FolderSidebarIconTint.macOSRowColor(isSelected: false, in: theme) == theme.textSecondary.color)
-            #expect(FolderSidebarIconTint.macOSRowColor(isSelected: true, in: theme) == theme.textPrimary.color)
+        for theme in [BrevTheme.brevMonoDark, .brevMonoGrey, .brevMonoLight] {
+            #expect(
+                FolderSidebarIconTint.macOSRowColor(isSelected: false, in: theme)
+                    == theme.textTertiary.color.opacity(0.82)
+            )
+            #expect(
+                FolderSidebarIconTint.macOSRowColor(isSelected: true, in: theme)
+                    == theme.textSecondary.color
+            )
+        }
+    }
+
+    @Test("macOS section header titles stay calm and muted across light and dark themes")
+    func macOSSectionHeaderTitleColors() {
+        for theme in [BrevTheme.brevMonoDark, .brevMonoGrey, .brevMonoLight] {
+            #expect(
+                FolderSidebarSectionHeaderStyle.titleColor(in: theme)
+                    == theme.textTertiary.color.opacity(0.76)
+            )
         }
     }
 
@@ -182,7 +198,7 @@ struct FolderSidebarChromePresentationTests {
         #expect(FolderSidebarProfileSwitcherPolicy.showsTopBar(profileCount: 5))
     }
 
-    @Test("section header actions and account chevrons stay quiet at rest and reveal on hover or keyboard focus")
+    @Test("section header actions and Smart Views / account chevrons stay quiet at rest and reveal on hover or focus")
     func sectionHeaderHoverAndFocusVisibility() {
         #expect(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: false, isFocused: false) == 0)
         #expect(FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(isHovered: true, isFocused: false) == 1)

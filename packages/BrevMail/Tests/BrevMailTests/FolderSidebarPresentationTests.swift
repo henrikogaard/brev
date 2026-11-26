@@ -132,9 +132,9 @@ struct FolderSidebarPresentationTests {
         #expect(presentation.canMarkAllAsRead)
     }
 
-    @Test("selected sidebar rows use the compact control radius")
-    func selectedSidebarRowsUseCompactControlRadius() {
-        #expect(FolderSidebarSelectionPresentation.cornerRadius == BrevRadius.md)
+    @Test("selected sidebar rows use smooth continuous pill corners")
+    func selectedSidebarRowsUseSmoothPillRadius() {
+        #expect(FolderSidebarSelectionPresentation.cornerRadius == 10)
     }
 
     @Test("global sidebar selections stay quieter than mailbox selections")
@@ -172,6 +172,21 @@ struct FolderSidebarPresentationTests {
         #expect(macMetrics.disclosureHitSize < touchMetrics.disclosureHitSize)
         #expect(macMetrics.disclosureHitSize >= 16)
         #expect(macMetrics.folderRowDepthIndent == macMetrics.iconWidth)
+    }
+
+    @Test("macOS sidebar indents top-level rows inward past the disclosure gutter beneath section headers")
+    func macOSSidebarIndentsRowsInwardFromSectionHeaderRail() {
+        let macMetrics = FolderSidebarPresentation.layoutMetrics(for: .macOS)
+
+        #expect(macMetrics.macOSSectionHeaderLeadingInset == BrevSpacing.xs)
+        #expect(macMetrics.macOSSectionHeaderLeadingInset < macMetrics.macOSRowLeadingInset)
+        #expect(
+            macMetrics.macOSRowLeadingInset
+                == macMetrics.folderRowLeadingPadding(depth: 0)
+                + macMetrics.disclosureHitSize
+                + FolderSidebarLayoutMetrics.macOSDisclosureToIconSpacing
+        )
+        #expect(macMetrics.macOSRowLeadingInset - macMetrics.macOSSectionHeaderLeadingInset == 14)
     }
 
     @Test("macOS sidebar rows follow the shared density preference")

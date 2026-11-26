@@ -1,5 +1,23 @@
 # Worklog
 
+## 2026-11-26 — Agent — macOS 26/27 Sidebar Visual Hierarchy & Indent Polish (`feat/polish-macos-sidebar-hierarchy`)
+
+- Goal: refine Brev's macOS 26/27 sidebar hierarchy to match Apple Mail's calm, understated section headers and clean inward row indentation with leading disclosure chevrons tucked into the gutter beneath section titles, without altering iOS/iPadOS layouts.
+- Changes:
+  - `packages/BrevMail/Sources/BrevMail/FolderSidebarChromePresentation.swift`: added `FolderSidebarSectionHeaderStyle.titleColor(in:)` (`theme.textTertiary.color.opacity(0.76)`) and softened `FolderSidebarIconTint.macOSRowColor(isSelected:in:)` to `theme.textTertiary.color.opacity(0.82)` at rest and `theme.textSecondary.color` when selected.
+  - `packages/BrevMail/Sources/BrevMail/FolderSidebarPresentation.swift`: updated `FolderSidebarSelectionPresentation.cornerRadius` to `10` and added testable macOS rail geometry on `FolderSidebarLayoutMetrics` (`macOSDisclosureToIconSpacing = BrevSpacing.xxs`, `macOSSectionHeaderLeadingInset = BrevSpacing.xs`, `macOSRowLeadingInset = folderRowLeadingPadding(depth: 0) + disclosureHitSize + macOSDisclosureToIconSpacing`).
+  - `packages/BrevMail/Sources/BrevMail/FolderSidebar.swift` (`#if os(macOS)` only): updated `Favorites`, `Smart Views`, and account section headers to `.brevFont(.footnote).fontWeight(.medium)` + `FolderSidebarSectionHeaderStyle.titleColor(in: theme)` on `macOSSectionHeaderLeadingInset` with `BrevSpacing.xxs` bottom spacing; aligned `Smart Views` resting chevron opacity to `FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(isHovered:isFocused:)`; aligned `sidebarActionRow` and depth-0 `folderRow` icons pixel-for-pixel on `macOSRowLeadingInset` while keeping the selection/hover pill edge-to-edge inside `sidebarPadding`; aligned the multi-profile pill and `sidebarFooter` onto `macOSSectionHeaderLeadingInset`; increased `folderLabelSpacing` to `BrevSpacing.sm`, upgraded selected row labels to `.semibold`, applied continuous `10 pt` corners to selection/hover shapes, applied `macOSRowColor` to `pluginSidebarItems`, and added `BrevSpacing.md` top breathing room before `Smart Views` and each account section. Left `#if os(iOS)` untouched.
+  - Tests & snapshots: updated and added unit tests in `FolderSidebarChromePresentationTests.swift` and `FolderSidebarPresentationTests.swift`; refreshed and visually inspected all 22 affected macOS sidebar snapshot PNGs (`FolderSidebarSnapshotTests`, `LocalFolderSnapshotTests/localAccountSection`, and `WaitingAndFollowUpSnapshotTests`). Updated `CHANGELOG.md` and `WORKLOG.md`; no architecture, privacy, or network boundary changes, so `docs/design/` and `PRIVACY.md` required no updates.
+- Verification:
+  - Local Mac Studio (headless only): `scripts/format.sh`, `scripts/lint.sh` (`swiftformat --lint`, `swiftlint --strict`, `test-swiftlint-coverage`), `git diff --check origin/main`.
+  - Remote `macmini-devbox` (macOS 27.0 / Xcode 27.2, isolated `/tmp/brev-sidebar-polish`, cleaned up afterwards; appearance restored to Light):
+    - Targeted sidebar unit suites (`FolderSidebarPresentationTests`, `FolderSidebarChromePresentationTests`, `GmailNativeSidebarPresentationTests`, `SavedSearchSidebarPresentationTests`) — 64/64 tests in 4 suites passed.
+    - Recorded and deterministically verified macOS sidebar snapshot suites (`FolderSidebarSnapshotTests`, `LocalFolderSnapshotTests`, `WaitingAndFollowUpSnapshotTests`) — 9/9 tests in 3 suites passed without `RECORD_SNAPSHOTS`; visually inspected refreshed snapshot PNGs.
+    - Broad `BrevMail` suite run — 2,834/2,836 tests passed (the only 2 issues were unrelated `CrossAccountSearchOptionsSnapshotTests` due to host `nb` locale under bare `swift test`).
+    - Full `BrevMacOS` isolated-mock Debug build (`script/build_and_run.sh --build-only --isolated-mock`) succeeded.
+    - Live macOS 27.0 visual verification (`BREV_USE_MOCK=1`, `reduceTransparency=0`, `-AppleLanguages "(en)"`, `All Inboxes` selected, `Henrik Øgård (private)` expanded): captured and visually inspected both `macos-sidebar-polish-dark.png` and `macos-sidebar-polish-light.png` against the Apple Mail macOS 26 reference.
+- Next: commit, push `feat/polish-macos-sidebar-hierarchy`, and open PR targeting `main`.
+
 ## 2026-11-26 — Agent — Liquid Glass Contrast Polish (`fix/liquid-glass-contrast-polish`)
 
 - Goal: fix two macOS 27.0 / iPadOS 27.2 Liquid Glass contrast bugs caught during live native QA on `origin/main` (`ad7acf52`): veiled foreground text/icons inside `BrevGlassContainer` (`ReaderQuickReplyBar`) and white-on-white `Later`/`Write` pills in macOS docked inline reply Dark Mode (`ComposeView.inlineBottomBar`).
