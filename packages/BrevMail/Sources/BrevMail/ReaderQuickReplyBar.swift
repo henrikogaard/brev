@@ -158,18 +158,14 @@ struct ReaderQuickReplyBar: View {
     @ViewBuilder
     private var quickReplyField: some View {
         let placeholder = String(localized: "Reply to \(recipientName)…", bundle: .module)
-        #if os(iOS)
-        // The system placeholder colour fails contrast on the field's
-        // surface; use the theme's secondary text.
+        // The system placeholder colour fails contrast on the glass field
+        // surface on both macOS and iOS; use the theme's secondary text.
         TextField(
             placeholder,
             text: $draftText,
             prompt: Text(placeholder).foregroundStyle(theme.textSecondary.color),
             axis: .vertical
         )
-        #else
-        TextField(placeholder, text: $draftText, axis: .vertical)
-        #endif
     }
 
     @ViewBuilder

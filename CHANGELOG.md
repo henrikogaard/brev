@@ -4,6 +4,11 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Liquid Glass contrast polish (macOS 26/27 & iPadOS 26/27):
+  - Fixed `BrevGlassCapsuleModifier` and untinted `BrevGlassRoundedSurfaceModifier` in `BrevDesign` (`BrevLiquidGlass.swift`) to apply `.glassEffect(...)` directly to `content` instead of wrapping `Color.clear.glassEffect(...)` + an opaque `.overlay` fill inside `.background`, eliminating the gray veil over `ReaderQuickReplyBar` placeholder text and expand icons inside `GlassEffectContainer` while keeping tinted panels (`MailCommandPalette`) high-contrast over mail content.
+  - Applied explicit `prompt: Text(placeholder).foregroundStyle(theme.textSecondary.color)` in `ReaderQuickReplyBar` on both macOS and iOS for consistent placeholder legibility.
+  - Replaced `.buttonStyle(.glass)` on macOS docked inline reply `Later` and `Write` controls (`ComposeView.inlineLaterButton` and `ComposeView.inlineWriteMenu`) with `.buttonStyle(.plain)` + `.composeGlassCapsule(...)` so Dark Mode monochrome accent tinting no longer paints an unreadable white-on-white pill.
+
 - macOS 26 Native Liquid Glass sidebar declutter (Wave 1):
   - Let macOS 26 `NavigationSplitView`'s native floating Liquid Glass sidebar column shine cleanly (`FolderSidebarSurfacePolicy`, `brevMacSidebarPaneSurface()`, `scrollEdgeEffectStyle(.soft, for: .vertical)`) without painting an opaque flat slab over it, while falling back to the themed surface when Reduce Transparency is enabled or on macOS < 26.
   - Hid the top macOS profile switcher banner when only a single profile (or All Mailboxes) exists (`FolderSidebarProfileSwitcherPolicy`), keeping `Manage Profiles` accessible in section context menus and Settings, and refined multi-profile switching into a compact native capsule pill.
