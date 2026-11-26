@@ -151,7 +151,9 @@ if not helper_match:
     sys.exit("ERROR: BrevMCPHelper target block not found in apps/macOS/Project.swift")
 helper_block = helper_match.group(0)
 base_match = re.search(r'base:\s*\[([\s\S]*?)\]', helper_block)
-if not base_match or not re.search(r'"SKIP_INSTALL"\s*:\s*"YES"', base_match.group(1)):
+base_body = re.sub(r'/\*[\s\S]*?\*/', '', base_match.group(1)) if base_match else ""
+base_body = re.sub(r'//.*', '', base_body)
+if not re.search(r'^\s*"SKIP_INSTALL"\s*:\s*"YES"\s*,?\s*$', base_body, re.MULTILINE):
     sys.exit(
         'ERROR: BrevMCPHelper must set "SKIP_INSTALL": "YES" in base settings so '
         "xcodebuild archive produces an Application Archive rather than a Generic Xcode Archive"
@@ -171,7 +173,10 @@ for config_id, config_name in config_ids:
         rf'{config_id}\s*/\*\s*{config_name}\s*\*/\s*=\s*\{{[\s\S]*?buildSettings = \{{([\s\S]*?)\}};',
         pbxproj,
     )
-    if not cfg_match or "SKIP_INSTALL = YES;" not in cfg_match.group(1):
+    cfg_body = re.sub(r'/\*[\s\S]*?\*/', '', cfg_match.group(1)) if cfg_match else ""
+    cfg_body = re.sub(r'//.*', '', cfg_body)
+    skip_values = re.findall(r'^\s*SKIP_INSTALL\s*=\s*([^;\s]+)\s*;\s*$', cfg_body, re.MULTILINE)
+    if skip_values != ["YES"]:
         sys.exit(
             f"ERROR: BrevMCPHelper {config_name} configuration in project.pbxproj must set SKIP_INSTALL = YES;"
         )
