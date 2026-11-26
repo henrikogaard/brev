@@ -27,10 +27,11 @@ enum FolderSidebarIconTint: Equatable, Sendable {
     case danger
     case neutral
 
-    /// Monochrome SF Symbol colour for macOS sidebar rows: muted secondary at
-    /// rest, elevated to primary when selected (Apple Mail style).
+    /// Monochrome SF Symbol colour for macOS sidebar rows: soft muted tertiary
+    /// at rest and lifted to secondary when selected so primary mailbox labels
+    /// lead the visual hierarchy (Apple Mail style).
     static func macOSRowColor(isSelected: Bool, in theme: BrevTheme) -> Color {
-        isSelected ? theme.textPrimary.color : theme.textSecondary.color
+        isSelected ? theme.textSecondary.color : theme.textTertiary.color.opacity(0.82)
     }
 
     /// The resolved theme colour.
@@ -135,6 +136,17 @@ enum FolderSidebarProfileSwitcherPolicy {
     }
 }
 
+/// Visual styling for macOS sidebar section headers (`Favorites`, `Smart Views`,
+/// and account headings) so section titles stay calm and understated beneath
+/// the primary mailbox hierarchy.
+enum FolderSidebarSectionHeaderStyle {
+    /// Soft muted foreground colour for macOS sidebar section headers across
+    /// both Light and Dark themes.
+    static func titleColor(in theme: BrevTheme) -> Color {
+        theme.textTertiary.color.opacity(0.76)
+    }
+}
+
 /// Controls hover- and focus-revealed accessories on macOS sidebar section
 /// headers so resting headers stay quiet while keeping pointer, keyboard Tab,
 /// and VoiceOver access visible and usable.
@@ -144,7 +156,9 @@ enum FolderSidebarSectionHeaderActionVisibility {
         (isHovered || isFocused) ? 1 : 0
     }
 
-    /// Disclosure chevron opacity for collapsible account section headers.
+    /// Disclosure chevron opacity for collapsible macOS section headers
+    /// (`Smart Views` and account sections): hidden at rest and revealed on
+    /// hover or keyboard focus.
     static func accountDisclosureChevronOpacity(isHovered: Bool, isFocused: Bool = false) -> Double {
         (isHovered || isFocused) ? 1 : 0
     }

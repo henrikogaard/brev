@@ -123,12 +123,16 @@ enum FolderSidebarAccessibility {
 }
 
 enum FolderSidebarSelectionPresentation {
-    static let cornerRadius = BrevRadius.md
+    static let cornerRadius: CGFloat = 10
     static let globalActionOpacity = 0.18
     static let folderOpacity = 0.26
 }
 
 struct FolderSidebarLayoutMetrics: Equatable, Sendable {
+    /// Horizontal gap between the leading disclosure gutter and the folder icon
+    /// on macOS.
+    static let macOSDisclosureToIconSpacing: CGFloat = BrevSpacing.xxs
+
     let sidebarPadding: CGFloat
     let sectionSpacing: CGFloat
     let dividerVerticalPadding: CGFloat
@@ -148,6 +152,22 @@ struct FolderSidebarLayoutMetrics: Equatable, Sendable {
 
     func folderRowLeadingPadding(depth: Int) -> CGFloat {
         folderRowBaseLeadingPadding + CGFloat(depth) * folderRowDepthIndent
+    }
+
+    /// Outer leading rail inside `sidebarPadding` for macOS section headers
+    /// (`Favorites`, `Smart Views`, account headings), the multi-profile pill,
+    /// and the footer strip.
+    var macOSSectionHeaderLeadingInset: CGFloat {
+        BrevSpacing.xs
+    }
+
+    /// Inward leading rail inside `sidebarPadding` for top-level macOS row
+    /// icons (`Favorites`, `Smart Views`, `Assistant`, `Outbox`, `Plugins`, and
+    /// depth-0 folders), indented past the leading disclosure chevron gutter.
+    var macOSRowLeadingInset: CGFloat {
+        folderRowLeadingPadding(depth: 0)
+            + disclosureHitSize
+            + Self.macOSDisclosureToIconSpacing
     }
 }
 

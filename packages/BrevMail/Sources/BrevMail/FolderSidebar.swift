@@ -433,7 +433,7 @@ public struct FolderSidebar: View {
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, sidebarMetrics.sidebarPadding)
-                .padding(.leading, macOSHeaderLeadingInset)
+                .padding(.leading, sidebarMetrics.macOSSectionHeaderLeadingInset)
                 .padding(.top, BrevSpacing.xs)
                 .padding(.bottom, BrevSpacing.xs)
             }
@@ -579,7 +579,7 @@ public struct FolderSidebar: View {
                 .help(String(localized: "Settings", bundle: .module))
             }
         }
-        .padding(.leading, sidebarMetrics.sidebarPadding + macOSHeaderLeadingInset)
+        .padding(.leading, sidebarMetrics.sidebarPadding + sidebarMetrics.macOSSectionHeaderLeadingInset)
         .padding(.trailing, sidebarMetrics.sidebarPadding + sidebarMetrics.folderRowTrailingPadding)
         .padding(.top, BrevSpacing.xs)
         .padding(.bottom, BrevSpacing.sm)
@@ -1075,11 +1075,10 @@ public struct FolderSidebar: View {
                 VStack(alignment: .leading, spacing: 0) {
                     smartViewsSection
                 }
-                .padding(.top, BrevSpacing.sm)
+                .padding(.top, BrevSpacing.md)
             }
             outboxButton
         }
-        .padding(.bottom, sidebarMetrics.sectionSpacing)
 
         if sourceSections.isEmpty {
             if normalizedActiveProfileID == MailProfile.allMailboxesID {
@@ -1114,7 +1113,7 @@ public struct FolderSidebar: View {
                     )
                 }
             }
-            .padding(.top, index == 0 ? BrevSpacing.xs : BrevSpacing.sm)
+            .padding(.top, BrevSpacing.md)
         }
         // Plugin-contributed sidebar panels live at the bottom, after the user's
         // own mailboxes and folders, so third-party extensions never sit above
@@ -1250,9 +1249,9 @@ public struct FolderSidebar: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: BrevSpacing.xs) {
                 Text("Favorites", bundle: .module)
-                    .brevFont(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(theme.textSecondary.color)
+                    .brevFont(.footnote)
+                    .fontWeight(.medium)
+                    .foregroundStyle(FolderSidebarSectionHeaderStyle.titleColor(in: theme))
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: BrevSpacing.xs)
                 favoritesActions
@@ -1265,8 +1264,9 @@ public struct FolderSidebar: View {
                     )
                     .animation(.easeOut(duration: 0.14), value: isHovered || isActionFocused)
             }
-            .padding(.leading, macOSHeaderLeadingInset)
+            .padding(.leading, sidebarMetrics.macOSSectionHeaderLeadingInset)
             .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+            .padding(.bottom, BrevSpacing.xxs)
             .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
             .contentShape(Rectangle())
             .onHover { hovering in
@@ -1347,7 +1347,7 @@ public struct FolderSidebar: View {
 
     #if os(macOS)
     /// Calm Apple-Mail-style collapsible account section header: renders each
-    /// account directly as a muted 11 pt semibold header without an outer
+    /// account directly as a quiet muted footnote header without an outer
     /// "Accounts" wrapper, revealing chevron and Add-account controls on hover.
     private func accountSectionHeader(_ section: MailSourceSection, isFirstAccount: Bool) -> some View {
         let isExpanded = expandedSourceIDs.contains(section.id)
@@ -1363,9 +1363,9 @@ public struct FolderSidebar: View {
             } label: {
                 HStack(spacing: BrevSpacing.xs) {
                     Text(verbatim: section.title)
-                        .brevFont(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(theme.textSecondary.color)
+                        .brevFont(.footnote)
+                        .fontWeight(.medium)
+                        .foregroundStyle(FolderSidebarSectionHeaderStyle.titleColor(in: theme))
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -1424,8 +1424,9 @@ public struct FolderSidebar: View {
                 .help(String(localized: "Add account", bundle: .module))
             }
         }
-        .padding(.leading, macOSHeaderLeadingInset)
+        .padding(.leading, sidebarMetrics.macOSSectionHeaderLeadingInset)
         .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+        .padding(.bottom, BrevSpacing.xxs)
         .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -1542,14 +1543,19 @@ public struct FolderSidebar: View {
             } label: {
                 HStack(spacing: BrevSpacing.xs) {
                     Text("Smart Views", bundle: .module)
-                        .brevFont(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(theme.textSecondary.color)
+                        .brevFont(.footnote)
+                        .fontWeight(.medium)
+                        .foregroundStyle(FolderSidebarSectionHeaderStyle.titleColor(in: theme))
                         .lineLimit(1)
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(theme.textTertiary.color)
-                        .opacity((isHovered || isHeaderFocused) ? 1 : (isExpanded ? 0 : 0.75))
+                        .opacity(
+                            FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(
+                                isHovered: isHovered,
+                                isFocused: isHeaderFocused
+                            )
+                        )
                         .animation(.easeOut(duration: 0.14), value: isHovered || isHeaderFocused)
                         .accessibilityHidden(true)
                 }
@@ -1596,8 +1602,9 @@ public struct FolderSidebar: View {
             .accessibilityLabel(String(localized: "Smart View Actions", bundle: .module))
             .help(String(localized: "Smart View Actions", bundle: .module))
         }
-        .padding(.leading, macOSHeaderLeadingInset)
+        .padding(.leading, sidebarMetrics.macOSSectionHeaderLeadingInset)
         .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+        .padding(.bottom, BrevSpacing.xxs)
         .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -1830,7 +1837,7 @@ public struct FolderSidebar: View {
                         isSelected: false,
                         leading: {
                             Image(systemName: contribution.sfSymbolName)
-                                .foregroundStyle(theme.textSecondary.color)
+                                .foregroundStyle(FolderSidebarIconTint.macOSRowColor(isSelected: false, in: theme))
                                 .imageScale(.small)
                                 .frame(width: sidebarMetrics.iconWidth, alignment: .center)
                         },
@@ -1850,15 +1857,6 @@ public struct FolderSidebar: View {
     #endif
 
     #if os(macOS)
-    /// Leading inset aligning section headers, global rows, and depth-0 folder
-    /// icons onto one shared vertical rail while reserving the leading gutter
-    /// for subfolder disclosure chevrons (Apple Mail style).
-    private var macOSHeaderLeadingInset: CGFloat {
-        sidebarMetrics.folderRowLeadingPadding(depth: 0)
-            + sidebarMetrics.disclosureHitSize
-            + BrevSpacing.xxs
-    }
-
     private func sidebarActionRow<Leading: View, Trailing: View>(
         title: String,
         isSelected: Bool,
@@ -1871,13 +1869,13 @@ public struct FolderSidebar: View {
             }
             Text(verbatim: title)
                 .brevFont(.body)
-                .fontWeight(isSelected ? .medium : .regular)
+                .fontWeight(isSelected ? .semibold : .regular)
                 .foregroundStyle(theme.textPrimary.color)
                 .lineLimit(1)
             Spacer(minLength: BrevSpacing.sm)
             trailing()
         }
-        .padding(.leading, macOSHeaderLeadingInset)
+        .padding(.leading, sidebarMetrics.macOSRowLeadingInset)
         .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
         .padding(.vertical, sidebarMetrics.folderRowVerticalPadding)
         .frame(
@@ -1887,13 +1885,15 @@ public struct FolderSidebar: View {
         )
         .background {
             if isSelected {
-                RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius)
+                RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius, style: .continuous)
                     .fill(globalActionSelectionColor)
             } else {
                 SidebarRowHoverFill()
             }
         }
-        .contentShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
+        .contentShape(
+            RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius, style: .continuous)
+        )
     }
     #endif
 
@@ -2087,7 +2087,7 @@ public struct FolderSidebar: View {
         @State private var isHovered = false
 
         var body: some View {
-            RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius)
+            RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius, style: .continuous)
                 .fill(theme.textPrimary.color.opacity(0.06))
                 .opacity(isHovered ? 1 : 0)
                 .onHover { isHovered = $0 }
@@ -2098,7 +2098,7 @@ public struct FolderSidebar: View {
 
     #if os(macOS)
     private var folderLabelSpacing: CGFloat {
-        BrevSpacing.xs
+        BrevSpacing.sm
     }
     #endif
 
@@ -2111,7 +2111,7 @@ public struct FolderSidebar: View {
         let folder = row.folder
         let title = displayName(for: folder, sourceID: sourceID)
         let selected = isSelected(folder, in: sourceID, activeFavoriteID: activeFavoriteID)
-        return HStack(spacing: BrevSpacing.xxs) {
+        return HStack(spacing: FolderSidebarLayoutMetrics.macOSDisclosureToIconSpacing) {
             if row.hasChildren {
                 disclosureControl(for: row, sourceID: sourceID)
             } else {
@@ -2127,7 +2127,7 @@ public struct FolderSidebar: View {
                     }
                     Text(title)
                         .brevFont(.body)
-                        .fontWeight(selected ? .medium : .regular)
+                        .fontWeight(selected ? .semibold : .regular)
                         .foregroundStyle(theme.textPrimary.color)
                         .lineLimit(1)
                     Spacer(minLength: BrevSpacing.sm)
@@ -2149,13 +2149,15 @@ public struct FolderSidebar: View {
         )
         .background {
             if selected {
-                RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius)
+                RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius, style: .continuous)
                     .fill(folderSelectionColor)
             } else {
                 SidebarRowHoverFill()
             }
         }
-        .contentShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
+        .contentShape(
+            RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius, style: .continuous)
+        )
         .id(
             sourceID
                 .map {
