@@ -670,6 +670,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BREV_APP_BUNDLE_ID).mcp-helper";
 				PRODUCT_NAME = "brev-mcp";
 				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
 					"$(inherited)",
 					DEBUG,
@@ -882,6 +883,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BREV_APP_BUNDLE_ID).mcp-helper";
 				PRODUCT_NAME = "brev-mcp";
 				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 			};
