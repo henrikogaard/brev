@@ -1,8 +1,547 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.8</title><pubDate>Mon, 12 Oct 2026 07:30:40 GMT</pubDate><sparkle:version>2026101207</sparkle:version><sparkle:shortVersionString>0.2.8</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>### Changed
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.3.0</title><pubDate>Thu, 26 Nov 2026 20:56:17 GMT</pubDate><sparkle:version>2026112620</sparkle:version><sparkle:shortVersionString>0.3.0</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>- iOS 26/27 HIG polish and iPhone Duo (`iPhone19,4`) foldable adaptive support:
+  - Added `MailRootSizeClassTransitionPolicy` and live `horizontalSizeClass` handling in `BrevMailRootView` so unfolding from a compact message reader to regular split view clears `compactReaderHeader`, preserves live or fallback selection, restores `.doubleColumn` split visibility when compact navigation had set `.detailOnly`, and renders the active message instead of a blank pane; folding back preserves an actively read message in the compact reader (or keeps `.bottomStack` mounted directly) and returns cleanly to the message list / sidebar when no message is selected.
+  - Replaced `.userInterfaceIdiom == .pad` layout gates with size-class-driven policies (`MailPanePlatformPolicy`, `MessageDetailView.readerLayout`, `FolderSidebar.sidebarMetrics`, and `ComposeLayoutPolicy`) so unfolded foldable phones (`horizontalSizeClass == .regular`, `verticalSizeClass == .regular`) receive split-view column bounds (`220/250/360 pt` sidebar, `280/340/460 pt` message list fitting `669 pt` portrait and `951 pt` landscape cleanly), bounded reader margins, and non-clipping regular-width compose sheets while keeping `MailDetachWindowPolicy` gated to iPad multi-window scenes.
+  - Added reusable iOS 26+ `.brevIOSSoftScrollEdge(edges:)` (`IOSScrollEdgeEffectPolicy`) with single structural view identity across Reduce Transparency toggles, and applied it to iOS `FolderSidebar`, `UnifiedInboxListView`, `MessageListView`, `MessageDetailView`, and `ThreadConversationView`.
+  - Added Apple Mail's native iOS Mailboxes bottom bar (`toolbarSidebar`: quiet centered sync status via `FolderSidebarSyncStatus` + trailing Compose button), kept `Manage Profiles` reachable on single-profile iOS workspaces while falling back to Apple's collapsing `.large` `"Mailboxes"` title when profile management is absent (`MailRootSettingsToolbarPolicy`), and applied themed `.listRowSeparatorTint(theme.separator.color)` on iOS message lists and Mailboxes rows.
+
+- macOS 26/27 sidebar visual hierarchy and indentation polish:
+  - Softened macOS sidebar section titles (`Favorites`, `Smart Views`, and account headings) to `.brevFont(.footnote).fontWeight(.medium)` using `FolderSidebarSectionHeaderStyle.titleColor(in:)` (`theme.textTertiary.color.opacity(0.76)`) and hid the resting `Smart Views` disclosure chevron until hover or keyboard focus (`FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity`).
+  - Separated macOS section headers onto an outer left rail (`FolderSidebarLayoutMetrics.macOSSectionHeaderLeadingInset = 4 pt`, shared with the profile switcher pill and whisper footer) and indented all top-level row icons (`Favorites`, `Smart Views` items, `Assistant`, `Outbox`, `Plugins`, and depth-0 folders) cleanly inward past the leading subfolder disclosure gutter (`macOSRowLeadingInset = 18 pt`, 14 pt inward) so subfolder `&gt;` chevrons tuck neatly beneath section titles.
+  - Increased macOS sidebar icon-to-label spacing to `BrevSpacing.sm` (`8 pt`), softened monochrome row icon tones (`theme.textTertiary.color.opacity(0.82)` at rest, `theme.textSecondary.color` when selected), elevated selected row labels to `.semibold`, updated row selection and hover pills to smooth continuous `10 pt` corners (`FolderSidebarSelectionPresentation.cornerRadius`), and added calm `BrevSpacing.md` (`12 pt`) inter-section vertical breathing room (`BrevSpacing.xxs` below section headers).
+
+- Liquid Glass contrast polish (macOS 26/27 &amp; iPadOS 26/27):
+  - Fixed `BrevGlassCapsuleModifier` and untinted `BrevGlassRoundedSurfaceModifier` in `BrevDesign` (`BrevLiquidGlass.swift`) to apply `.glassEffect(...)` directly to `content` instead of wrapping `Color.clear.glassEffect(...)` + an opaque `.overlay` fill inside `.background`, eliminating the gray veil over `ReaderQuickReplyBar` placeholder text and expand icons inside `GlassEffectContainer` while keeping tinted panels (`MailCommandPalette`) high-contrast over mail content.
+  - Applied explicit `prompt: Text(placeholder).foregroundStyle(theme.textSecondary.color)` in `ReaderQuickReplyBar` on both macOS and iOS for consistent placeholder legibility.
+  - Replaced `.buttonStyle(.glass)` on macOS docked inline reply `Later` and `Write` controls (`ComposeView.inlineLaterButton` and `ComposeView.inlineWriteMenu`) with `.buttonStyle(.plain)` + `.composeGlassCapsule(...)` so Dark Mode monochrome accent tinting no longer paints an unreadable white-on-white pill.
+
+- macOS 26 Native Liquid Glass sidebar declutter (Wave 1):
+  - Let macOS 26 `NavigationSplitView`'s native floating Liquid Glass sidebar column shine cleanly (`FolderSidebarSurfacePolicy`, `brevMacSidebarPaneSurface()`, `scrollEdgeEffectStyle(.soft, for: .vertical)`) without painting an opaque flat slab over it, while falling back to the themed surface when Reduce Transparency is enabled or on macOS &lt; 26.
+  - Hid the top macOS profile switcher banner when only a single profile (or All Mailboxes) exists (`FolderSidebarProfileSwitcherPolicy`), keeping `Manage Profiles` accessible in section context menus and Settings, and refined multi-profile switching into a compact native capsule pill.
+  - Replaced permanent trailing `•••` and `+` section-header clutter with hover-revealed actions plus full right-click context menus while preserving VoiceOver and keyboard accessibility.
+  - Promoted each macOS account directly to its own calm `11 pt` semibold collapsible section header (removing the redundant `Accounts` wrapper and trailing `count &gt;` collisions).
+  - Updated macOS sidebar rows to calm regular weight (medium when selected), monochrome muted SF Symbols (`theme.textSecondary.color` unselected, `theme.textPrimary.color` selected), leading subfolder disclosure chevrons aligned to one shared icon rail, and default-collapsed nested subfolders on fresh mailboxes (`FolderDisclosureState`).
+  - Replaced the bordered macOS sidebar footer card with a borderless whisper strip showing quiet sync status and a hover-responsive Settings gear button.
+
+- macOS Assistant crash fix and UI/UX Polish Wave A (#369, #294, #295, #300):
+  - Fixed P1 macOS Assistant `_dispatch_assert_queue_fail` crash on prompt submit (#369) by routing backend resolution through `MailboxChatSearchBridge` on `@MainActor` before running off-main local searches (and removing `@MainActor` `View` captures from iOS `MailboxChatPanel` and macOS `MailContextColumn` search closures).
+  - Polished the macOS Assistant empty state (#294) into a centered hero with a subtle provider trust badge (`"On this Mac"`), concise headline and subtitle, a 2×2 grid of four grounded localized starter prompt cards (`en` + `nb`), and an inline composer that docks to the bottom once conversation turns exist.
+  - Improved the macOS `⌘K` Command Palette (#300) to rank contextual **Mail Actions** (`New Message`, `Reply`, `Archive`, `Snooze`, `Get New Mail`) and **Jump To** (`Assistant`, `Today`, `Inbox`, `Settings…`) ahead of macOS app/window boilerplate (`About…`, `Hide…`, `Hide Others`, `Show All`, `Quit…`), with subtle unfiltered section headers, right-aligned shortcut keycaps, and a theme-token rounded selected-row highlight fill.
+  - Polished macOS Subscriptions and the People/Updates inbox split (#295): moved `Unsubscribe` and `Archive all` onto a non-truncating secondary action row in `SubscriptionsView` so full labels never ellipsize at default 3-pane list widths, classified automated CI/deployment/infra notifications (such as Vercel `"Production deployment succeeded"`) under **Updates** instead of **People** without misclassifying human local parts, and kept subtle date section headers (`Today`, `Yesterday`, `This week`) visible under the `People` filter.
+
+- Native Liquid Glass Wave 2 — shared `BrevDesign` Liquid Glass primitives and floating glass reader/HUD chrome:
+  - Added reusable, `#if compiler(&gt;=6.2)` + OS 26+ availability-guarded Liquid Glass primitives in `BrevDesign` (`BrevLiquidGlassPolicy`, `BrevGlassContainer`, `View.brevGlassCapsule`, `View.brevGlassSurface(cornerRadius:interactive:tint:)`, and `View.brevGlassButtonStyle`) with automatic Reduce Transparency opaque fallbacks and `.regularMaterial` OS &lt; 26 fallbacks.
+  - Upgraded `ReaderQuickReplyBar` into a floating `BrevGlassContainer` dock with an expanding continuous-corner glass reply capsule (housing the borderless field and inline trailing Open in Composer action), a separate circular glass Send button (`34 pt` macOS / `44 pt` iOS), floating glass status/Undo Send countdown pills, and a subtle non-hit-testing bottom scroll fade (`ReaderQuickReplyBottomFade`) behind the bottom `safeAreaInset` dock in `MessageDetailView` and `ThreadConversationView`.
+  - Upgraded the macOS `⌘K` Command Palette (`MailCommandPalette`) to a Spotlight-style continuous-corner (`18 pt`) Liquid Glass surface while preserving theme tinting, text contrast, and selection row highlights.
+  - Upgraded `MailUndoToast` undo, retry, and progress feedback to floating Liquid Glass HUD capsules (`brevGlassCapsule`) while retaining 44 pt iOS touch targets and VoiceOver announcements.
+
+- Rich compose Dark Mode contrast (#361): fixed iOS `UITextView` rich compose
+  body text and typing attributes staying dark when switching from Light to Dark
+  Mode (including `UITraitUserInterfaceStyle` updates and Dark Mode draft
+  reopen), and re-resolved macOS `NSTextTableBlock` header backgrounds, table
+  cell borders, and inline-code/code-block surface colors on appearance switches
+  while preserving explicit user-authored colors and formatting traits.
+
+- macOS reader, dark compose, and Settings polish (#302, #306, #281):
+  - Anchored the macOS reader quick-reply bar (`ReaderQuickReplyBar`) to the bottom edge of both single-message (`MessageDetailView`) and thread (`ThreadConversationView`) panes via `safeAreaInset(edge: .bottom)` so short threads no longer float the reply bar mid-pane.
+  - Normalized macOS reader body copy to regular weight (`font-weight: 400`, `-webkit-font-smoothing: antialiased`) with calmer `1.55` line height across HTML and plain-text messages.
+  - Fixed docked inline reply defaults (#302): matched the `From` sender identity to the addressed account in `To`/`Cc` before falling back to the default account, and placed the initial macOS caret at offset `0` on the leading blank line above the `"On &lt;date&gt; ... wrote:"` attribution line.
+  - Unified the macOS Compose Schedule Send (`Later`) toolbar button inside the glass Send capsule across Light and Dark Mode by propagating `BrevTheme` and `NSAppearance` into `MacComposeToolbarDelegate`, and inset macOS rich-compose `NSTextTable` width/trailing margin so all 4 outer borders render crisply in both modes.
+  - De-duplicated the redundant `"Privacy"` section title beneath `Privacy &amp; Security` segmented tabs, lifted ON-switch contrast in dark monochrome themes (`Brev Mono Dark`, `Brev Mono Grey`) with a theme-token high-contrast switch style, and gated the built-in `Example Plugin` behind an opt-in **Show Example Plugin** toggle in Developer Settings (`BREV_SHOW_EXAMPLE_PLUGIN=1`).
+
+- Native macOS 26 &amp; iOS 26 Liquid Glass Composer (Wave 3):
+  - Elevated the macOS docked inline reply into a continuous 16 pt inset card with subtle hairline border and shadow, upgraded `inlineBottomBar` into a macOS 26 `GlassEffectContainer` grouping prominent accent-tinted `.buttonStyle(.glassProminent)` Send, `.buttonStyle(.glass)` `Later` and `Write ✦`, and an interactive glass `(Attach · Format)` capsule without a full-width top divider, with full `&lt; 26` and Reduce Transparency fallbacks.
+  - Upgraded the detached macOS compose window toolbar (`MacMailAuxiliaryWindowPresenter`) so the macOS 26 `NSToolbar` Send item uses native `.prominent` accent tinting when sendable alongside glass-matched `Later` and a secondary `(Format · Attach · More)` group, and turned the macOS `Aa` rich-text control into a bottom-floating `GlassEffectContainer` formatting pill bar with an AI `Write ✦` cluster that preserves `NSTextView` focus.
+  - Upgraded the iOS 26 Compose sheet chrome (`mobileToolbar`, `mobileUtilityToolbar`, `ComposeLaterButtonView`) with `GlassEffectContainer`-grouped circular glass `✕` Cancel and `↑` Send (`34 pt` visual circle in `44×44` tap target), glass `Later` pill, `.scrollEdgeEffectStyle(.soft, for: .top)`, and a floating bottom utility glass pill cluster (`Attach`, `Format`, `More`, optional `Write ✦`) with no harsh full-width divider.
+
+- SQLite sync-store performance and SQLite 3.54 query-plan fixes (#358, #359):
+  - Added schema v11 `message_search_index` (`(account_id, message_id) -&gt; fts_rowid`, plus `idx_message_search_folder`) and the partial covering index `idx_msg_dirty` (`WHERE is_dirty = 1`) in `SQLiteSyncStore`, with transactional v10→v11 backfill and duplicate-row pruning. Eliminated O(N²) full FTS5 table scans on `UNINDEXED` columns during bulk `upsertHeaders` and O(N) scans during flag-only updates, body updates, deletes, metrics counts, and tokenless body joins (reducing 50k `IMAPHeaderReadBaselineTests` runtime from 399.4 s to 4.03 s and 50k `flag-persist` median latency from 5.587 ms to 0.176 ms in Release on Apple M6 / macOS 27.0 / SQLite 3.54.0).
+  - Pinned `INDEXED BY idx_imap_attachment_headers` on the left `UNION` branch of `SQLiteSyncStore.attachmentOrCachedBodyHeadersSQL` so SQLite 3.54's `MERGE (UNION)` planner cannot regress attachment candidate selection to a folder-wide primary-key scan.
+
+- iOS ergonomics &amp; polish (#281, #360):
+  - Added a subtle theme-aware bottom fade gradient (`MessageListBottomBarFade`, `Color.clear` → `theme.bgPrimary.color`) behind the floating iOS bottom search/compose Liquid Glass dock on both single-folder (`MessageListView`) and unified (`UnifiedInboxListView`) lists so rows glide underneath without sender/snippet collision, and shortened the iOS search prompt to `"Search mail or ask…"` (`nb`: `"Søk i e-post eller spør…"`).
+  - Aligned the expanded iOS `ThreadMessageCard` trailing metadata cluster (timestamp, collapse chevron, and HTML display overflow `⋯` menu) onto a shared vertical center baseline via `VerticalAlignment.threadCardHeaderMetadata` while preserving 44 pt touch targets.
+  - Sized the iOS Compose top bar circular Send (`↑`) pill to a proportionate 34 pt visual diameter centered inside its 44×44 pt tap target (`ComposeLayoutPolicy.sendButtonVisualDiameter`), preventing it from crowding the sheet corner bezel in Landscape while staying aligned with `Cancel`, title, and `Later`.
+  - Upgraded iOS `Mailboxes` (`FolderSidebar`) so the top-left gear button opens Settings directly in 1 tap (`accessibilityLabel("Settings")`) and separated Profile switching (`All Mailboxes`, profiles, `Manage Profiles`) into a dedicated inline `Mailboxes ⌄` navigation title menu (#360).
+  - Applied native iOS 26+ soft top scroll-edge chrome (`scrollEdgeEffectStyle(.soft, for: .top)`) and matching grouped `theme.bgSecondary.color` backdrop across iOS `SettingsView` and `SectionScaffold` panes without altering macOS Settings chrome.
+
+- iOS Settings access, Landscape/AXL layout fixes, and Norwegian AX hints (#360, #362, #363):
+  - Wired `FolderSidebar`'s leading gear menu `onOpenSettings` callback on iOS (iPhone and iPad) via `MailRootSettingsToolbarPolicy.sidebarSettingsAction` so **Settings** is directly reachable from the `Mailboxes` root screen while preserving macOS's footer-only Settings wiring (#360).
+  - Updated `ComposeView` on iOS compact vertical height (iPhone Landscape) to pin the top navigation bar (`Cancel`, title, `Later`, `Send`) and bottom utility bar (`Attach`, `Aa`, `⋯`) at compact 44 pt heights around a scrollable header + body column (`minHeight: 160`, interactive keyboard dismissal) so software keyboards no longer push the top bar off-screen or occlude the body and formatting controls (#362).
+  - Updated `PrivacyOnboardingSheet` at Dynamic Type accessibility sizes (`AXL`+) to scroll header, cards, and full-width wrapping footer actions together, stack card headers above wrapping scope badges (removing rigid single-line horizontal `.fixedSize`), and keep macOS default snapshots unchanged (#362).
+  - Replaced the interpolated English verb in `MessageListDateSectionHeader`'s accessibility hint with two complete localized strings (`"Double-tap to expand this section"` / `"Double-tap to collapse this section"`) with full `en` and `nb` (`"Dobbelttrykk for å utvide denne delen"` / `"Dobbelttrykk for å skjule denne delen"`) entries in `BrevMail`'s String Catalog (#363).
+
+- Native JMAP mail backend (`BrevJMAP`, RFC 8620 / RFC 8621): added the MIT-licensed
+  `packages/BrevJMAP/` SPM package implementing strict-HTTPS session discovery
+  (`/.well-known/jmap` or explicit HTTPS session URL, rejecting non-HTTPS URLs,
+  embedded credentials, and insecure redirects, and stripping `Authorization` headers
+  on cross-origin redirects), batched JSON API calls with `#resultRef` back-references,
+  `Mailbox/get` + `Mailbox/set` folder management, single-round-trip `Email/query` +
+  `Email/get` listing and structured server search, body/attachment/raw-source
+  downloads via percent-encoded `downloadUrl` templates, `Email/set` mutations
+  (read, flag, Apple `$MailFlagBit0..2` flag colors, move, copy, trash/destroy),
+  `Blob/upload` + `Email/set` drafts and batched `EmailSubmission/set` outbound send,
+  `Mailbox/changes` + `Email/changes` delta sync with `cannotCalculateChanges` recovery,
+  RFC 8620 §7.3 `EventSource` SSE live updates with bounded backoff, and RFC 8620 §7.2
+  `PushSubscription/set` WebPush hooks; added Keychain-only `JMAPAccountConnector`
+  wiring across `BrevMail`, `BrevMacOS`, and `BrevIOS`, plus the `JMAPAccountSetupView`
+  (one-click Fastmail preset and custom JMAP server entry) in English and Norwegian (`nb`).
+
+- On-device AI downloaded local models (#304, Slice 2): added
+  `LocalModelCatalog` (curated open-weights models with parameter count,
+  quantization, size, SPDX license, HTTPS URL, RAM note, and SHA-256 digest),
+  `LocalModelDownloadManager` (strictly user-initiated HTTPS streaming downloads
+  with live progress, cancel/delete, streaming SHA-256 verification that deletes
+  partial files on mismatch or cancellation, and backup-excluded storage under
+  `Application Support/Brev/LocalModels/`), `LocalDownloadedModelAIBackend` and
+  `AIProviderKind.onDeviceDownloadedModel` (`"On this Mac (download a model)"`)
+  with zero bundled weights, zero network during inference, and `"On this Mac"`
+  attribution, plus the Local Models management card in Settings → AI Writer.
+- Generic IMAP sign-in code &amp; link detection (#5): added an RFC 8601
+  `Authentication-Results` parser and domain-alignment verifier
+  (`AuthenticationResultsParser`, `IMAPSignInReceiverProvenance`,
+  `AuthenticationResultsSignInTrustAssessor`) in `BrevBackend` and wired
+  `IMAPSMTPBackend` (`SignInTrustAssessing`, `.trustedSignInAssessment`) so
+  opted-in public-hostname IMAP providers (Fastmail, iCloud IMAP, Gmail IMAP,
+  Outlook/Exchange IMAP, Migadu, Mailbox.org, and custom domains) verify the
+  top-most server-prepended `Authentication-Results` header (`dmarc=pass`
+  matching a single `From` domain plus aligned `dkim=pass` or `spf=pass`, with
+  no untrusted `Received` hop above it) via header-only `BODY.PEEK[HEADER]`
+  (never falling back to full `BODY.PEEK[]`) within the 10-minute server
+  `INTERNALDATE` freshness window before reading a fresh Inbox message body.
+  Loopback and IP-literal IMAP hosts (such as default Proton Bridge on
+  `127.0.0.1`) fail closed because receiver provenance cannot be verified from
+  a loopback host. Per-account opt-in remains off by default, and Settings
+  explains the verification rule in English and Norwegian.
+- Closed-app push options with zero Brev proxy (#11): added opt-in, device-local
+  **Settings → Notifications → Closed-App Push (Self-Hosted)** (off by default,
+  excluded from `.brevbackup` and iCloud preference sync) supporting both
+  user-hosted HTTPS push relays and RFC 8620 §7.2 JMAP WebPush
+  `PushSubscription/set` registration with locally generated RFC 8291 P-256
+  encryption keys, Keychain-only bearer and private-key storage, strict HTTPS
+  endpoint validation (rejecting `http://` and embedded URL credentials), and
+  `PushWakeCoordinator` handling opaque wake triggers to run bounded local sync
+  strictly for opted-in accounts.
+- iOS outbound S/MIME signing &amp; encryption (`docs/design/privacy-and-security.md`): added a cross-platform pure-Swift RFC 8551 / RFC 5652 CMS DER encoder (`PureSwiftCMSEncoder` + `ASN1DER` / `X509CertificateParser`) in `BrevCrypto` built solely on Apple's `Security`, `CryptoKit`, and `CommonCrypto` frameworks (SHA-256 detached `SignedData` for RSA and ECDSA signing keys; AES-256-CBC + RSA PKCS#1 `EnvelopedData` for single and multiple recipients), removed the macOS-only gates on `SMIMEOutboundMessagePreparer`, `OutboundMessagePreparerFactory`, `KeychainSMIMEResolver`, and `Settings → Security`, and kept fail-closed local-Keychain behavior on both platforms without downgrading to plaintext.
+- Onboarding privacy &amp; convenience choices: added an optional, plain-language **Privacy &amp; Convenience Choices** walkthrough presented once after first-run account setup (suppressed in demo/mock mode, automated tests, and for existing users) and re-openable anytime from **Settings → Privacy &amp; Security → Privacy → Review Privacy &amp; Convenience Choices…** (also indexed in Settings Search). Every opt-in convenience starts strictly off by default (sender domain/Gravatar avatars, trusted-sender remote images, iCloud preference sync, macOS background mail checks, background recent-mail &amp; attachment indexing, and zero-network on-device Apple Intelligence + optional proactive triage; no cloud/BYOK providers), with explicit **Keep defaults (all off)** and **Save choices** actions and a device-local completion flag excluded from iCloud sync and `.brevbackup` exports.
+- Rich HTML compose beyond MVP (#3):
+  - **Inline images (`cid:`):** Added WebP support alongside PNG, JPEG, and GIF
+    (with magic-byte sniffing, 10 MiB per-image and 25 MiB aggregate caps, and
+    fail-closed format/size validation), local in-memory `cid:` image rendering
+    inside HTML Preview and preserved quote previews with zero external network
+    fetches, lossless draft Save/autosave/reopen restoration of `cid:` inline
+    images, and cleaner RFC 2387 `multipart/related` MIME output (omitting
+    redundant `multipart/mixed` wrappers when only inline images are present).
+  - **Clean rich-HTML paste (`ComposeHTMLPasteSanitizer`):** Wired a linear
+    HTML paste sanitizer into macOS and iOS rich compose editors that preserves
+    semantic formatting (bold, italic, underline, strikethrough, `h1`–`h3`,
+    safe `http`/`https`/`mailto` links, lists, blockquotes, tables, inline
+    `code`, and `&lt;pre&gt;&lt;code&gt;` blocks) while stripping scripts, styles, iframes,
+    forms, `on*` handlers, remote images/tracking pixels, unsafe link schemes,
+    and inline color/background CSS so pasted HTML adapts to light and dark
+    themes.
+  - **Tables, code blocks, headings, and strikethrough:** Added Format menu
+    actions and lossless serialization, preview styling, and draft reopening
+    for semantic HTML tables (`&lt;table&gt;`/`&lt;thead&gt;`/`&lt;tbody&gt;`/`&lt;tr&gt;`/`&lt;th&gt;`/`&lt;td&gt;`),
+    `&lt;pre&gt;&lt;code&gt;` code blocks, inline `&lt;code&gt;`, `&lt;h1&gt;`–`&lt;h3&gt;` headings, and
+    `&lt;s&gt;` strikethrough while preserving all PR #350 quoted-thread invariants.
+- Opt-in background recent-mail and attachment indexing (#7): added device-local **Settings → Sync &amp; Storage → Mail Storage → Background indexing** (strictly off by default, excluded from iCloud preference sync, included in portable settings backups without enabling `isEnabled` on restore) with 30/90/365-day lookback windows, optional text extraction for eligible non-inline attachments up to 10 MiB (PDF, plain text, RTF, HTML), automatic pausing on cellular/Low Data Mode/Low Power Mode via **Wi-Fi &amp; power friendly**, Trash/Spam exclusion (including multi-label messages), unread-flag preservation, persisted per-account progress cursors, and live status/Pause/Resume/Index now/Reset controls wired into `AppSession` and `BackgroundMailCoordinator`.
+- Proactive opt-in on-device AI summaries and priority triage: added
+  `AIBackend.isOnDeviceZeroNetwork` (enabled only for zero-network on-device
+  backends such as `AppleIntelligenceAIBackend`), the opt-in
+  **Automatic on-device summaries &amp; priority** toggle in Settings → Writing →
+  AI Writer (off by default, disabled for cloud/BYOK providers), a bounded
+  cancellable in-memory `ProactiveOnDeviceTriageEngine` and
+  `OnDeviceThreadTriageStore` (cache-only input, Trash/Spam exclusion, sign-in
+  code redaction, fingerprint invalidation, immediate cache wipe on opt-out),
+  compact `Urgent` / `Needs reply` badges and `"On this Mac"` summary previews
+  in message list rows, and an automatic `"On this Mac"` summary card in the
+  thread conversation header alongside the manual `Summarize` action.
+- Lossless draft reopening for nested, styled, and webmail quoted HTML (#278):
+  drafts containing nested `&lt;blockquote&gt;` threads, Apple Mail `&lt;blockquote type="cite"&gt;`,
+  Gmail `.gmail_quote`, Outlook `#divRplyFwdMsg`, or rich webmail tables inside
+  the quoted section now reopen cleanly in rich compose instead of being
+  refused. Brev splits the editable top reply from the quoted thread using a
+  balanced-tag HTML scanner, keeps the quoted HTML tail byte-for-byte intact
+  across Save, autosave, and Send, shows a collapsible non-editable **Quoted
+  message preserved** preview below the editor, and continues to fail closed on
+  malformed quotes, unsupported editable-prefix markup, plain-text mode on rich
+  drafts, and pending/failed/cancelled draft loads.
+- Trusted-sender remote image tier (#8): added opt-in **Settings → Privacy &amp; Security → Privacy → Load remote images for trusted senders** (off by default, excluded from iCloud preference sync) to automatically load remote images from exact addresses in local Contacts or people you have previously emailed/replied to without prompting for Contacts access or making extra network calls, while continuing to strip tracking pixels before rendering in both single-message and thread readers.
+- Local MCP `create_draft` tool (#6): local MCP clients can now propose
+  plain-text drafts (with optional reply threading via an in-scope
+  `in_reply_to_message_id`) behind a mandatory per-call in-app approval sheet
+  showing account, recipients, subject, and a bounded redacted body preview.
+  Approved calls save a draft for manual review via `backend.save(draft:)` and
+  never send mail; `send_message`, `delete_message`, `move_to_trash`,
+  `empty_trash`, and credential/settings mutations remain permanently excluded.
+
+- Replaced the 95-file `ADRs/` directory and protected-path `adr-required` CI
+  gate with 10 living subsystem design documents under `docs/design/`,
+  discarding 24 obsolete/micromanagement records and relaxing overly
+  restrictive policies around rich compose/draft reopening, on-device AI,
+  avatars, background attachment indexing, generic IMAP sign-in codes, iOS
+  outbound S/MIME, closed-app push options, and local MCP draft creation.
+
+- Local MCP agent access on macOS (#305, ADR-0095): added opt-in **Settings →
+  Agent access** (off by default, per-account toggles, device-local only,
+  excluded from backups and iCloud sync), an in-process local MCP broker over a
+  `0600` user-private Unix domain socket with peer-UID verification and zero
+  listening network ports, the `brev-mcp` stdio helper bridge, cache-only read
+  tools (`list_accounts`, `list_folders`, `search_messages`, `read_message`)
+  with ADR-0088 sign-in code redaction, per-call in-app approval sheets for
+  `archive_messages` and `label_messages` (max 25 messages, 60s fail-closed
+  timeout, single active prompt, no send/delete/Trash/Spam tools), and a
+  bounded 1,000-entry local audit log with filtering and one-click clear.
+- On-device AI with Apple Intelligence (#304, ADR-0094 Slice 1): added
+  `AppleIntelligenceAIBackend` backed by Apple's `FoundationModels` framework on
+  macOS 26+ and iOS 26+ with zero network calls, zero API keys, conservative
+  provider-neutral context budgets (`AIBackendContextBudget.onDevice`), live
+  availability gating with plain-language disabled reasons in Settings → AI, and
+  localized `"On this Mac"` / `"On this iPhone"` / `"On this iPad"` transparency
+  labels wherever AI output appears. AI remains off by default.
+- Searching from any mailbox now searches across all visible accounts by default while letting you narrow to the current folder and keeping source-aware result routing (#296).
+- Search for “pdf” or “med PDF” to filter downloaded mail by attachment type.
+- iOS lock-screen-safe sign-in notifications (#239, ADR-0088 accepted iOS
+  amendment): opted-in accounts with `.trustedSignInAssessment` post
+  time-sensitive iOS notifications containing only the sender and generic copy
+  (zero raw codes or links in Notification Center), with biometric-gated
+  background **Copy code** (`.localOnly`, 60-second expiration), foreground
+  host-confirming **Open link**, and automatic Notification Center cleanup on
+  use, consent withdrawal, or 10-minute expiry. Gmail's
+  `.trustedSignInAssessment` capability remains off pending live E1–E5 evidence.
+- Search for messages by sender name and relative date in English or Norwegian, for example “from Maya last week” or “fra Maya forrige uke”. Remove a chip to broaden the results (#296).
+- The reader flags sender domains that resemble a familiar correspondent or brand. Expand the warning to check the address and see why it was flagged (#301).
+- On Mac, press ⌘K to search menu commands, accounts, mailboxes and settings.
+- On Mac, single-key shortcuts act on the selected message while the message list or reader has focus (`E` archive, `R` reply, `S` star, `#` delete, `H` snooze, `J`/`K` next and previous) and pause while typing; toggle them in Settings → Mailbox View (#300).
+- Cached expired snoozed messages outside the loaded Inbox page now reappear
+  on Inbox open and at wake without a timer-triggered provider reload (#297).
+- Conversation snoozing now includes messages stored in local folders, using
+  complete local headers without network access (#297).
+- Snoozing a message now covers its RFC-linked conversation using cached mail,
+  including newly discovered replies; unrelated messages are not grouped by
+  subject or provider thread identifiers (#297).
+- Snoozed messages return to newest-first Inbox ordering when they wake;
+  message timestamps and provider data remain unchanged (#297).
+- Assistant sidebar destination (#294): clicking Assistant in the sidebar or
+  "Ask about my mail" on Today now opens a full Assistant view beside the
+  sidebar with grounded conversation cards grouped into Needs you, Worth a
+  look, and Updates &amp; newsletters, summary chips, and one-click reply/follow-up
+  chips linked directly to local messages. AI remains off by default and only
+  runs on explicit send.
+- Actionable notifications &amp; optional macOS drop-down panel (#307): Mark as
+  Read and Archive notification actions now run in the background without
+  foregrounding the app, buffer during cold launch, route through the offline
+  mutation queue, and keep working when no main window is open on macOS. An
+  opt-in macOS new-mail drop-down panel (off by default in Settings →
+  Notifications) shows the sender, one-line preview, and Archive / Mark as Read
+  / Reply buttons near the top of the screen and auto-dismisses, while
+  excluding sign-in code messages (ADR-0088).
+- Triage mode (#293): start sequential, full-window conversation triage from the
+  Today page or Message → Start Triage (`⇧⌘T`). Process one conversation at a
+  time with single-key shortcuts (`E` archive, `H` snooze until tomorrow, `R`
+  reply, `J` skip, `Esc` done), next-body preloading, `⌘Z` undo, and exact list
+  position restoration on exit.
+- Sign-in codes on screen (#239, ADR-0088): added the non-activating macOS
+  bottom-center floating panel (`SignInCodePanelController` with
+  `org.nspasteboard.ConcealedType` clipboard writes, change-count-guarded
+  auto-clear, and app-active-only Escape dismissal), wired `AppSession`
+  ownership and Settings consent-change cancellation, added opt-in-gated
+  reader/list/Today sign-in code surfaces, updated `PRIVACY.md` and ADR-0006,
+  and drafted the Proposed iOS notification privacy amendment in ADR-0088.
+  Gmail's `.trustedSignInAssessment` capability remains off pending E1–E5 live
+  evidence.
+- Inbox split into People and Updates, plus Subscriptions view (#295, ADR-0035
+  amendment, ADR-0006): adds the two-way **People &amp; Updates** inbox mode
+  showing live counts (**People N · Updates M · All**), deterministic local
+  classification with remembered per-sender People/Updates overrides,
+  expandable per-sender bundles in Updates with undoable bundle archive, and a
+  **Subscriptions** sidebar mailbox built locally from cached `List-Unsubscribe`
+  headers with explicit unsubscribe confirmation and undoable Archive all.
+- Tracking pixels are removed before a message renders, even when remote
+  images are allowed, so senders can't tell when you opened their mail. The
+  reader shows a quiet "Blocked 2 trackers" note (#299).
+- Privacy adds a default-on "Remove tracking pixels" setting, independent of
+  remote-content permission. The reader reports trackers removed or likely to
+  load according to that setting (#299).
+- Compose Undo Send now shows a compact countdown toast with a ring and Undo
+  action for the configured delay (#297).
+- Add an explicitly approved isolated mock content-QA build option for native
+  body rendering and read-only attachment picking; strict and shipping permissions stay unchanged.
+- Full compose now has a localized Later action beside Send on macOS and iOS.
+  Later opens the existing schedule sheet, which explains that delivery needs
+  Brev running and connected. Demo and isolated Mock accounts retain explicitly
+  scheduled messages locally across restarts and deliver them after reconnect.
+  Established Mock schedule data that goes missing or corrupt now surfaces the
+  existing local-storage error during folder and message loading instead of
+  appearing as an empty queue.
+
+### Changed
+
+- Search accepts folder phrases such as “in Sent” and “i Sendt”. The folder chip
+  uses each mailbox’s own folder and can be removed independently (#296).
+
+- macOS sidebar (#306): the account switcher is now the sidebar's title, an
+  Assistant row sits right under it when AI is on, Inbox, Drafts, Archive, Spam
+  and the other mailboxes get theme-coloured icons, Accounts has a "+" to add an
+  account, and a footer shows who is signed in, whether mail is up to date or
+  offline, and a Settings button.
+- Message list (#306): the list header shows the unread count ("Personal ·
+  67 unread"), the category tabs are soft pills on macOS too, a thread's
+  message count sits right after the sender, and the attachment clip sits
+  beside the time.
+- Message list (#306): when the list holds mail from more than one account,
+  each avatar has a small dot in that account's colour. Colours come from the
+  theme's avatar palette, taken in sidebar order.
+- Reader on macOS (#302): the "Reply to…" bar's expand button now opens the
+  full composer docked under the reader instead of a sheet. It stays open while
+  you read other mail and closes on Send or Close, which save the Draft as
+  before.
+- Docked reply on macOS (#302): with AI Writer on, quick reply starters (Reply,
+  Say yes, Decline politely, Ask for more time, Ask a question) and a
+  "Describe your reply" field sit under the fields. They run only when clicked
+  and show the usual AI preview before anything lands in the Draft. They are
+  hidden when AI Writer is off.
+- Docked reply on macOS (#302): Send, Later (schedule send) and Write (AI
+  Writer) now sit in a bar at the bottom of the reply, with attach and
+  formatting on the right. Later and Write appear only when the account
+  supports them. Send keeps ⌘↩ and Undo Send.
+- macOS reader toolbar (#306): actions sit in capsules. Reply, Reply All and
+  Forward share one; Archive, Delete, Move and Snooze share the next, then
+  More. The AI Sidebar button has its own, and search sits at the far right.
+  On a narrow reader, Reply All, Forward, Move and Snooze fold into More.
+- macOS reader (#306): the message column is centred in a wide reader. A
+  thread's header names who is in it, shows the message count as a chip,
+  and has a Summarize link next to it instead of only in the ••• menu.
+- macOS reader attachments (#306): attachments are cards in a grid, each
+  with a file-type icon, the name, the kind and size ("PDF · 240 KB"), the
+  main action and a ••• menu. Hover, double-click to open and drag-out still
+  work.
+- Reader threads (#306): an expanded message in a thread now lists its
+  attachments, with the same cards (macOS) or rows (iOS) and actions as the
+  single-message reader: preview, save, open, Save All, double-click and
+  drag-out. Inline images and the calendar invite stay where they were.
+  Save to Google Drive is still only in the single-message reader.
+- macOS compose: the Format menu's Bold, Italic and Clear Formatting now work,
+  Cmd-B, Cmd-I and Cmd-U format the message body instead of reaching the main
+  menu (where Cmd-U marked a message read), and Insert Link applies the link even
+  when the link sheet moved focus. Reopened Drafts use the editor font instead of
+  Times. A Light or Dark editor that differs from the window paints its own
+  background so the text stays readable.
+- macOS compose header: To, Cc, Bcc, From and Subject share one label column
+  whose labels start on the body text's left edge. Every header row, Cc and Bcc
+  included, has the same height and one hairline below it that runs to the
+  window edge. The collapsed row reads "From" with a Cc/Bcc control, and a
+  refused Draft shows its explanation once. The link
+  sheet's "Display text" label and the empty Templates text are now translated.
+- iOS compose header: the labels start on the body text's left edge. Every header
+  row, Cc and Bcc included, has the same height and one hairline below it that
+  runs to the screen edge. The label column grows with the text size, so
+  "Subject" stays on one line.
+- A saved Draft with a bulleted or numbered list made in Brev reopens with its
+  list intact instead of being refused. Nested lists stay refused.
+- Closing a detached message window no longer crashes Brev (#286).
+- New-message recovery now only reopens a message after a crash or forced quit.
+  Closing a compose window normally forgets it, and a Draft that cannot be
+  restored no longer blocks New Message: it opens blank with a note that any
+  saved copy is still in Drafts. Drafts themselves are never changed.
+
+- Reopening a supported locally saved formatted draft or new-message recovery
+  preserves its original HTML on an unchanged Save/autosave and its emphasis,
+  links, line breaks, owned attachments and metadata when edited. Pending,
+  cancelled or unproven restoration cannot overwrite or send the original.
+  Missing local proof, unsupported formatting, inline content and formatted
+  drafts opened in plain-text mode show an explanation and a non-destructive
+  Close action. Returning from HTML preview preserves the edited rich body.
+  The supported restoration subset is text, line breaks, bold, italic, underline
+  and links, plus `&lt;p&gt;` and `&lt;div&gt;` as line structure and Brev's own flat quotes.
+  Saved replies and forwards reopen, and lock their quote again when it was saved
+  with this version. A Draft with no local copy opens from the Drafts folder unless
+  it has attachments. Opening a Gmail Draft from the list now asks Gmail for its
+  draft ID, so it needs a connection and saves back to the same Draft. Lists,
+  nested or styled quotes and inline/CID images are
+  currently refused rather than flattened. Recovery still uses a
+  text-only hint: missing or stale canonical proof is refused, so arbitrary
+  unsaved/pre-autosave formatted content cannot be reconstructed.
+
+- macOS rich compose no longer resets bold, italic or typing emphasis during
+  editor updates, including pending emphasis before the first character.
+  Existing rich text and authored typing fonts keep their formatting when reader
+  typography changes; new, untouched empty and plain-text editors follow reader defaults.
+  Body and typing colors still follow Light/Dark appearance changes, with protected
+  quotes retaining their separate theme color.
+
+- Message bodies with rich rendering disabled now follow the selected reader
+  font and text size, retaining bold, italic and links. Font changes also apply
+  to already displayed native message bodies; original HTML rendering is unchanged.
+
+- Reopening locally saved mock and IMAP drafts restores attachment rows from
+  their owned staged bytes. Saving, autosaving and adding or removing files
+  preserve the intended attachment set without uploading retained files again.
+  Reopened drafts stay in their original account/mailbox. Unavailable,
+  oversized and inline-image drafts are left unchanged with an explanation
+  rather than opened for unsafe editing; server-only attachment downloads are
+  not added.
+
+- Ambiguous historical IMAP cache records are retained locally for recovery
+  but hidden until ordinary server fetches confirm them. Temporary offline
+  gaps replace potentially resurrected deleted mail. Clear Cache discards
+  recovery payloads while retaining minimal anti-replay identifiers; account
+  removal deletes those identifiers too.
+
+- Plain-text readers share a leading-aligned readable column on wide layouts,
+  scaled with the selected font size. Sender HTML, print and compose keep their existing layout.
+
+- Reuse the current list presentation's reader navigation context during
+  repeated selection, preserving reply visibility and refreshing changed headers.
+
+- IMAP cache maintenance uses selective header queries and row-level updates.
+  The historical JSON header writer is now test-only; production keeps a
+  read-only migration reader and a memory-only fallback when the index is unavailable.
+
+- Indexed IMAP accounts migrate legacy header caches on first folder access.
+  Cached page cursors and individual header lookups use bounded index reads;
+  legacy files are removed only after a successful import.
+
+- IMAP pages dual-write their headers and paging metadata transactionally to
+  the local index while retaining the legacy cache during the staged rollout.
+
+- Prepare transactional IMAP page-window metadata in cache schema v7. Existing
+  mail reads still use the current cache paths; the SQLite read cutover remains
+  gated on performance measurements.
+
+### Fixed
+
+- macOS Release/Nightly archives: set `SKIP_INSTALL = YES` on the embedded
+  `BrevMCPHelper` (`brev-mcp`) command-line tool target in
+  `apps/macOS/Project.swift` (and regenerated `BrevMacOS.xcodeproj`) so
+  `xcodebuild archive` produces an Application Archive with
+  `ApplicationProperties` instead of a Generic Xcode Archive containing
+  `Products/usr/local/bin/brev-mcp`, restoring `xcodebuild -exportArchive`
+  Developer ID exports while keeping `Brev.app/Contents/Helpers/brev-mcp`
+  embedded.
+
+- AI Writer speaks Norwegian: the action names (Shorten, Translate and the
+  others), Replace Draft, Replace Subject and Replace Selection, and the
+  "why is this unavailable" messages now follow the app language.
+- macOS docked reply (#302): the AI Writer preview now has room to show the
+  draft. While a preview is open, the From, To and Subject fields and the
+  reply starters step aside, and they come back when you use or cancel it.
+- A new message's folded "From … Cc/Bcc" row shows the signature picker again,
+  so a signature can be chosen without opening Cc and Bcc first (macOS and iOS).
+
+- Clicking a conversation's disclosure chevron now preserves its hit target
+  through adaptive row layout instead of activating the parent message.
+
+- Opening a new composer no longer recovers already-sent content when an
+  earlier autosave consumed the compose presentation request. Send and successful
+  discard clear only the matching draft's recovery entry, preserving other drafts.
+
+- Command-Return in a detached macOS composer now reaches Send while a message
+  field or body editor has focus, using the same validation and undo-send action
+  as the toolbar button, including when Caps Lock is on. Holding the keys does
+  not repeatedly trigger Send.
+
+- Double-clicking a Drafts row no longer opens an extra reader window alongside
+  the composer. Other folders retain double-click reader detachment.
+
+- Collapsed conversations keep their visible row highlighted when a hidden
+  reply is selected, and keyboard/menu navigation scrolls to that row. Expanded
+  conversations highlight only the selected reply; the reader target is unchanged.
+
+- macOS native UI validation can use `--isolated-mock` for a fresh, mock-only
+  sandbox with no production App Group or live-account access.
+
+- If an IMAP recovery index cannot open, stale external body/source caches
+  stay unavailable rather than bypassing recovery checks. Fresh server reads
+  remain available.
+
+- Destructive IMAP actions now complete legacy-cache migration before
+  changing server messages. Migration failure stops the action instead of
+  silently queueing it, and headers deleted by these actions cannot return
+  through a later first import. Pre-marker historical ambiguity is handled
+  by the recovery quarantine; already-completed imports are not reclassified.
+
+- Cached attachment enumeration retains messages whose attachments exist only
+  in raw-source or parsed-body caches, even when the header flag is false.
+  Cache schema v9 adds the selective attachment index to existing v7/v8 stores
+  transactionally instead of limiting it to fresh databases.
+
+- Retrying a legacy IMAP cache import after failed file cleanup no longer
+  restores messages already removed from the index. Cached-page threading
+  shares bounded reply-link lookups instead of traversing once per message.
+
+- Cache-only IMAP search includes legacy folders before their first open.
+  Date repair now targets only missing-date sentinels and starts only from
+  cached pages that need it; retention preserves exact fractional-date cutoffs.
+
+- Calendar, Contacts and Tasks now show a centered, per-surface empty state
+  with a single action to open Calendar &amp; Contacts settings and connect an
+  account.
+- Thread readers open on the newest message by default, and message-list counts no longer repeat.
+- On iPad and Mac, quick reply follows the conversation; on iPhone, Reply offers Reply All and Forward on long press.
+- Unread messages use dots instead of bars, thread cards no longer show accent bars, and Compose has its own iPhone toolbar button.
+- macOS reader actions and conversation controls align as a trailing group, and Appearance segmented rows use the theme's monochrome accent, share equal widths, and align at a trailing edge.
+- iOS Mailboxes groups Smart Views with Favourites and accounts in one card; compose recipients use compact chips with aligned labels, non-overlapping remove controls, and a compact one-line To row that still wraps when needed. Compact All Inboxes hides redundant folder statistics with consistent date-header spacing.
+- Compose field labels share a locale-sized, trailing-aligned column on Mac, and the To row separator now appears on both platforms.
+- Repeating calendar events now show every projected date in the
+  agenda, day, week, and month views, and the agenda shows a navigable
+  30-day range (ADR-0089).
+- Creating a repeating Google Calendar event with the "Local" time zone no
+  longer fails; the series is pinned to the device time zone, which Google
+  requires for recurring events.
+- Repeating calendar events with excluded, moved, or cancelled dates now
+  show their remaining dates instead of only the first one.
+- Calendar: the "event is no longer synced" notice from a stale event link
+  now has a close button and clears when you navigate or pick an event.
+- Calendar event-detail actions stack vertically when the available width
+  cannot fit their labels, preserving readability at accessibility text sizes.
+- Calendar: saving “This and Future Events” at the start of a series
+  updates the existing series instead of leaving a duplicate with an
+  invalid end date. Later splits preserve the original series' fields.
+- Contacts detail actions stack vertically when their labels cannot fit,
+  while standard contact labels are localized and arbitrary custom labels
+  retain their original spelling.
+- Settings → Calendar &amp; Contacts lists each collection on one line with a
+  trailing switch, gives source switches their own rows, moves cached
+  counts into the status line, and drops the empty separator rows on iOS.
+- Message-list thread counts sit beside arrival times, Mac thread chevrons appear on hover or selection, and iPhone separators align with sender names. Mac folder unread counts appear in the window subtitle, date sections collapse only on Mac, and selected rows use the system highlight without a leading bar.
+- Mac search keeps its mailbox scope visible, shows only structured filter tokens, and reports partial results only when a mailbox search fails.
+- Reader body text aligns with the sender column, and the Mac conversation summary shows only its message count.
+- iPhone Mailboxes uses a leading Settings gear menu, keeps Edit trailing, uses outline row icons, and spells Favorites consistently; Calendar, Contacts and Tasks no longer have an Apps header.
+- iPhone compose collapses optional recipient and sender fields into a localized summary, truncates long recipient chips, and uses a circular theme-backed Send button.
+- Mac compose uses a unified native toolbar for Send, formatting, attachments, and secondary actions, with a live subject title and localized fallback.
+- Mac compose labels share a locale-sized trailing column, and To fields have an inset separator.
+
+- Drive attachment uploads use correctly separated multipart parts. Cancelling
+  a transfer stays a cancellation, and a later upload no longer reuses an
+  invalidated session.
+
+### Added
+- Compose (including inline reply) can optionally add a three-day no-reply follow-up reminder; sent copies with an active reminder appear in the **Waiting** smart view and surface in **Today** when overdue, clearing automatically when a reply arrives.
+- Opted-in remote server drafts are saved before sending so canonical draft metadata and follow-up identifiers stay aligned across providers, and Waiting searches filter strictly over source-owned cached Sent messages.
+
+- macOS Today page (#292): with no message open, the reader greets you and
+  lists conversations from people that wait on you and sent mail still waiting
+  on a reply, plus a count of unread updates. It reads only mail already on
+  this Mac, with fixed rules and no AI. "Ask about my mail" opens the
+  assistant when AI is on.
+- Notifications settings explains sign-in code and link availability per account.
+  The feature remains unavailable until provider trust evidence and panel wiring are complete.
+- Calendar event attachments backed by Google Drive can be saved as a
+  copy to a folder you choose. The event keeps its original link.
+- README shows demo screenshots of the macOS and iOS apps in light and dark
+  mode, kept in `docs/screenshots/` and switched by `prefers-color-scheme`.
+- Removed sources with retained, disconnected caches remain browsable as
+  read-only Contacts, Calendar, and Tasks data without restoring an active
+  source.
+
+### Changed
+
+- iOS TestFlight builds are made by one script, `scripts/release-ios-beta.sh`, on the release machine. It runs the launch regression and export checks, takes the next build number from a counter, verifies the archive and uploads it. `--dry-run` signs and exports without uploading.</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.3.0/Brev-0.3.0.dmg" length="34869747" type="application/octet-stream" sparkle:edSignature="NjEFQYkUQdQdG3qBTMw/yLlkXJgLfPEtTd9PeaY4IezmxW2sWxOhQrMwDwN2S2Yl0YtPXh1MWjss/BrbBfnYDA==" /></item><item><title>0.2.8</title><pubDate>Mon, 12 Oct 2026 07:30:40 GMT</pubDate><sparkle:version>2026101207</sparkle:version><sparkle:shortVersionString>0.2.8</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;### Changed
 
 - Mac reader: the related-mail strip above a message is quiet until it has something to say. The "Showing cached conversation" sentence and the always-visible Spam and Trash button are gone; an untouched conversation shows only Load related mail, and Spam and Trash appears after a lookup has run. Norwegian wording is clearer ("Last inn relatert e-post", "Inkluder søppelpost og søppel").
-- App icons: Frost, Smoke and Obsidian glass envelopes replace the old finishes. Smoke is the default; saved icon choices keep their corresponding finish. Compact drawings keep small Dock icons sharp, and the login screen uses Smoke.</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.2.8/Brev-0.2.8.dmg" length="26463974" type="application/octet-stream" sparkle:edSignature="S1E7Sn4/kOyy9SzLApUFP5KvdKY6EvxMdxL3aQTGRiBGHFv4QOGEC8zFNQYJIE/AfQW+SpqU5Hm2qSJ857INAQ==" /></item><item><title>0.2.7</title><pubDate>Sat, 10 Oct 2026 20:06:30 GMT</pubDate><sparkle:version>2026101019</sparkle:version><sparkle:shortVersionString>0.2.7</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;### Added
+- App icons: Frost, Smoke and Obsidian glass envelopes replace the old finishes. Smoke is the default; saved icon choices keep their corresponding finish. Compact drawings keep small Dock icons sharp, and the login screen uses Smoke.&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.2.8/Brev-0.2.8.dmg" length="26463974" type="application/octet-stream" sparkle:edSignature="S1E7Sn4/kOyy9SzLApUFP5KvdKY6EvxMdxL3aQTGRiBGHFv4QOGEC8zFNQYJIE/AfQW+SpqU5Hm2qSJ857INAQ==" /></item><item><title>0.2.7</title><pubDate>Sat, 10 Oct 2026 20:06:30 GMT</pubDate><sparkle:version>2026101019</sparkle:version><sparkle:shortVersionString>0.2.7</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;### Added
 
 - Mac message list keyboard: Delete moves the selected message (or the checked messages) to Trash with the usual undo, Escape clears the checked messages, Home and End jump to the first and last message, and Page Up and Page Down move ten messages at a time. The Keyboard Shortcuts window lists them.
 
