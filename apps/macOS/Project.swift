@@ -194,7 +194,11 @@ let project = Project(
             settings: .settings(
                 base: [
                     "BREV_APP_BUNDLE_ID": .string(BrevConstants.bundleIDPrefix),
-                    "ENABLE_HARDENED_RUNTIME": "YES"
+                    "ENABLE_HARDENED_RUNTIME": "YES",
+                    // Embedded `.commandLineTool` helpers must skip install so
+                    // `xcodebuild archive` does not emit `Products/usr/local/bin/brev-mcp`
+                    // alongside `Brev.app` and turn the archive into a Generic Xcode Archive.
+                    "SKIP_INSTALL": "YES"
                 ],
                 configurations: [
                     .release(name: "Release", settings: [

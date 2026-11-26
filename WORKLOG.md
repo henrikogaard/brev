@@ -8981,3 +8981,26 @@ buttons, and package-aware localization.
 - **Skipped / Blocked:**
   - Live iOS Simulator screenshot captures (`iPhone 18 Pro` / `iPhone Duo`) and live iOS simulator snapshot test execution (`CompactReaderSnapshotTests`, etc.) on `macmini-devbox` were blocked because `xcrun simctl list runtimes -j` returned `{"runtimes": []}` — both `/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.8117.0.GitTxR` and `v24.2.91016.19.cvXd38` cryptex mounts are unmounted (`root:daemon 0700`), causing `SimError code=401: The iOS 27.2 simulator runtime is not available. runtime path not found` on both `iPhone 18 Pro` install/launch and `iPhone Duo` boot (even after gentle `killall CoreSimulatorService`; no `sudo` or system changes attempted).
 - **Next:** Push `feat/ios-duo-and-hig-polish` and open PR targeting `main`; monitor CI (Xcode 26 iOS/macOS builds and tests) and run live iPhone Duo / iPhone 18 Pro visual QA once iOS simulator runtimes are remounted on `macmini-devbox`.
+
+## 2026-11-26 — Agent — fix/macos-mcp-helper-skip-install
+
+- **Goal:** Fix macOS Release/Nightly Xcode archive failure where `BrevMCPHelper` (`product: .commandLineTool`, `brev-mcp`) defaulted to `SKIP_INSTALL = NO`, emitting `Products/usr/local/bin/brev-mcp` and turning the archive into a Generic Xcode Archive that broke `xcodebuild -exportArchive` (Nightly runs `45513347140` & `45724445112`).
+- **Changes:**
+  - `apps/macOS/Project.swift`: added `"SKIP_INSTALL": "YES"` with rationale comment to `BrevMCPHelper`'s `base` settings.
+  - `apps/macOS/BrevMacOS.xcodeproj/project.pbxproj`: regenerated via `mise exec -- tuist generate --no-open` so both `BrevMCPHelper` Debug and Release configurations carry `SKIP_INSTALL = YES;` (preserving CI generated-project reproducibility).
+  - `scripts/test-developer-id-release-config.sh`: added a regression check verifying `BrevMCPHelper` sets `"SKIP_INSTALL": "YES"` in `apps/macOS/Project.swift` and `SKIP_INSTALL = YES;` in both `BrevMCPHelper` build configurations in `apps/macOS/BrevMacOS.xcodeproj/project.pbxproj` (verified red against `origin/main` before fix, green after).
+  - `CHANGELOG.md`: documented the fix under `## [Unreleased]` -> `### Fixed`.
+  - Protected-paths check: `ADRs/README.md` and `.github/workflows/adr-required.yml` were retired on `origin/main` in favor of `docs/design/` (`AGENTS.md`); no subsystem architecture, privacy, or protocol boundary changed, so no `docs/design/` or `PRIVACY.md` update was needed.
+- **Verification:**
+  - Local Mac Studio (CLI/lint only; no local `xcodebuild`/`tuist build`/`simctl`/UI tests):
+    - `mise exec -- tuist install && mise exec -- tuist generate --no-open` (only `SKIP_INSTALL = YES;` added to `BrevMCPHelper` Debug & Release in `project.pbxproj`).
+    - `scripts/format.sh` (`0/1537` files formatted), `scripts/lint.sh` (`swiftformat --lint`, `swiftlint --strict`, `test-swiftlint-coverage` — all OK).
+    - `scripts/test-developer-id-release-config.sh` (OK; also confirmed negative check fails against `origin/main`).
+  - Remote `macmini-devbox` (macOS 27.0 / Xcode 27.2, isolated `/tmp/brev-skip-install-worktree` and `/tmp/brev-skip-install-check`, both cleaned up afterwards):
+    - `mise exec -- tuist generate --no-open` and `scripts/test-developer-id-release-config.sh` passed.
+    - `xcodebuild -workspace Brev.xcworkspace -scheme BrevMacOS -configuration Release -archivePath /tmp/brev-skip-install-check/BrevMail.xcarchive CODE_SIGNING_ALLOWED=NO -skipMacroValidation archive` -> `** ARCHIVE SUCCEEDED **`.
+    - `plutil -extract ApplicationProperties.CFBundleIdentifier raw .../Info.plist` -> `eu.brevmail.brev`.
+    - `Products/usr` absent (`Products/` contains only `Applications/`).
+    - `Products/Applications/Brev.app/Contents/Helpers/brev-mcp` exists and is executable (universal `x86_64` + `arm64`, 109,576 bytes).
+- **Skipped:** Full `scripts/test.sh --self-tests-only` stopped at `scripts/desktop-compact-layout-check.sh` on both hosts because `rg` (ripgrep) is not installed on PATH; CI installs ripgrep in `repository-self-tests`.
+- **Next:** Push `fix/macos-mcp-helper-skip-install` and open PR targeting `main`.

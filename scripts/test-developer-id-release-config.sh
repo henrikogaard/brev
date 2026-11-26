@@ -135,6 +135,53 @@ if ! grep -Fq '"CODE_SIGN_STYLE": "Manual"' "$project_file" ||
   exit 1
 fi
 
+python3 - "$project_file" "apps/macOS/BrevMacOS.xcodeproj/project.pbxproj" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+project_swift = Path(sys.argv[1]).read_text(encoding="utf-8")
+pbxproj = Path(sys.argv[2]).read_text(encoding="utf-8")
+
+helper_match = re.search(
+    r'\.target\(\s*\n\s*name:\s*"BrevMCPHelper"[\s\S]*?(?=\n\s*\.target\(|\n\s*\],\n\s*schemes:)',
+    project_swift,
+)
+if not helper_match:
+    sys.exit("ERROR: BrevMCPHelper target block not found in apps/macOS/Project.swift")
+helper_block = helper_match.group(0)
+base_match = re.search(r'base:\s*\[([\s\S]*?)\]', helper_block)
+base_body = re.sub(r'/\*[\s\S]*?\*/', '', base_match.group(1)) if base_match else ""
+base_body = re.sub(r'//.*', '', base_body)
+if not re.search(r'^\s*"SKIP_INSTALL"\s*:\s*"YES"\s*,?\s*$', base_body, re.MULTILINE):
+    sys.exit(
+        'ERROR: BrevMCPHelper must set "SKIP_INSTALL": "YES" in base settings so '
+        "xcodebuild archive produces an Application Archive rather than a Generic Xcode Archive"
+    )
+
+config_list = re.search(
+    r'/\* Build configuration list for PBXNativeTarget "BrevMCPHelper" \*/ = \{[\s\S]*?buildConfigurations = \(([\s\S]*?)\);',
+    pbxproj,
+)
+if not config_list:
+    sys.exit("ERROR: BrevMCPHelper configuration list not found in BrevMacOS.xcodeproj/project.pbxproj")
+config_ids = re.findall(r'([0-9A-F]{24})\s*/\*\s*(Debug|Release)\s*\*/', config_list.group(1))
+if len(config_ids) < 2:
+    sys.exit("ERROR: expected Debug and Release configurations for BrevMCPHelper in project.pbxproj")
+for config_id, config_name in config_ids:
+    cfg_match = re.search(
+        rf'{config_id}\s*/\*\s*{config_name}\s*\*/\s*=\s*\{{[\s\S]*?buildSettings = \{{([\s\S]*?)\}};',
+        pbxproj,
+    )
+    cfg_body = re.sub(r'/\*[\s\S]*?\*/', '', cfg_match.group(1)) if cfg_match else ""
+    cfg_body = re.sub(r'//.*', '', cfg_body)
+    skip_values = re.findall(r'^\s*SKIP_INSTALL\s*=\s*([^;\s]+)\s*;\s*$', cfg_body, re.MULTILINE)
+    if skip_values != ["YES"]:
+        sys.exit(
+            f"ERROR: BrevMCPHelper {config_name} configuration in project.pbxproj must set SKIP_INSTALL = YES;"
+        )
+PY
+
 if ! grep -q 'BREV_APP_BUNDLE_ID=eu.brevmail.brev.nightly' "$archive_script" ||
     ! grep -q 'BREV_RELEASE_RING' "$archive_script"; then
   echo "ERROR: release archive must inject the nightly ring overrides" >&2

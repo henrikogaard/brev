@@ -417,6 +417,15 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- macOS Release/Nightly archives: set `SKIP_INSTALL = YES` on the embedded
+  `BrevMCPHelper` (`brev-mcp`) command-line tool target in
+  `apps/macOS/Project.swift` (and regenerated `BrevMacOS.xcodeproj`) so
+  `xcodebuild archive` produces an Application Archive with
+  `ApplicationProperties` instead of a Generic Xcode Archive containing
+  `Products/usr/local/bin/brev-mcp`, restoring `xcodebuild -exportArchive`
+  Developer ID exports while keeping `Brev.app/Contents/Helpers/brev-mcp`
+  embedded.
+
 - AI Writer speaks Norwegian: the action names (Shorten, Translate and the
   others), Replace Draft, Replace Subject and Replace Selection, and the
   "why is this unavailable" messages now follow the app language.
