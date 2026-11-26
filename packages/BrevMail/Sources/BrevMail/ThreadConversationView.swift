@@ -303,6 +303,7 @@ public struct ThreadConversationView: View {
                 .frame(maxWidth: .infinity, alignment: .top)
             }
             .scrollContentBackground(.hidden)
+            .brevIOSSoftScrollEdge()
             #if os(macOS)
                 .scrollClipDisabled()
                 .safeAreaInset(edge: .bottom, spacing: 0) {

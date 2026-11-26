@@ -18,7 +18,28 @@ import BrevDesign
 import BrevThemes
 import SwiftUI
 
+/// Policy for native iOS 26+ soft scroll-edge blur on core scrolling surfaces.
+enum IOSScrollEdgeEffectPolicy {
+    /// Uses `.soft` whenever Reduce Transparency is off, and falls back to
+    /// `.automatic` while keeping a single structural view identity when on.
+    static func usesSoftStyle(reduceTransparency: Bool) -> Bool {
+        !reduceTransparency
+    }
+}
+
 extension View {
+    /// Applies the native iOS 26+ soft scroll-edge effect while keeping a
+    /// single structural view identity across Reduce Transparency toggles.
+    /// No-op on macOS and on iOS < 26.
+    @ViewBuilder
+    func brevIOSSoftScrollEdge(edges: Edge.Set = .vertical) -> some View {
+        #if os(iOS) && compiler(>=6.2)
+        modifier(IOSSoftScrollEdgeModifier(edges: edges))
+        #else
+        self
+        #endif
+    }
+
     /// Lets scrolling content reach the window edge beneath a blurred toolbar.
     @ViewBuilder
     func mailToolbarScrollUnder() -> some View {
@@ -66,6 +87,27 @@ extension View {
         #endif
     }
 }
+
+#if os(iOS) && compiler(>=6.2)
+private struct IOSSoftScrollEdgeModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    let edges: Edge.Set
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectStyle(
+                IOSScrollEdgeEffectPolicy.usesSoftStyle(reduceTransparency: reduceTransparency)
+                    ? .soft
+                    : .automatic,
+                for: edges
+            )
+        } else {
+            content
+        }
+    }
+}
+#endif
 
 #if os(macOS)
 private struct MailToolbarScrollUnderModifier: ViewModifier {

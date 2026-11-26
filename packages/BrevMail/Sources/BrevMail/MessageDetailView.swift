@@ -403,10 +403,8 @@ public struct MessageDetailView: View {
         #if os(macOS)
         MessageReaderLayoutPolicy.layout(platform: .macOS, density: mailboxListDensity)
         #else
-        let usesRegularPadLayout = UIDevice.current.userInterfaceIdiom == .pad
-            && horizontalSizeClass == .regular
         return MessageReaderLayoutPolicy.layout(
-            platform: usesRegularPadLayout ? .iPad : .iPhone,
+            platform: MailPanePlatformPolicy.iOSPlatform(horizontalSizeClass: horizontalSizeClass),
             density: mailboxListDensity
         )
         #endif
@@ -756,76 +754,77 @@ public struct MessageDetailView: View {
                 }
             }
         }
+        .brevIOSSoftScrollEdge()
         #if os(macOS)
-        .scrollClipDisabled()
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let readerFooter {
-                readerFooter
-                    .background {
-                        ReaderQuickReplyBottomFade()
-                    }
+            .scrollClipDisabled()
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if let readerFooter {
+                    readerFooter
+                        .background {
+                            ReaderQuickReplyBottomFade()
+                        }
+                }
             }
-        }
         #endif
-        .toolbar {
-            #if os(iOS)
-            // The one reader overflow menu on the phone — the shared
-            // capability-gated inventory (`MessageCommandPresentation.readerMenu`)
-            // plus related mail, the Original toggle and Ask AI, in the order
-            // `CompactReaderChromePolicy.overflowSections` defines. The bottom
-            // bar no longer carries a second menu.
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    ForEach(
-                        CompactReaderChromePolicy.overflowSections(
-                            hasRelatedMail: relatedConversation != nil,
-                            showsRenderingToggle: showsHTMLRenderingToggle(for: header),
-                            canAskAI: askAIAction != nil
-                        ),
-                        id: \.self
-                    ) { section in
-                        switch section {
-                        case .relatedMail:
-                            if let relatedConversation {
-                                RelatedConversationReaderMenuSection(controller: relatedConversation)
-                            }
-                        case .renderingToggle:
-                            htmlRenderingModeMenuButton(for: header)
-                            Divider()
-                        case .messageActions:
-                            readerMenuButtons(for: header)
-                        case .askAI:
-                            if let askAIAction {
+            .toolbar {
+                #if os(iOS)
+                // The one reader overflow menu on the phone — the shared
+                // capability-gated inventory (`MessageCommandPresentation.readerMenu`)
+                // plus related mail, the Original toggle and Ask AI, in the order
+                // `CompactReaderChromePolicy.overflowSections` defines. The bottom
+                // bar no longer carries a second menu.
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        ForEach(
+                            CompactReaderChromePolicy.overflowSections(
+                                hasRelatedMail: relatedConversation != nil,
+                                showsRenderingToggle: showsHTMLRenderingToggle(for: header),
+                                canAskAI: askAIAction != nil
+                            ),
+                            id: \.self
+                        ) { section in
+                            switch section {
+                            case .relatedMail:
+                                if let relatedConversation {
+                                    RelatedConversationReaderMenuSection(controller: relatedConversation)
+                                }
+                            case .renderingToggle:
+                                htmlRenderingModeMenuButton(for: header)
                                 Divider()
-                                ReaderAskAIMenuButton(action: askAIAction)
+                            case .messageActions:
+                                readerMenuButtons(for: header)
+                            case .askAI:
+                                if let askAIAction {
+                                    Divider()
+                                    ReaderAskAIMenuButton(action: askAIAction)
+                                }
                             }
                         }
+                    } label: {
+                        Label(
+                            String(localized: "More message actions", bundle: .module),
+                            systemImage: "ellipsis.circle"
+                        )
                     }
-                } label: {
-                    Label(
-                        String(localized: "More message actions", bundle: .module),
-                        systemImage: "ellipsis.circle"
-                    )
+                    .accessibilityLabel(String(localized: "More message actions", bundle: .module))
                 }
-                .accessibilityLabel(String(localized: "More message actions", bundle: .module))
+                #endif
+                // macOS: Create Task and Move live in the root's reader cluster
+                // (`BrevMailRootView.toolbarDetail`), not here — this view's
+                // items append after the root's, which put them to the right of
+                // the AI Sidebar toggle and outside the cluster's width-based
+                // condensation. The context menu below still carries both.
             }
-            #endif
-            // macOS: Create Task and Move live in the root's reader cluster
-            // (`BrevMailRootView.toolbarDetail`), not here — this view's
-            // items append after the root's, which put them to the right of
-            // the AI Sidebar toggle and outside the cluster's width-based
-            // condensation. The context menu below still carries both.
-        }
-        .contextMenu {
-            // Reader-body context menu: the same consolidated reader inventory
-            // as the overflow menu, so right-click/long-press parity with the
-            // row context menu holds without duplicating a second list.
-            readerMenuButtons(for: header)
-        }
-        .modifier(MessageDetailLinkOpenURLModifier(
-            analysis: securityAnalysis,
-            onSuspiciousLink: { pendingSuspiciousLink = $0 }
-        ))
+            .contextMenu {
+                // Reader-body context menu: the same consolidated reader inventory
+                // as the overflow menu, so right-click/long-press parity with the
+                // row context menu holds without duplicating a second list.
+                readerMenuButtons(for: header)
+            }
+            .modifier(MessageDetailLinkOpenURLModifier(
+                analysis: securityAnalysis,
+                onSuspiciousLink: { pendingSuspiciousLink = $0 }
+            ))
     }
 
     @ViewBuilder

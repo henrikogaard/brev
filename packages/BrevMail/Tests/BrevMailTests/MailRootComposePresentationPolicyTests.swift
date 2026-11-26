@@ -409,42 +409,65 @@ struct MailRootSettingsToolbarPolicyTests {
             hasSettingsAction: true
         ) == .none)
 
+        // iOS keeps Manage Profiles reachable through the title menu whenever
+        // profile management or multiple profiles are present, and uses Apple's
+        // collapsing large "Mailboxes" title when neither is active. macOS omits
+        // the top switcher for single-profile workspaces.
         #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
             platform: .iOS,
-            hasProfiles: true,
-            canManageProfiles: true
-        ) == .navigationTitleMenu)
-        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
-            platform: .iOS,
-            hasProfiles: false,
-            canManageProfiles: true
-        ) == .navigationTitleMenu)
-        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
-            platform: .iOS,
-            hasProfiles: false,
+            profileCount: 0,
             canManageProfiles: false
         ) == .none)
         #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
+            platform: .iOS,
+            profileCount: 1,
+            canManageProfiles: false
+        ) == .none)
+        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
+            platform: .iOS,
+            profileCount: 1,
+            canManageProfiles: true
+        ) == .navigationTitleMenu)
+        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
+            platform: .iOS,
+            profileCount: 2,
+            canManageProfiles: false
+        ) == .navigationTitleMenu)
+        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
             platform: .macOS,
-            hasProfiles: true,
+            profileCount: 1,
+            canManageProfiles: true
+        ) == .none)
+        #expect(MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
+            platform: .macOS,
+            profileCount: 2,
             canManageProfiles: true
         ) == .sidebarHeader)
 
-        #expect(MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
-            platform: .iOS,
-            hasProfiles: true,
-            canManageProfiles: true
-        ))
         #expect(!MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
             platform: .iOS,
-            hasProfiles: false,
+            profileCount: 1,
             canManageProfiles: false
+        ))
+        #expect(MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
+            platform: .iOS,
+            profileCount: 1,
+            canManageProfiles: true
+        ))
+        #expect(MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
+            platform: .iOS,
+            profileCount: 2,
+            canManageProfiles: true
         ))
         #expect(!MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
             platform: .macOS,
-            hasProfiles: true,
+            profileCount: 2,
             canManageProfiles: true
         ))
+
+        #expect(MailRootSettingsToolbarPolicy.showsSidebarBottomBar(platform: .iOS, hasContent: true))
+        #expect(!MailRootSettingsToolbarPolicy.showsSidebarBottomBar(platform: .iOS, hasContent: false))
+        #expect(!MailRootSettingsToolbarPolicy.showsSidebarBottomBar(platform: .macOS, hasContent: true))
     }
 }
 

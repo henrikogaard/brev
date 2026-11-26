@@ -955,7 +955,8 @@ public struct ComposeView: View {
         ComposeLayoutPolicy.platform(
             horizontalSizeClassIsCompact: horizontalSizeClass == .compact,
             isAccessibilitySize: dynamicTypeSize.isAccessibilitySize,
-            deviceClass: UIDevice.current.userInterfaceIdiom == .phone ? .phone : .pad
+            deviceClass: UIDevice.current.userInterfaceIdiom == .phone ? .phone : .pad,
+            verticalSizeClassIsCompact: isCompactVerticalLayout
         )
         #else
         ComposeLayoutPolicy.platform(

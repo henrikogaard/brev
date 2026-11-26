@@ -727,6 +727,31 @@ public struct BrevMailRootView: View {
                     compactReaderHeader = nil
                 }
             }
+            // Keep reading continuity across live fold/unfold transitions
+            // (e.g. iPhone Duo outer cover <-> inner display, iPad Slide Over).
+            .onChange(of: horizontalSizeClass) { oldSizeClass, newSizeClass in
+                guard let outcome = MailRootSizeClassTransitionPolicy.transition(
+                    from: oldSizeClass,
+                    to: newSizeClass,
+                    compactReaderHeader: compactReaderHeader,
+                    selectedHeader: navigation.selectedHeader,
+                    selectedMessageID: navigation.selectedMessageID,
+                    hasSelectedMessageDestination: hasSelectedMessageDestination,
+                    readingPanePresentation: readingPanePresentation,
+                    currentSplitViewVisibility: splitViewVisibility
+                ) else { return }
+                if let messageID = outcome.selectedMessageIDToPreserve,
+                   navigation.selectedMessageID != messageID {
+                    navigation.selectedMessageID = messageID
+                }
+                compactReaderHeader = outcome.compactReaderHeader
+                if let column = outcome.preferredCompactColumn {
+                    preferredCompactColumn = column
+                }
+                if let visibility = outcome.splitViewVisibility {
+                    splitViewVisibility = visibility
+                }
+            }
         #endif
     }
 
@@ -2072,12 +2097,7 @@ public struct BrevMailRootView: View {
             onOpenAccountSettings: onOpenAccountSettings,
             footer: FolderSidebarFooter(
                 identity: FolderSidebarFooterIdentity(accounts: backends.map(\.account)),
-                status: FolderSidebarSyncStatus(
-                    isOnline: monitor.isOnline,
-                    isRefreshing: activeRefreshRequest != nil,
-                    progress: syncProgress.map { ($0.completed, $0.total) },
-                    health: importSyncHealth?.state
-                ),
+                status: sidebarSyncStatus,
                 onOpenSettings: onOpenSettings
             )
         )
@@ -2097,7 +2117,7 @@ public struct BrevMailRootView: View {
         .navigationBarTitleDisplayMode(
             MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
                 platform: toolbarPlatform,
-                hasProfiles: !profiles.isEmpty,
+                profileCount: profiles.count,
                 canManageProfiles: true
             ) ? .inline : .large
         )
@@ -2361,7 +2381,7 @@ public struct BrevMailRootView: View {
     @ViewBuilder
     private var backgroundReadingPaneContent: some View {
         #if os(iOS)
-        if compactReaderHeader == nil {
+        if compactReaderHeader == nil || horizontalSizeClass == .regular {
             readingPaneContent()
         } else {
             Color.clear
@@ -3020,6 +3040,25 @@ public struct BrevMailRootView: View {
         #endif
     }
 
+    private var sidebarSyncStatus: FolderSidebarSyncStatus {
+        FolderSidebarSyncStatus(
+            isOnline: monitor.isOnline,
+            isRefreshing: activeRefreshRequest != nil,
+            progress: syncProgress.map { ($0.completed, $0.total) },
+            health: importSyncHealth?.state
+        )
+    }
+
+    #if os(iOS)
+    private var sidebarBottomStatusLabel: some View {
+        Text(verbatim: sidebarSyncStatus.title)
+            .brevFont(.caption)
+            .foregroundStyle(theme.textSecondary.color)
+            .lineLimit(1)
+            .accessibilityLabel(sidebarSyncStatus.title)
+    }
+    #endif
+
     @ToolbarContentBuilder
     private var toolbarSidebar: some ToolbarContent {
         if MailRootSettingsToolbarPolicy.showsSettingsButton(
@@ -3030,6 +3069,38 @@ public struct BrevMailRootView: View {
                 settingsToolbarButton
             }
         }
+        #if os(iOS)
+        if MailRootSettingsToolbarPolicy.showsSidebarBottomBar(
+            platform: toolbarPlatform,
+            hasContent: !profiles.isEmpty || !sourceSections.isEmpty
+        ) {
+            #if compiler(>=6.2)
+            if #available(iOS 26.0, *) {
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+                ToolbarItem(placement: .bottomBar) {
+                    sidebarBottomStatusLabel
+                }
+                .sharedBackgroundVisibility(.hidden)
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+            } else {
+                ToolbarItem(placement: .bottomBar) { Spacer() }
+                ToolbarItem(placement: .bottomBar) {
+                    sidebarBottomStatusLabel
+                }
+                ToolbarItem(placement: .bottomBar) { Spacer() }
+            }
+            #else
+            ToolbarItem(placement: .bottomBar) { Spacer() }
+            ToolbarItem(placement: .bottomBar) {
+                sidebarBottomStatusLabel
+            }
+            ToolbarItem(placement: .bottomBar) { Spacer() }
+            #endif
+            ToolbarItem(placement: .bottomBar) {
+                composeToolbarButton
+            }
+        }
+        #endif
     }
 
     /// Presents the selected mailbox list without collapsing regular-width iPad columns.
@@ -4574,7 +4645,7 @@ public struct BrevMailRootView: View {
 
     private var mailPanePlatform: MailPanePlatform {
         #if os(iOS)
-        UIDevice.current.userInterfaceIdiom == .pad ? .iPad : .iPhone
+        MailPanePlatformPolicy.iOSPlatform(horizontalSizeClass: horizontalSizeClass)
         #else
         .macOS
         #endif

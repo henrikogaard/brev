@@ -71,6 +71,20 @@ enum MailPanePlatform: Equatable, Sendable {
     case macOS
 }
 
+enum MailPanePlatformPolicy {
+    /// Resolves the iOS split-view layout platform from horizontal size class
+    /// rather than `userInterfaceIdiom` so regular-width phone scenes (such as
+    /// an unfolded iPhone Duo) receive split-view layout metrics while compact
+    /// iPad scenes stay compact.
+    static func iOSPlatform(isRegularHorizontalSizeClass: Bool) -> MailPanePlatform {
+        isRegularHorizontalSizeClass ? .iPad : .iPhone
+    }
+
+    static func iOSPlatform(horizontalSizeClass: UserInterfaceSizeClass?) -> MailPanePlatform {
+        iOSPlatform(isRegularHorizontalSizeClass: horizontalSizeClass == .regular)
+    }
+}
+
 struct MailPaneColumnWidth: Equatable, Sendable {
     let minimum: CGFloat
     let ideal: CGFloat
@@ -81,7 +95,10 @@ enum MailPaneColumnWidthPolicy {
     static func messageList(platform: MailPanePlatform) -> MailPaneColumnWidth? {
         switch platform {
         case .iPad:
-            MailPaneColumnWidth(minimum: 320, ideal: 380, maximum: 460)
+            // 280 pt minimum lets 669 pt unfolded portrait foldables fit list +
+            // reader side-by-side (280 + 389 pt) while scaling comfortably to
+            // landscape (340 + 611 pt) and full-size iPad screens.
+            MailPaneColumnWidth(minimum: 280, ideal: 340, maximum: 460)
         case .iPhone:
             nil
         case .macOS:
@@ -100,8 +117,10 @@ enum MailPaneColumnWidthPolicy {
     /// content is drawn stretched against the trailing edge.
     static func folderSidebar(platform: MailPanePlatform) -> MailPaneColumnWidth? {
         switch platform {
-        case .macOS, .iPad:
+        case .macOS:
             MailPaneColumnWidth(minimum: 200, ideal: 240, maximum: 420)
+        case .iPad:
+            MailPaneColumnWidth(minimum: 220, ideal: 250, maximum: 360)
         case .iPhone:
             nil
         }

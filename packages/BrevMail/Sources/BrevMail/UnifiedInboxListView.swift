@@ -564,6 +564,7 @@ struct UnifiedInboxListView: View {
                                 .scrollClipDisabled()
                             #endif
                                 .refreshable { await pullToRefresh() }
+                                .brevIOSSoftScrollEdge()
                                 .brevBottomBarScrollInset()
                             #if os(macOS)
                                 .onChange(of: [navigation.selectedMessageID, selectedRowID]) { _, _ in
@@ -1790,80 +1791,83 @@ struct UnifiedInboxListView: View {
         .draggable(item.dragRepresentation)
         .listRowInsets(EdgeInsets())
         .listRowSeparator(rowSeparatorVisibility)
-        .messageListThemedRowBackground()
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            ForEach(
-                MessageCommandPresentation.trailingSwipeActions(
-                    hasArchive: item.archiveFolder != nil,
-                    isCompact: usesCompactMessageRows
-                ),
-                id: \.self
-            ) { action in
-                trailingSwipeButton(action, for: item)
+        #if os(iOS)
+            .listRowSeparatorTint(theme.separator.color)
+        #endif
+            .messageListThemedRowBackground()
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                ForEach(
+                    MessageCommandPresentation.trailingSwipeActions(
+                        hasArchive: item.archiveFolder != nil,
+                        isCompact: usesCompactMessageRows
+                    ),
+                    id: \.self
+                ) { action in
+                    trailingSwipeButton(action, for: item)
+                }
             }
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            ForEach(
-                MessageCommandPresentation.leadingSwipeActions(isCompact: usesCompactMessageRows),
-                id: \.self
-            ) { action in
-                leadingSwipeButton(action, for: item)
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                ForEach(
+                    MessageCommandPresentation.leadingSwipeActions(isCompact: usesCompactMessageRows),
+                    id: \.self
+                ) { action in
+                    leadingSwipeButton(action, for: item)
+                }
             }
-        }
-        .contextMenu {
-            MessageRowContextMenu(
-                item: item,
-                presentation: { contextMenuPresentation(for: $0) },
-                actionButton: { presentation, item in
-                    messageContextMenuButton(presentation, for: item)
-                },
-                pluginItems: { pluginMessageContextMenuItems },
-                categoryMenu: {
-                    let messageID = SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
-                    let currentCategory = InboxClassificationPolicy.classification(
-                        for: item.header,
-                        sourceID: item.sourceID,
-                        overrideStore: inboxCategoryOverrideStore
-                    ).category
-                    return Menu {
-                        ForEach(InboxCategory.assignableCases) { category in
+            .contextMenu {
+                MessageRowContextMenu(
+                    item: item,
+                    presentation: { contextMenuPresentation(for: $0) },
+                    actionButton: { presentation, item in
+                        messageContextMenuButton(presentation, for: item)
+                    },
+                    pluginItems: { pluginMessageContextMenuItems },
+                    categoryMenu: {
+                        let messageID = SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
+                        let currentCategory = InboxClassificationPolicy.classification(
+                            for: item.header,
+                            sourceID: item.sourceID,
+                            overrideStore: inboxCategoryOverrideStore
+                        ).category
+                        return Menu {
+                            ForEach(InboxCategory.assignableCases) { category in
+                                Button {
+                                    inboxCategoryOverrideStore.set(category, for: messageID)
+                                    inboxCategoryOverrideRevision += 1
+                                } label: {
+                                    Label(
+                                        category.title,
+                                        systemImage: currentCategory == category ? "checkmark" : category.symbolName
+                                    )
+                                }
+                            }
+                            Divider()
                             Button {
-                                inboxCategoryOverrideStore.set(category, for: messageID)
+                                inboxCategoryOverrideStore.clear(messageID)
                                 inboxCategoryOverrideRevision += 1
                             } label: {
                                 Label(
-                                    category.title,
-                                    systemImage: currentCategory == category ? "checkmark" : category.symbolName
+                                    String(localized: "Use automatic category", bundle: .module),
+                                    systemImage: "wand.and.stars"
                                 )
                             }
-                        }
-                        Divider()
-                        Button {
-                            inboxCategoryOverrideStore.clear(messageID)
-                            inboxCategoryOverrideRevision += 1
                         } label: {
-                            Label(
-                                String(localized: "Use automatic category", bundle: .module),
-                                systemImage: "wand.and.stars"
-                            )
+                            Label(String(localized: "Category", bundle: .module), systemImage: "tray.2")
                         }
-                    } label: {
-                        Label(String(localized: "Category", bundle: .module), systemImage: "tray.2")
                     }
-                }
-            )
-        }
-        .onAppear {
-            visibleTriageItemIDs.insert(item.id)
-            guard shouldLoadMore(
-                visibleIndex: visibleIndex,
-                visibleCount: visibleCount
-            ) else { return }
-            Task { await loadMore() }
-        }
-        .onDisappear {
-            visibleTriageItemIDs.remove(item.id)
-        }
+                )
+            }
+            .onAppear {
+                visibleTriageItemIDs.insert(item.id)
+                guard shouldLoadMore(
+                    visibleIndex: visibleIndex,
+                    visibleCount: visibleCount
+                ) else { return }
+                Task { await loadMore() }
+            }
+            .onDisappear {
+                visibleTriageItemIDs.remove(item.id)
+            }
     }
 
     /// Resolves the row's context-menu inventory. The phone uses the shorter layout; the

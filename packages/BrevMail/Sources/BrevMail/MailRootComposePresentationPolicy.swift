@@ -288,33 +288,49 @@ enum MailRootSettingsToolbarPolicy {
 
     /// Where the Profile switcher (`All Mailboxes`, profiles, `Manage Profiles`)
     /// is hosted in `FolderSidebar`.
+    ///
+    /// On iOS, keep the inline `Mailboxes ⌄` title menu whenever multiple profiles
+    /// exist or `Manage Profiles` is wired (so users with only `All Mailboxes` can
+    /// still create their first custom profile); fall back to Apple's collapsing
+    /// `.large` `"Mailboxes"` title when neither is active. On macOS, single-profile
+    /// sessions keep `Manage Profiles` in section context menus and omit the top bar.
     static func sidebarProfileSwitcherPlacement(
         platform: MailRootToolbarPlatform,
-        hasProfiles: Bool,
+        profileCount: Int,
         canManageProfiles: Bool
     ) -> MailRootSidebarProfileSwitcherPlacement {
-        guard hasProfiles || canManageProfiles else { return .none }
         switch platform {
         case .iOS:
+            guard profileCount > 1 || canManageProfiles else { return .none }
             return .navigationTitleMenu
         case .macOS:
+            guard profileCount > 1 else { return .none }
             return .sidebarHeader
         }
     }
 
     /// Whether the iOS Mailboxes bar switches to inline title mode so the
-    /// `Mailboxes ⌄` profile title menu sits cleanly between Settings and Edit
-    /// without duplicating a large title directly underneath.
+    /// multi-profile `Mailboxes ⌄` title menu sits cleanly between Settings
+    /// and Edit without duplicating a large title directly underneath.
     static func usesInlineProfileTitleMenu(
         platform: MailRootToolbarPlatform,
-        hasProfiles: Bool,
+        profileCount: Int,
         canManageProfiles: Bool
     ) -> Bool {
         sidebarProfileSwitcherPlacement(
             platform: platform,
-            hasProfiles: hasProfiles,
+            profileCount: profileCount,
             canManageProfiles: canManageProfiles
         ) == .navigationTitleMenu
+    }
+
+    /// Whether the Mailboxes screen mounts Apple Mail's bottom status + Compose
+    /// bar on iOS.
+    static func showsSidebarBottomBar(
+        platform: MailRootToolbarPlatform,
+        hasContent: Bool
+    ) -> Bool {
+        platform == .iOS && hasContent
     }
 }
 

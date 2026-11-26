@@ -39,6 +39,9 @@ enum FolderSidebarDestinationActivation {
 /// navigation state; the parent observes that to update the list pane.
 public struct FolderSidebar: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     #if os(macOS)
     @Environment(\.controlActiveState) private var controlActiveState
     #endif
@@ -285,7 +288,7 @@ public struct FolderSidebar: View {
             .navigationBarTitleDisplayMode(
                 MailRootSettingsToolbarPolicy.usesInlineProfileTitleMenu(
                     platform: .iOS,
-                    hasProfiles: !profiles.isEmpty,
+                    profileCount: profiles.count,
                     canManageProfiles: onManageProfiles != nil
                 ) ? .inline : .large
             )
@@ -310,7 +313,7 @@ public struct FolderSidebar: View {
                 }
                 if MailRootSettingsToolbarPolicy.sidebarProfileSwitcherPlacement(
                     platform: .iOS,
-                    hasProfiles: !profiles.isEmpty,
+                    profileCount: profiles.count,
                     canManageProfiles: onManageProfiles != nil
                 ) == .navigationTitleMenu {
                     ToolbarItem(placement: .principal) {
@@ -634,6 +637,7 @@ public struct FolderSidebar: View {
         }
         .listStyle(.insetGrouped)
         .listSectionSpacing(.compact)
+        .brevIOSSoftScrollEdge()
         .environment(\.defaultMinListRowHeight, sidebarMetrics.folderRowMinimumHeight)
         .sheet(item: $selectedPluginContribution) { definition in
             if let view = BrevPluginRegistry.shared.view(for: definition) {
@@ -693,6 +697,7 @@ public struct FolderSidebar: View {
             accessory: accessory()
         )
         .listRowBackground(listRowSurface(isSelected: isSelected))
+        .listRowSeparatorTint(theme.separator.color)
         // The row owns its 44 pt height; the default insets would add to it.
         .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
     }
@@ -2510,7 +2515,10 @@ public struct FolderSidebar: View {
 
     private var sidebarMetrics: FolderSidebarLayoutMetrics {
         #if os(iOS)
-        FolderSidebarPresentation.layoutMetrics(for: .iPhone, density: mailboxListDensity)
+        FolderSidebarPresentation.layoutMetrics(
+            for: horizontalSizeClass == .regular ? .iPad : .iPhone,
+            density: mailboxListDensity
+        )
         #else
         FolderSidebarPresentation.layoutMetrics(for: .macOS, density: mailboxListDensity)
         #endif

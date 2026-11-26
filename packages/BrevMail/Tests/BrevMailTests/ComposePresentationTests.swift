@@ -25,25 +25,49 @@ struct ComposePresentationTests {
         #expect(metrics.minHeight == nil)
     }
 
-    @Test("phone compose chrome stays compact even when the sheet reports regular width")
-    func phoneComposeChromeStaysCompactForRegularSheetWidth() {
+    @Test("phone compose adapts to unfolded regular size classes while keeping landscape compact")
+    func phoneComposeAdaptsToUnfoldedRegularSizeClasses() {
+        // Unfolded foldable (regular width + regular height) gets regular iOS layout.
         #expect(ComposeLayoutPolicy.platform(
             horizontalSizeClassIsCompact: false,
             isAccessibilitySize: false,
-            deviceClass: .phone
+            deviceClass: .phone,
+            verticalSizeClassIsCompact: false
+        ) == .regularIOS)
+        // Standard iPhone Pro Max landscape (regular width + compact height) stays compact.
+        #expect(ComposeLayoutPolicy.platform(
+            horizontalSizeClassIsCompact: false,
+            isAccessibilitySize: false,
+            deviceClass: .phone,
+            verticalSizeClassIsCompact: true
         ) == .compactIOS)
+        // Outer cover / standard portrait stays compact.
+        #expect(ComposeLayoutPolicy.platform(
+            horizontalSizeClassIsCompact: true,
+            isAccessibilitySize: false,
+            deviceClass: .phone,
+            verticalSizeClassIsCompact: false
+        ) == .compactIOS)
+        // Accessibility text sizes always keep the scrollable accessibility layout on iOS.
         #expect(ComposeLayoutPolicy.platform(
             horizontalSizeClassIsCompact: false,
             isAccessibilitySize: true,
-            deviceClass: .phone
+            deviceClass: .phone,
+            verticalSizeClassIsCompact: false
+        ) == .compactIOSAccessibility)
+        #expect(ComposeLayoutPolicy.platform(
+            horizontalSizeClassIsCompact: false,
+            isAccessibilitySize: true,
+            deviceClass: .pad,
+            verticalSizeClassIsCompact: false
         ) == .compactIOSAccessibility)
     }
 
-    @Test("regular iOS compose chrome fits the narrowest regular-width iPad scene")
+    @Test("regular iOS compose lets the system sheet container size without clipping narrow regular scenes")
     func regularIOSComposeChromeFitsNarrowestRegularWidthIPadScene() {
         #expect(ComposeLayoutPolicy.frameMetrics(for: .regularIOS) == ComposeFrameMetrics(
-            minWidth: 660,
-            minHeight: 560
+            minWidth: nil,
+            minHeight: nil
         ))
     }
 

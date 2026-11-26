@@ -41,13 +41,25 @@ struct MailPaneSurfacePolicyTests {
         #expect(policy.navigationBarBackgroundRole == nil)
     }
 
-    @Test("iPad message list column has readable split width")
+    @Test("iOS pane platform follows horizontal size class for unfolded foldables and compact iPad")
+    func iOSPanePlatformFollowsHorizontalSizeClass() {
+        #expect(MailPanePlatformPolicy.iOSPlatform(isRegularHorizontalSizeClass: true) == .iPad)
+        #expect(MailPanePlatformPolicy.iOSPlatform(isRegularHorizontalSizeClass: false) == .iPhone)
+        #expect(MailPanePlatformPolicy.iOSPlatform(horizontalSizeClass: .regular) == .iPad)
+        #expect(MailPanePlatformPolicy.iOSPlatform(horizontalSizeClass: .compact) == .iPhone)
+        #expect(MailPanePlatformPolicy.iOSPlatform(horizontalSizeClass: nil) == .iPhone)
+    }
+
+    @Test("regular iOS message list column fits unfolded portrait foldables and full-size iPad")
     func iPadMessageListColumnHasReadableSplitWidth() throws {
         let width = try #require(MailPaneColumnWidthPolicy.messageList(platform: .iPad))
 
-        #expect(width.minimum >= 320)
-        #expect(width.ideal >= 380)
-        #expect(width.maximum >= width.ideal)
+        #expect(width.minimum == 280)
+        #expect(width.ideal == 340)
+        #expect(width.maximum == 460)
+        // 669 pt unfolded portrait leaves >= 389 pt for the reader; 951 pt landscape leaves >= 611 pt.
+        #expect(669 - width.minimum >= 380)
+        #expect(951 - width.ideal >= 600)
     }
 
     @Test("phone message list column leaves compact split automatic")
@@ -76,12 +88,19 @@ struct MailPaneSurfacePolicyTests {
         #expect(width.maximum > width.ideal)
     }
 
-    @Test("iPad folder sidebar keeps the same bounds as macOS")
-    func iPadFolderSidebarKeepsTheSameBoundsAsMacOS() throws {
-        let mac = try #require(MailPaneColumnWidthPolicy.folderSidebar(platform: .macOS))
+    @Test("regular iOS folder sidebar fits unfolded foldables and iPad without squeezing")
+    func iPadFolderSidebarFitsFoldablesAndIPad() throws {
         let pad = try #require(MailPaneColumnWidthPolicy.folderSidebar(platform: .iPad))
 
-        #expect(pad == mac)
+        #expect(pad.minimum == 220)
+        #expect(pad.ideal == 250)
+        #expect(pad.maximum == 360)
+    }
+
+    @Test("iOS soft scroll-edge effect respects Reduce Transparency")
+    func iOSSoftScrollEdgeRespectsReduceTransparency() {
+        #expect(IOSScrollEdgeEffectPolicy.usesSoftStyle(reduceTransparency: false))
+        #expect(!IOSScrollEdgeEffectPolicy.usesSoftStyle(reduceTransparency: true))
     }
 
     @Test("phone folder sidebar leaves compact split automatic")

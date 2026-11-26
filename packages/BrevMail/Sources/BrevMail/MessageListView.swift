@@ -1338,6 +1338,7 @@ public struct MessageListView: View {
                         // the gap between date groups.
                         .environment(\.defaultMinListRowHeight, 1)
                         .refreshable { await pullToRefresh() }
+                        .brevIOSSoftScrollEdge()
                         .brevBottomBarScrollInset()
                     #if os(macOS)
                         .onChange(of: [navigation.selectedMessageID, selectedRowID]) { _, _ in
@@ -1614,60 +1615,63 @@ public struct MessageListView: View {
         .draggable(draggablePayload(for: header))
         .listRowInsets(EdgeInsets())
         .listRowSeparator(rowSeparatorVisibility)
-        .messageListThemedRowBackground()
-        // Double-click opens non-drafts in their own window; drafts already
-        // activate the composer on the first click. A simultaneous
-        // high-count tap gesture (rather than a second `onTapGesture(count:)`)
-        // keeps single-click selection instant while still recognizing the
-        // double-click — stacked tap gestures of differing counts do not
-        // disambiguate reliably on macOS List rows.
-        .simultaneousGesture(
-            TapGesture(count: 2).onEnded {
-                guard folder?.role != .drafts else { return }
-                onOpenInNewWindow?(header)
+        #if os(iOS)
+            .listRowSeparatorTint(theme.separator.color)
+        #endif
+            .messageListThemedRowBackground()
+            // Double-click opens non-drafts in their own window; drafts already
+            // activate the composer on the first click. A simultaneous
+            // high-count tap gesture (rather than a second `onTapGesture(count:)`)
+            // keeps single-click selection instant while still recognizing the
+            // double-click — stacked tap gestures of differing counts do not
+            // disambiguate reliably on macOS List rows.
+            .simultaneousGesture(
+                TapGesture(count: 2).onEnded {
+                    guard folder?.role != .drafts else { return }
+                    onOpenInNewWindow?(header)
+                }
+            )
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                ForEach(
+                    MessageCommandPresentation.trailingSwipeActions(
+                        hasArchive: archiveFolder != nil,
+                        isCompact: usesCompactMessageRows
+                    ),
+                    id: \.self
+                ) { action in
+                    trailingSwipeButton(action, for: header)
+                }
             }
-        )
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            ForEach(
-                MessageCommandPresentation.trailingSwipeActions(
-                    hasArchive: archiveFolder != nil,
-                    isCompact: usesCompactMessageRows
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                ForEach(
+                    MessageCommandPresentation.leadingSwipeActions(isCompact: usesCompactMessageRows),
+                    id: \.self
+                ) { action in
+                    leadingSwipeButton(action, for: header)
+                }
+            }
+            .contextMenu {
+                messageContextMenu(for: header)
+            }
+            .messageListRefreshArrival(
+                isArrival: MessageListRefreshArrivalPolicy.shouldAnimate(
+                    headerID: header.id,
+                    arrivalIDs: refreshArrivalIDs,
+                    isSearchActive: !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ),
-                id: \.self
-            ) { action in
-                trailingSwipeButton(action, for: header)
+                delay: refreshArrivalDelay(for: header.id)
+            )
+            .onAppear {
+                visibleTriageRowIDs.insert(header.id)
+                guard shouldLoadMore(
+                    afterAppearingAt: visibleIndex,
+                    totalCount: visibleCount
+                ) else { return }
+                Task { await loadMore() }
             }
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            ForEach(
-                MessageCommandPresentation.leadingSwipeActions(isCompact: usesCompactMessageRows),
-                id: \.self
-            ) { action in
-                leadingSwipeButton(action, for: header)
+            .onDisappear {
+                visibleTriageRowIDs.remove(header.id)
             }
-        }
-        .contextMenu {
-            messageContextMenu(for: header)
-        }
-        .messageListRefreshArrival(
-            isArrival: MessageListRefreshArrivalPolicy.shouldAnimate(
-                headerID: header.id,
-                arrivalIDs: refreshArrivalIDs,
-                isSearchActive: !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ),
-            delay: refreshArrivalDelay(for: header.id)
-        )
-        .onAppear {
-            visibleTriageRowIDs.insert(header.id)
-            guard shouldLoadMore(
-                afterAppearingAt: visibleIndex,
-                totalCount: visibleCount
-            ) else { return }
-            Task { await loadMore() }
-        }
-        .onDisappear {
-            visibleTriageRowIDs.remove(header.id)
-        }
     }
 
     private var usesCompactMessageRows: Bool {
