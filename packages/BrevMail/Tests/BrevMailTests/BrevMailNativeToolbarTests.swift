@@ -495,6 +495,56 @@ struct BrevMailNativeToolbarTests {
         #expect(flagged.symbolName(for: .flag) == "flag.slash")
     }
 
+    @Test("coordinator diffs state and window attachment before rebuilding toolbar items")
+    func coordinatorDiffsStateAndAttachment() {
+        let actions = BrevMailNativeToolbarActions(
+            compose: {},
+            refresh: {},
+            reply: { _ in },
+            replyAll: { _ in },
+            forward: { _ in },
+            toggleRead: { _ in },
+            toggleStar: { _ in },
+            archive: { _ in },
+            delete: { _ in },
+            settings: {},
+            toggleMailContext: {}
+        )
+        let initialState = BrevMailNativeToolbarState(
+            selectedHeader: Self.makeHeader(isRead: false),
+            hasSelectedFolder: true,
+            canArchive: true
+        )
+        let coordinator = BrevMailNativeToolbarBridge.Coordinator(state: initialState, actions: actions)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+
+        coordinator.attach(to: window)
+        #expect(coordinator.attachWorkCount == 1)
+        #expect(coordinator.visibleItemUpdateCount == 1)
+
+        // Repeated updates with identical state and same attached window are no-ops.
+        coordinator.update(state: initialState, actions: actions)
+        coordinator.attach(to: window)
+        coordinator.update(state: initialState, actions: actions)
+        coordinator.attach(to: window)
+        #expect(coordinator.attachWorkCount == 1)
+        #expect(coordinator.visibleItemUpdateCount == 1)
+
+        // Changing toolbar state triggers exactly one visible-item update.
+        let updatedState = BrevMailNativeToolbarState(
+            selectedHeader: Self.makeHeader(isRead: true),
+            hasSelectedFolder: true,
+            canArchive: true
+        )
+        coordinator.update(state: updatedState, actions: actions)
+        #expect(coordinator.visibleItemUpdateCount == 2)
+    }
+
     private static func makeHeader(isRead: Bool = false, isFlagged: Bool = false) -> MessageHeader {
         MessageHeader(
             id: "message-1",

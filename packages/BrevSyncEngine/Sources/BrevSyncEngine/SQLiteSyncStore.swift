@@ -49,6 +49,18 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     private let lock = NSLock()
     private let db: OpaquePointer?
     private let databaseURL: URL
+    private var conversationCandidateQueryCountStorage = 0
+    private var threadingDecodedHeaderCountStorage = 0
+
+    /// Number of SQLite conversation-candidate queries executed by this store (testing hook).
+    var conversationCandidateQueryCount: Int {
+        lock.withLock { conversationCandidateQueryCountStorage }
+    }
+
+    /// Number of `header_json` rows decoded by `threadingCandidates` (testing hook).
+    var threadingDecodedHeaderCount: Int {
+        lock.withLock { threadingDecodedHeaderCountStorage }
+    }
 
     // Shared encoder/decoder. DateEncodingStrategy must match SQLite date_ts extraction.
     private static let encoder: JSONEncoder = {
@@ -308,6 +320,14 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         }
     }
 
+    struct ThreadingCandidate: Sendable {
+        let folderID: Folder.ID
+        let uid: Int
+        let folderGeneration: UInt64?
+        let header: MessageHeader?
+        let linkIdentifiers: [String]
+    }
+
     func conversationCandidates(identifier: String, source: MailSourceID, limit: Int) throws -> [ConversationMember] {
         try conversationCandidates(identifiers: [identifier], source: source, limit: limit)
     }
@@ -315,6 +335,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     func conversationCandidates(identifiers: [String], source: MailSourceID, limit: Int) throws -> [ConversationMember] {
         guard limit > 0, !identifiers.isEmpty else { return [] }
         return try lock.withLock {
+            conversationCandidateQueryCountStorage += 1
             var statement: OpaquePointer?
             let placeholders = Array(repeating: "?", count: identifiers.count).joined(separator: ",")
             let sql = """
@@ -346,6 +367,103 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 ))
                 result.append(ConversationMember(sourceID: source, header: header, folderGeneration: generation,
                                                  references: header.references))
+                step = sqlite3_step(statement)
+            }
+            guard step == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
+            return result
+        }
+    }
+
+    /// Walks reply links for `imapThreadingHeaders` while decoding `header_json`
+    /// only for rows belonging to `targetFolderID` (other folders contribute
+    /// only their indexed `conversation_links` identifiers to preserve
+    /// cross-folder bridges without paying JSON-decode cost on discarded rows).
+    func threadingCandidates(
+        identifiers: [String],
+        targetFolderID: String,
+        source: MailSourceID,
+        limit: Int
+    ) throws -> [ThreadingCandidate] {
+        guard limit > 0, !identifiers.isEmpty else { return [] }
+        return try lock.withLock {
+            conversationCandidateQueryCountStorage += 1
+            var statement: OpaquePointer?
+            let placeholders = (2 ..< identifiers.count + 2).map { "?\($0)" }.joined(separator: ",")
+            let limitIndex = identifiers.count + 2
+            let targetFolderIndex = identifiers.count + 3
+            let sql = """
+            WITH matched AS (
+                SELECT DISTINCT c.folder_id, c.uid
+                FROM conversation_links c
+                WHERE c.account_id = ?1 AND c.identifier IN (\(placeholders))
+                ORDER BY c.folder_id, c.uid
+                LIMIT ?\(limitIndex)
+            )
+            SELECT
+                m.folder_id,
+                m.uid,
+                CASE WHEN m.folder_id = ?\(targetFolderIndex) THEN h.header_json ELSE NULL END,
+                s.uid_validity,
+                (
+                    SELECT group_concat(l.identifier, char(31))
+                    FROM conversation_links l
+                    WHERE l.account_id = ?1 AND l.folder_id = m.folder_id AND l.uid = m.uid
+                )
+            FROM matched m
+            JOIN message_headers h
+                ON h.account_id = ?1 AND h.folder_id = m.folder_id AND h.uid = m.uid
+            LEFT JOIN folder_sync_state s
+                ON s.account_id = ?1 AND s.folder_id = m.folder_id
+            ORDER BY m.folder_id, m.uid;
+            """
+            guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+                throw SyncStoreError.prepareFailed(errMsg())
+            }
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_text(statement, 1, source.accountID, -1, Self.transient)
+            for (offset, identifier) in identifiers.enumerated() {
+                sqlite3_bind_text(statement, Int32(offset + 2), identifier, -1, Self.transient)
+            }
+            sqlite3_bind_int64(statement, Int32(identifiers.count + 2), Int64(limit))
+            sqlite3_bind_text(statement, Int32(identifiers.count + 3), targetFolderID, -1, Self.transient)
+
+            var result: [ThreadingCandidate] = []
+            var step = sqlite3_step(statement)
+            while step == SQLITE_ROW {
+                guard let folderPtr = sqlite3_column_text(statement, 0) else {
+                    throw ConversationLookupError.invalidMetadata
+                }
+                let folderID = String(cString: folderPtr)
+                let uid = Int(sqlite3_column_int64(statement, 1))
+                let header: MessageHeader?
+                if sqlite3_column_type(statement, 2) != SQLITE_NULL {
+                    guard let bytes = sqlite3_column_blob(statement, 2) else {
+                        throw ConversationLookupError.invalidMetadata
+                    }
+                    let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 2)))
+                    header = try Self.decoder.decode(MessageHeader.self, from: data)
+                    threadingDecodedHeaderCountStorage += 1
+                } else {
+                    header = nil
+                }
+                let generation = sqlite3_column_type(statement, 3) == SQLITE_NULL
+                    ? nil
+                    : UInt64(exactly: sqlite3_column_int64(statement, 3))
+                let linkIdentifiers: [String]
+                if let linksPtr = sqlite3_column_text(statement, 4) {
+                    linkIdentifiers = String(cString: linksPtr)
+                        .split(separator: "\u{1F}", omittingEmptySubsequences: true)
+                        .map(String.init)
+                } else {
+                    linkIdentifiers = []
+                }
+                result.append(ThreadingCandidate(
+                    folderID: folderID,
+                    uid: uid,
+                    folderGeneration: generation,
+                    header: header,
+                    linkIdentifiers: linkIdentifiers
+                ))
                 step = sqlite3_step(statement)
             }
             guard step == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }

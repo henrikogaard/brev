@@ -32,6 +32,9 @@ import WidgetKit
 public final class WidgetSnapshotPublisher {
     /// Newest previews the widget keeps, per ADR-0083's narrow scope.
     public static let previewLimit = 3
+    /// Upper bound on cached headers fetched per inbox so publishing never
+    /// triggers an unbounded `limit: Int.max` full-folder SQLite scan.
+    public static let headerFetchLimit = 25
 
     private let store: WidgetSnapshotStore
     /// The last payload written; identical snapshots skip the write and
@@ -103,9 +106,23 @@ public final class WidgetSnapshotPublisher {
         var headers: [(section: MailSourceSection, header: MessageHeader)] = []
         for section in sourceSections {
             guard let inbox = section.folders.first(where: { $0.role == .inbox }),
-                  let backend = backends.first(where: { $0.account.id == section.account.id }),
-                  let cached = try? await backend.cachedMessageHeaders(in: inbox, sourceID: section.id)
+                  let backend = backends.first(where: { $0.account.id == section.account.id })
             else { continue }
+            let cached: [MessageHeader]
+            if let bounded = backend.extensionService(BoundedCachedHeaderProviding.self) {
+                guard let headers = try? await bounded.cachedMessageHeaders(
+                    in: inbox,
+                    sourceID: section.id,
+                    limit: Self.headerFetchLimit
+                ) else { continue }
+                cached = headers
+            } else {
+                guard let headers = try? await backend.cachedMessageHeaders(
+                    in: inbox,
+                    sourceID: section.id
+                ) else { continue }
+                cached = headers
+            }
             headers.append(contentsOf: cached.map { (section, $0) })
         }
         return headers

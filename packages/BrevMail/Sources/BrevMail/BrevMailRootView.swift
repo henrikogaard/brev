@@ -397,6 +397,11 @@ public struct BrevMailRootView: View {
     @State private var notificationCenter = BrevLocalNotificationCenter()
     @State private var badgeUpdater = UnreadBadgeUpdater()
     @State private var widgetSnapshotPublisher = WidgetSnapshotPublisher()
+    @State private var widgetSnapshotPublishTask: Task<Void, Never>?
+    private static let widgetSnapshotPublishDelay: Duration = .milliseconds(1500)
+    private static let todayDigestHeaderLimit = 500
+    private static let todaySignInCodeHeaderLimit = 25
+    private static let noReplyFollowUpHeaderLimit = 500
     @State private var notificationDelegate = BrevNotificationDelegate()
     @State private var isInitialMailboxSelectionPresented = false
     @AppStorage(MailProfileStorage.storageKey) private var customProfileStorage = ""
@@ -999,6 +1004,10 @@ public struct BrevMailRootView: View {
                 if canPresent {
                     consumePendingPanelReplyRouteIfReady()
                 }
+            }
+            .onChange(of: navigation.lastLocalUnreadCountDelta) { _, delta in
+                guard let delta else { return }
+                applyUnreadCountChange(folderID: delta.folderID, delta: delta.delta)
             }
             .onChange(of: navigation.selectedSourceID) {
                 handleSelectedSourceChange()
@@ -2213,7 +2222,7 @@ public struct BrevMailRootView: View {
                 guard let quickReplySourceID else { return selectedBackend }
                 return connectedBackend(forAccountID: quickReplySourceID.accountID)
             }()
-            let readerFooter: AnyView? = {
+            let quickReplyFooter: ReaderQuickReplyFooter? = {
                 guard let quickReplyTarget,
                       let quickReplyBackend,
                       quickReplyBackend.capabilities.contains(.smtpOAuth),
@@ -2223,8 +2232,9 @@ public struct BrevMailRootView: View {
                 #if os(iOS)
                 guard horizontalSizeClass != .compact else { return nil }
                 #endif
-                return AnyView(
-                    ReaderQuickReplyBar(
+                return ReaderQuickReplyFooter(
+                    targetID: quickReplyTarget.id,
+                    bar: ReaderQuickReplyBar(
                         recipientName: quickReplyRecipientName(
                             for: quickReplyTarget,
                             accountEmail: quickReplyBackend.account.emailAddress
@@ -2263,7 +2273,6 @@ public struct BrevMailRootView: View {
                         isDisabled: isCommandMutationBlocked || isComposePresentationBlocked,
                         draftWasSaved: $quickReplyDraftWasSaved
                     )
-                    .id(quickReplyTarget.id)
                 )
             }()
             #if os(macOS)
@@ -2288,7 +2297,7 @@ public struct BrevMailRootView: View {
                         aiBackend: selectedAIBackend,
                         triageStore: onDeviceThreadTriageStore,
                         inviteReconciler: inviteReconciler,
-                        readerFooter: readerFooter
+                        quickReplyFooter: quickReplyFooter
                     )
                 } else {
                     MessageDetailView(
@@ -2303,7 +2312,7 @@ public struct BrevMailRootView: View {
                         inviteReconciler: inviteReconciler,
                         contactActions: senderContactActions,
                         driveFeature: driveFeature,
-                        readerFooter: readerFooter
+                        quickReplyFooter: quickReplyFooter
                     )
                 }
             }
@@ -2393,7 +2402,10 @@ public struct BrevMailRootView: View {
                 actions: navigation.bulkSelectionActions,
                 isDisabled: isCommandMutationBlocked
             )
-        } else if navigation.selectedMessageID == nil, hasValidSelectedSourceBackend, !sidebarSourceSections.isEmpty {
+        } else if navigation.selectedMessageID == nil,
+                  !navigation.isAwaitingFolderHeaders,
+                  hasValidSelectedSourceBackend,
+                  !sidebarSourceSections.isEmpty {
             todayPage
         } else {
             readingPaneContent()
@@ -2471,7 +2483,13 @@ public struct BrevMailRootView: View {
             guard !Task.isCancelled else { return nil }
             let owner = backend(for: section.id)
             guard let inbox = section.folders.first(where: { $0.role == .inbox }),
-                  let headers = try? await owner.cachedMessageHeaders(in: inbox, sourceID: section.id)
+                  let headers = try? await cachedBoundedMessageHeaders(
+                      from: owner,
+                      in: inbox,
+                      sourceID: section.id,
+                      limit: Self.todaySignInCodeHeaderLimit,
+                      since: nil
+                  )
             else { continue }
             if let candidate = SignInCodeSurfacePolicy.newestActiveCode(
                 headers: headers,
@@ -2506,6 +2524,15 @@ public struct BrevMailRootView: View {
     /// network (ADR-0006). Returns nil when cancelled or when any read fails,
     /// so the page keeps what it showed rather than claiming "nothing".
     private func loadTodayDigest(_ sections: [MailSourceSection]) async -> TodayDigest? {
+        let now = Date()
+        let noReplyReminders = settingsStore.followUpSettings().reminders
+        let defaultCutoff = now.addingTimeInterval(-TodayDigestBuilder.window)
+        let activeNoReplyDates = noReplyReminders.compactMap { reminder -> Date? in
+            guard reminder.isAutomaticNoReply, !reminder.isDismissed, !reminder.isCompleted else { return nil }
+            return reminder.noReplyMetadata?.sentAt
+        }
+        let earliestCutoff = min(defaultCutoff, activeNoReplyDates.min() ?? defaultCutoff)
+
         var inbox: [(MailSourceID, [MessageHeader])] = []
         var sent: [(MailSourceID, [MessageHeader])] = []
         var addresses = Set(backends.map(\.account.emailAddress))
@@ -2514,7 +2541,13 @@ public struct BrevMailRootView: View {
             let owner = backend(for: section.id)
             for folder in section.folders where folder.role == .inbox || folder.role == .sent {
                 guard !Task.isCancelled,
-                      let headers = try? await owner.cachedMessageHeaders(in: folder, sourceID: section.id)
+                      let headers = try? await cachedBoundedMessageHeaders(
+                          from: owner,
+                          in: folder,
+                          sourceID: section.id,
+                          limit: Self.todayDigestHeaderLimit,
+                          since: earliestCutoff
+                      )
                 else { return nil }
                 if folder.role == .inbox { inbox.append((section.id, headers)) } else { sent.append((section.id, headers)) }
             }
@@ -2522,7 +2555,6 @@ public struct BrevMailRootView: View {
         let myAddresses = addresses
         let readInbox = inbox
         let readSent = sent
-        let noReplyReminders = settingsStore.followUpSettings().reminders
         // The rules and the keyword classifier walk every cached header, so
         // keep them off the main actor.
         let digest = await Task.detached(priority: .userInitiated) {
@@ -2531,7 +2563,7 @@ public struct BrevMailRootView: View {
                 inbox: readInbox,
                 sent: readSent,
                 myAddresses: myAddresses,
-                now: .now,
+                now: now,
                 noReplyReminders: noReplyReminders,
                 classify: { header, sourceID in
                     InboxClassificationPolicy.classification(for: header, sourceID: sourceID, overrideStore: overrides)
@@ -2542,6 +2574,24 @@ public struct BrevMailRootView: View {
         return Task.isCancelled ? nil : digest
     }
     #endif
+
+    private func cachedBoundedMessageHeaders(
+        from owner: any MailBackend,
+        in folder: Folder,
+        sourceID: MailSourceID,
+        limit: Int,
+        since: Date?
+    ) async throws -> [MessageHeader] {
+        if let bounded = owner.extensionService(BoundedCachedHeaderProviding.self) {
+            return try await bounded.cachedMessageHeaders(
+                in: folder,
+                sourceID: sourceID,
+                limit: limit,
+                since: since
+            )
+        }
+        return try await owner.cachedMessageHeaders(in: folder, sourceID: sourceID)
+    }
 
     /// Builds the Subscriptions catalog strictly from locally cached headers
     /// and cached `List-Unsubscribe` metadata — zero network calls (#295, ADR-0006).
@@ -2613,32 +2663,26 @@ public struct BrevMailRootView: View {
 
     #if os(iOS)
     private func compactReadingPaneDetailPane(fallbackHeader: MessageHeader) -> some View {
-        let shownHeader = navigation.selectedHeader ?? fallbackHeader
-        // A new conversation (or message, for backends without threads) slides
-        // in; moving within one conversation keeps the thread view mounted.
-        let readerIdentity = selectedBackend.groupsMessagesIntoThreads ? shownHeader.threadID : shownHeader.id
-        return ZStack {
-            readingPaneContent(fallbackHeader: fallbackHeader)
-                .id(readerIdentity)
-                .transition(.push(from: .trailing))
-        }
-        .animation(reduceMotion ? nil : .default, value: readerIdentity)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .brevFontSection(.reader)
-        .brevMailPaneSurface(.content)
-        // The pushed reader is its own navigation context, so it mounts its
-        // own copy of the rail below its nav bar.
-        .safeAreaInset(edge: .top, spacing: 0) {
-            animatedTopChromeStatusRail
-        }
-        // Feedback for archive/delete/move sits above the bottom bar, not
-        // over it, and survives the reader popping back to the list.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            undoToastContent(bottomPadding: BrevSpacing.sm)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: undoToastIdentity)
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .brevMailFallbackToolbar { compactReaderToolbar }
+        // Keep the reader mounted across prev/next and message switches so
+        // `MessageDetailView` reuses its warm `HTMLBodyWebViewStore` /
+        // `WKWebView` instead of tearing down WebKit on every tap.
+        readingPaneContent(fallbackHeader: fallbackHeader)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .brevFontSection(.reader)
+            .brevMailPaneSurface(.content)
+            // The pushed reader is its own navigation context, so it mounts its
+            // own copy of the rail below its nav bar.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                animatedTopChromeStatusRail
+            }
+            // Feedback for archive/delete/move sits above the bottom bar, not
+            // over it, and survives the reader popping back to the list.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                undoToastContent(bottomPadding: BrevSpacing.sm)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: undoToastIdentity)
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .brevMailFallbackToolbar { compactReaderToolbar }
     }
 
     /// Whether the phone's pushed reader is on screen.
@@ -6533,13 +6577,16 @@ public struct BrevMailRootView: View {
         )
         backgroundMail?.unreadCount = badgeUpdater.lastAppliedCount
         // Widgets render an App Group snapshot file, never our stores
-        // (ADR-0083); publish from the badge choke point so the widget
-        // and the badge can never disagree.
+        // (ADR-0083); coalesce publishes off the immediate selection/read path
+        // so rapid navigation does not storm SQLite with repeated widget queries.
         let snapshotFolders = folders
         let snapshotSections = visibleSourceSections
         let snapshotBackends = backends
         let publisher = widgetSnapshotPublisher
-        Task { @MainActor in
+        widgetSnapshotPublishTask?.cancel()
+        widgetSnapshotPublishTask = Task { @MainActor in
+            try? await Task.sleep(for: Self.widgetSnapshotPublishDelay)
+            guard !Task.isCancelled else { return }
             await publisher.publish(
                 folders: snapshotFolders,
                 sourceSections: snapshotSections,
@@ -7834,6 +7881,12 @@ public struct BrevMailRootView: View {
         let capturedSourceID = navigation.selectedSourceID
         clearRootStatus()
         navigation.updateHeader(id: header.id) { $0.isRead = newValue }
+        navigation.recordLocalReadChange(
+            folderID: header.folderID,
+            sourceID: capturedSourceID,
+            messageIDs: [header.id],
+            unreadDelta: 0
+        )
         do {
             try await setRead(newValue, for: [header.id])
             let description = MailFlagUndo.description(.read, value: newValue)
@@ -8317,7 +8370,21 @@ public struct BrevMailRootView: View {
         requestNoReplyFollowUpRefresh()
     }
 
+    private func hasActiveNoReplyFollowUps(in settings: FollowUpSettings) -> Bool {
+        if !settings.pendingNoReplyIntents.isEmpty {
+            return true
+        }
+        return settings.reminders.contains { reminder in
+            reminder.isAutomaticNoReply && !reminder.isDismissed && !reminder.isCompleted
+        }
+    }
+
     private func requestNoReplyFollowUpRefresh() {
+        // Fast-exit before scheduling any task when no automatic no-reply
+        // reminders or pending intents exist.
+        guard hasActiveNoReplyFollowUps(in: settingsStore.followUpSettings()) else {
+            return
+        }
         guard noReplyFollowUpRefreshTask == nil else {
             noReplyFollowUpRefreshRequested = true
             return
@@ -8338,6 +8405,7 @@ public struct BrevMailRootView: View {
     private func reconcileNoReplyFollowUpsFromCache(generation: Int) async {
         let sourceRevision = sourceSectionsRevision
         let savedSettings = settingsStore.followUpSettings()
+        guard hasActiveNoReplyFollowUps(in: savedSettings) else { return }
         let eligibleSources = Set(
             savedSettings.pendingNoReplyIntents.map(\.sourceID)
                 + savedSettings.reminders.compactMap { reminder in
@@ -8360,9 +8428,15 @@ public struct BrevMailRootView: View {
             let sentFolderIDs = Set(section.folders.filter { $0.role == .sent }.map(\.id))
             var headers: [MessageHeader] = []
             var isComplete = true
-            for folder in section.folders {
+            for folder in section.folders where folder.role != .trash && folder.role != .spam && folder.role != .drafts {
                 do {
-                    let cachedHeaders = try await owner.cachedMessageHeaders(in: folder, sourceID: section.id)
+                    let cachedHeaders = try await cachedBoundedMessageHeaders(
+                        from: owner,
+                        in: folder,
+                        sourceID: section.id,
+                        limit: Self.noReplyFollowUpHeaderLimit,
+                        since: nil
+                    )
                     headers.append(contentsOf: cachedHeaders)
                 } catch {
                     isComplete = false
@@ -9456,10 +9530,19 @@ public struct BrevMailRootView: View {
             guard ObjectIdentifier(backend) == ObjectIdentifier(selectedBackend) else { return }
             await refreshOutboxCount()
         case .folderRefreshed, .messagesAdded, .messagesRemoved, .messagesUpdated:
+            if case .messagesUpdated = event,
+               backend.account.id == selectedBackend.account.id,
+               navigation.consumeMatchingLocalReadEcho(for: event) {
+                return
+            }
             if case .messagesAdded = event {
                 signInCodeArrivalController?.handle(event, from: backend)
             }
-            requestNoReplyFollowUpRefresh()
+            if case .messagesUpdated = event {
+                // Flag-only updates (read/star) never add sent copies or replies.
+            } else {
+                requestNoReplyFollowUpRefresh()
+            }
             let effects = MailRootAccountEventPolicy.mailboxEventEffects(
                 for: event,
                 eventAccountID: backend.account.id,

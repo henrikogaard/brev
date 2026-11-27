@@ -31,16 +31,36 @@ extension RecentRecipientStore {
 }
 
 /// Correspondence evidence for one reader. Retained only for the owning source.
-struct SenderWarningHistory: Sendable {
+struct SenderWarningHistory: Sendable, Equatable {
+    /// Upper bound on Sent headers scanned on a cold cache load so opening a
+    /// message never triggers an unbounded `limit: Int.max` SQLite scan.
+    static let sentHeaderScanLimit = 500
+
     var written: Set<String> = []
     var knownDomains: Set<String> = []
 
-    static func load(backend: any MailBackend, source: MailSourceID, sent: [Folder], ownAddresses: Set<String>) async -> Self {
+    static func load(
+        backend: any MailBackend,
+        source: MailSourceID,
+        sent: [Folder],
+        ownAddresses: Set<String>,
+        headerLimit: Int = sentHeaderScanLimit
+    ) async -> Self {
         guard backend.account.id == source.accountID else { return Self() }
         var written = RecentRecipientStore().writtenAddresses(accountID: source.accountID)
+        let boundedProvider = backend.extensionService(BoundedCachedHeaderProviding.self)
         for folder in sent where folder.role == .sent {
             guard !Task.isCancelled else { return Self() }
-            let headers = await (try? backend.cachedMessageHeaders(in: folder, sourceID: source)) ?? []
+            let headers: [MessageHeader]
+            if let boundedProvider {
+                headers = await (try? boundedProvider.cachedMessageHeaders(
+                    in: folder,
+                    sourceID: source,
+                    limit: headerLimit
+                )) ?? []
+            } else {
+                headers = await (try? backend.cachedMessageHeaders(in: folder, sourceID: source)) ?? []
+            }
             written.formUnion(recipients(of: headers, ownAddresses: ownAddresses))
         }
         let domains = Set(written.compactMap { address -> String? in
@@ -58,6 +78,112 @@ struct SenderWarningHistory: Sendable {
             }
         }
         return addresses
+    }
+}
+
+/// Bounded in-memory cache of correspondence history keyed by source, Sent
+/// folder stamps (`id` + `totalCount`), own addresses, and written-recipient
+/// revision. Prevents remounting `SenderWarningHistoryModifier` (for example on
+/// iPhone message switches or macOS folder switches) from re-scanning SQLite on
+/// every message open (ADR-0061).
+@MainActor
+final class SenderWarningHistoryCache {
+    static let shared = SenderWarningHistoryCache()
+    static let defaultCapacity = 16
+
+    struct SentFolderStamp: Hashable, Sendable {
+        let id: Folder.ID
+        let totalCount: Int
+    }
+
+    struct Key: Hashable {
+        let backendID: ObjectIdentifier
+        let sourceID: MailSourceID
+        let sentFolders: [SentFolderStamp]
+        let ownAddresses: Set<String>
+        let writtenRevision: Int
+    }
+
+    private let capacity: Int
+    private var entries: [Key: SenderWarningHistory] = [:]
+    private var recencyOrder: [Key] = []
+    private var inFlightLoads: [Key: Task<SenderWarningHistory, Never>] = [:]
+    private(set) var writtenRevision = 0
+    private(set) var coldLoadCount = 0
+
+    init(capacity: Int = SenderWarningHistoryCache.defaultCapacity) {
+        self.capacity = max(1, capacity)
+    }
+
+    func value(for key: Key) -> SenderWarningHistory? {
+        guard let cached = entries[key] else { return nil }
+        touch(key)
+        return cached
+    }
+
+    func load(
+        key: Key,
+        backend: any MailBackend,
+        sent: [Folder],
+        headerLimit: Int = SenderWarningHistory.sentHeaderScanLimit
+    ) async -> SenderWarningHistory {
+        if let cached = value(for: key) {
+            return cached
+        }
+        if let existing = inFlightLoads[key] {
+            return await existing.value
+        }
+        coldLoadCount += 1
+        let task = Task { @MainActor in
+            await SenderWarningHistory.load(
+                backend: backend,
+                source: key.sourceID,
+                sent: sent,
+                ownAddresses: key.ownAddresses,
+                headerLimit: headerLimit
+            )
+        }
+        inFlightLoads[key] = task
+        let result = await task.value
+        inFlightLoads[key] = nil
+        if !Task.isCancelled {
+            insert(result, for: key)
+        }
+        return result
+    }
+
+    func invalidateForWrittenAddressesChange() {
+        writtenRevision &+= 1
+        entries.removeAll()
+        recencyOrder.removeAll()
+        for task in inFlightLoads.values {
+            task.cancel()
+        }
+        inFlightLoads.removeAll()
+    }
+
+    func removeAll() {
+        entries.removeAll()
+        recencyOrder.removeAll()
+        for task in inFlightLoads.values {
+            task.cancel()
+        }
+        inFlightLoads.removeAll()
+        coldLoadCount = 0
+    }
+
+    private func insert(_ history: SenderWarningHistory, for key: Key) {
+        if entries[key] == nil, entries.count >= capacity, let evicted = recencyOrder.first {
+            recencyOrder.removeFirst()
+            entries.removeValue(forKey: evicted)
+        }
+        entries[key] = history
+        touch(key)
+    }
+
+    private func touch(_ key: Key) {
+        recencyOrder.removeAll { $0 == key }
+        recencyOrder.append(key)
     }
 }
 
@@ -88,6 +214,7 @@ struct SenderWarningHistoryModifier: ViewModifier {
     let folders: [Folder]
     let mailboxEmail: String?
     let contactActions: MailSenderContactActions?
+    private let cache: SenderWarningHistoryCache
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContentForTrustedSenders)
     private var allowRemoteContentForTrustedSenders = false
     @State private var loaded: (Request, SenderWarningHistory)?
@@ -102,13 +229,15 @@ struct SenderWarningHistoryModifier: ViewModifier {
         sourceID: MailSourceID?,
         folders: [Folder],
         mailboxEmail: String? = nil,
-        contactActions: MailSenderContactActions? = nil
+        contactActions: MailSenderContactActions? = nil,
+        cache: SenderWarningHistoryCache = .shared
     ) {
         self.backend = backend
         self.sourceID = sourceID
         self.folders = folders
         self.mailboxEmail = mailboxEmail
         self.contactActions = contactActions
+        self.cache = cache
     }
 
     private struct Request: Equatable {
@@ -117,6 +246,18 @@ struct SenderWarningHistoryModifier: ViewModifier {
         let sent: [Folder]
         let mine: Set<String>
         let revision: Int
+
+        var cacheKey: SenderWarningHistoryCache.Key {
+            SenderWarningHistoryCache.Key(
+                backendID: backend,
+                sourceID: source,
+                sentFolders: sent.map {
+                    SenderWarningHistoryCache.SentFolderStamp(id: $0.id, totalCount: $0.totalCount)
+                },
+                ownAddresses: mine,
+                writtenRevision: revision
+            )
+        }
     }
 
     private struct SystemContactsRequest: Equatable {
@@ -136,8 +277,9 @@ struct SenderWarningHistoryModifier: ViewModifier {
             source: sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id),
             sent: folders.filter { $0.role == .sent },
             mine: Set([backend.account.emailAddress, mailboxEmail].compactMap { $0?.lowercased() }),
-            revision: revision
+            revision: cache.writtenRevision &+ revision
         )
+        let cacheKey = request.cacheKey
         let systemContactsRequest = SystemContactsRequest(
             isEnabled: allowRemoteContentForTrustedSenders,
             revision: systemContactsRevision
@@ -147,7 +289,7 @@ struct SenderWarningHistoryModifier: ViewModifier {
             contactActionsID: contactActions.map(ObjectIdentifier.init),
             revision: pimContactsRevision
         )
-        let currentHistory = loaded?.0 == request ? loaded?.1 : nil
+        let currentHistory = (loaded?.0 == request ? loaded?.1 : nil) ?? cache.value(for: cacheKey)
         let evaluator = TrustedSenderEvaluator(
             contactEmails: allowRemoteContentForTrustedSenders
                 ? systemContactEmails.union(pimContactEmails)
@@ -159,6 +301,7 @@ struct SenderWarningHistoryModifier: ViewModifier {
             .environment(\.trustedSenderEvaluator, evaluator)
             .onReceive(NotificationCenter.default.publisher(for: RecentRecipientStore.writtenAddressesDidChange)
                 .receive(on: DispatchQueue.main)) { _ in
+                    cache.invalidateForWrittenAddressesChange()
                     revision += 1
             }
         #if canImport(Contacts)
@@ -174,11 +317,14 @@ struct SenderWarningHistoryModifier: ViewModifier {
                     pimContactsRevision += 1
             }
             .task(id: request) {
-                let result = await SenderWarningHistory.load(
+                if let cached = cache.value(for: cacheKey) {
+                    loaded = (request, cached)
+                    return
+                }
+                let result = await cache.load(
+                    key: cacheKey,
                     backend: backend,
-                    source: request.source,
-                    sent: request.sent,
-                    ownAddresses: request.mine
+                    sent: request.sent
                 )
                 guard !Task.isCancelled else { return }
                 loaded = (request, result)

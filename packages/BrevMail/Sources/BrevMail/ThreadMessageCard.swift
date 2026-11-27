@@ -65,6 +65,17 @@ private extension View {
 }
 #endif
 
+@MainActor
+private final class ThreadCardTrackerMemo {
+    struct Key: Equatable {
+        let messageID: MessageHeader.ID
+        let bodyRevision: Int
+        let htmlUTF8Count: Int
+    }
+
+    var cached: (key: Key, count: Int)?
+}
+
 /// One expandable card in a `ThreadConversationView` conversation stack.
 ///
 /// Body is loaded lazily on first expansion and cached for the view's lifetime.
@@ -89,6 +100,8 @@ struct ThreadMessageCard: View {
     let onToggle: () -> Void
 
     @State private var renderedBody: RenderedBody?
+    @State private var renderedBodyRevision = 0
+    @State private var trackerMemo = ThreadCardTrackerMemo()
     @State private var renderedHTML: AttributedString?
     @State private var nativeHTMLImportGeneration = 0
     @State private var nativeHTMLImportRefreshPending = false
@@ -124,6 +137,7 @@ struct ThreadMessageCard: View {
     /// Shared per-conversation pool: bounds how many WebKit renderers a fully
     /// expanded thread keeps warm and how many body/CID fetches run at once.
     private let renderPool: ThreadConversationRenderPool
+    private let webViewStoreRecycler: ThreadWebViewStoreRecycler?
 
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
@@ -155,6 +169,7 @@ struct ThreadMessageCard: View {
         dateTextOverride: String? = nil,
         initialRenderedBody: RenderedBody? = nil,
         renderPool: ThreadConversationRenderPool? = nil,
+        webViewStoreRecycler: ThreadWebViewStoreRecycler? = nil,
         inviteReconciler: CalendarInviteReconciler? = nil,
         onBodyLoaded: ((MessageHeader.ID, RenderedBody) -> Void)? = nil,
         onToggle: @escaping () -> Void
@@ -172,11 +187,13 @@ struct ThreadMessageCard: View {
         self.inviteReconciler = inviteReconciler
         let renderPool = renderPool ?? ThreadConversationRenderPool()
         self.renderPool = renderPool
+        self.webViewStoreRecycler = webViewStoreRecycler
         _renderedBody = State(initialValue: initialRenderedBody)
         // The pool returns a warm store when this card remounts. Checkout
         // happens eagerly in init so `StateObject`'s thunk only captures an
         // already-resolved store — the store itself stays lazy about WebKit.
-        let pooledStore = renderPool.checkoutWebViewStore(for: header.id)
+        let pooledStore = webViewStoreRecycler?.checkout(for: header.id)
+            ?? renderPool.checkoutWebViewStore(for: header.id)
         _htmlWebViewStore = StateObject(wrappedValue: pooledStore)
     }
 
@@ -266,11 +283,15 @@ struct ThreadMessageCard: View {
         .padding(.vertical, interfaceDensity.desktopSpacing(BrevSpacing.xs))
         .task(id: isExpanded) {
             guard isExpanded else {
-                // Collapsed cards must not hold a WebKit renderer; the pool
-                // frees the slot so another card can reuse it. Re-expanding
-                // lazily recreates the web view from the same store.
-                renderPool.releaseWebViewStore(for: header.id)
-                htmlWebViewStore.releaseWebView()
+                // Collapsed cards hand their WebKit renderer back to the
+                // bounded recycler (keeping it warm for the next thread or
+                // expansion) or release it when running standalone.
+                if let webViewStoreRecycler {
+                    webViewStoreRecycler.recycle(for: header.id)
+                } else {
+                    renderPool.releaseWebViewStore(for: header.id)
+                    htmlWebViewStore.releaseWebView()
+                }
                 return
             }
             syncRemoteContentPolicyFromDefaults()
@@ -280,6 +301,9 @@ struct ThreadMessageCard: View {
             } else {
                 await updateDerivedBodyState()
             }
+        }
+        .onDisappear {
+            webViewStoreRecycler?.recycle(for: header.id)
         }
         .onAppear {
             syncRemoteContentPolicyFromDefaults()
@@ -620,7 +644,7 @@ struct ThreadMessageCard: View {
             VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                 // Keep the count visible if tracker removal leaves nothing to import.
                 MessageTrackerNote(
-                    trackerCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount,
+                    trackerCount: memoizedTrackerCount(for: html),
                     strippingEnabled: stripTrackingPixels
                 )
                 if let renderedHTML {
@@ -663,13 +687,18 @@ struct ThreadMessageCard: View {
                     remoteContentBlockedBanner
                 } else if allowRemoteContent {
                     MessageTrackerNote(
-                        trackerCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount,
+                        trackerCount: memoizedTrackerCount(for: html),
                         strippingEnabled: stripTrackingPixels
                     )
                 }
                 HTMLBodyWebView(
                     store: htmlWebViewStore,
                     html: html,
+                    contentIdentity: HTMLBodyContentIdentity(
+                        messageID: header.id,
+                        revision: renderedBodyRevision,
+                        utf8Count: html.utf8.count
+                    ),
                     allowRemoteContent: allowRemoteContent,
                     stripTrackingPixels: stripTrackingPixels,
                     fontFamily: mailboxFontFamily,
@@ -802,6 +831,20 @@ struct ThreadMessageCard: View {
         htmlRenderingModeOverride = htmlRenderingMode.toggled
     }
 
+    private func memoizedTrackerCount(for html: String) -> Int {
+        let key = ThreadCardTrackerMemo.Key(
+            messageID: header.id,
+            bodyRevision: renderedBodyRevision,
+            htmlUTF8Count: html.utf8.count
+        )
+        if let cached = trackerMemo.cached, cached.key == key {
+            return cached.count
+        }
+        let count = MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+        trackerMemo.cached = (key, count)
+        return count
+    }
+
     // MARK: - Body loading
 
     private func loadBody() async {
@@ -818,6 +861,7 @@ struct ThreadMessageCard: View {
             let resolved = await resolvingInlineCIDImages(in: rendered)
             guard nativeHTMLImportGeneration == loadGeneration, header.id == messageID else { return }
             renderedBody = resolved
+            renderedBodyRevision &+= 1
             inlineCIDResolvedMessageID = messageID
             onBodyLoaded?(messageID, resolved)
             await updateDerivedBodyState()
@@ -861,6 +905,7 @@ struct ThreadMessageCard: View {
             let resolved = await resolvingInlineCIDImages(in: currentBody)
             guard canApplyNativeHTMLImport(request), renderedBody?.html == currentBody.html else { return }
             renderedBody = resolved
+            renderedBodyRevision &+= 1
             inlineCIDResolvedMessageID = header.id
         }
         guard canApplyNativeHTMLImport(request) else { return }

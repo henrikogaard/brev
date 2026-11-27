@@ -194,6 +194,7 @@ public final class MailNavigationState {
             readerExpansionSelectionID = nil
             currentFolderHeaders = []
             restoredSelectionHeader = nil
+            isAwaitingFolderHeaders = true
             endSelection()
         }
     }
@@ -355,6 +356,35 @@ public final class MailNavigationState {
     /// message list to reload its visible folder.
     public var reloadRequestID: Int
 
+    /// True after a folder or mailbox switch clears `selectedMessageID` and
+    /// before the new folder delivers its first header page. Prevents the
+    /// macOS reading pane from tearing down `MessageDetailView` / `WKWebView`
+    /// and launching a `TodayPageView` digest scan during the transient gap.
+    public private(set) var isAwaitingFolderHeaders = false
+
+    /// Incremental unread-count delta emitted by a locally initiated read-flag
+    /// update (such as `applyOpenReadPolicy`) so the root can adjust sidebar
+    /// and Dock badges immediately without a full folder reload.
+    public struct LocalUnreadCountDelta: Equatable, Sendable {
+        public let sequence: Int
+        public let sourceID: MailSourceID?
+        public let folderID: Folder.ID
+        public let delta: Int
+    }
+
+    public private(set) var lastLocalUnreadCountDelta: LocalUnreadCountDelta?
+
+    private struct LocalReadEcho {
+        let folderID: Folder.ID
+        var messageIDs: Set<MessageHeader.ID>
+        let recordedAt: ContinuousClock.Instant
+    }
+
+    @ObservationIgnored private var localUnreadDeltaSequence = 0
+    @ObservationIgnored private var pendingLocalReadEchoes: [LocalReadEcho] = []
+    private static let localReadEchoWindow: Duration = .seconds(5)
+    private static let maxLocalReadEchoes = 64
+
     public init(
         selectedSourceID: MailSourceID? = nil,
         selectedFolderID: Folder.ID? = nil,
@@ -492,6 +522,7 @@ public final class MailNavigationState {
         selectedMessageID = nil
         readerExpansionSelectionID = nil
         currentFolderHeaders = []
+        isAwaitingFolderHeaders = true
         endSelection()
         mailboxFilter = .none
     }
@@ -594,6 +625,7 @@ public final class MailNavigationState {
         selectedMessageID = nil
         readerExpansionSelectionID = nil
         currentFolderHeaders = []
+        isAwaitingFolderHeaders = folderID != Self.todaySmartViewFolderID
         endSelection()
         mailboxFilter = .none
     }
@@ -609,6 +641,7 @@ public final class MailNavigationState {
         selectedMessageID = nil
         readerExpansionSelectionID = nil
         currentFolderHeaders = []
+        isAwaitingFolderHeaders = folderID != nil
         endSelection()
         mailboxFilter = .none
     }
@@ -641,6 +674,7 @@ public final class MailNavigationState {
         expandsSelectedMessage: Bool = true
     ) {
         restoredSelectionHeader = nil
+        isAwaitingFolderHeaders = false
         if !headers.sharesRetainedBuffer(with: currentFolderHeaders) { currentFolderHeaders = headers }
         readerExpansionSelectionID = expandsSelectedMessage ? header.id : nil
         selectedMessageID = header.id
@@ -655,6 +689,7 @@ public final class MailNavigationState {
         expandsSelectedMessage: Bool = true
     ) {
         restoredSelectionHeader = nil
+        isAwaitingFolderHeaders = false
         if browsingFolderID == nil,
            searchOriginSourceFolderID == nil,
            !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -706,6 +741,7 @@ public final class MailNavigationState {
         _ headers: [MessageHeader],
         selectFirstIfNeeded: Bool = false
     ) {
+        isAwaitingFolderHeaders = false
         let selectedIndex = selectedMessageID.flatMap { currentFolderIndex(of: $0) }
         currentFolderHeaders = headers
         if let restored = restoredSelectionHeader, restored.id == selectedMessageID {
@@ -848,6 +884,67 @@ public final class MailNavigationState {
         }
     }
 
+    /// Records a locally initiated read-flag update so its backend
+    /// `.messagesUpdated` echo can be suppressed without triggering a redundant
+    /// full-folder reload, and publishes any incremental unread-count delta.
+    func recordLocalReadChange(
+        folderID: Folder.ID,
+        sourceID: MailSourceID?,
+        messageIDs: [MessageHeader.ID],
+        unreadDelta: Int,
+        now: ContinuousClock.Instant = .now
+    ) {
+        pruneExpiredLocalReadEchoes(now: now)
+        if !messageIDs.isEmpty {
+            if pendingLocalReadEchoes.count >= Self.maxLocalReadEchoes {
+                pendingLocalReadEchoes.removeFirst()
+            }
+            pendingLocalReadEchoes.append(LocalReadEcho(
+                folderID: folderID,
+                messageIDs: Set(messageIDs),
+                recordedAt: now
+            ))
+        }
+        if unreadDelta != 0 {
+            localUnreadDeltaSequence &+= 1
+            lastLocalUnreadCountDelta = LocalUnreadCountDelta(
+                sequence: localUnreadDeltaSequence,
+                sourceID: sourceID,
+                folderID: folderID,
+                delta: unreadDelta
+            )
+        }
+    }
+
+    /// Returns `true` and consumes the matching local read record when `event`
+    /// is purely the `.messagesUpdated` echo of a recent local read mutation.
+    func consumeMatchingLocalReadEcho(
+        for event: MailEvent,
+        now: ContinuousClock.Instant = .now
+    ) -> Bool {
+        guard case .messagesUpdated(let folderID, let messageIDs) = event,
+              !messageIDs.isEmpty
+        else { return false }
+        pruneExpiredLocalReadEchoes(now: now)
+        let incoming = Set(messageIDs)
+        guard let index = pendingLocalReadEchoes.firstIndex(where: {
+            $0.folderID == folderID && incoming.isSubset(of: $0.messageIDs)
+        }) else {
+            return false
+        }
+        pendingLocalReadEchoes[index].messageIDs.subtract(incoming)
+        if pendingLocalReadEchoes[index].messageIDs.isEmpty {
+            pendingLocalReadEchoes.remove(at: index)
+        }
+        return true
+    }
+
+    private func pruneExpiredLocalReadEchoes(now: ContinuousClock.Instant) {
+        pendingLocalReadEchoes.removeAll { echo in
+            echo.recordedAt + Self.localReadEchoWindow <= now
+        }
+    }
+
     /// Clear state tied to the active mailbox before rebuilding the
     /// folder/message surface for a newly selected mailbox.
     public func resetForMailboxSwitch() {
@@ -859,6 +956,7 @@ public final class MailNavigationState {
         selectedFolderID = nil
         selectedMessageID = nil
         currentFolderHeaders = []
+        isAwaitingFolderHeaders = false
         endSelection()
     }
 

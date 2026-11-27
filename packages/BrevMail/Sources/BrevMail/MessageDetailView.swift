@@ -34,6 +34,74 @@ import UIKit
 /// rich renderer is enabled (Settings → Reading); otherwise falls back
 /// to plain text or an attributed HTML import. Theme tokens and mailbox
 /// font prefs drive typography via `MessageBodyStyle`.
+/// Concrete quick-reply footer passed into `MessageDetailView` and
+/// `ThreadConversationView` so SwiftUI's `.safeAreaInset` never wraps
+/// `ReaderQuickReplyBar` in `AnyView`.
+struct ReaderQuickReplyFooter: View {
+    let targetID: MessageHeader.ID
+    let bar: ReaderQuickReplyBar
+
+    var body: some View {
+        bar.id(targetID)
+    }
+}
+
+/// Non-observed per-reader memo box so SwiftUI `body` passes reuse security
+/// analysis, remote-content inspection, tracker counts, sign-in code lookup,
+/// and menu settings without re-scanning full HTML or hitting `UserDefaults` /
+/// `JSONDecoder` on every render.
+@MainActor
+private final class MessageDetailRenderMemo {
+    struct SecurityKey: Equatable {
+        let headerID: MessageHeader.ID
+        let from: Correspondent
+        let replyTo: [Correspondent]
+        let bodyRevision: Int
+        let htmlUTF8Count: Int?
+    }
+
+    struct RemoteContentKey: Equatable {
+        let bodyRevision: Int
+        let htmlUTF8Count: Int
+        let senderEmail: String
+        let useRichRenderer: Bool
+        let allowRemoteContentDefault: Bool
+        let allowRemoteContentForTrustedSenders: Bool
+        let trustedSenders: TrustedSenderEvaluator
+        let authenticationResults: String?
+        let loadOnce: Bool
+        let policy: RemoteContentPolicy
+    }
+
+    struct TrackerKey: Equatable {
+        let bodyRevision: Int
+        let htmlUTF8Count: Int
+    }
+
+    struct SignInCodeKey: Equatable {
+        let bodyRevision: Int
+        let plainTextUTF8Count: Int?
+        let headerID: MessageHeader.ID
+        let sourceID: MailSourceID?
+        let accountID: BrevAccount.ID
+        let settingsRevision: Int
+    }
+
+    struct OfflineRetentionKey: Equatable {
+        let workflowID: SourceMessageID
+        let revision: Int
+    }
+
+    var security: (key: SecurityKey, value: MessageSecurityAnalysis)?
+    var remoteContent: (key: RemoteContentKey, value: MessageRemoteContentRenderState)?
+    var trackerCount: (key: TrackerKey, value: Int)?
+    var signInCodeSettings: (revision: Int, value: SignInCodeSettings)?
+    var signInCodeMatch: (key: SignInCodeKey, value: SignInCodeSurfaceMatch?)?
+    var workflowState: (data: Data, value: LocalMessageWorkflowState)?
+    var followUpIndex: (revision: Int, value: FollowUpReminderIndex)?
+    var offlineRetention: (key: OfflineRetentionKey, value: Bool)?
+}
+
 public struct MessageDetailView: View {
     private static let bodyLoadTimeoutNanoseconds: UInt64 = 15_000_000_000
     private static let bodyLoadLogger = Logger(
@@ -75,6 +143,7 @@ public struct MessageDetailView: View {
     /// Save-to-Drive attachment action.
     private let driveFeature: GoogleDriveFeature?
     private let readerFooter: AnyView?
+    private let quickReplyFooter: ReaderQuickReplyFooter?
     private let preloadedBody: MessageBody?
     private let readReceiptNotificationStore = MessageReadReceiptNotificationStore.shared
     private let bodyRenderer = BodyRenderer()
@@ -84,6 +153,10 @@ public struct MessageDetailView: View {
 
     // Refresh menu labels after an in-place retention toggle.
     @State private var offlineRetentionRevision = 0
+    @State private var followUpSettingsRevision = 0
+    @State private var signInCodeSettingsRevision = 0
+    @State private var messageBodyRevision = 0
+    @State private var renderMemo = MessageDetailRenderMemo()
     @State private var messageBody: MessageBody?
     @State private var messageSecurityState: MessageSecurityState = .none
     @State private var renderedHTML: AttributedString?
@@ -205,6 +278,43 @@ public struct MessageDetailView: View {
         self.contactActions = contactActions
         self.driveFeature = driveFeature
         self.readerFooter = readerFooter
+        quickReplyFooter = nil
+        self.preloadedBody = preloadedBody
+        if let preloadedBody, let header, preloadedBody.messageID == header.id {
+            _messageBody = State(initialValue: preloadedBody)
+        }
+    }
+
+    init(
+        backend: any MailBackend,
+        sourceID: MailSourceID? = nil,
+        header: MessageHeader?,
+        navigation: MailNavigationState? = nil,
+        allFolders: [Folder] = [],
+        isWorkBlocked: Bool = false,
+        isMutationWorkBlocked: Bool = false,
+        canFileLocally: Bool = false,
+        closeWindow: (() -> Void)? = nil,
+        inviteReconciler: CalendarInviteReconciler? = nil,
+        contactActions: MailSenderContactActions? = nil,
+        driveFeature: GoogleDriveFeature? = nil,
+        quickReplyFooter: ReaderQuickReplyFooter?,
+        preloadedBody: MessageBody? = nil
+    ) {
+        self.backend = backend
+        self.sourceID = sourceID
+        self.header = header
+        self.navigation = navigation
+        self.allFolders = allFolders
+        self.isWorkBlocked = isWorkBlocked
+        self.isMutationWorkBlocked = isMutationWorkBlocked
+        self.canFileLocally = canFileLocally
+        self.closeWindow = closeWindow
+        self.inviteReconciler = inviteReconciler
+        self.contactActions = contactActions
+        self.driveFeature = driveFeature
+        readerFooter = nil
+        self.quickReplyFooter = quickReplyFooter
         self.preloadedBody = preloadedBody
         if let preloadedBody, let header, preloadedBody.messageID == header.id {
             _messageBody = State(initialValue: preloadedBody)
@@ -212,6 +322,78 @@ public struct MessageDetailView: View {
     }
 
     public var body: some View {
+        readerObservedContent
+            .focusedSceneValue(\.mailPrintExportActions, printExportActions)
+            .sheet(item: $attachmentController.pendingDriveSave, onDismiss: {
+                attachmentController.pendingDriveSave?.payload.clear()
+                attachmentController.pendingDriveSave = nil
+            }) { pending in
+                if let driveFeature {
+                    GoogleDriveSaveSheet(
+                        accountID: backend.account.id,
+                        feature: driveFeature,
+                        payload: pending.payload,
+                        onSaved: { _ in
+                            attachmentController.saveToast = String(
+                                localized: "Saved to Google Drive",
+                                bundle: .module
+                            )
+                        },
+                        onCancel: {
+                            attachmentController.pendingDriveSave = nil
+                        }
+                    )
+                }
+            }
+            .confirmationDialog(
+                pendingListUnsubscribeAction?.confirmationTitle ?? "Confirm unsubscribe",
+                isPresented: $isShowingListUnsubscribeConfirmation,
+                titleVisibility: .visible
+            ) {
+                if let action = pendingListUnsubscribeAction {
+                    Button(action.confirmButtonTitle) {
+                        confirmListUnsubscribeAction()
+                    }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    clearPendingListUnsubscribeAction()
+                }
+            } message: {
+                if let action = pendingListUnsubscribeAction {
+                    Text(action.confirmationMessage)
+                }
+            }
+            .alert(
+                pendingSuspiciousLink?.confirmationTitle ?? "Open suspicious link?",
+                isPresented: suspiciousLinkAlertBinding,
+                presenting: pendingSuspiciousLink
+            ) { warning in
+                Button(warning.openButtonTitle) {
+                    openConfirmedSuspiciousLink(warning)
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    clearPendingSuspiciousLink()
+                }
+            } message: { warning in
+                Text(warning.confirmationMessage)
+            }
+            .quickLookPreview($attachmentController.quickLookURL)
+            .sheet(item: $participantContactSheet) { sheet in
+                participantContactSheetContent(sheet)
+            }
+        #if os(iOS)
+            .sheet(isPresented: Binding(
+                get: { exportShareURL != nil },
+                set: { if !$0 { exportShareURL = nil } }
+            )) {
+                if let url = exportShareURL {
+                    MailShareSheet(activityItems: [url])
+                }
+            }
+        #endif
+    }
+
+    private var readerObservedContent: some View {
         Group {
             if let header {
                 if showsWindowActionBar {
@@ -229,6 +411,17 @@ public struct MessageDetailView: View {
         .task(id: reloadKey) { await reload() }
         .onAppear {
             syncRemoteContentPolicyFromDefaults()
+            followUpSettingsRevision &+= 1
+            offlineRetentionRevision &+= 1
+            syncSignInCodeSettingsFromDefaults()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)
+            .receive(on: DispatchQueue.main)) { _ in
+                followUpSettingsRevision &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .receive(on: DispatchQueue.main)) { _ in
+                syncSignInCodeSettingsFromDefaults()
         }
         .onReceive(NotificationCenter.default.publisher(for: RemoteContentPolicy.didChangeNotification)
             .receive(on: DispatchQueue.main)) { _ in
@@ -249,6 +442,18 @@ public struct MessageDetailView: View {
         .onChange(of: trustedSenderEvaluator) { _, _ in
             refreshRenderedHTMLForCurrentTrackingPreference()
         }
+        .onChange(of: isWorkBlocked) { oldValue, newValue in
+            guard MessageDetailWorkResumePolicy.shouldReloadMessage(
+                wasBlocked: oldValue,
+                isBlocked: newValue,
+                hasPendingReload: needsReloadAfterWorkUnblocks
+            ) else { return }
+            needsReloadAfterWorkUnblocks = false
+            Task { await reload() }
+        }
+        .onChange(of: header?.id) { _, _ in
+            resetHTMLRenderingModeOverride()
+        }
         #if os(macOS)
         .modifier(ReaderSingleKeyShortcutModifier { key in
             key.performInReader(navigation: navigation, header: header, sourceID: sourceID) { action, target in
@@ -268,86 +473,13 @@ public struct MessageDetailView: View {
                 htmlWebViewStore.prewarm()
             }
         }
-        .focusedSceneValue(\.mailPrintExportActions, printExportActions)
-        .sheet(item: $attachmentController.pendingDriveSave, onDismiss: {
-            attachmentController.pendingDriveSave?.payload.clear()
-            attachmentController.pendingDriveSave = nil
-        }) { pending in
-            if let driveFeature {
-                GoogleDriveSaveSheet(
-                    accountID: backend.account.id,
-                    feature: driveFeature,
-                    payload: pending.payload,
-                    onSaved: { _ in
-                        attachmentController.saveToast = String(
-                            localized: "Saved to Google Drive",
-                            bundle: .module
-                        )
-                    },
-                    onCancel: {
-                        attachmentController.pendingDriveSave = nil
-                    }
-                )
-            }
-        }
-        .confirmationDialog(
-            pendingListUnsubscribeAction?.confirmationTitle ?? "Confirm unsubscribe",
-            isPresented: $isShowingListUnsubscribeConfirmation,
-            titleVisibility: .visible
-        ) {
-            if let action = pendingListUnsubscribeAction {
-                Button(action.confirmButtonTitle) {
-                    confirmListUnsubscribeAction()
-                }
-            }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                clearPendingListUnsubscribeAction()
-            }
-        } message: {
-            if let action = pendingListUnsubscribeAction {
-                Text(action.confirmationMessage)
-            }
-        }
-        .alert(
-            pendingSuspiciousLink?.confirmationTitle ?? "Open suspicious link?",
-            isPresented: suspiciousLinkAlertBinding,
-            presenting: pendingSuspiciousLink
-        ) { warning in
-            Button(warning.openButtonTitle) {
-                openConfirmedSuspiciousLink(warning)
-            }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                clearPendingSuspiciousLink()
-            }
-        } message: { warning in
-            Text(warning.confirmationMessage)
-        }
-        .onChange(of: isWorkBlocked) { oldValue, newValue in
-            guard MessageDetailWorkResumePolicy.shouldReloadMessage(
-                wasBlocked: oldValue,
-                isBlocked: newValue,
-                hasPendingReload: needsReloadAfterWorkUnblocks
-            ) else { return }
-            needsReloadAfterWorkUnblocks = false
-            Task { await reload() }
-        }
-        .onChange(of: header?.id) { _, _ in
-            resetHTMLRenderingModeOverride()
-        }
-        .quickLookPreview($attachmentController.quickLookURL)
-        .sheet(item: $participantContactSheet) { sheet in
-            participantContactSheetContent(sheet)
-        }
-        #if os(iOS)
-        .sheet(isPresented: Binding(
-            get: { exportShareURL != nil },
-            set: { if !$0 { exportShareURL = nil } }
-        )) {
-            if let url = exportShareURL {
-                MailShareSheet(activityItems: [url])
-            }
-        }
-        #endif
+    }
+
+    private func syncSignInCodeSettingsFromDefaults() {
+        let updated = SignInCodeSettings.load(from: .standard)
+        guard renderMemo.signInCodeSettings?.value != updated else { return }
+        signInCodeSettingsRevision &+= 1
+        renderMemo.signInCodeSettings = (signInCodeSettingsRevision, updated)
     }
 
     private var printExportActions: MailPrintExportActions? {
@@ -722,13 +854,7 @@ public struct MessageDetailView: View {
 
                     SenderWarningBanner(header: header, authenticationResults: messageBody?.authenticationResults)
 
-                    if let signInCodeMatch = SignInCodeSurfacePolicy.bodyCode(
-                        plainText: messageBody?.plainText,
-                        header: header,
-                        sourceID: sourceID,
-                        accountID: backend.account.id,
-                        settings: SignInCodeSettings.load(from: .standard)
-                    ) {
+                    if let signInCodeMatch = memoizedSignInCodeMatch(for: header) {
                         SignInCodeReaderCard(match: signInCodeMatch)
                         BrevDivider()
                     }
@@ -747,7 +873,9 @@ public struct MessageDetailView: View {
                         )
                     }
                     #if !os(macOS)
-                    if let readerFooter {
+                    if let quickReplyFooter {
+                        quickReplyFooter
+                    } else if let readerFooter {
                         readerFooter
                     }
                     #endif
@@ -758,7 +886,12 @@ public struct MessageDetailView: View {
         #if os(macOS)
             .scrollClipDisabled()
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if let readerFooter {
+                if let quickReplyFooter {
+                    quickReplyFooter
+                        .background {
+                            ReaderQuickReplyBottomFade()
+                        }
+                } else if let readerFooter {
                     readerFooter
                         .background {
                             ReaderQuickReplyBottomFade()
@@ -864,12 +997,11 @@ public struct MessageDetailView: View {
     /// the reader-body context menu. Unsupported actions are omitted, not
     /// disabled — same honesty rule as the row context menu.
     func readerMenuPresentation(for header: MessageHeader) -> MessageContextMenuPresentation {
-        _ = offlineRetentionRevision
         let workflowID = SourceMessageID(
             sourceID: readerWorkflowSourceID,
             messageID: header.id
         )
-        let state = injectedWorkflowState ?? LocalMessageWorkflowStateStorage.decode(localWorkflowStateData) ?? .defaults
+        let state = injectedWorkflowState ?? memoizedLocalWorkflowState()
         let lookup = LocalMessageWorkflowLookup(state: state)
         let candidates = (relatedConversation?.mergedThreadHeaders(loaded: [header]) ?? [header]).map {
             LocalMessageWorkflowCandidate(sourceID: readerWorkflowSourceID, header: $0)
@@ -886,7 +1018,7 @@ public struct MessageDetailView: View {
             for: header,
             isSnoozed: projection.isSnoozed(workflowID, header: header),
             isDone: lookup.isDone(workflowID),
-            isKeptOffline: MessageOfflineRetentionOverrideStore().isKeptOffline(workflowID),
+            isKeptOffline: memoizedIsKeptOffline(workflowID),
             hasNote: lookup.note(for: workflowID) != nil,
             canOpenInNewWindow: canOpenReaderInNewWindow,
             canArchive: allFolders.contains { $0.role == .archive && $0.id != header.folderID },
@@ -906,7 +1038,7 @@ public struct MessageDetailView: View {
             canCreateMeeting: canPresentSheets,
             canAddNote: canPresentSheets,
             canFollowUp: canPresentSheets,
-            hasFollowUp: FollowUpReminderIndex(settings: FollowUpSettings.load())
+            hasFollowUp: memoizedFollowUpReminderIndex()
                 .reminder(for: header.id, sourceID: sourceID) != nil,
             // A docked reply holds the one composer (#302).
             canReply: canPresentSheets && !areActionsBlocked && navigation?.inlineReply == nil,
@@ -916,6 +1048,82 @@ public struct MessageDetailView: View {
             extendedCapabilities: backend.extendedCapabilities,
             canExportEML: true
         )
+    }
+
+    private func memoizedLocalWorkflowState() -> LocalMessageWorkflowState {
+        if let cached = renderMemo.workflowState, cached.data == localWorkflowStateData {
+            return cached.value
+        }
+        let decoded = LocalMessageWorkflowStateStorage.decode(localWorkflowStateData) ?? .defaults
+        renderMemo.workflowState = (localWorkflowStateData, decoded)
+        return decoded
+    }
+
+    private func memoizedFollowUpReminderIndex() -> FollowUpReminderIndex {
+        if let cached = renderMemo.followUpIndex, cached.revision == followUpSettingsRevision {
+            return cached.value
+        }
+        let index = FollowUpReminderIndex(settings: FollowUpSettings.load())
+        renderMemo.followUpIndex = (followUpSettingsRevision, index)
+        return index
+    }
+
+    private func memoizedIsKeptOffline(_ workflowID: SourceMessageID) -> Bool {
+        let key = MessageDetailRenderMemo.OfflineRetentionKey(
+            workflowID: workflowID,
+            revision: offlineRetentionRevision
+        )
+        if let cached = renderMemo.offlineRetention, cached.key == key {
+            return cached.value
+        }
+        let kept = MessageOfflineRetentionOverrideStore().isKeptOffline(workflowID)
+        renderMemo.offlineRetention = (key, kept)
+        return kept
+    }
+
+    private func memoizedSignInCodeMatch(for header: MessageHeader) -> SignInCodeSurfaceMatch? {
+        let key = MessageDetailRenderMemo.SignInCodeKey(
+            bodyRevision: messageBodyRevision,
+            plainTextUTF8Count: messageBody?.plainText?.utf8.count,
+            headerID: header.id,
+            sourceID: sourceID,
+            accountID: backend.account.id,
+            settingsRevision: signInCodeSettingsRevision
+        )
+        if let cached = renderMemo.signInCodeMatch, cached.key == key {
+            return cached.value
+        }
+        let settings: SignInCodeSettings
+        if let cachedSettings = renderMemo.signInCodeSettings,
+           cachedSettings.revision == signInCodeSettingsRevision {
+            settings = cachedSettings.value
+        } else {
+            let loaded = SignInCodeSettings.load(from: .standard)
+            renderMemo.signInCodeSettings = (signInCodeSettingsRevision, loaded)
+            settings = loaded
+        }
+        let match = SignInCodeSurfacePolicy.bodyCode(
+            plainText: messageBody?.plainText,
+            header: header,
+            sourceID: sourceID,
+            accountID: backend.account.id,
+            settings: settings
+        )
+        renderMemo.signInCodeMatch = (key, match)
+        return match
+    }
+
+    private func memoizedTrackerCount(for html: String) -> Int {
+        let key = MessageDetailRenderMemo.TrackerKey(
+            bodyRevision: messageBodyRevision,
+            htmlUTF8Count: html.utf8.count
+        )
+        if let cached = renderMemo.trackerCount, cached.key == key {
+            return cached.value
+        }
+        let count = MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount
+        renderMemo.trackerCount = (key, count)
+        return count
     }
 
     /// "Open in New Window" from the reader: honest per platform and surface —
@@ -1163,11 +1371,23 @@ public struct MessageDetailView: View {
     }
 
     private func messageSecurityAnalysis(for header: MessageHeader) -> MessageSecurityAnalysis {
-        MessageSecurityWarningPolicy.analyze(
+        let key = MessageDetailRenderMemo.SecurityKey(
+            headerID: header.id,
+            from: header.from,
+            replyTo: header.replyTo,
+            bodyRevision: messageBodyRevision,
+            htmlUTF8Count: messageBody?.html?.utf8.count
+        )
+        if let cached = renderMemo.security, cached.key == key {
+            return cached.value
+        }
+        let analysis = MessageSecurityWarningPolicy.analyze(
             header: header,
             bodyHTML: messageBody?.html,
             replyTo: header.replyTo
         ).withoutDisplayNameWarning
+        renderMemo.security = (key, analysis)
+        return analysis
     }
 
     private var securityStatusRow: some View {
@@ -2052,7 +2272,7 @@ public struct MessageDetailView: View {
                     // it visible if tracker removal leaves nothing to import.
                     if let html {
                         MessageTrackerNote(
-                            trackerCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount,
+                            trackerCount: memoizedTrackerCount(for: html),
                             strippingEnabled: stripTrackingPixels
                         )
                     }
@@ -2163,7 +2383,7 @@ public struct MessageDetailView: View {
                 )
             } else if remoteContentState.allowsRemoteContent {
                 MessageTrackerNote(
-                    trackerCount: MessageRemoteContentDetector.strippingLikelyTrackers(html).removedCount,
+                    trackerCount: memoizedTrackerCount(for: html),
                     strippingEnabled: stripTrackingPixels
                 )
             }
@@ -2177,6 +2397,11 @@ public struct MessageDetailView: View {
                 HTMLBodyWebView(
                     store: htmlWebViewStore,
                     html: html,
+                    contentIdentity: HTMLBodyContentIdentity(
+                        messageID: header.id,
+                        revision: messageBodyRevision,
+                        utf8Count: html.utf8.count
+                    ),
                     allowRemoteContent: remoteContentState.allowsRemoteContent,
                     stripTrackingPixels: stripTrackingPixels,
                     fontFamily: mailboxFontFamily,
@@ -2198,7 +2423,22 @@ public struct MessageDetailView: View {
         for html: String,
         header: MessageHeader
     ) -> MessageRemoteContentRenderState {
-        MessageRemoteContentRenderPolicy.state(
+        let key = MessageDetailRenderMemo.RemoteContentKey(
+            bodyRevision: messageBodyRevision,
+            htmlUTF8Count: html.utf8.count,
+            senderEmail: header.from.email,
+            useRichRenderer: usesRichHTMLBodyRenderer,
+            allowRemoteContentDefault: allowRemoteContentDefault,
+            allowRemoteContentForTrustedSenders: allowRemoteContentForTrustedSenders,
+            trustedSenders: trustedSenderEvaluator,
+            authenticationResults: messageBody?.authenticationResults,
+            loadOnce: showRemoteContent,
+            policy: remoteContentPolicy
+        )
+        if let cached = renderMemo.remoteContent, cached.key == key {
+            return cached.value
+        }
+        let state = MessageRemoteContentRenderPolicy.state(
             html: html,
             senderEmail: header.from.email,
             useRichRenderer: usesRichHTMLBodyRenderer,
@@ -2211,6 +2451,8 @@ public struct MessageDetailView: View {
             loadOnce: showRemoteContent,
             policy: remoteContentPolicy
         )
+        renderMemo.remoteContent = (key, state)
+        return state
     }
 
     private func allowsRemoteContent(
@@ -2458,7 +2700,7 @@ public struct MessageDetailView: View {
             resetState(for: .messageLoadStarted)
             htmlBodyPainted = false
             if let previewText = MessageDetailPresentation.previewFallbackPlainText(header.snippet) {
-                messageBody = MessageBody(messageID: header.id, plainText: previewText)
+                setMessageBody(MessageBody(messageID: header.id, plainText: previewText))
             }
             isLoading = true
         }
@@ -2471,11 +2713,11 @@ public struct MessageDetailView: View {
             recordReadReceiptNotificationIfNeeded(loaded, header: header)
             let rendered = await bodyRenderer.render(loaded)
             guard canApplyOrFinishLoad(request) else { return }
-            messageBody = MessageDetailPresentation.displayBody(
+            setMessageBody(MessageDetailPresentation.displayBody(
                 loaded: loaded,
                 rendered: rendered,
                 fallbackSnippet: header.snippet
-            )
+            ))
             messageSecurityState = rendered.securityState
             isLoading = false
             let importRequest = nextNativeHTMLImportRequest()
@@ -2575,11 +2817,11 @@ public struct MessageDetailView: View {
             }
             guard !Task.isCancelled, canApplyPostVisibleResponse(request) else { return }
             if resolvedHTML != rendered.html {
-                messageBody = MessageDetailPresentation.displayBody(
+                setMessageBody(MessageDetailPresentation.displayBody(
                     loaded: loaded,
                     rendered: rendered.replacingHTML(resolvedHTML),
                     fallbackSnippet: header.snippet
-                )
+                ))
                 let importRequest = nextNativeHTMLImportRequest()
                 let importedHTML = await Self.renderHTML(
                     resolvedHTML,
@@ -2650,11 +2892,16 @@ public struct MessageDetailView: View {
         messageOpenMessageID = nil
     }
 
+    private func setMessageBody(_ body: MessageBody?) {
+        messageBody = body
+        messageBodyRevision &+= 1
+    }
+
     private func resetState(for reason: MessageDetailStateResetReason) {
         for field in MessageDetailStateResetPolicy.clearedFields(for: reason) {
             switch field {
             case .messageBody:
-                messageBody = nil
+                setMessageBody(nil)
                 messageSecurityState = .none
             case .renderedHTML:
                 renderedHTML = nil
@@ -2713,6 +2960,12 @@ public struct MessageDetailView: View {
             activeOpenReadRequest = request
             readStatus = nil
             navigation?.updateHeader(id: messageID) { $0.isRead = true }
+            navigation?.recordLocalReadChange(
+                folderID: folderID,
+                sourceID: sourceID,
+                messageIDs: [messageID],
+                unreadDelta: -1
+            )
             Task { @MainActor [backend, sourceID, navigation, rollback, request] in
                 do {
                     if let sourceID {
@@ -2722,9 +2975,6 @@ public struct MessageDetailView: View {
                     }
                     guard canApplyOpenReadResponse(request) else { return }
                     readStatus = nil
-                    navigation?.requestReloadIfVisibleFolderChanged(
-                        .messagesUpdated(folderID: folderID, messageIDs: [messageID])
-                    )
                     finishOpenRead(request)
                 } catch is CancellationError {
                     guard canApplyOpenReadResponse(request) else { return }
@@ -2732,6 +2982,12 @@ public struct MessageDetailView: View {
                 } catch {
                     guard canApplyOpenReadResponse(request) else { return }
                     rollback.restore(navigation: navigation)
+                    navigation?.recordLocalReadChange(
+                        folderID: folderID,
+                        sourceID: sourceID,
+                        messageIDs: [],
+                        unreadDelta: 1
+                    )
                     readStatus = MessageDetailPresentation.markReadErrorStatus(for: error)
                     finishOpenRead(request)
                 }
