@@ -189,15 +189,11 @@ struct ThreadMessageCard: View {
         self.renderPool = renderPool
         self.webViewStoreRecycler = webViewStoreRecycler
         _renderedBody = State(initialValue: initialRenderedBody)
-        // Only expanded cards check out a store so each store has one exclusive
-        // owner at a time; collapsing or disappearing relinquishes it back to
-        // `webViewStoreRecycler` before another card can check it out.
-        let initialStore: HTMLBodyWebViewStore? = if isExpanded {
-            webViewStoreRecycler?.checkout() ?? renderPool.checkoutWebViewStore(for: header.id)
-        } else {
-            nil
-        }
-        _htmlWebViewStore = State(initialValue: initialStore)
+        // Never check out from `webViewStoreRecycler` inside `init` because
+        // SwiftUI reconstructs view structs on parent redraws while keeping
+        // existing `@State`. Checkout runs exclusively in `.onAppear` and
+        // `.task(id: isExpanded)` when `htmlWebViewStore == nil`.
+        _htmlWebViewStore = State(initialValue: nil)
     }
 
     private var interfaceDensity: MailboxListDensity {

@@ -401,7 +401,6 @@ public struct BrevMailRootView: View {
     private static let widgetSnapshotPublishDelay: Duration = .milliseconds(1500)
     private static let todayDigestHeaderLimit = 500
     private static let todaySignInCodeHeaderLimit = 25
-    private static let noReplyFollowUpHeaderLimit = 500
     @State private var notificationDelegate = BrevNotificationDelegate()
     @State private var isInitialMailboxSelectionPresented = false
     @AppStorage(MailProfileStorage.storageKey) private var customProfileStorage = ""
@@ -8467,24 +8466,22 @@ public struct BrevMailRootView: View {
             var earliestSentAt = activeReminderDates.min()
 
             // First inspect Sent folders (date-bounded when only active reminders
-            // exist, capped when matching pending intents) so non-Sent folders can
-            // be date-bounded to `earliestSentAt - 24h` without truncating replies.
+            // exist; full Sent scan only while a pending no-reply send is awaiting
+            // its Sent copy) so non-Sent folders can always be date-bounded to
+            // `earliestSentAt - 24h` without ever truncating replies or marking
+            // mailboxes with >=500 Sent messages incomplete.
             let sentSince = sectionPendingIntents.isEmpty
                 ? earliestSentAt?.addingTimeInterval(-86400)
                 : nil
-            let sentLimit = sectionPendingIntents.isEmpty ? Int.max : Self.noReplyFollowUpHeaderLimit
             for folder in sentFolders {
                 do {
                     let cachedHeaders = try await cachedBoundedMessageHeaders(
                         from: owner,
                         in: folder,
                         sourceID: section.id,
-                        limit: sentLimit,
+                        limit: Int.max,
                         since: sentSince
                     )
-                    if sentLimit < Int.max, cachedHeaders.count >= sentLimit {
-                        isComplete = false
-                    }
                     headers.append(contentsOf: cachedHeaders)
                     if !sectionPendingIntents.isEmpty {
                         let expectedIDs = Set(sectionPendingIntents.map(\.expectedMessageID))

@@ -1421,15 +1421,9 @@ public struct MessageListView: View {
                     return
                 }
                 let updatedIDs = Set(mutation.messageIDs)
-                var changed = false
-                for index in headers.indices where updatedIDs.contains(headers[index].id) {
-                    if headers[index].isRead != mutation.isRead {
-                        headers[index].isRead = mutation.isRead
-                        changed = true
-                    }
-                }
-                if changed {
-                    navigation.replaceCurrentFolderHeaders(headers, selectFirstIfNeeded: false)
+                updateCachedHeaders(ids: updatedIDs) { $0.isRead = mutation.isRead }
+                for id in updatedIDs {
+                    navigation.updateHeader(id: id) { $0.isRead = mutation.isRead }
                 }
             }
         }
