@@ -655,6 +655,9 @@ struct UnifiedInboxListView: View {
                 MessageListFolderStatsFooter(presentation: folderStatsFooterPresentation)
             }
         }
+        .onChange(of: navigation.lastLocalReadStateMutation) { _, mutation in
+            applyLocalReadStateMutation(mutation)
+        }
         .onDisappear {
             searchWork.cancel()
             invalidatePendingSnoozeLookup()
@@ -3406,6 +3409,22 @@ struct UnifiedInboxListView: View {
                 calendar: calendar,
                 groupThreads: false
             ).items
+        }
+    }
+
+    private func applyLocalReadStateMutation(_ mutation: MailNavigationState.LocalReadStateMutation?) {
+        guard let mutation else { return }
+        let updatedIDs = Set(mutation.messageIDs)
+        for index in items.indices {
+            guard items[index].folder.id == mutation.folderID,
+                  updatedIDs.contains(items[index].header.id)
+            else { continue }
+            if let sourceID = mutation.sourceID, items[index].sourceID != sourceID {
+                continue
+            }
+            if items[index].header.isRead != mutation.isRead {
+                items[index].header.isRead = mutation.isRead
+            }
         }
     }
 

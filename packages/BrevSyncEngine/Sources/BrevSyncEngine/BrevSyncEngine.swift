@@ -143,12 +143,28 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         var visited = Set<String>()
         var candidates: [ConversationLocation: ConversationMember] = [:]
         var partial = initialIdentifiers.count > pending.count
-        while let identifier = pending.popLast() {
+        let maxBatchIdentifiers = 400
+        let perWaveCandidateLimit = 500
+        while !pending.isEmpty {
             try Task.checkCancellation()
-            guard visited.insert(identifier).inserted else { continue }
-            let matches = try await store.conversationCandidates(identifier: identifier, source: anchor.sourceID, limit: 501)
-            if matches.count > 500 { partial = true }
-            for member in matches.prefix(500) where !excludingFolderIDs.contains(member.header.folderID) {
+            let batchCapacity = min(maxBatchIdentifiers, max(0, 10000 - visited.count))
+            guard batchCapacity > 0 else { partial = true; break }
+            var batch: [String] = []
+            batch.reserveCapacity(min(pending.count, batchCapacity))
+            while batch.count < batchCapacity, !pending.isEmpty {
+                let identifier = pending.removeLast()
+                if visited.insert(identifier).inserted {
+                    batch.append(identifier)
+                }
+            }
+            guard !batch.isEmpty else { continue }
+            let matches = try await store.conversationCandidates(
+                identifiers: batch,
+                source: anchor.sourceID,
+                limit: perWaveCandidateLimit + 1
+            )
+            if matches.count > perWaveCandidateLimit { partial = true }
+            for member in matches.prefix(perWaveCandidateLimit) where !excludingFolderIDs.contains(member.header.folderID) {
                 // The selected header remains authoritative for its display and identity.
                 guard member.header.id != anchor.header.id || member.header.folderID != anchor.header.folderID else { continue }
                 guard candidates[member.location] == nil else { continue }
@@ -300,7 +316,51 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         let source = MailSourceID(accountID: account.id, mailboxID: account.id)
         let maximumCandidates = 10000
         var pending = Set(headers.flatMap { ConversationMembershipResolver.cachedLinkIdentifiers(for: $0) ?? [] })
+        guard !pending.isEmpty else { return [] }
         var visited = Set<String>()
+        if let sqliteStore = store as? SQLiteSyncStore {
+            struct LocationKey: Hashable {
+                let folderID: Folder.ID
+                let uid: Int
+            }
+            var seenLocations = Set<LocationKey>()
+            var folderGenerations: [Folder.ID: UInt64] = [:]
+            var targetHeaders: [MessageHeader.ID: MessageHeader] = [:]
+            while !pending.isEmpty, seenLocations.count < maximumCandidates, visited.count < maximumCandidates {
+                try Task.checkCancellation()
+                let batch = Array(pending.sorted().prefix(min(400, maximumCandidates - visited.count)))
+                pending.subtract(batch)
+                visited.formUnion(batch)
+                let matches = try sqliteStore.threadingCandidates(
+                    identifiers: batch,
+                    targetFolderID: folderID,
+                    source: source,
+                    limit: maximumCandidates
+                )
+                for candidate in matches {
+                    let location = LocationKey(folderID: candidate.folderID, uid: candidate.uid)
+                    guard seenLocations.insert(location).inserted else { continue }
+                    guard seenLocations.count <= maximumCandidates else { break }
+                    if let generation = candidate.folderGeneration, folderGenerations[candidate.folderID] == nil {
+                        folderGenerations[candidate.folderID] = generation
+                    }
+                    if let header = candidate.header {
+                        targetHeaders[header.id] = header
+                    }
+                    for identifier in candidate.linkIdentifiers
+                        where !visited.contains(identifier) && pending.count + visited.count < maximumCandidates {
+                        pending.insert(identifier)
+                    }
+                }
+            }
+            for (checkedFolderID, expected) in folderGenerations {
+                let state = await store.syncState(accountID: account.id, folderID: checkedFolderID)
+                guard let current = state?.uidValidity, UInt64(exactly: current) == expected else {
+                    throw ConversationLookupError.invalidSnapshot
+                }
+            }
+            return targetHeaders.values.sorted { $0.id < $1.id }
+        }
         var candidates: [ConversationLocation: ConversationMember] = [:]
         while !pending.isEmpty, candidates.count < maximumCandidates, visited.count < maximumCandidates {
             try Task.checkCancellation()

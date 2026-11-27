@@ -314,6 +314,9 @@ public struct MessageListView: View {
                 triageViewportTracker.cancelPending()
                 triageStore?.cancelScheduledTasks(forOwner: triageOwnerID)
             }
+            .onChange(of: navigation.lastLocalReadStateMutation) { _, mutation in
+                applyLocalReadStateMutation(mutation)
+            }
             // Not a `.task(id:)`: that also runs on appear, where the `reloadKey` task has
             // already loaded the folder or run the search, and fetched the first page twice.
             // `searchWork` cancels the previous run, as the task's id change did.
@@ -1454,6 +1457,18 @@ public struct MessageListView: View {
                 listKeyboardFocus = true
             }
             #endif
+        }
+    }
+
+    private func applyLocalReadStateMutation(_ mutation: MailNavigationState.LocalReadStateMutation?) {
+        guard let mutation, let folderID = folder?.id, mutation.folderID == folderID else { return }
+        if let sourceID = mutation.sourceID, sourceID.accountID != backend.account.id {
+            return
+        }
+        let updatedIDs = Set(mutation.messageIDs)
+        updateCachedHeaders(ids: updatedIDs) { $0.isRead = mutation.isRead }
+        for id in updatedIDs {
+            navigation.updateHeader(id: id) { $0.isRead = mutation.isRead }
         }
     }
 

@@ -32,6 +32,57 @@ import UIKit
 ///
 /// Use `BrevMailRootView` to switch between this view and `MessageDetailView`
 /// based on `backend.groupsMessagesIntoThreads` and thread size.
+/// Bounded pool of detached, relinquished `HTMLBodyWebViewStore` instances so
+/// `ThreadConversationView` reuses warm `WKWebView`s across thread switches and
+/// card collapses without ever sharing a store between cards or interrupting a
+/// mounted card when capacity is exceeded.
+@MainActor
+final class ThreadWebViewStoreRecycler {
+    private let capacity: Int
+    private var reusableStores: [HTMLBodyWebViewStore] = []
+    private(set) var reuseHitCount = 0
+
+    init(capacity: Int = ThreadConversationRenderPool.defaultWebViewStoreCapacity) {
+        self.capacity = max(1, capacity)
+    }
+
+    var reusableStoreCount: Int { reusableStores.count }
+
+    /// Checks out a store for exclusive ownership by one mounted, expanded card.
+    func checkout() -> HTMLBodyWebViewStore {
+        if let detachedIndex = reusableStores.firstIndex(where: { $0.isDetached }) {
+            let store = reusableStores.remove(at: detachedIndex)
+            store.prepareForReuse()
+            reuseHitCount += 1
+            return store
+        }
+        return HTMLBodyWebViewStore()
+    }
+
+    /// Accepts a store only after its owning card has relinquished all
+    /// references to it (collapsed or disappeared). Never mutates mounted views.
+    func returnDetachedStore(_ store: HTMLBodyWebViewStore) {
+        guard !reusableStores.contains(where: { $0 === store }) else { return }
+        guard store.isDetached else { return }
+        store.prepareForReuse()
+        if store.isWebViewCreated, reusableStores.count < capacity {
+            reusableStores.append(store)
+        } else {
+            store.releaseWebView()
+        }
+    }
+}
+
+/// Non-observed memo box so `ThreadConversationView` context menus do not
+/// decode workflow JSON or hit `UserDefaults` on every SwiftUI `body` pass.
+@MainActor
+private final class ThreadConversationMenuMemo {
+    var workflowState: (data: Data, value: LocalMessageWorkflowState)?
+    var followUpIndex: (revision: Int, value: FollowUpReminderIndex)?
+    var offlineRetentionRevision = -1
+    var offlineRetentionByID: [SourceMessageID: Bool] = [:]
+}
+
 @MainActor
 public struct ThreadConversationView: View {
     @Environment(\.readerCommandAction) private var readerCommandAction
@@ -65,6 +116,7 @@ public struct ThreadConversationView: View {
     let autoScrollsToExpandedMessage: Bool
     let dateTextProvider: ((MessageHeader) -> String)?
     let readerFooter: AnyView?
+    private let quickReplyFooter: ReaderQuickReplyFooter?
     private let aiBackend: (any AIBackend)?
     private let triageStore: OnDeviceThreadTriageStore?
     private let initialProactiveTriageInsight: ThreadTriageInsight?
@@ -74,10 +126,13 @@ public struct ThreadConversationView: View {
     private let bodyRenderer = BodyRenderer()
 
     @State private var expandedMessageIDs: Set<MessageHeader.ID> = []
-    /// One pool per conversation: cards check out shared WebView stores and
-    /// stage body/CID fetches through its permit budget instead of every
-    /// expanded card owning a renderer and fetching in parallel.
+    /// Shared across thread switches: cards stage body/CID fetches through its
+    /// permit budget while `webViewStoreRecycler` keeps warm `WKWebView`s alive.
     @State private var renderPool = ThreadConversationRenderPool()
+    @State private var webViewStoreRecycler = ThreadWebViewStoreRecycler()
+    @State private var menuMemo = ThreadConversationMenuMemo()
+    @State private var followUpSettingsRevision = 0
+    @State private var offlineRetentionRevision = 0
     @State private var showUnreadOnly = false
     @State private var printExportErrorMessage: String?
     #if os(iOS)
@@ -143,6 +198,55 @@ public struct ThreadConversationView: View {
         self.dateTextProvider = dateTextProvider
         self.inviteReconciler = inviteReconciler
         self.readerFooter = readerFooter
+        quickReplyFooter = nil
+        _aiSummarySession = State(
+            initialValue: ThreadAISummarySessionState(
+                conversationIdentity: ThreadAISummarySessionState.conversationIdentity(
+                    sourceID: sourceID,
+                    accountID: backend.account.id,
+                    headers: threadHeaders
+                )
+            )
+        )
+    }
+
+    init(
+        threadHeaders: [MessageHeader],
+        backend: any MailBackend,
+        sourceID: MailSourceID? = nil,
+        mailboxLabel: String? = nil,
+        navigation: MailNavigationState,
+        isWorkBlocked: Bool = false,
+        allFolders: [Folder] = [],
+        canFileLocally: Bool = false,
+        aiBackend: (any AIBackend)? = nil,
+        triageStore: OnDeviceThreadTriageStore? = nil,
+        initialProactiveTriageInsight: ThreadTriageInsight? = nil,
+        preloadedBodies: [MessageHeader.ID: RenderedBody] = [:],
+        showsAvatars: Bool = true,
+        autoScrollsToExpandedMessage: Bool = true,
+        dateTextProvider: ((MessageHeader) -> String)? = nil,
+        inviteReconciler: CalendarInviteReconciler? = nil,
+        quickReplyFooter: ReaderQuickReplyFooter?
+    ) {
+        self.threadHeaders = threadHeaders
+        self.backend = backend
+        self.sourceID = sourceID
+        self.mailboxLabel = mailboxLabel
+        self.navigation = navigation
+        self.isWorkBlocked = isWorkBlocked
+        self.allFolders = allFolders
+        self.canFileLocally = canFileLocally
+        self.aiBackend = aiBackend
+        self.triageStore = triageStore
+        self.initialProactiveTriageInsight = initialProactiveTriageInsight
+        self.preloadedBodies = preloadedBodies
+        self.showsAvatars = showsAvatars
+        self.autoScrollsToExpandedMessage = autoScrollsToExpandedMessage
+        self.dateTextProvider = dateTextProvider
+        self.inviteReconciler = inviteReconciler
+        readerFooter = nil
+        self.quickReplyFooter = quickReplyFooter
         _aiSummarySession = State(
             initialValue: ThreadAISummarySessionState(
                 conversationIdentity: ThreadAISummarySessionState.conversationIdentity(
@@ -262,6 +366,7 @@ public struct ThreadConversationView: View {
                                 dateTextOverride: dateTextProvider?(header),
                                 initialRenderedBody: preloadedBodies[header.id],
                                 renderPool: renderPool,
+                                webViewStoreRecycler: webViewStoreRecycler,
                                 inviteReconciler: inviteReconciler,
                                 onBodyLoaded: { messageID, rendered in
                                     if let plain = rendered.plainText?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -292,7 +397,9 @@ public struct ThreadConversationView: View {
                         hiddenReadMessagesFooter
                     }
                     #if !os(macOS)
-                    if let readerFooter {
+                    if let quickReplyFooter {
+                        quickReplyFooter
+                    } else if let readerFooter {
                         readerFooter
                     }
                     #endif
@@ -307,7 +414,12 @@ public struct ThreadConversationView: View {
             #if os(macOS)
                 .scrollClipDisabled()
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if let readerFooter {
+                    if let quickReplyFooter {
+                        quickReplyFooter
+                            .background {
+                                ReaderQuickReplyBottomFade()
+                            }
+                    } else if let readerFooter {
                         readerFooter
                             .background {
                                 ReaderQuickReplyBottomFade()
@@ -325,6 +437,8 @@ public struct ThreadConversationView: View {
                 })
             #endif
                 .onAppear {
+                    followUpSettingsRevision &+= 1
+                    offlineRetentionRevision &+= 1
                     let defaultID = ThreadConversationExpansionPolicy.expandedID(
                         selectedID: navigation.readerExpansionSelectionID,
                         in: visibleHeaders
@@ -339,6 +453,15 @@ public struct ThreadConversationView: View {
                             }
                         }
                     }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)
+                    .receive(on: DispatchQueue.main)) { _ in
+                        followUpSettingsRevision &+= 1
+                }
+                .onReceive(NotificationCenter.default.publisher(
+                    for: MessageOfflineRetentionOverrideStore.didChangeNotification
+                ).receive(on: DispatchQueue.main)) { _ in
+                    offlineRetentionRevision &+= 1
                 }
                 // Re-initialise when the selected thread changes.
                 .onChange(of: conversationIdentity) { _, newIdentity in
@@ -356,9 +479,6 @@ public struct ThreadConversationView: View {
                 }
                 .onChange(of: threadHeaders.first?.threadID) { _, newThreadID in
                     guard newThreadID != nil else { return }
-                    // Drop the previous thread's pooled renderers — their card
-                    // identities are gone, so nothing still needs them warm.
-                    renderPool = ThreadConversationRenderPool()
                     let defaultID = ThreadConversationExpansionPolicy.expandedID(
                         selectedID: navigation.readerExpansionSelectionID,
                         in: visibleHeaders
@@ -476,7 +596,7 @@ public struct ThreadConversationView: View {
             mailboxID: backend.account.id
         )
         let workflowID = SourceMessageID(sourceID: workflowSourceID, messageID: header.id)
-        let state = injectedWorkflowState ?? LocalMessageWorkflowStateStorage.decode(localWorkflowStateData) ?? .defaults
+        let state = injectedWorkflowState ?? memoizedLocalWorkflowState()
         let lookup = LocalMessageWorkflowLookup(state: state)
         let projection = LocalMessageWorkflowConversationProjection(
             candidates: (threadHeaders + [header]).map {
@@ -494,7 +614,7 @@ public struct ThreadConversationView: View {
             for: header,
             isSnoozed: projection.isSnoozed(workflowID, header: header),
             isDone: lookup.isDone(workflowID),
-            isKeptOffline: MessageOfflineRetentionOverrideStore().isKeptOffline(workflowID),
+            isKeptOffline: memoizedIsKeptOffline(workflowID),
             hasNote: lookup.note(for: workflowID) != nil,
             canOpenInNewWindow: canOpenCardInNewWindow,
             canArchive: allFolders.contains { $0.role == .archive && $0.id != header.folderID },
@@ -513,7 +633,7 @@ public struct ThreadConversationView: View {
             canCreateMeeting: canPresentSheets,
             canAddNote: canPresentSheets,
             canFollowUp: canPresentSheets,
-            hasFollowUp: FollowUpReminderIndex(settings: FollowUpSettings.load())
+            hasFollowUp: memoizedFollowUpReminderIndex()
                 .reminder(for: header.id, sourceID: sourceID) != nil,
             // A docked reply holds the one composer (#302).
             canReply: canPresentSheets && !isWorkBlocked && navigation.inlineReply == nil,
@@ -523,6 +643,37 @@ public struct ThreadConversationView: View {
             extendedCapabilities: backend.extendedCapabilities,
             canExportEML: true
         )
+    }
+
+    private func memoizedLocalWorkflowState() -> LocalMessageWorkflowState {
+        if let cached = menuMemo.workflowState, cached.data == localWorkflowStateData {
+            return cached.value
+        }
+        let decoded = LocalMessageWorkflowStateStorage.decode(localWorkflowStateData) ?? .defaults
+        menuMemo.workflowState = (localWorkflowStateData, decoded)
+        return decoded
+    }
+
+    private func memoizedFollowUpReminderIndex() -> FollowUpReminderIndex {
+        if let cached = menuMemo.followUpIndex, cached.revision == followUpSettingsRevision {
+            return cached.value
+        }
+        let index = FollowUpReminderIndex(settings: FollowUpSettings.load())
+        menuMemo.followUpIndex = (followUpSettingsRevision, index)
+        return index
+    }
+
+    private func memoizedIsKeptOffline(_ workflowID: SourceMessageID) -> Bool {
+        if menuMemo.offlineRetentionRevision != offlineRetentionRevision {
+            menuMemo.offlineRetentionRevision = offlineRetentionRevision
+            menuMemo.offlineRetentionByID.removeAll(keepingCapacity: true)
+        }
+        if let cached = menuMemo.offlineRetentionByID[workflowID] {
+            return cached
+        }
+        let kept = MessageOfflineRetentionOverrideStore().isKeptOffline(workflowID)
+        menuMemo.offlineRetentionByID[workflowID] = kept
+        return kept
     }
 
     /// "Open in New Window" on a card: never offered on iPhone/compact (the

@@ -31,6 +31,9 @@ final class HTMLBodyWebViewStore: ObservableObject {
     private var hasScheduledContentLoad = false
     /// Whether WebKit has been instantiated for this store.
     var isWebViewCreated: Bool { storedWebView != nil }
+    /// Whether the underlying WebKit view is currently unmounted and safe to
+    /// rebind to another card without colliding on a live superview.
+    var isDetached: Bool { storedWebView?.superview == nil }
 
     init() {}
 
@@ -95,6 +98,22 @@ final class HTMLBodyWebViewStore: ObservableObject {
     /// Prevents a late warm-up task from replacing real message content.
     func prepareForContentLoad() {
         hasScheduledContentLoad = true
+    }
+
+    /// Resets transient navigation hooks while keeping the warm `WKWebView`
+    /// alive so another card (for example after a thread switch) can reuse it
+    /// without paying WebKit construction cost.
+    func prepareForReuse() {
+        hasScheduledContentLoad = false
+        prewarmNavigation = nil
+        guard let storedWebView else { return }
+        storedWebView.stopLoading()
+        storedWebView.navigationDelegate = nil
+        #if canImport(AppKit)
+        (storedWebView as? ScrollForwardingWebView)?.onLayoutWidthChange = nil
+        #else
+        (storedWebView as? SelfSizingWebView)?.onLayoutWidthChange = nil
+        #endif
     }
 
     /// Drops the WebKit instance so a collapsed or pooled-out card stops
@@ -224,9 +243,52 @@ enum HTMLBodyScrollForwardingPolicy {
 ///   `WKContentRuleList` blocks every subresource load. The
 ///   document is rendered with whatever is inlined; remote images,
 ///   CSS, web fonts, and tracking pixels do not fire.
+/// Lightweight token identifying one rendered HTML payload so `updateNSView` /
+/// `updateUIView` can skip reloads in O(1) without comparing full HTML strings.
+struct HTMLBodyContentIdentity: Hashable, Sendable {
+    let messageID: String
+    let revision: Int
+    let utf8Count: Int
+}
+
+/// Decides whether `HTMLBodyWebView` needs to reload WebKit on a SwiftUI
+/// representable update, preferring O(1) identity/length checks before any
+/// full-string HTML equality comparison.
+enum HTMLBodyReloadPolicy {
+    static func shouldReload(
+        hasLoadedContent: Bool,
+        lastContentIdentity: HTMLBodyContentIdentity?,
+        contentIdentity: HTMLBodyContentIdentity?,
+        lastHTMLUTF8Count: Int?,
+        lastHTML: String?,
+        html: String,
+        lastAllowRemote: Bool?,
+        allowRemoteContent: Bool,
+        lastStripTrackingPixels: Bool?,
+        stripTrackingPixels: Bool,
+        lastStyle: MessageBodyStyle?,
+        style: MessageBodyStyle
+    ) -> Bool {
+        guard hasLoadedContent else { return true }
+        if lastAllowRemote != allowRemoteContent
+            || lastStripTrackingPixels != stripTrackingPixels
+            || lastStyle != style {
+            return true
+        }
+        if let contentIdentity, let lastContentIdentity {
+            return lastContentIdentity != contentIdentity
+        }
+        if lastHTMLUTF8Count != html.utf8.count {
+            return true
+        }
+        return lastHTML != html
+    }
+}
+
 struct HTMLBodyWebView: View {
     @ObservedObject var store: HTMLBodyWebViewStore
     let html: String
+    var contentIdentity: HTMLBodyContentIdentity?
     let allowRemoteContent: Bool
     let stripTrackingPixels: Bool
     let fontFamily: MailboxFontFamily
@@ -264,6 +326,7 @@ struct HTMLBodyWebView: View {
                 WebViewRepresentable(
                     store: store,
                     html: html,
+                    contentIdentity: contentIdentity,
                     allowRemoteContent: allowRemoteContent,
                     stripTrackingPixels: stripTrackingPixels,
                     style: style,
@@ -328,6 +391,7 @@ enum HTMLBodyStaticSnapshot {
 private struct WebViewRepresentable {
     let store: HTMLBodyWebViewStore
     let html: String
+    let contentIdentity: HTMLBodyContentIdentity?
     let allowRemoteContent: Bool
     let stripTrackingPixels: Bool
     let style: MessageBodyStyle
@@ -354,6 +418,7 @@ private struct WebViewRepresentable {
         coordinator.load(
             into: webView,
             html: html,
+            contentIdentity: contentIdentity,
             allowRemoteContent: allowRemoteContent,
             stripTrackingPixels: stripTrackingPixels,
             style: style
@@ -363,13 +428,24 @@ private struct WebViewRepresentable {
     @MainActor
     fileprivate func update(_ webView: WKWebView, coordinator: Coordinator) {
         coordinator.parent = self
-        if coordinator.lastHTML != html
-            || coordinator.lastAllowRemote != allowRemoteContent
-            || coordinator.lastStripTrackingPixels != stripTrackingPixels
-            || coordinator.lastStyle != style {
+        if HTMLBodyReloadPolicy.shouldReload(
+            hasLoadedContent: coordinator.hasLoadedContent,
+            lastContentIdentity: coordinator.lastContentIdentity,
+            contentIdentity: contentIdentity,
+            lastHTMLUTF8Count: coordinator.lastHTMLUTF8Count,
+            lastHTML: coordinator.lastHTML,
+            html: html,
+            lastAllowRemote: coordinator.lastAllowRemote,
+            allowRemoteContent: allowRemoteContent,
+            lastStripTrackingPixels: coordinator.lastStripTrackingPixels,
+            stripTrackingPixels: stripTrackingPixels,
+            lastStyle: coordinator.lastStyle,
+            style: style
+        ) {
             coordinator.load(
                 into: webView,
                 html: html,
+                contentIdentity: contentIdentity,
                 allowRemoteContent: allowRemoteContent,
                 stripTrackingPixels: stripTrackingPixels,
                 style: style
@@ -409,6 +485,9 @@ extension WebViewRepresentable: UIViewRepresentable {
 extension WebViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate {
         var parent: WebViewRepresentable
+        var hasLoadedContent = false
+        var lastContentIdentity: HTMLBodyContentIdentity?
+        var lastHTMLUTF8Count: Int?
         var lastHTML: String?
         var lastAllowRemote: Bool?
         var lastStripTrackingPixels: Bool?
@@ -423,13 +502,19 @@ extension WebViewRepresentable {
         func load(
             into webView: WKWebView,
             html: String,
+            contentIdentity: HTMLBodyContentIdentity?,
             allowRemoteContent: Bool,
             stripTrackingPixels: Bool,
             style: MessageBodyStyle
         ) {
             loadGeneration &+= 1
             let generation = loadGeneration
-            lastHTML = html
+            hasLoadedContent = true
+            lastContentIdentity = contentIdentity
+            lastHTMLUTF8Count = html.utf8.count
+            // Only retain the raw HTML string for fallback equality when no
+            // lightweight content identity token was supplied.
+            lastHTML = contentIdentity == nil ? html : nil
             lastAllowRemote = allowRemoteContent
             lastStripTrackingPixels = stripTrackingPixels
             lastStyle = style
@@ -516,18 +601,18 @@ extension WebViewRepresentable {
         }
 
         func scheduleRemeasure(_ webView: WKWebView?) {
-            guard let webView, lastHTML != nil, !pendingRemeasure else { return }
+            guard let webView, hasLoadedContent, !pendingRemeasure else { return }
             pendingRemeasure = true
             DispatchQueue.main.async { [weak self, weak webView] in
                 guard let self else { return }
                 pendingRemeasure = false
-                guard let webView, lastHTML != nil else { return }
+                guard let webView, hasLoadedContent else { return }
                 remeasure(webView)
             }
         }
 
         func remeasure(_ webView: WKWebView) {
-            guard lastHTML != nil else { return }
+            guard hasLoadedContent else { return }
             // Measure the *body* content height, not the documentElement's —
             // `documentElement.scrollHeight` is floored at the web view's own
             // viewport height, so short emails would never shrink below the

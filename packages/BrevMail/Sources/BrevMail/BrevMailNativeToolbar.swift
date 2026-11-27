@@ -248,8 +248,10 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
         context.coordinator.update(state: state, actions: actions)
         context.coordinator.attach(to: view.window)
 
-        DispatchQueue.main.async { [weak view, weak coordinator = context.coordinator] in
-            coordinator?.attach(to: view?.window)
+        if !context.coordinator.isAttached(to: view.window) {
+            DispatchQueue.main.async { [weak view, weak coordinator = context.coordinator] in
+                coordinator?.attach(to: view?.window)
+            }
         }
     }
 
@@ -279,6 +281,10 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
         private var actions: BrevMailNativeToolbarActions
         private weak var window: NSWindow?
         private var appliedMailContextState: Bool?
+        /// Counts actual toolbar item rebuild passes (testing hook).
+        private(set) var visibleItemUpdateCount = 0
+        /// Counts actual window-attachment work passes (testing hook).
+        private(set) var attachWorkCount = 0
 
         init(
             state: BrevMailNativeToolbarState,
@@ -288,13 +294,25 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
             self.actions = actions
         }
 
+        func isAttached(to candidate: NSWindow?) -> Bool {
+            guard let candidate,
+                  window === candidate,
+                  candidate.toolbar?.identifier == .brevMail,
+                  candidate.toolbar?.delegate === self
+            else {
+                return false
+            }
+            return true
+        }
+
         func update(
             state: BrevMailNativeToolbarState,
             actions: BrevMailNativeToolbarActions
         ) {
+            self.actions = actions
+            guard self.state != state else { return }
             let presentationChanged = self.state.isMailContextPresented != state.isMailContextPresented
             self.state = state
-            self.actions = actions
             updateVisibleItems()
 
             guard presentationChanged,
@@ -307,9 +325,13 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
 
         func attach(to window: NSWindow?) {
             guard let window else { return }
+            if isAttached(to: window) {
+                return
+            }
             self.window = window
+            attachWorkCount += 1
 
-            if window.toolbar?.identifier != .brevMail {
+            if window.toolbar?.identifier != .brevMail || window.toolbar?.delegate !== self {
                 let toolbar = NSToolbar(identifier: .brevMail)
                 toolbar.allowsUserCustomization = true
                 toolbar.autosavesConfiguration = true
@@ -331,9 +353,11 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
         }
 
         func detach(from window: NSWindow?) {
+            if self.window === window {
+                self.window = nil
+            }
             guard window?.toolbar?.identifier == .brevMail else { return }
             window?.toolbar = nil
-            self.window = nil
         }
 
         func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -566,13 +590,15 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
         }
 
         private func updateVisibleItems() {
-            window?.toolbar?.visibleItems?.forEach { item in
+            guard let toolbar = window?.toolbar else { return }
+            visibleItemUpdateCount += 1
+            toolbar.visibleItems?.forEach { item in
                 guard let toolbarItem = BrevMailNativeToolbarItem(identifier: item.itemIdentifier) else {
                     return
                 }
                 update(item, as: toolbarItem)
             }
-            window?.toolbar?.validateVisibleItems()
+            toolbar.validateVisibleItems()
         }
 
         private func update(_ item: NSToolbarItem, as toolbarItem: BrevMailNativeToolbarItem) {

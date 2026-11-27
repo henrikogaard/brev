@@ -234,6 +234,87 @@ struct ConversationIndexTests {
         #expect(found.coverage == .cached)
     }
 
+    @Test("batched cachedConversation resolves multi-reference chains in at most two SQLite queries")
+    func batchedCachedConversationUsesFewQueries() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-batched-conv-\(UUID()).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: url.path + suffix)
+            }
+        }
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let engine = BrevSyncEngine(store: store)
+        let account = BrevAccount(id: "a", displayName: "A", emailAddress: "a@example.org")
+        let source = MailSourceID(accountID: "a", mailboxID: "a")
+
+        var headers: [MessageHeader] = []
+        var refs: [String] = []
+        for index in 1 ... 15 {
+            let own = "<msg-\(index)@example.org>"
+            let parent = index == 1 ? nil : "<msg-\(index - 1)@example.org>"
+            headers.append(Self.header(
+                index.isMultiple(of: 2) ? "Sent:\(index)" : "Inbox:\(index)",
+                folder: index.isMultiple(of: 2) ? "Sent" : "Inbox",
+                own: own,
+                parent: parent,
+                references: refs.isEmpty ? nil : refs
+            ))
+            refs.append(own)
+        }
+        let anchorHeader = Self.header(
+            "Inbox:16",
+            folder: "Inbox",
+            own: "<msg-16@example.org>",
+            parent: "<msg-15@example.org>",
+            references: refs
+        )
+        headers.append(anchorHeader)
+        await engine.storeHeaders(headers, account: account)
+
+        let queriesBefore = store.conversationCandidateQueryCount
+        let found = try await engine.cachedConversation(
+            around: ConversationMember(sourceID: source, header: anchorHeader),
+            excludingFolderIDs: []
+        )
+        let queriesUsed = store.conversationCandidateQueryCount - queriesBefore
+
+        #expect(found.coverage == .cached)
+        #expect(found.members.count == 16)
+        #expect(queriesUsed <= 2)
+    }
+
+    @Test("imapThreadingHeaders avoids decoding non-target folder rows while preserving cross-folder bridges")
+    func imapThreadingHeadersSkipsDecodingOtherFolders() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-threading-filter-\(UUID()).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: url.path + suffix)
+            }
+        }
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let engine = BrevSyncEngine(store: store)
+        let account = BrevAccount(id: "a", displayName: "A", emailAddress: "a@example.org")
+
+        let root = Self.header("Inbox:1", folder: "Inbox", own: "<root@example.org>")
+        var headers: [MessageHeader] = [root]
+        var previousID = "<root@example.org>"
+        for index in 2 ... 25 {
+            let own = "<sent-\(index)@example.org>"
+            headers.append(Self.header("Sent:\(index)", folder: "Sent", own: own, parent: previousID))
+            previousID = own
+        }
+        let leaf = Self.header("Inbox:26", folder: "Inbox", own: "<leaf@example.org>", parent: previousID)
+        headers.append(leaf)
+        await engine.storeHeaders(headers, account: account)
+
+        let decodedBefore = store.threadingDecodedHeaderCount
+        let threaded = try await engine.imapThreadingHeaders(for: [leaf], folderID: "Inbox", account: account)
+        let decodedCount = store.threadingDecodedHeaderCount - decodedBefore
+
+        #expect(Set(threaded.map(\.id)) == ["Inbox:1", "Inbox:26"])
+        #expect(decodedCount == 2)
+    }
+
     static func header(_ id: String, folder: String, own: String, parent: String? = nil,
                        references: [String]? = nil) -> MessageHeader {
         MessageHeader(id: id, threadID: own, folderID: folder,

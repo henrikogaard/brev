@@ -20,6 +20,9 @@ import Foundation
 /// cross-device sync is deferred to the provider-workflow-state work (#261).
 struct MessageOfflineRetentionOverrideStore: Equatable {
     static let empty = MessageOfflineRetentionOverrideStore(defaults: emptyDefaults)
+    static let didChangeNotification = Notification.Name(
+        "BrevMail.MessageOfflineRetentionOverrideStore.didChange"
+    )
 
     private static let key = "list.offlineRetentionOverrides"
     private static let emptyDefaults = UserDefaults(
@@ -52,6 +55,7 @@ struct MessageOfflineRetentionOverrideStore: Equatable {
         let key = Self.storageKey(for: messageID)
         if kept { stored.insert(key) } else { stored.remove(key) }
         defaults.set(Array(stored), forKey: Self.key)
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
     /// The bare message IDs pinned within an account, for handing to the

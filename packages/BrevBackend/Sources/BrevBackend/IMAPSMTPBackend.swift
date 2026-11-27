@@ -20,7 +20,34 @@ enum IMAPBackgroundRefreshPolicy {
     static let graceNanoseconds: UInt64 = 200_000_000
 }
 
+/// Bounded, cache-only header queries for hot UI paths (widgets, Today digest,
+/// sender correspondence history, follow-up reconciliation) so callers never
+/// scan an entire folder with `limit: Int.max`.
+public protocol BoundedCachedHeaderProviding: BackendExtensionService {
+    /// Returns at most `limit` newest locally cached headers in `folder` for
+    /// `sourceID` without connecting or performing network I/O. When `since` is
+    /// non-nil, restricts results to headers dated on or after `since`.
+    func cachedMessageHeaders(
+        in folder: Folder,
+        sourceID: MailSourceID,
+        limit: Int,
+        since: Date?
+    ) async throws -> [MessageHeader]
+}
+
+public extension BoundedCachedHeaderProviding {
+    /// Convenience overload with no date lower bound.
+    func cachedMessageHeaders(
+        in folder: Folder,
+        sourceID: MailSourceID,
+        limit: Int
+    ) async throws -> [MessageHeader] {
+        try await cachedMessageHeaders(in: folder, sourceID: sourceID, limit: limit, since: nil)
+    }
+}
+
 public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, MutationApplying, CachedMessageHeaderProviding,
+    BoundedCachedHeaderProviding,
     SyncHealthReporting, SyncConflictReviewing, SyncHealthRepairing, MailboxBackgroundRefreshing,
     OutboxManaging, ScheduledSendEditing, ProgressiveMailSearching, CardDAVContactSyncSupporting, MessageLabelManaging,
     CachedConversationProviding, RelatedConversationLoading, LocalDraftAttachmentProviding, @unchecked Sendable {
@@ -3053,6 +3080,26 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return results
     }
 
+    /// Returns at most `limit` newest cached headers in `folder`, optionally bounded by `since`.
+    public func cachedMessageHeaders(
+        in folder: Folder,
+        sourceID: MailSourceID,
+        limit: Int,
+        since: Date?
+    ) async throws -> [MessageHeader] {
+        try validateSourceID(sourceID)
+        guard limit > 0 else { return [] }
+        try Task.checkCancellation()
+        let dateRange = since.map { $0 ... Date.distantFuture }
+        let results = await cachedSearchResults(
+            for: SearchQuery(folderID: folder.id, dateRange: dateRange, execution: .cacheOnly),
+            folders: [folder],
+            limit: limit
+        )
+        try Task.checkCancellation()
+        return results
+    }
+
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
         try await performSearch(query, onUpdate: nil)
     }
@@ -3894,6 +3941,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         case ObjectIdentifier(ProgressiveMailSearching.self):
             return self as? Service
         case ObjectIdentifier(CachedMessageHeaderProviding.self),
+             ObjectIdentifier(BoundedCachedHeaderProviding.self),
              ObjectIdentifier(CachedMessageBodyProviding.self),
              ObjectIdentifier(CachedListUnsubscribeProviding.self):
             return self as? Service
