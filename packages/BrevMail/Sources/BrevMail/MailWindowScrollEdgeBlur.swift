@@ -335,6 +335,7 @@ final class MailScrollEdgeBlurView: NSView {
         super.viewDidMoveToWindow()
         hasReducedBackdrop = false
         reducedRootLayer = nil
+        reducedBackdropLayer = nil
         scheduleReduction()
     }
 
@@ -343,14 +344,18 @@ final class MailScrollEdgeBlurView: NSView {
         // Appearance changes rebuild the material's layers; re-reduce.
         hasReducedBackdrop = false
         reducedRootLayer = nil
+        reducedBackdropLayer = nil
         scheduleReduction()
     }
 
     override func layout() {
         super.layout()
         // Avoid re-walking the CALayer tree and mutating filters on every layout
-        // pass once the backdrop is already reduced for the current root layer.
-        if !hasReducedBackdrop || reducedRootLayer !== effectView.layer {
+        // pass once the backdrop is already reduced, while still detecting if
+        // AppKit replaces or resets the descendant backdrop layer on resize.
+        let backdropIntact = reducedBackdropLayer?.superlayer != nil
+            && (reducedBackdropLayer?.filters?.count ?? 0) == 1
+        if !hasReducedBackdrop || reducedRootLayer !== effectView.layer || !backdropIntact {
             scheduleReduction()
         }
     }
@@ -367,6 +372,7 @@ final class MailScrollEdgeBlurView: NSView {
     private var hasLoggedActiveOutcome = false
     private var hasReducedBackdrop = false
     private weak var reducedRootLayer: CALayer?
+    private weak var reducedBackdropLayer: CALayer?
     private var isReductionScheduled = false
 
     /// The material builds its layer tree lazily, after it joins a window, so
@@ -400,6 +406,7 @@ final class MailScrollEdgeBlurView: NSView {
             return
         }
         var foundBackdrop = false
+        var activeBackdropLayer: CALayer?
         Self.walk(root) { layer in
             let isBackdrop = String(describing: type(of: layer)).contains("Backdrop")
             if isBackdrop {
@@ -416,7 +423,10 @@ final class MailScrollEdgeBlurView: NSView {
                             Self.blurRadius,
                             forKeyPath: "filters.gaussianBlur.inputRadius"
                         )
+                        activeBackdropLayer = layer
                     }
+                } else {
+                    activeBackdropLayer = layer
                 }
             } else if (layer.sublayers ?? []).isEmpty, layer !== root {
                 layer.isHidden = true
@@ -427,6 +437,7 @@ final class MailScrollEdgeBlurView: NSView {
             retryState.reset()
             hasReducedBackdrop = true
             reducedRootLayer = root
+            reducedBackdropLayer = activeBackdropLayer
             isHidden = false
             // One notice per band instance: reading "active" (or the
             // fail-closed error) from the unified log is the only way to

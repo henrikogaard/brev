@@ -47,9 +47,9 @@ public struct SignInCodeSettings: Equatable, Sendable {
     private nonisolated(unsafe) static var decodedCache: [Data: SignInCodeSettings] = [:]
     private static let maxCacheEntries = 16
     #if DEBUG
-    private nonisolated(unsafe) static var jsonDecodeCountForTestingStorage = 0
-    static var jsonDecodeCountForTesting: Int {
-        cacheLock.withLock { jsonDecodeCountForTestingStorage }
+    private nonisolated(unsafe) static var jsonDecodeCountsByDefaultsForTesting: [ObjectIdentifier: Int] = [:]
+    static func jsonDecodeCountForTesting(for defaults: UserDefaults) -> Int {
+        cacheLock.withLock { jsonDecodeCountsByDefaultsForTesting[ObjectIdentifier(defaults), default: 0] }
     }
     #endif
 
@@ -62,7 +62,7 @@ public struct SignInCodeSettings: Equatable, Sendable {
             return cached
         }
         #if DEBUG
-        cacheLock.withLock { jsonDecodeCountForTestingStorage += 1 }
+        cacheLock.withLock { jsonDecodeCountsByDefaultsForTesting[ObjectIdentifier(defaults), default: 0] += 1 }
         #endif
         let decoded: SignInCodeSettings
         if let records = try? JSONDecoder().decode([String: AccountOverride].self, from: data),

@@ -923,6 +923,7 @@ struct UnifiedInboxListView: View {
             groupByThread: groupByThread,
             activeInboxCategory: activeInboxCategory,
             inboxClassificationModeRaw: inboxClassificationModeRaw,
+            inboxCategoryOverrideRevision: inboxCategoryOverrideRevision,
             workflowVisibilityMode: workflowVisibilityMode,
             workflowState: localMessageWorkflowState,
             mailboxFilter: navigation.mailboxFilter,
@@ -1069,7 +1070,34 @@ struct UnifiedInboxListView: View {
             pinnedIDs: pinnedMessageIDs,
             effectiveDateOverrides: dateOverrides
         )
-        return (collapsedRows.items, sorted, threadCounts, dateOverrides, collapsedRows.dateOverrides)
+        // Reader navigation keeps each message ungrouped with per-message snooze
+        // wake dates (matching the uncached `groupThreads: false` path). Only
+        // re-sort when snooze wake promotion is active in a grouped inbox.
+        let ungroupedItems: [UnifiedInboxItem]
+        if snoozeWakePromotionEligible, !localMessageWorkflowState.snoozes.isEmpty {
+            let ungroupedDateOverrides = MessageListSnoozeWakePolicy.effectiveDateOverrides(
+                for: items.map { item in
+                    MessageListSnoozeWakeEntry(
+                        sourceMessageID: SourceMessageID(sourceID: item.sourceID, messageID: item.header.id),
+                        headerDate: item.header.date,
+                        threadID: nil,
+                        header: item.header
+                    )
+                },
+                snoozes: localMessageWorkflowState.snoozes,
+                now: now,
+                projection: workflowConversationProjection
+            )
+            ungroupedItems = MessageListSortPolicy.sortedItems(
+                filtered,
+                by: mailboxSortOrder,
+                pinnedIDs: pinnedMessageIDs,
+                dateOverrides: ungroupedDateOverrides
+            )
+        } else {
+            ungroupedItems = sorted
+        }
+        return (collapsedRows.items, ungroupedItems, threadCounts, dateOverrides, collapsedRows.dateOverrides)
     }
 
     // MARK: - Date grouping

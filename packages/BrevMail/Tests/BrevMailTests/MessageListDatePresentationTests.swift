@@ -321,6 +321,50 @@ struct MessageListDatePresentationTests {
         }
     }
 
+    @Test("spoken relative labels do not share cache buckets across half-unit rounding boundaries")
+    func spokenRelativeLabelsSeparateRoundingBoundaries() {
+        let ref = Self.date(year: 2034, month: 5, day: 12, hour: 12, minute: 0)
+        let fiveMinOneSec = ref.addingTimeInterval(-(5 * 60 + 1))
+        let fiveMinFiftyNineSec = ref.addingTimeInterval(-(5 * 60 + 59))
+
+        let first = MessageListDatePresentation.accessibilityLabel(
+            for: fiveMinOneSec,
+            showsAbsoluteArrivalTime: false,
+            referenceDate: ref,
+            calendar: Self.calendar,
+            locale: Self.locale,
+            timeZone: Self.timeZone
+        )
+        #if DEBUG
+        let hitsBeforeSecond = MessageListDatePresentation.spokenRelativeLabelCacheHitCountForTesting(
+            for: fiveMinFiftyNineSec,
+            referenceDate: ref,
+            calendar: Self.calendar,
+            locale: Self.locale
+        )
+        #endif
+        let second = MessageListDatePresentation.accessibilityLabel(
+            for: fiveMinFiftyNineSec,
+            showsAbsoluteArrivalTime: false,
+            referenceDate: ref,
+            calendar: Self.calendar,
+            locale: Self.locale,
+            timeZone: Self.timeZone
+        )
+        #expect(!first.isEmpty)
+        #expect(!second.isEmpty)
+        #if DEBUG
+        #expect(
+            MessageListDatePresentation.spokenRelativeLabelCacheHitCountForTesting(
+                for: fiveMinFiftyNineSec,
+                referenceDate: ref,
+                calendar: Self.calendar,
+                locale: Self.locale
+            ) == hitsBeforeSecond
+        )
+        #endif
+    }
+
     private static var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone

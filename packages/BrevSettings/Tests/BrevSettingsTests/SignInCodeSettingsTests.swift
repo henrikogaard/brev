@@ -194,14 +194,14 @@ struct SignInCodeSettingsTests {
         #expect(first.accountOverride(for: accountA).codesEnabled)
 
         #if DEBUG
-        let decodesAfterFirstLoad = SignInCodeSettings.jsonDecodeCountForTesting
+        let decodesAfterFirstLoad = SignInCodeSettings.jsonDecodeCountForTesting(for: defaults)
         #endif
         for _ in 0 ..< 20 {
             let repeated = SignInCodeSettings.load(from: defaults)
             #expect(repeated == first)
         }
         #if DEBUG
-        #expect(SignInCodeSettings.jsonDecodeCountForTesting == decodesAfterFirstLoad)
+        #expect(SignInCodeSettings.jsonDecodeCountForTesting(for: defaults) == decodesAfterFirstLoad)
         #endif
 
         // Saving updated settings immediately serves the updated values without stale cache.

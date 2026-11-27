@@ -117,7 +117,7 @@ public struct BrevAvatarView: View {
     private let resolver: AvatarResolver
     private let preferencesObserver = AvatarPreferencesObserver.shared
 
-    @State private var decodedEntry: (key: AvatarDisplayImageCache.Key, image: CGImage)?
+    @State private var decodedEntry: (key: AvatarDisplayImageCache.Key, generation: Int, image: CGImage)?
 
     public init(
         email: String,
@@ -134,13 +134,17 @@ public struct BrevAvatarView: View {
     public var body: some View {
         let preferences = preferencesObserver.preferences
         let currentPixelDimension = pixelDimension
+        let resolverID = ObjectIdentifier(resolver).hashValue
+        let cacheGeneration = AvatarDisplayImageCache.shared.generation(forResolverID: resolverID)
         let cacheKey = AvatarDisplayImageCache.Key(
-            resolverID: ObjectIdentifier(resolver).hashValue,
+            resolverID: resolverID,
             email: email,
             preferences: preferences,
             pixelDimension: currentPixelDimension
         )
-        let cachedImage: CGImage? = if let decodedEntry, decodedEntry.key == cacheKey {
+        let cachedImage: CGImage? = if let decodedEntry,
+                                       decodedEntry.key == cacheKey,
+                                       decodedEntry.generation == cacheGeneration {
             decodedEntry.image
         } else {
             AvatarDisplayImageCache.shared.image(for: cacheKey)
@@ -149,16 +153,23 @@ public struct BrevAvatarView: View {
             email: email,
             displayName: displayName,
             preferences: preferences,
-            pixelDimension: currentPixelDimension
+            pixelDimension: currentPixelDimension,
+            cacheGeneration: cacheGeneration
         )
 
         Group {
             if let cachedImage {
-                Image(decorative: cachedImage, scale: 1)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: size, height: size)
-                    .clipShape(Circle())
+                // Keep the themed circle swatch behind transparent sender logos
+                // without running initials text extraction or rendering letters behind the logo.
+                ZStack {
+                    Circle()
+                        .fill(avatarSwatch.color)
+                    Image(decorative: cachedImage, scale: 1)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: size, height: size)
+                        .clipShape(Circle())
+                }
             } else {
                 initialsLayer
             }
@@ -171,22 +182,28 @@ public struct BrevAvatarView: View {
         )
         .task(id: taskRequest) {
             if let existing = AvatarDisplayImageCache.shared.image(for: cacheKey) {
-                if decodedEntry?.key != cacheKey {
-                    decodedEntry = (cacheKey, existing)
+                if decodedEntry?.key != cacheKey || decodedEntry?.generation != cacheGeneration {
+                    decodedEntry = (cacheKey, cacheGeneration, existing)
                 }
                 return
             }
             await preferencesObserver.syncPreferencesIfNeeded(preferences, to: resolver)
-            let resolved = await resolver.resolve(email: email, displayName: displayName)
+            let resolution = await resolver.resolveWithExpiry(email: email, displayName: displayName)
             guard !Task.isCancelled else { return }
             let thumbnail = await AvatarImageDecoder.shared.thumbnail(
-                from: resolved.imageData,
+                from: resolution.avatar.imageData,
                 maximumPixelDimension: currentPixelDimension
             )
             guard !Task.isCancelled else { return }
-            AvatarDisplayImageCache.shared.store(thumbnail, for: cacheKey)
+            let latestGeneration = AvatarDisplayImageCache.shared.generation(forResolverID: resolverID)
+            guard latestGeneration == cacheGeneration else { return }
+            AvatarDisplayImageCache.shared.store(
+                thumbnail,
+                for: cacheKey,
+                expiresAt: resolution.expiresAt
+            )
             if let thumbnail {
-                decodedEntry = (cacheKey, thumbnail)
+                decodedEntry = (cacheKey, cacheGeneration, thumbnail)
             } else if decodedEntry?.key == cacheKey {
                 decodedEntry = nil
             }
@@ -197,13 +214,17 @@ public struct BrevAvatarView: View {
         AvatarImageDecodingPolicy.maximumPixelDimension(displaySize: size, displayScale: displayScale)
     }
 
+    private var avatarSwatch: BrevColor {
+        let palette = theme.avatarPalette
+        return palette.isEmpty
+            ? theme.accent
+            : palette[InitialsAvatar.colorIndex(email: email, paletteCount: palette.count)]
+    }
+
     @ViewBuilder
     private var initialsLayer: some View {
         let initials = InitialsAvatar.initials(displayName: displayName, email: email)
-        let palette = theme.avatarPalette
-        let swatch = palette.isEmpty
-            ? theme.accent
-            : palette[InitialsAvatar.colorIndex(email: email, paletteCount: palette.count)]
+        let swatch = avatarSwatch
         let foregroundStyle = InitialsAvatar.foregroundStyle(forBackgroundHex: swatch.hex)
         let foreground = switch (foregroundStyle, theme.mode) {
         case (.dark, .light), (.light, .dark):
@@ -226,4 +247,5 @@ private struct AvatarImageLoadRequest: Hashable {
     let displayName: String?
     let preferences: AvatarPreferences
     let pixelDimension: Int
+    let cacheGeneration: Int
 }

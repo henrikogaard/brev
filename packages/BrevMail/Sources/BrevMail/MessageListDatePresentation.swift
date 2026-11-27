@@ -328,18 +328,40 @@ enum MessageListDatePresentation {
         )
     }
 
+    private static let spokenCalendarDayThresholdSeconds: TimeInterval = 7 * 86400
+
     private static func spokenRelativeCacheKey(
         for date: Date,
         referenceSecond: TimeInterval,
         calendar: Calendar,
         locale: Locale
     ) -> RelativeLabelCacheKey {
-        RelativeLabelCacheKey(
-            bucket: quantizedElapsedBucket(
-                dateInterval: date.timeIntervalSinceReferenceDate,
-                referenceSecond: referenceSecond,
-                useCalendarDaysForMonths: true
-            ),
+        let dateInterval = date.timeIntervalSinceReferenceDate
+        let elapsed = referenceSecond - dateInterval
+        let absElapsed = abs(elapsed)
+        let bucket: RelativeAgeBucket
+        if absElapsed >= spokenCalendarDayThresholdSeconds {
+            let dateDay = Int64((dateInterval / 86400).rounded(.down))
+            let referenceDay = Int64((referenceSecond / 86400).rounded(.down))
+            bucket = .calendarDays(dateDay: dateDay, referenceDay: referenceDay)
+        } else {
+            // Split each unit at its half-unit midpoint (30s / 30m / 12h) so
+            // entries on opposite sides of a rounding boundary never share a bucket.
+            let step: TimeInterval
+            if absElapsed < 60 {
+                step = 1
+            } else if absElapsed < 3600 {
+                step = 30
+            } else if absElapsed < 86400 {
+                step = 1800
+            } else {
+                step = 43200
+            }
+            let quantized = (absElapsed / step).rounded(.down) * step
+            bucket = .quantizedElapsed(elapsed < 0 ? -Int64(quantized) : Int64(quantized))
+        }
+        return RelativeLabelCacheKey(
+            bucket: bucket,
             localeIdentifier: locale.identifier,
             calendarIdentifier: calendar.identifier
         )
