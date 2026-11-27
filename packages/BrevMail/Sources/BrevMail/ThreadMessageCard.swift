@@ -129,7 +129,7 @@ struct ThreadMessageCard: View {
     @State private var htmlRenderingModeOverrideMessageID: MessageHeader.ID?
     @State private var inlineCIDResolvedMessageID: MessageHeader.ID?
     @State private var pendingSuspiciousLink: MessageSecurityLinkWarning?
-    @StateObject private var htmlWebViewStore: HTMLBodyWebViewStore
+    @State private var htmlWebViewStore: HTMLBodyWebViewStore?
     /// The listed attachments' actions and state, shared with the
     /// single-message reader.
     @StateObject private var attachmentController = MessageAttachmentController()
@@ -189,12 +189,15 @@ struct ThreadMessageCard: View {
         self.renderPool = renderPool
         self.webViewStoreRecycler = webViewStoreRecycler
         _renderedBody = State(initialValue: initialRenderedBody)
-        // The pool returns a warm store when this card remounts. Checkout
-        // happens eagerly in init so `StateObject`'s thunk only captures an
-        // already-resolved store — the store itself stays lazy about WebKit.
-        let pooledStore = webViewStoreRecycler?.checkout(for: header.id)
-            ?? renderPool.checkoutWebViewStore(for: header.id)
-        _htmlWebViewStore = StateObject(wrappedValue: pooledStore)
+        // Only expanded cards check out a store so each store has one exclusive
+        // owner at a time; collapsing or disappearing relinquishes it back to
+        // `webViewStoreRecycler` before another card can check it out.
+        let initialStore: HTMLBodyWebViewStore? = if isExpanded {
+            webViewStoreRecycler?.checkout() ?? renderPool.checkoutWebViewStore(for: header.id)
+        } else {
+            nil
+        }
+        _htmlWebViewStore = State(initialValue: initialStore)
     }
 
     private var interfaceDensity: MailboxListDensity {
@@ -283,16 +286,12 @@ struct ThreadMessageCard: View {
         .padding(.vertical, interfaceDensity.desktopSpacing(BrevSpacing.xs))
         .task(id: isExpanded) {
             guard isExpanded else {
-                // Collapsed cards hand their WebKit renderer back to the
-                // bounded recycler (keeping it warm for the next thread or
-                // expansion) or release it when running standalone.
-                if let webViewStoreRecycler {
-                    webViewStoreRecycler.recycle(for: header.id)
-                } else {
-                    renderPool.releaseWebViewStore(for: header.id)
-                    htmlWebViewStore.releaseWebView()
-                }
+                releaseOwnedWebViewStore()
                 return
+            }
+            if htmlWebViewStore == nil {
+                htmlWebViewStore = webViewStoreRecycler?.checkout()
+                    ?? renderPool.checkoutWebViewStore(for: header.id)
             }
             syncRemoteContentPolicyFromDefaults()
             guard !isLoading else { return }
@@ -303,9 +302,13 @@ struct ThreadMessageCard: View {
             }
         }
         .onDisappear {
-            webViewStoreRecycler?.recycle(for: header.id)
+            releaseOwnedWebViewStore()
         }
         .onAppear {
+            if isExpanded, htmlWebViewStore == nil {
+                htmlWebViewStore = webViewStoreRecycler?.checkout()
+                    ?? renderPool.checkoutWebViewStore(for: header.id)
+            }
             syncRemoteContentPolicyFromDefaults()
         }
         .onReceive(NotificationCenter.default.publisher(for: RemoteContentPolicy.didChangeNotification)
@@ -691,21 +694,23 @@ struct ThreadMessageCard: View {
                         strippingEnabled: stripTrackingPixels
                     )
                 }
-                HTMLBodyWebView(
-                    store: htmlWebViewStore,
-                    html: html,
-                    contentIdentity: HTMLBodyContentIdentity(
-                        messageID: header.id,
-                        revision: renderedBodyRevision,
-                        utf8Count: html.utf8.count
-                    ),
-                    allowRemoteContent: allowRemoteContent,
-                    stripTrackingPixels: stripTrackingPixels,
-                    fontFamily: mailboxFontFamily,
-                    textSize: mailboxTextSize,
-                    renderingMode: htmlRenderingMode,
-                    onOpenURL: { handleLink($0, bodyHTML: html) }
-                )
+                if let htmlWebViewStore {
+                    HTMLBodyWebView(
+                        store: htmlWebViewStore,
+                        html: html,
+                        contentIdentity: HTMLBodyContentIdentity(
+                            messageID: header.id,
+                            revision: renderedBodyRevision,
+                            utf8Count: html.utf8.count
+                        ),
+                        allowRemoteContent: allowRemoteContent,
+                        stripTrackingPixels: stripTrackingPixels,
+                        fontFamily: mailboxFontFamily,
+                        textSize: mailboxTextSize,
+                        renderingMode: htmlRenderingMode,
+                        onOpenURL: { handleLink($0, bodyHTML: html) }
+                    )
+                }
             }
 
         case .htmlFallback(let text):
@@ -723,6 +728,21 @@ struct ThreadMessageCard: View {
 
         case .waiting:
             Color.clear.frame(height: 1)
+        }
+    }
+
+    /// Relinquishes this card's exclusive `HTMLBodyWebViewStore` reference
+    /// before returning it to the recycler so no two cards can ever share a store.
+    private func releaseOwnedWebViewStore() {
+        guard let store = htmlWebViewStore else { return }
+        htmlWebViewStore = nil
+        if let webViewStoreRecycler {
+            DispatchQueue.main.async {
+                webViewStoreRecycler.returnDetachedStore(store)
+            }
+        } else {
+            renderPool.releaseWebViewStore(for: header.id)
+            store.releaseWebView()
         }
     }
 

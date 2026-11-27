@@ -1007,7 +1007,11 @@ public struct BrevMailRootView: View {
             }
             .onChange(of: navigation.lastLocalUnreadCountDelta) { _, delta in
                 guard let delta else { return }
-                applyUnreadCountChange(folderID: delta.folderID, delta: delta.delta)
+                applyUnreadCountChange(
+                    folderID: delta.folderID,
+                    sourceID: delta.sourceID,
+                    delta: delta.delta
+                )
             }
             .onChange(of: navigation.selectedSourceID) {
                 handleSelectedSourceChange()
@@ -7351,27 +7355,50 @@ public struct BrevMailRootView: View {
         #endif
     }
 
-    private func applyUnreadCountChange(folderID: Folder.ID, delta: Int) {
-        let nextFolders = unreadCountReconciler.apply(folderID: folderID, delta: delta, to: folders)
-        guard nextFolders != folders else { return }
-        folders = nextFolders
-        if let index = sourceSections.firstIndex(where: { $0.folders.contains { $0.id == folderID } }) {
+    private func applyUnreadCountChange(
+        folderID: Folder.ID,
+        sourceID: MailSourceID? = nil,
+        delta: Int
+    ) {
+        var didChange = false
+        let appliesToSelectedFolders: Bool = if let sourceID {
+            sourceID == navigation.selectedSourceID || sourceID.accountID == selectedBackend.account.id
+        } else {
+            true
+        }
+        if appliesToSelectedFolders {
+            let nextFolders = unreadCountReconciler.apply(folderID: folderID, delta: delta, to: folders)
+            if nextFolders != folders {
+                folders = nextFolders
+                didChange = true
+            }
+        }
+        let sectionIndex: Int? = if let sourceID {
+            sourceSections.firstIndex(where: { $0.id == sourceID })
+        } else {
+            sourceSections.firstIndex(where: { $0.folders.contains { $0.id == folderID } })
+        }
+        if let index = sectionIndex {
             let section = sourceSections[index]
             let updatedSectionFolders = unreadCountReconciler.apply(
                 folderID: folderID,
                 delta: delta,
                 to: section.folders
             )
-            guard updatedSectionFolders != section.folders else { return }
-            sourceSections[index] = MailSourceSection(
-                id: section.id,
-                account: section.account,
-                mailbox: section.mailbox,
-                folders: updatedSectionFolders,
-                loadError: section.loadError
-            )
+            if updatedSectionFolders != section.folders {
+                sourceSections[index] = MailSourceSection(
+                    id: section.id,
+                    account: section.account,
+                    mailbox: section.mailbox,
+                    folders: updatedSectionFolders,
+                    loadError: section.loadError
+                )
+                didChange = true
+            }
         }
-        updateUnreadBadge()
+        if didChange {
+            updateUnreadBadge()
+        }
     }
 
     private func selectMailProfile(_ profileID: MailProfile.ID) {
@@ -7885,6 +7912,7 @@ public struct BrevMailRootView: View {
             folderID: header.folderID,
             sourceID: capturedSourceID,
             messageIDs: [header.id],
+            isRead: newValue,
             unreadDelta: 0
         )
         do {
@@ -8425,23 +8453,76 @@ public struct BrevMailRootView: View {
             }
             let ownerIdentity = ObjectIdentifier(owner as AnyObject)
             backendIdentities[section.id] = ownerIdentity
-            let sentFolderIDs = Set(section.folders.filter { $0.role == .sent }.map(\.id))
+            let sentFolders = section.folders.filter { $0.role == .sent }
+            let sentFolderIDs = Set(sentFolders.map(\.id))
+            let sectionPendingIntents = savedSettings.pendingNoReplyIntents.filter { $0.sourceID == section.id }
+            let activeReminderDates = savedSettings.reminders.compactMap { reminder -> Date? in
+                guard reminder.isAutomaticNoReply, !reminder.isDismissed, !reminder.isCompleted,
+                      let metadata = reminder.noReplyMetadata, metadata.sourceID == section.id
+                else { return nil }
+                return metadata.sentAt
+            }
             var headers: [MessageHeader] = []
             var isComplete = true
-            for folder in section.folders where folder.role != .trash && folder.role != .spam && folder.role != .drafts {
+            var earliestSentAt = activeReminderDates.min()
+
+            // First inspect Sent folders (date-bounded when only active reminders
+            // exist, capped when matching pending intents) so non-Sent folders can
+            // be date-bounded to `earliestSentAt - 24h` without truncating replies.
+            let sentSince = sectionPendingIntents.isEmpty
+                ? earliestSentAt?.addingTimeInterval(-86400)
+                : nil
+            let sentLimit = sectionPendingIntents.isEmpty ? Int.max : Self.noReplyFollowUpHeaderLimit
+            for folder in sentFolders {
                 do {
                     let cachedHeaders = try await cachedBoundedMessageHeaders(
                         from: owner,
                         in: folder,
                         sourceID: section.id,
-                        limit: Self.noReplyFollowUpHeaderLimit,
-                        since: nil
+                        limit: sentLimit,
+                        since: sentSince
                     )
+                    if sentLimit < Int.max, cachedHeaders.count >= sentLimit {
+                        isComplete = false
+                    }
                     headers.append(contentsOf: cachedHeaders)
+                    if !sectionPendingIntents.isEmpty {
+                        let expectedIDs = Set(sectionPendingIntents.map(\.expectedMessageID))
+                        let hintIDs = Set(sectionPendingIntents.compactMap(\.sentMessageIDHint))
+                        let matchedDates = cachedHeaders.compactMap { header -> Date? in
+                            let matchesRFC = header.messageID.map { expectedIDs.contains($0) } ?? false
+                            let matchesHint = hintIDs.contains(header.id)
+                            return (matchesRFC || matchesHint) ? header.date : nil
+                        }
+                        if let earliestMatched = matchedDates.min() {
+                            earliestSentAt = earliestSentAt.map { min($0, earliestMatched) } ?? earliestMatched
+                        }
+                    }
                 } catch {
                     isComplete = false
                 }
                 if Task.isCancelled { return }
+            }
+
+            if let earliestSentAt {
+                let replyWindowStart = earliestSentAt.addingTimeInterval(-86400)
+                for folder in section.folders
+                    where folder.role != .trash && folder.role != .spam && folder.role != .drafts
+                    && !sentFolderIDs.contains(folder.id) {
+                    do {
+                        let cachedHeaders = try await cachedBoundedMessageHeaders(
+                            from: owner,
+                            in: folder,
+                            sourceID: section.id,
+                            limit: Int.max,
+                            since: replyWindowStart
+                        )
+                        headers.append(contentsOf: cachedHeaders)
+                    } catch {
+                        isComplete = false
+                    }
+                    if Task.isCancelled { return }
+                }
             }
             snapshots.append(NoReplyFollowUpCacheSnapshot(
                 sourceID: section.id,
@@ -9531,8 +9612,7 @@ public struct BrevMailRootView: View {
             await refreshOutboxCount()
         case .folderRefreshed, .messagesAdded, .messagesRemoved, .messagesUpdated:
             if case .messagesUpdated = event,
-               backend.account.id == selectedBackend.account.id,
-               navigation.consumeMatchingLocalReadEcho(for: event) {
+               navigation.consumeMatchingLocalReadEcho(for: event, accountID: backend.account.id) {
                 return
             }
             if case .messagesAdded = event {

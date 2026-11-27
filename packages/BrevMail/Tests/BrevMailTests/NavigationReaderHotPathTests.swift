@@ -18,6 +18,7 @@ import BrevThemes
 import BrevWidgets
 import Foundation
 import Testing
+import WebKit
 
 /// Lightweight `MailBackend` double exposing `BoundedCachedHeaderProviding` so
 /// unit tests can assert bounded vs unbounded cache read counts without network
@@ -295,22 +296,36 @@ struct NavigationReaderHotPathTests {
             folderID: "INBOX",
             sourceID: navigation.selectedSourceID,
             messageIDs: ["INBOX:1"],
+            isRead: true,
             unreadDelta: -1,
             now: now
         )
 
         #expect(navigation.reloadRequestID == initialReloadID)
         #expect(navigation.lastLocalUnreadCountDelta?.folderID == "INBOX")
+        #expect(navigation.lastLocalUnreadCountDelta?.sourceID == navigation.selectedSourceID)
         #expect(navigation.lastLocalUnreadCountDelta?.delta == -1)
+        #expect(navigation.lastLocalReadStateMutation?.folderID == "INBOX")
+        #expect(navigation.lastLocalReadStateMutation?.messageIDs == ["INBOX:1"])
+        #expect(navigation.lastLocalReadStateMutation?.isRead == true)
 
-        // Matching backend `.messagesUpdated` echo is consumed once.
+        // Different account's INBOX update is NOT consumed by acct's echo.
+        #expect(!navigation.consumeMatchingLocalReadEcho(
+            for: .messagesUpdated(folderID: "INBOX", messageIDs: ["INBOX:1"]),
+            accountID: "other-acct",
+            now: now + .milliseconds(100)
+        ))
+
+        // Matching backend `.messagesUpdated` echo for the owning account is consumed once.
         #expect(navigation.consumeMatchingLocalReadEcho(
             for: .messagesUpdated(folderID: "INBOX", messageIDs: ["INBOX:1"]),
+            accountID: "acct",
             now: now + .milliseconds(200)
         ))
         // A second event for the same message is NOT suppressed.
         #expect(!navigation.consumeMatchingLocalReadEcho(
             for: .messagesUpdated(folderID: "INBOX", messageIDs: ["INBOX:1"]),
+            accountID: "acct",
             now: now + .milliseconds(300)
         ))
         // Non-update events are never suppressed.
@@ -318,16 +333,19 @@ struct NavigationReaderHotPathTests {
             folderID: "INBOX",
             sourceID: navigation.selectedSourceID,
             messageIDs: ["INBOX:2"],
+            isRead: true,
             unreadDelta: -1,
             now: now
         )
         #expect(!navigation.consumeMatchingLocalReadEcho(
             for: .messagesAdded(folderID: "INBOX", messageIDs: ["INBOX:2"]),
+            accountID: "acct",
             now: now + .milliseconds(100)
         ))
         // Expired echoes are not suppressed.
         #expect(!navigation.consumeMatchingLocalReadEcho(
             for: .messagesUpdated(folderID: "INBOX", messageIDs: ["INBOX:2"]),
+            accountID: "acct",
             now: now + .seconds(10)
         ))
     }
@@ -365,21 +383,31 @@ struct NavigationReaderHotPathTests {
         #expect(navigation.selectedMessageID == "INBOX:1")
     }
 
-    @Test("ThreadWebViewStoreRecycler reuses warm stores across thread switches")
+    @Test("ThreadWebViewStoreRecycler reuses relinquished detached stores without interrupting active cards")
     func threadWebViewStoreRecyclerReusesWarmStore() {
+        final class DummyNavigationDelegate: NSObject, WKNavigationDelegate {}
+        let delegate = DummyNavigationDelegate()
         let recycler = ThreadWebViewStoreRecycler(capacity: 2)
-        let storeA = recycler.checkout(for: "threadA-1")
-        _ = storeA.webView
+        let storeA = recycler.checkout()
+        let storeB = recycler.checkout()
+        let storeC = recycler.checkout()
+        let webViewA = storeA.webView
+        webViewA.navigationDelegate = delegate
         #expect(storeA.isWebViewCreated)
         #expect(storeA.isDetached)
+        // Checking out beyond capacity never touches an active card's store or navigationDelegate.
+        #expect(storeA !== storeB && storeB !== storeC && storeA !== storeC)
+        #expect(webViewA.navigationDelegate === delegate)
 
-        recycler.recycleAllExcept(["threadB-1"])
-        #expect(recycler.activeStoreCount == 0)
+        // Returning storeA after its owner relinquishes it resets callbacks and makes it reusable.
+        recycler.returnDetachedStore(storeA)
+        #expect(webViewA.navigationDelegate == nil)
         #expect(recycler.reusableStoreCount == 1)
 
-        let storeB = recycler.checkout(for: "threadB-1")
-        #expect(storeB === storeA)
+        let storeD = recycler.checkout()
+        #expect(storeD === storeA)
         #expect(recycler.reuseHitCount == 1)
+        #expect(recycler.reusableStoreCount == 0)
     }
 
     @Test("HTMLBodyReloadPolicy skips full-string compare when content identity matches")

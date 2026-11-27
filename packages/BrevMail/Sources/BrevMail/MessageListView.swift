@@ -1415,6 +1415,23 @@ public struct MessageListView: View {
                 listKeyboardFocus = true
             }
             #endif
+            .onChange(of: navigation.lastLocalReadStateMutation) { _, mutation in
+                guard let mutation, mutation.folderID == folder.id else { return }
+                if let sourceID = mutation.sourceID, sourceID.accountID != backend.account.id {
+                    return
+                }
+                let updatedIDs = Set(mutation.messageIDs)
+                var changed = false
+                for index in headers.indices where updatedIDs.contains(headers[index].id) {
+                    if headers[index].isRead != mutation.isRead {
+                        headers[index].isRead = mutation.isRead
+                        changed = true
+                    }
+                }
+                if changed {
+                    navigation.replaceCurrentFolderHeaders(headers, selectFirstIfNeeded: false)
+                }
+            }
         }
     }
 

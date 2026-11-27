@@ -32,14 +32,13 @@ import UIKit
 ///
 /// Use `BrevMailRootView` to switch between this view and `MessageDetailView`
 /// based on `backend.groupsMessagesIntoThreads` and thread size.
-/// Bounded pool that recycles warm `HTMLBodyWebViewStore` instances across
-/// thread switches and card collapses so `ThreadConversationView` does not
-/// tear down and reconstruct `WKWebView` processes on every conversation open.
+/// Bounded pool of detached, relinquished `HTMLBodyWebViewStore` instances so
+/// `ThreadConversationView` reuses warm `WKWebView`s across thread switches and
+/// card collapses without ever sharing a store between cards or interrupting a
+/// mounted card when capacity is exceeded.
 @MainActor
 final class ThreadWebViewStoreRecycler {
     private let capacity: Int
-    private var activeStores: [MessageHeader.ID: HTMLBodyWebViewStore] = [:]
-    private var checkoutOrder: [MessageHeader.ID] = []
     private var reusableStores: [HTMLBodyWebViewStore] = []
     private(set) var reuseHitCount = 0
 
@@ -47,63 +46,30 @@ final class ThreadWebViewStoreRecycler {
         self.capacity = max(1, capacity)
     }
 
-    var activeStoreCount: Int { activeStores.count }
     var reusableStoreCount: Int { reusableStores.count }
 
-    func checkout(for messageID: MessageHeader.ID) -> HTMLBodyWebViewStore {
-        if let existing = activeStores[messageID] {
-            touch(messageID)
-            return existing
-        }
-        evictIfAtCapacity()
+    /// Checks out a store for exclusive ownership by one mounted, expanded card.
+    func checkout() -> HTMLBodyWebViewStore {
         if let detachedIndex = reusableStores.firstIndex(where: { $0.isDetached }) {
             let store = reusableStores.remove(at: detachedIndex)
             store.prepareForReuse()
             reuseHitCount += 1
-            activeStores[messageID] = store
-            checkoutOrder.append(messageID)
             return store
         }
-        let store = HTMLBodyWebViewStore()
-        activeStores[messageID] = store
-        checkoutOrder.append(messageID)
-        return store
+        return HTMLBodyWebViewStore()
     }
 
-    func recycle(for messageID: MessageHeader.ID) {
-        guard let store = activeStores.removeValue(forKey: messageID) else { return }
-        checkoutOrder.removeAll { $0 == messageID }
-        parkForReuse(store)
-    }
-
-    func recycleAllExcept(_ retainedIDs: Set<MessageHeader.ID>) {
-        let staleIDs = checkoutOrder.filter { !retainedIDs.contains($0) }
-        for messageID in staleIDs {
-            recycle(for: messageID)
-        }
-    }
-
-    private func evictIfAtCapacity() {
-        while activeStores.count >= capacity, let evictedID = checkoutOrder.first {
-            checkoutOrder.removeFirst()
-            if let store = activeStores.removeValue(forKey: evictedID) {
-                parkForReuse(store)
-            }
-        }
-    }
-
-    private func parkForReuse(_ store: HTMLBodyWebViewStore) {
+    /// Accepts a store only after its owning card has relinquished all
+    /// references to it (collapsed or disappeared). Never mutates mounted views.
+    func returnDetachedStore(_ store: HTMLBodyWebViewStore) {
+        guard !reusableStores.contains(where: { $0 === store }) else { return }
+        guard store.isDetached else { return }
         store.prepareForReuse()
-        if store.isWebViewCreated, activeStores.count + reusableStores.count < capacity {
+        if store.isWebViewCreated, reusableStores.count < capacity {
             reusableStores.append(store)
         } else {
             store.releaseWebView()
         }
-    }
-
-    private func touch(_ messageID: MessageHeader.ID) {
-        checkoutOrder.removeAll { $0 == messageID }
-        checkoutOrder.append(messageID)
     }
 }
 
@@ -492,6 +458,11 @@ public struct ThreadConversationView: View {
                     .receive(on: DispatchQueue.main)) { _ in
                         followUpSettingsRevision &+= 1
                 }
+                .onReceive(NotificationCenter.default.publisher(
+                    for: MessageOfflineRetentionOverrideStore.didChangeNotification
+                ).receive(on: DispatchQueue.main)) { _ in
+                    offlineRetentionRevision &+= 1
+                }
                 // Re-initialise when the selected thread changes.
                 .onChange(of: conversationIdentity) { _, newIdentity in
                     if aiSummarySession.switchConversation(to: newIdentity) {
@@ -508,9 +479,6 @@ public struct ThreadConversationView: View {
                 }
                 .onChange(of: threadHeaders.first?.threadID) { _, newThreadID in
                     guard newThreadID != nil else { return }
-                    // Recycle the previous thread's warm WebKit stores instead of
-                    // tearing down and recreating WKWebView instances on switch.
-                    webViewStoreRecycler.recycleAllExcept(Set(threadHeaders.map(\.id)))
                     let defaultID = ThreadConversationExpansionPolicy.expandedID(
                         selectedID: navigation.readerExpansionSelectionID,
                         in: visibleHeaders

@@ -372,15 +372,29 @@ public final class MailNavigationState {
         public let delta: Int
     }
 
+    /// Locally initiated read-flag mutation so `MessageListView` and
+    /// `UnifiedInboxListView` patch their in-memory arrays in place without
+    /// waiting for a full folder reload.
+    public struct LocalReadStateMutation: Equatable, Sendable {
+        public let sequence: Int
+        public let sourceID: MailSourceID?
+        public let folderID: Folder.ID
+        public let messageIDs: [MessageHeader.ID]
+        public let isRead: Bool
+    }
+
     public private(set) var lastLocalUnreadCountDelta: LocalUnreadCountDelta?
+    public private(set) var lastLocalReadStateMutation: LocalReadStateMutation?
 
     private struct LocalReadEcho {
+        let accountID: String?
         let folderID: Folder.ID
         var messageIDs: Set<MessageHeader.ID>
         let recordedAt: ContinuousClock.Instant
     }
 
     @ObservationIgnored private var localUnreadDeltaSequence = 0
+    @ObservationIgnored private var localReadMutationSequence = 0
     @ObservationIgnored private var pendingLocalReadEchoes: [LocalReadEcho] = []
     private static let localReadEchoWindow: Duration = .seconds(5)
     private static let maxLocalReadEchoes = 64
@@ -886,11 +900,13 @@ public final class MailNavigationState {
 
     /// Records a locally initiated read-flag update so its backend
     /// `.messagesUpdated` echo can be suppressed without triggering a redundant
-    /// full-folder reload, and publishes any incremental unread-count delta.
+    /// full-folder reload, propagates the read value to mounted lists, and
+    /// publishes any incremental unread-count delta.
     func recordLocalReadChange(
         folderID: Folder.ID,
         sourceID: MailSourceID?,
         messageIDs: [MessageHeader.ID],
+        isRead: Bool? = nil,
         unreadDelta: Int,
         now: ContinuousClock.Instant = .now
     ) {
@@ -900,10 +916,21 @@ public final class MailNavigationState {
                 pendingLocalReadEchoes.removeFirst()
             }
             pendingLocalReadEchoes.append(LocalReadEcho(
+                accountID: sourceID?.accountID,
                 folderID: folderID,
                 messageIDs: Set(messageIDs),
                 recordedAt: now
             ))
+            if let isRead {
+                localReadMutationSequence &+= 1
+                lastLocalReadStateMutation = LocalReadStateMutation(
+                    sequence: localReadMutationSequence,
+                    sourceID: sourceID,
+                    folderID: folderID,
+                    messageIDs: messageIDs,
+                    isRead: isRead
+                )
+            }
         }
         if unreadDelta != 0 {
             localUnreadDeltaSequence &+= 1
@@ -920,6 +947,7 @@ public final class MailNavigationState {
     /// is purely the `.messagesUpdated` echo of a recent local read mutation.
     func consumeMatchingLocalReadEcho(
         for event: MailEvent,
+        accountID: String? = nil,
         now: ContinuousClock.Instant = .now
     ) -> Bool {
         guard case .messagesUpdated(let folderID, let messageIDs) = event,
@@ -927,8 +955,9 @@ public final class MailNavigationState {
         else { return false }
         pruneExpiredLocalReadEchoes(now: now)
         let incoming = Set(messageIDs)
-        guard let index = pendingLocalReadEchoes.firstIndex(where: {
-            $0.folderID == folderID && incoming.isSubset(of: $0.messageIDs)
+        guard let index = pendingLocalReadEchoes.firstIndex(where: { echo in
+            let accountMatches = echo.accountID == nil || accountID == nil || echo.accountID == accountID
+            return accountMatches && echo.folderID == folderID && incoming.isSubset(of: echo.messageIDs)
         }) else {
             return false
         }

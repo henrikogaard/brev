@@ -419,6 +419,10 @@ public struct MessageDetailView: View {
             .receive(on: DispatchQueue.main)) { _ in
                 followUpSettingsRevision &+= 1
         }
+        .onReceive(NotificationCenter.default.publisher(for: MessageOfflineRetentionOverrideStore.didChangeNotification)
+            .receive(on: DispatchQueue.main)) { _ in
+                offlineRetentionRevision &+= 1
+        }
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
             .receive(on: DispatchQueue.main)) { _ in
                 syncSignInCodeSettingsFromDefaults()
@@ -2964,6 +2968,7 @@ public struct MessageDetailView: View {
                 folderID: folderID,
                 sourceID: sourceID,
                 messageIDs: [messageID],
+                isRead: true,
                 unreadDelta: -1
             )
             Task { @MainActor [backend, sourceID, navigation, rollback, request] in
@@ -2985,7 +2990,8 @@ public struct MessageDetailView: View {
                     navigation?.recordLocalReadChange(
                         folderID: folderID,
                         sourceID: sourceID,
-                        messageIDs: [],
+                        messageIDs: [messageID],
+                        isRead: false,
                         unreadDelta: 1
                     )
                     readStatus = MessageDetailPresentation.markReadErrorStatus(for: error)
