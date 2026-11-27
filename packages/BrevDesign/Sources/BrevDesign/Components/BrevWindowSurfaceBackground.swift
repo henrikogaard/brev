@@ -277,12 +277,12 @@ public struct BrevSplitViewColumnTransparencyFixer: NSViewRepresentable {
 
     public func makeNSView(context: Context) -> NSView {
         let view = SplitViewTransparencyProbe()
-        view.clearOpaqueColumnFills()
+        view.clearOpaqueColumnFills(force: true)
         return view
     }
 
     public func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? SplitViewTransparencyProbe)?.clearOpaqueColumnFills()
+        (nsView as? SplitViewTransparencyProbe)?.clearOpaqueColumnFillsIfNeeded()
     }
 }
 
@@ -329,18 +329,40 @@ struct SplitViewTransparencyPassState {
 }
 
 private final class SplitViewTransparencyProbe: NSView {
+    private weak var lastSplitView: NSSplitView?
+    private var lastLayoutSize: CGSize = .zero
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        clearOpaqueColumnFills()
+        guard window != nil else {
+            lastSplitView = nil
+            lastLayoutSize = .zero
+            return
+        }
+        clearOpaqueColumnFills(force: true)
     }
 
     override func layout() {
         super.layout()
-        clearOpaqueColumnFills()
+        clearOpaqueColumnFillsIfNeeded()
     }
 
-    func clearOpaqueColumnFills() {
+    func clearOpaqueColumnFillsIfNeeded() {
         guard let splitView = Self.enclosingSplitView(from: self) else { return }
+        let currentSize = bounds.size
+        guard splitView !== lastSplitView || currentSize != lastLayoutSize else { return }
+        lastSplitView = splitView
+        lastLayoutSize = currentSize
+        SplitViewTransparencyPassCoordinator.shared.requestPass(for: splitView)
+    }
+
+    func clearOpaqueColumnFills(force: Bool = false) {
+        guard let splitView = Self.enclosingSplitView(from: self) else { return }
+        if !force, splitView === lastSplitView, bounds.size == lastLayoutSize {
+            return
+        }
+        lastSplitView = splitView
+        lastLayoutSize = bounds.size
         SplitViewTransparencyPassCoordinator.shared.requestPass(for: splitView)
     }
 
@@ -489,6 +511,17 @@ final class SplitViewTransparencyPassCoordinator {
             }
         }
 
+        // Stop descending into visual-effect views and dense row/content containers
+        // (table/outline/collection/text views): NavigationSplitView chrome fills
+        // live on split-view column containers, NSScrollView, and NSClipView — never
+        // inside individual NSTableView row cells.
+        if root is NSVisualEffectView
+            || root is NSTableView
+            || root is NSCollectionView
+            || root is NSTextView {
+            return clearedFill
+        }
+
         for child in root.subviews {
             if clearOpaqueFills(in: child) {
                 clearedFill = true
@@ -541,10 +574,21 @@ private struct WindowConfiguratorView: NSViewRepresentable {
 }
 
 private final class WindowConfigurationProbe: NSView {
+    private struct AppliedConfiguration: Equatable {
+        let windowID: ObjectIdentifier
+        let preferences: WindowAppearancePreferences
+        let windowRole: WindowSurfaceRole
+        let reduceTransparency: Bool
+        let transparentMainTitlebar: Bool
+    }
+
     var preferences: WindowAppearancePreferences
     var windowRole: WindowSurfaceRole
     var reduceTransparency: Bool
     var transparentMainTitlebar: Bool
+
+    private var lastAppliedConfiguration: AppliedConfiguration?
+    private var pendingReapplyWorkItems: [DispatchWorkItem] = []
 
     init(
         preferences: WindowAppearancePreferences,
@@ -564,13 +608,34 @@ private final class WindowConfigurationProbe: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        for item in pendingReapplyWorkItems {
+            item.cancel()
+        }
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if window == nil {
+            lastAppliedConfiguration = nil
+            cancelPendingReapplyWorkItems()
+            return
+        }
         applyConfiguration()
     }
 
     func applyConfiguration() {
         guard let window else { return }
+        let configuration = AppliedConfiguration(
+            windowID: ObjectIdentifier(window),
+            preferences: preferences,
+            windowRole: windowRole,
+            reduceTransparency: reduceTransparency,
+            transparentMainTitlebar: transparentMainTitlebar
+        )
+        guard configuration != lastAppliedConfiguration else { return }
+        lastAppliedConfiguration = configuration
+
         BrevWindowChromeApplier.apply(
             preferences: preferences,
             to: window,
@@ -581,7 +646,15 @@ private final class WindowConfigurationProbe: NSView {
         reapplyConfigurationAfterSwiftUISceneSettles(to: window)
     }
 
+    private func cancelPendingReapplyWorkItems() {
+        for item in pendingReapplyWorkItems {
+            item.cancel()
+        }
+        pendingReapplyWorkItems.removeAll(keepingCapacity: true)
+    }
+
     private func reapplyConfigurationAfterSwiftUISceneSettles(to window: NSWindow) {
+        cancelPendingReapplyWorkItems()
         let delays: [DispatchTimeInterval] = [
             .milliseconds(0),
             .milliseconds(50),
@@ -590,7 +663,7 @@ private final class WindowConfigurationProbe: NSView {
         ]
 
         for delay in delays {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak window] in
+            let workItem = DispatchWorkItem { [weak self, weak window] in
                 guard let self, let window, self.window === window else { return }
                 BrevWindowChromeApplier.apply(
                     preferences: preferences,
@@ -600,6 +673,8 @@ private final class WindowConfigurationProbe: NSView {
                     transparentMainTitlebar: transparentMainTitlebar
                 )
             }
+            pendingReapplyWorkItems.append(workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
         }
     }
 }

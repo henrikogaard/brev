@@ -173,4 +173,47 @@ struct SignInCodeSettingsTests {
         #expect(reloaded.accountOverride(for: customDomain).codesEnabled)
         #expect(reloaded.accountOverride(for: customDomain).linksEnabled)
     }
+
+    @Test("Repeated loads of unchanged persisted data reuse the in-memory decode cache")
+    func loadCachesUnchangedPayloadAndInvalidatesOnChange() throws {
+        let suite = "SignInCodeSettings-cache-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // Write raw JSON directly so the first load performs a JSON decode.
+        let payload = [
+            accountA: SignInCodeSettings.AccountOverride(
+                accountID: accountA,
+                codesEnabled: true,
+                linksEnabled: false
+            )
+        ]
+        try defaults.set(JSONEncoder().encode(payload), forKey: SignInCodeSettings.Key.accountOverrides)
+
+        let first = SignInCodeSettings.load(from: defaults)
+        #expect(first.accountOverride(for: accountA).codesEnabled)
+
+        #if DEBUG
+        let decodesAfterFirstLoad = SignInCodeSettings.jsonDecodeCountForTesting(for: defaults)
+        #endif
+        for _ in 0 ..< 20 {
+            let repeated = SignInCodeSettings.load(from: defaults)
+            #expect(repeated == first)
+        }
+        #if DEBUG
+        #expect(SignInCodeSettings.jsonDecodeCountForTesting(for: defaults) == decodesAfterFirstLoad)
+        #endif
+
+        // Saving updated settings immediately serves the updated values without stale cache.
+        var updated = first
+        updated.setAccountOverride(accountID: accountA, codesEnabled: false, linksEnabled: true)
+        updated.save(to: defaults)
+        let afterSave = SignInCodeSettings.load(from: defaults)
+        #expect(!afterSave.accountOverride(for: accountA).codesEnabled)
+        #expect(afterSave.accountOverride(for: accountA).linksEnabled)
+
+        // Clearing defaults immediately returns `.defaults`.
+        defaults.removeObject(forKey: SignInCodeSettings.Key.accountOverrides)
+        #expect(SignInCodeSettings.load(from: defaults) == .defaults)
+    }
 }

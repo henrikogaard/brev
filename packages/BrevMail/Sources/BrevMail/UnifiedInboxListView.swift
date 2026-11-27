@@ -178,8 +178,11 @@ struct UnifiedInboxListView: View {
     @State private var snoozeWakeScheduleRevision = 0
     /// Precomputed per-thread header groups & fingerprints for O(1) per-row proactive triage lookup.
     @State private var unifiedTriageThreadIndex = ProactiveTriageThreadIndex.empty
-    /// Item IDs currently visible in the scroll viewport, used to advance proactive triage on scroll.
-    @State private var visibleTriageItemIDs: Set<UnifiedInboxItem.ID> = []
+    /// Unobserved visible-item tracker so scroll appear/disappear never invalidates `List.body`.
+    @State private var triageViewportTracker = ProactiveTriageViewportTracker()
+    /// Caches ungrouped workflow navigation headers aligned with `presentationSnapshotCache`
+    /// so row clicks and arrow-key navigation avoid recomputing `makeVisibleItems`.
+    @State private var navigationItemsCache = NavigationItemsCache()
 
     init(
         navigation: MailNavigationState,
@@ -260,15 +263,22 @@ struct UnifiedInboxListView: View {
         }
     }
 
-    /// The account dot's colour for a row (#306 slice 5): a palette slot by
-    /// the account's place among the sources, or nil for a single account.
-    private func accountDotColor(for accountID: BrevAccount.ID) -> Color? {
+    /// Precomputes account-dot colours once per list pass so each row does an O(1) lookup
+    /// instead of re-sorting `sourceSections` per row (#306 slice 5).
+    private func makeAccountDotColorsByAccountID() -> [BrevAccount.ID: Color] {
         let palette = theme.avatarPalette
         let accounts = MessageListAccountDot.orderedAccountIDs(sourceSections.map(\.account.id))
-        guard let index = MessageListAccountDot.paletteIndex(
-            accountID: accountID, orderedAccountIDs: accounts, paletteCount: palette.count
-        ) else { return nil }
-        return palette[index].color
+        guard accounts.count > 1, !palette.isEmpty else { return [:] }
+        var map: [BrevAccount.ID: Color] = [:]
+        map.reserveCapacity(accounts.count)
+        for accountID in accounts {
+            if let index = MessageListAccountDot.paletteIndex(
+                accountID: accountID, orderedAccountIDs: accounts, paletteCount: palette.count
+            ) {
+                map[accountID] = palette[index].color
+            }
+        }
+        return map
     }
 
     private var unifiedProactiveTriageSettings: AIWriterSettings {
@@ -277,6 +287,12 @@ struct UnifiedInboxListView: View {
             consentGiven: aiConsentGiven,
             proactiveOnDeviceTriageEnabled: proactiveOnDeviceTriageEnabled
         )
+    }
+
+    private var isUnifiedProactiveTriageActive: Bool {
+        unifiedProactiveTriageSettings.isProactiveOnDeviceTriageAvailable
+            && triageStore != nil
+            && aiBackendsByAccountID.values.contains(where: \.isOnDeviceZeroNetwork)
     }
 
     private func excludedFolderIDsByAccountID() -> [BrevAccount.ID: Set<Folder.ID>] {
@@ -307,7 +323,7 @@ struct UnifiedInboxListView: View {
         }
         return ProactiveTriageVisibleWindow.selectBatch(
             from: filteredVisible,
-            visibleIDs: visibleTriageItemIDs,
+            visibleIDs: triageViewportTracker.visibleIDs,
             itemID: \.id,
             cacheKey: { OnDeviceThreadTriageStore.cacheKey(accountID: $0.sourceID.accountID, header: $0.header) }
         )
@@ -330,15 +346,16 @@ struct UnifiedInboxListView: View {
     }
 
     private func proactiveTriageInsight(for item: UnifiedInboxItem) -> ThreadTriageInsight? {
-        guard unifiedProactiveTriageSettings.isProactiveOnDeviceTriageAvailable,
+        guard isUnifiedProactiveTriageActive,
+              let triageStore,
+              triageStore.hasCachedInsights,
               let aiBackend = aiBackendsByAccountID[item.sourceID.accountID],
               aiBackend.isOnDeviceZeroNetwork,
-              !OnDeviceThreadTriageStore.isExcludedFolder(item.folder),
-              let triageStore
+              !OnDeviceThreadTriageStore.isExcludedFolder(item.folder)
         else { return nil }
         let key = OnDeviceThreadTriageStore.cacheKey(accountID: item.sourceID.accountID, header: item.header)
         let headerFP = unifiedTriageThreadIndex.headerFingerprint(for: key, fallback: item.header)
-        return triageStore.cachedInsight(for: key, matchingHeaderFingerprint: headerFP)
+        return triageStore.insightForDisplay(for: key, matchingHeaderFingerprint: headerFP)
     }
 
     private func scheduleUnifiedProactiveTriageIfEligible() {
@@ -405,10 +422,15 @@ struct UnifiedInboxListView: View {
                 scheduleUnifiedProactiveTriageIfEligible()
             }
             .onDisappear {
+                triageViewportTracker.cancelPending()
                 triageStore?.cancelScheduledTasks(forOwner: triageOwnerID)
             }
         #if os(iOS)
-            .toolbar { selectionToolbar(visibleItems: presentationSnapshot.visibleItems) }
+            .toolbar {
+                if isInSelectionMode {
+                    selectionToolbar(visibleItems: presentationSnapshot.visibleItems)
+                }
+            }
         #endif
             .confirmationDialog(
                 swipeMoreItem?.header.subject ?? "",
@@ -513,6 +535,8 @@ struct UnifiedInboxListView: View {
                         navigation.mailboxFilter = smartView?.query ?? .none
                     }
                 } else {
+                    let signInCodeSettings = SignInCodeSettings.load(from: .standard)
+                    let accountDotColorsByAccountID = makeAccountDotColorsByAccountID()
                     Group {
                         ScrollViewReader { proxy in
                             List {
@@ -527,7 +551,9 @@ struct UnifiedInboxListView: View {
                                                 pinnedMessageIDs: presentation.pinnedMessageIDs,
                                                 threadCounts: presentation.threadCounts,
                                                 itemsByThreadKey: presentation.itemsByThreadKey,
-                                                selectedRowID: selectedRowID
+                                                selectedRowID: selectedRowID,
+                                                accountDotColor: accountDotColorsByAccountID[item.sourceID.accountID],
+                                                signInCodeSettings: signInCodeSettings
                                             )
                                         }
                                     }
@@ -540,7 +566,9 @@ struct UnifiedInboxListView: View {
                                             pinnedMessageIDs: presentation.pinnedMessageIDs,
                                             threadCounts: presentation.threadCounts,
                                             itemsByThreadKey: presentation.itemsByThreadKey,
-                                            selectedRowID: selectedRowID
+                                            selectedRowID: selectedRowID,
+                                            accountDotColor: accountDotColorsByAccountID[item.sourceID.accountID],
+                                            signInCodeSettings: signInCodeSettings
                                         )
                                     }
                                 }
@@ -679,6 +707,7 @@ struct UnifiedInboxListView: View {
             }
             .onChange(of: sourceSections.map(\.id)) {
                 invalidatePendingSnoozeLookup()
+                triageViewportTracker.reset()
                 snoozeWakeScheduleRevision += 1
             }
             .onChange(of: pinnedMessageIDsRaw) { refreshPinnedMessageIDSet() }
@@ -882,9 +911,7 @@ struct UnifiedInboxListView: View {
         )
     }
 
-    private var presentationSnapshot: UnifiedInboxPresentationSnapshot {
-        _ = inboxCategoryOverrideRevision
-        let now = Date()
+    private func presentationSnapshotKey(now: Date) -> UnifiedInboxPresentationSnapshotCache.Key {
         let temporalInvalidationKey = temporalInvalidationTracker.key(
             items: items,
             filter: navigation.mailboxFilter,
@@ -892,13 +919,14 @@ struct UnifiedInboxListView: View {
             workflowState: localMessageWorkflowState,
             now: now
         )
-        let key = UnifiedInboxPresentationSnapshotCache.Key(
+        return UnifiedInboxPresentationSnapshotCache.Key(
             pinnedMessageIDsRaw: pinnedMessageIDsRaw,
             groupByDate: groupByDate,
             collapsedDateSectionIDs: collapsedDateSectionIDs,
             groupByThread: groupByThread,
             activeInboxCategory: activeInboxCategory,
             inboxClassificationModeRaw: inboxClassificationModeRaw,
+            inboxCategoryOverrideRevision: inboxCategoryOverrideRevision,
             workflowVisibilityMode: workflowVisibilityMode,
             workflowState: localMessageWorkflowState,
             mailboxFilter: navigation.mailboxFilter,
@@ -912,6 +940,12 @@ struct UnifiedInboxListView: View {
             calendarTimeZoneIdentifier: calendar.timeZone.identifier,
             localeIdentifier: locale.identifier
         )
+    }
+
+    private var presentationSnapshot: UnifiedInboxPresentationSnapshot {
+        _ = inboxCategoryOverrideRevision
+        let now = Date()
+        let key = presentationSnapshotKey(now: now)
         return presentationSnapshotCache.snapshot(for: key, items: items) {
             let interval = MailUIPerformanceDiagnostics.beginInterval("Unified Inbox Presentation Build")
             defer { MailUIPerformanceDiagnostics.endInterval(interval) }
@@ -921,6 +955,7 @@ struct UnifiedInboxListView: View {
                 now: now,
                 calendar: calendar
             )
+            navigationItemsCache.store(listed.ungroupedItems, for: key, sourceItems: items)
             return UnifiedInboxPresentationSnapshot(
                 visibleItems: listed.items,
                 pinnedMessageIDs: pinnedMessageIDs,
@@ -949,6 +984,7 @@ struct UnifiedInboxListView: View {
         groupThreads: Bool = true
     ) -> (
         items: [UnifiedInboxItem],
+        ungroupedItems: [UnifiedInboxItem],
         threadCounts: [String: Int],
         dateOverrides: [SourceMessageID: Date],
         rowDateOverrides: [SourceMessageID: Date]
@@ -1025,7 +1061,7 @@ struct UnifiedInboxListView: View {
             pinnedIDs: pinnedMessageIDs,
             dateOverrides: dateOverrides
         )
-        guard groupThreads, groupByThread else { return (sorted, [:], dateOverrides, dateOverrides) }
+        guard groupThreads, groupByThread else { return (sorted, sorted, [:], dateOverrides, dateOverrides) }
         let threadCounts = UnifiedInboxThreadGrouping.counts(
             for: sorted,
             isThreadedSource: isThreadedSource
@@ -1037,7 +1073,34 @@ struct UnifiedInboxListView: View {
             pinnedIDs: pinnedMessageIDs,
             effectiveDateOverrides: dateOverrides
         )
-        return (collapsedRows.items, threadCounts, dateOverrides, collapsedRows.dateOverrides)
+        // Reader navigation keeps each message ungrouped with per-message snooze
+        // wake dates (matching the uncached `groupThreads: false` path). Only
+        // re-sort when snooze wake promotion is active in a grouped inbox.
+        let ungroupedItems: [UnifiedInboxItem]
+        if snoozeWakePromotionEligible, !localMessageWorkflowState.snoozes.isEmpty {
+            let ungroupedDateOverrides = MessageListSnoozeWakePolicy.effectiveDateOverrides(
+                for: items.map { item in
+                    MessageListSnoozeWakeEntry(
+                        sourceMessageID: SourceMessageID(sourceID: item.sourceID, messageID: item.header.id),
+                        headerDate: item.header.date,
+                        threadID: nil,
+                        header: item.header
+                    )
+                },
+                snoozes: localMessageWorkflowState.snoozes,
+                now: now,
+                projection: workflowConversationProjection
+            )
+            ungroupedItems = MessageListSortPolicy.sortedItems(
+                filtered,
+                by: mailboxSortOrder,
+                pinnedIDs: pinnedMessageIDs,
+                dateOverrides: ungroupedDateOverrides
+            )
+        } else {
+            ungroupedItems = sorted
+        }
+        return (collapsedRows.items, ungroupedItems, threadCounts, dateOverrides, collapsedRows.dateOverrides)
     }
 
     // MARK: - Date grouping
@@ -1674,7 +1737,9 @@ struct UnifiedInboxListView: View {
         pinnedMessageIDs: Set<MessageHeader.ID>,
         threadCounts: [String: Int],
         itemsByThreadKey: [String: [UnifiedInboxItem]],
-        selectedRowID: UnifiedInboxItem.ID?
+        selectedRowID: UnifiedInboxItem.ID?,
+        accountDotColor: Color?,
+        signInCodeSettings: SignInCodeSettings
     ) -> some View {
         let threadKey = UnifiedInboxThreadGrouping.key(for: item)
         let threadCount = threadCounts[threadKey] ?? 1
@@ -1685,7 +1750,9 @@ struct UnifiedInboxListView: View {
             pinnedMessageIDs: pinnedMessageIDs,
             threadKey: threadKey,
             threadCount: threadCount,
-            selectedRowID: selectedRowID
+            selectedRowID: selectedRowID,
+            accountDotColor: accountDotColor,
+            signInCodeSettings: signInCodeSettings
         )
         if threadCount > 1, expandedThreadKeys.contains(threadKey) {
             // Buckets are pre-grouped and sorted oldest → newest in the
@@ -1724,9 +1791,19 @@ struct UnifiedInboxListView: View {
         pinnedMessageIDs: Set<MessageHeader.ID>,
         threadKey: String,
         threadCount: Int,
-        selectedRowID: UnifiedInboxItem.ID?
+        selectedRowID: UnifiedInboxItem.ID?,
+        accountDotColor: Color?,
+        signInCodeSettings: SignInCodeSettings
     ) -> some View {
         let followUpReminder = followUpReminderIndex.reminder(for: item.header.id, sourceID: item.sourceID)
+        let signInCode = signInCodeSettings.accountOverrides[item.sourceID.accountID]?.codesEnabled == true
+            ? SignInCodeSurfacePolicy.headerCode(
+                for: item.header,
+                sourceID: item.sourceID,
+                accountID: item.sourceID.accountID,
+                settings: signInCodeSettings
+            )?.code
+            : nil
         MessageListRow(
             header: item.header,
             threadCount: threadCount,
@@ -1743,17 +1820,12 @@ struct UnifiedInboxListView: View {
             density: mailboxListDensity,
             showsAbsoluteArrivalTime: showAbsoluteArrivalTime,
             sourceContext: item.sourceContext,
-            accountDotColor: accountDotColor(for: item.sourceID.accountID),
+            accountDotColor: accountDotColor,
             matchedAttachmentName: searchProgress.matchedAttachmentName(
                 for: item.header.id,
                 source: item.sourceID
             ),
-            signInCode: SignInCodeSurfacePolicy.headerCode(
-                for: item.header,
-                sourceID: item.sourceID,
-                accountID: item.sourceID.accountID,
-                settings: SignInCodeSettings.load(from: .standard)
-            )?.code,
+            signInCode: signInCode,
             triageInsight: proactiveTriageInsight(for: item),
             isBlockedSender: false,
             hasFollowUp: followUpReminder != nil,
@@ -1861,7 +1933,10 @@ struct UnifiedInboxListView: View {
                 )
             }
             .onAppear {
-                visibleTriageItemIDs.insert(item.id)
+                triageViewportTracker.rowAppeared(
+                    item.id,
+                    onSchedule: isUnifiedProactiveTriageActive ? { scheduleUnifiedProactiveTriageIfEligible() } : nil
+                )
                 guard shouldLoadMore(
                     visibleIndex: visibleIndex,
                     visibleCount: visibleCount
@@ -1869,7 +1944,10 @@ struct UnifiedInboxListView: View {
                 Task { await loadMore() }
             }
             .onDisappear {
-                visibleTriageItemIDs.remove(item.id)
+                triageViewportTracker.rowDisappeared(
+                    item.id,
+                    onSchedule: isUnifiedProactiveTriageActive ? { scheduleUnifiedProactiveTriageIfEligible() } : nil
+                )
             }
     }
 
@@ -3271,13 +3349,67 @@ struct UnifiedInboxListView: View {
         )
     }
 
-    private var workflowNavigationItems: [UnifiedInboxItem] {
-        // Use the list's full visibility predicate and ordering, while retaining
-        // thread members for expanded-row and reader navigation.
-        makeVisibleItems(
-            pinnedMessageIDs: UnifiedInboxPresentationSnapshot.pinnedMessageIDs(from: pinnedMessageIDsRaw),
-            now: Date(), calendar: calendar, groupThreads: false
-        ).items
+    /// Reuses the cached ungrouped projection computed alongside `presentationSnapshotCache`
+    /// so row selection and arrow-key navigation avoid re-running `makeVisibleItems`.
+    @MainActor
+    final class NavigationItemsCache {
+        private var key: UnifiedInboxPresentationSnapshotCache.Key?
+        private var storedItems: [UnifiedInboxItem]?
+        private var ungroupedItems: [UnifiedInboxItem]?
+        private var headersBySourceID: [MailSourceID: [MessageHeader]] = [:]
+
+        func store(
+            _ ungroupedItems: [UnifiedInboxItem],
+            for key: UnifiedInboxPresentationSnapshotCache.Key,
+            sourceItems: [UnifiedInboxItem]
+        ) {
+            self.key = key
+            storedItems = sourceItems
+            self.ungroupedItems = ungroupedItems
+            headersBySourceID.removeAll(keepingCapacity: true)
+        }
+
+        func headers(
+            for sourceID: MailSourceID,
+            key: UnifiedInboxPresentationSnapshotCache.Key,
+            sourceItems: [UnifiedInboxItem],
+            fallback: () -> [UnifiedInboxItem]
+        ) -> [MessageHeader] {
+            if self.key == key, let storedItems,
+               sourceItems.sharesRetainedBuffer(with: storedItems),
+               let ungroupedItems {
+                if let cached = headersBySourceID[sourceID] {
+                    return cached
+                }
+                let headers = ungroupedItems
+                    .filter { $0.sourceID == sourceID }
+                    .map(\.header)
+                headersBySourceID[sourceID] = headers
+                return headers
+            }
+            let computed = fallback()
+            store(computed, for: key, sourceItems: sourceItems)
+            let headers = computed
+                .filter { $0.sourceID == sourceID }
+                .map(\.header)
+            headersBySourceID[sourceID] = headers
+            return headers
+        }
+    }
+
+    private func workflowNavigationHeaders(for sourceID: MailSourceID) -> [MessageHeader] {
+        let now = Date()
+        let key = presentationSnapshotKey(now: now)
+        return navigationItemsCache.headers(for: sourceID, key: key, sourceItems: items) {
+            // Use the list's full visibility predicate and ordering, while retaining
+            // thread members for expanded-row and reader navigation.
+            makeVisibleItems(
+                pinnedMessageIDs: UnifiedInboxPresentationSnapshot.pinnedMessageIDs(from: pinnedMessageIDsRaw),
+                now: now,
+                calendar: calendar,
+                groupThreads: false
+            ).items
+        }
     }
 
     private func applyLocalReadStateMutation(_ mutation: MailNavigationState.LocalReadStateMutation?) {
@@ -3318,7 +3450,7 @@ struct UnifiedInboxListView: View {
         navigation.selectMessage(
             item.header,
             in: item.sourceID,
-            headers: workflowNavigationItems.filter { $0.sourceID == item.sourceID }.map(\.header),
+            headers: workflowNavigationHeaders(for: item.sourceID),
             expandsSelectedMessage: expandsSelectedMessage
         )
         if clearsBulkSelection {
@@ -3329,9 +3461,7 @@ struct UnifiedInboxListView: View {
 
     private func reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: Bool = false) {
         if let selectedSourceID = navigation.selectedSourceID {
-            let sourceHeaders = workflowNavigationItems
-                .filter { $0.sourceID == selectedSourceID }
-                .map(\.header)
+            let sourceHeaders = workflowNavigationHeaders(for: selectedSourceID)
             navigation.replaceCurrentFolderHeaders(
                 sourceHeaders,
                 selectFirstIfNeeded: selectFirstIfNeeded

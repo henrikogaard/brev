@@ -18,7 +18,13 @@ private struct MessageListRefreshArrivalEffect: ViewModifier {
     let isArrival: Bool
     let delay: TimeInterval
 
-    @State private var hasEntered = false
+    @State private var hasEntered: Bool
+
+    init(isArrival: Bool, delay: TimeInterval) {
+        self.isArrival = isArrival
+        self.delay = delay
+        _hasEntered = State(initialValue: !isArrival)
+    }
 
     func body(content: Content) -> some View {
         content
@@ -41,6 +47,7 @@ private struct MessageListRefreshArrivalEffect: ViewModifier {
     }
 
     private func enterIfNeeded() {
+        guard !hasEntered else { return }
         guard shouldAnimate else {
             hasEntered = true
             return

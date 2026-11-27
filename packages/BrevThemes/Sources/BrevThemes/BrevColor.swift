@@ -13,35 +13,27 @@
 import Foundation
 import SwiftUI
 
-/// A theme color expressed as a hex string. Parsed lazily so themes
-/// can be loaded from JSON without committing to a `Color` instance
-/// (which is platform / scheme specific).
+/// A theme color expressed as a hex string. Parsed once on init so
+/// reading `.color` on render hot paths is a lock-free struct load.
 ///
 /// The hex format is `#RRGGBB` or `#RRGGBBAA` — case-insensitive, the
 /// leading `#` is optional. Invalid hex falls back to fully opaque
 /// magenta so missed parses are visually loud.
 public struct BrevColor: Codable, Sendable, Hashable {
     public let hex: String
+    /// SwiftUI `Color` parsed from the stored hex string.
+    public let color: Color
 
-    private final class CachedColor: NSObject {
-        let value: Color
-
-        init(_ value: Color) {
-            self.value = value
-        }
+    public init(_ hex: String) {
+        self.hex = hex
+        color = Color(brevHex: hex)
     }
-
-    private static let colorCache: NSCache<NSString, CachedColor> = {
-        let cache = NSCache<NSString, CachedColor>()
-        cache.countLimit = 256
-        return cache
-    }()
-
-    public init(_ hex: String) { self.hex = hex }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        hex = try container.decode(String.self)
+        let decodedHex = try container.decode(String.self)
+        hex = decodedHex
+        color = Color(brevHex: decodedHex)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -49,15 +41,12 @@ public struct BrevColor: Codable, Sendable, Hashable {
         try container.encode(hex)
     }
 
-    /// SwiftUI `Color` parsed from the stored hex string.
-    public var color: Color {
-        let key = hex.trimmingCharacters(in: .whitespacesAndNewlines) as NSString
-        if let cached = Self.colorCache.object(forKey: key) {
-            return cached.value
-        }
-        let parsed = Color(brevHex: hex)
-        Self.colorCache.setObject(CachedColor(parsed), forKey: key)
-        return parsed
+    public static func == (lhs: BrevColor, rhs: BrevColor) -> Bool {
+        lhs.hex == rhs.hex
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(hex)
     }
 
     /// Relative luminance of the color's sRGB channels.

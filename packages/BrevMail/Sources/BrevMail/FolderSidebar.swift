@@ -63,12 +63,6 @@ public struct FolderSidebar: View {
     @AppStorage(MailboxFavorites.storageKey) private var favoritesData = Data()
     @State private var showsFavoritesEditor = false
     #if os(macOS)
-    private enum SidebarHoveredSection: Hashable {
-        case favorites
-        case smartViews
-        case account(MailSourceID)
-    }
-
     private enum SidebarFocusedHeaderControl: Hashable {
         case favoritesActions
         case smartViewsHeader
@@ -78,8 +72,6 @@ public struct FolderSidebar: View {
     }
 
     @State private var selectedFavoriteID: MailboxFavoriteID?
-    @State private var hoveredSection: SidebarHoveredSection?
-    @State private var isSettingsFooterHovered = false
     @FocusState private var focusedHeaderControl: SidebarFocusedHeaderControl?
 
     private struct SelectedPhysicalFolderTarget: Equatable {
@@ -566,20 +558,10 @@ public struct FolderSidebar: View {
             .help(statusHelp)
             Spacer(minLength: BrevSpacing.xs)
             if let onOpenSettings = footer.onOpenSettings {
-                Button(action: onOpenSettings) {
-                    Image(systemName: "gearshape")
-                        .brevFont(.footnote)
-                        .foregroundStyle(
-                            isSettingsFooterHovered ? theme.textPrimary.color : theme.textTertiary.color
-                        )
-                        .frame(minWidth: sidebarMetrics.disclosureHitSize, minHeight: sidebarMetrics.disclosureHitSize)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .onHover { isSettingsFooterHovered = $0 }
-                .animation(.easeOut(duration: 0.12), value: isSettingsFooterHovered)
-                .accessibilityLabel(String(localized: "Settings", bundle: .module))
-                .help(String(localized: "Settings", bundle: .module))
+                SidebarSettingsFooterButton(
+                    hitSize: sidebarMetrics.disclosureHitSize,
+                    action: onOpenSettings
+                )
             }
         }
         .padding(.leading, sidebarMetrics.sidebarPadding + sidebarMetrics.macOSSectionHeaderLeadingInset)
@@ -1024,24 +1006,48 @@ public struct FolderSidebar: View {
             sidebarStatus(status)
                 .listRowBackground(theme.bgPrimary.color)
         } else {
+            let collapsedIDs = collapsedFolderIDs(for: sourceID)
+            let hasCollapsibleFolders = !FolderDisclosureState.collapsibleFolderIDs(in: folders).isEmpty
             let rows = FolderSidebarPresentation.visibleRows(
                 folders: folders,
                 visibility: effectiveFolderVisibility(for: sourceID),
-                collapsedFolderIDs: collapsedFolderIDs(for: sourceID)
+                collapsedFolderIDs: collapsedIDs
             )
             if let sourceID {
                 ForEach(rows.map { ScopedFolderRow(row: $0, sourceID: sourceID) }) { scoped in
-                    folderListRow(scoped.row, sourceID: sourceID)
+                    folderListRow(
+                        scoped.row,
+                        sourceID: sourceID,
+                        contextMetrics: FolderContextMenuMetrics(
+                            hasChildren: scoped.row.hasChildren,
+                            isExpanded: !collapsedIDs.contains(scoped.row.folder.id),
+                            canExpandAll: !collapsedIDs.isEmpty,
+                            canCollapseAll: hasCollapsibleFolders
+                        )
+                    )
                 }
             } else {
                 ForEach(rows) { row in
-                    folderListRow(row, sourceID: nil)
+                    folderListRow(
+                        row,
+                        sourceID: nil,
+                        contextMetrics: FolderContextMenuMetrics(
+                            hasChildren: row.hasChildren,
+                            isExpanded: !collapsedIDs.contains(row.folder.id),
+                            canExpandAll: !collapsedIDs.isEmpty,
+                            canCollapseAll: hasCollapsibleFolders
+                        )
+                    )
                 }
             }
         }
     }
 
-    private func folderListRow(_ row: FolderSidebarRow, sourceID: MailSourceID?) -> some View {
+    private func folderListRow(
+        _ row: FolderSidebarRow,
+        sourceID: MailSourceID?,
+        contextMetrics: FolderContextMenuMetrics
+    ) -> some View {
         let folder = row.folder
         return destinationRow(
             title: displayName(for: folder, sourceID: sourceID),
@@ -1054,7 +1060,7 @@ public struct FolderSidebar: View {
             showsChevron: !row.hasChildren,
             accessory: {
                 if row.hasChildren {
-                    disclosureControl(for: row, sourceID: sourceID)
+                    disclosureControl(for: row, sourceID: sourceID, isExpanded: contextMetrics.isExpanded)
                 }
             },
             action: { select(folder, in: sourceID) }
@@ -1063,7 +1069,7 @@ public struct FolderSidebar: View {
             handleDrop(representations, on: folder, sourceID: sourceID)
         }
         .contextMenu {
-            folderContextMenu(folder: folder, sourceID: sourceID)
+            folderContextMenu(folder: folder, sourceID: sourceID, metrics: contextMetrics)
         }
     }
     #endif
@@ -1107,7 +1113,7 @@ public struct FolderSidebar: View {
         }
 
         ForEach(Array(sourceSections.enumerated()), id: \.element.id) { index, section in
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 accountSectionHeader(section, isFirstAccount: index == 0)
                 if expandedSourceIDs.contains(section.id) {
                     folderList(
@@ -1249,33 +1255,31 @@ public struct FolderSidebar: View {
     }
 
     private func desktopFavoritesSection(activeFavoriteID: MailboxFavoriteID?) -> some View {
-        let isHovered = hoveredSection == .favorites
         let isActionFocused = focusedHeaderControl == .favoritesActions
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: BrevSpacing.xs) {
-                Text("Favorites", bundle: .module)
-                    .brevFont(.footnote)
-                    .fontWeight(.medium)
-                    .foregroundStyle(FolderSidebarSectionHeaderStyle.titleColor(in: theme))
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: BrevSpacing.xs)
-                favoritesActions
-                    .focused($focusedHeaderControl, equals: .favoritesActions)
-                    .opacity(
-                        FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(
-                            isHovered: isHovered,
-                            isFocused: isActionFocused
+            SidebarHoverableSectionHeader { isHovered in
+                HStack(spacing: BrevSpacing.xs) {
+                    Text("Favorites", bundle: .module)
+                        .brevFont(.footnote)
+                        .fontWeight(.medium)
+                        .foregroundStyle(FolderSidebarSectionHeaderStyle.titleColor(in: theme))
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer(minLength: BrevSpacing.xs)
+                    favoritesActions
+                        .focused($focusedHeaderControl, equals: .favoritesActions)
+                        .opacity(
+                            FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(
+                                isHovered: isHovered,
+                                isFocused: isActionFocused
+                            )
                         )
-                    )
-                    .animation(.easeOut(duration: 0.14), value: isHovered || isActionFocused)
-            }
-            .padding(.leading, sidebarMetrics.macOSSectionHeaderLeadingInset)
-            .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
-            .padding(.bottom, BrevSpacing.xxs)
-            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                updateHoveredSection(.favorites, isHovering: hovering)
+                        .animation(.easeOut(duration: 0.14), value: isHovered || isActionFocused)
+                }
+                .padding(.leading, sidebarMetrics.macOSSectionHeaderLeadingInset)
+                .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+                .padding(.bottom, BrevSpacing.xxs)
+                .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .contextMenu {
                 Button(String(localized: "Edit Favorites", bundle: .module)) { showsFavoritesEditor = true }
@@ -1357,85 +1361,82 @@ public struct FolderSidebar: View {
     private func accountSectionHeader(_ section: MailSourceSection, isFirstAccount: Bool) -> some View {
         let isExpanded = expandedSourceIDs.contains(section.id)
         let inboxUnread = section.folders.first { $0.role == .inbox }?.unreadCount ?? 0
-        let hoverKey = SidebarHoveredSection.account(section.id)
-        let isHovered = hoveredSection == hoverKey
         let isHeaderFocused = focusedHeaderControl == .accountHeader(section.id)
             || (isFirstAccount && focusedHeaderControl == .addAccount)
         let isAddFocused = isFirstAccount && focusedHeaderControl == .addAccount
-        return HStack(spacing: BrevSpacing.xs) {
-            Button {
-                expandedSourceIDs = FolderSidebarSourceExpansionPolicy.toggling(section.id, in: expandedSourceIDs)
-            } label: {
-                HStack(spacing: BrevSpacing.xs) {
-                    Text(verbatim: section.title)
-                        .brevFont(.footnote)
-                        .fontWeight(.medium)
-                        .foregroundStyle(FolderSidebarSectionHeaderStyle.titleColor(in: theme))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(theme.textTertiary.color)
-                        .opacity(
-                            FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(
-                                isHovered: isHovered,
-                                isFocused: isHeaderFocused
+        return SidebarHoverableSectionHeader { isHovered in
+            HStack(spacing: BrevSpacing.xs) {
+                Button {
+                    expandedSourceIDs = FolderSidebarSourceExpansionPolicy.toggling(section.id, in: expandedSourceIDs)
+                } label: {
+                    HStack(spacing: BrevSpacing.xs) {
+                        Text(verbatim: section.title)
+                            .brevFont(.footnote)
+                            .fontWeight(.medium)
+                            .foregroundStyle(FolderSidebarSectionHeaderStyle.titleColor(in: theme))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(theme.textTertiary.color)
+                            .opacity(
+                                FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(
+                                    isHovered: isHovered,
+                                    isFocused: isHeaderFocused
+                                )
                             )
-                        )
-                        .animation(.easeOut(duration: 0.14), value: isHovered || isHeaderFocused)
-                        .accessibilityHidden(true)
-                    Spacer(minLength: BrevSpacing.xs)
-                    if section.loadError != nil {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(theme.warning.color)
-                    } else if !isExpanded {
-                        unreadBadge(inboxUnread)
+                            .animation(.easeOut(duration: 0.14), value: isHovered || isHeaderFocused)
+                            .accessibilityHidden(true)
+                        Spacer(minLength: BrevSpacing.xs)
+                        if section.loadError != nil {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(theme.warning.color)
+                        } else if !isExpanded {
+                            unreadBadge(inboxUnread)
+                        }
                     }
-                }
-                .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .focused($focusedHeaderControl, equals: .accountHeader(section.id))
-            .help("\(section.title)\n\(section.subtitle)")
-            .accessibilityLabel("\(section.title), \(section.subtitle)")
-            .accessibilityValue(
-                FolderSidebarAccessibility.accountHeaderValue(
-                    isExpanded: isExpanded,
-                    unreadCount: inboxUnread
-                )
-            )
-            .accessibilityAddTraits(.isHeader)
-
-            if isFirstAccount, let onAddAccount {
-                Button(action: onAddAccount) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(theme.textSecondary.color)
-                        .frame(minWidth: sidebarMetrics.disclosureHitSize, minHeight: sidebarMetrics.disclosureHitSize)
-                        .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .focused($focusedHeaderControl, equals: .addAccount)
-                .opacity(
-                    FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(
-                        isHovered: isHovered,
-                        isFocused: isAddFocused
+                .focused($focusedHeaderControl, equals: .accountHeader(section.id))
+                .help("\(section.title)\n\(section.subtitle)")
+                .accessibilityLabel("\(section.title), \(section.subtitle)")
+                .accessibilityValue(
+                    FolderSidebarAccessibility.accountHeaderValue(
+                        isExpanded: isExpanded,
+                        unreadCount: inboxUnread
                     )
                 )
-                .animation(.easeOut(duration: 0.14), value: isHovered || isAddFocused)
-                .accessibilityLabel(String(localized: "Add account", bundle: .module))
-                .help(String(localized: "Add account", bundle: .module))
+                .accessibilityAddTraits(.isHeader)
+
+                if isFirstAccount, let onAddAccount {
+                    Button(action: onAddAccount) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(theme.textSecondary.color)
+                            .frame(minWidth: sidebarMetrics.disclosureHitSize, minHeight: sidebarMetrics.disclosureHitSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .focused($focusedHeaderControl, equals: .addAccount)
+                    .opacity(
+                        FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(
+                            isHovered: isHovered,
+                            isFocused: isAddFocused
+                        )
+                    )
+                    .animation(.easeOut(duration: 0.14), value: isHovered || isAddFocused)
+                    .accessibilityLabel(String(localized: "Add account", bundle: .module))
+                    .help(String(localized: "Add account", bundle: .module))
+                }
             }
-        }
-        .padding(.leading, sidebarMetrics.macOSSectionHeaderLeadingInset)
-        .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
-        .padding(.bottom, BrevSpacing.xxs)
-        .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
-        .contentShape(Rectangle())
-        .onHover { hovering in
-            updateHoveredSection(hoverKey, isHovering: hovering)
+            .padding(.leading, sidebarMetrics.macOSSectionHeaderLeadingInset)
+            .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+            .padding(.bottom, BrevSpacing.xxs)
+            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .contextMenu {
             // The local account's account-level menu (ADR-0077).
@@ -1473,14 +1474,6 @@ public struct FolderSidebar: View {
                     Label(String(localized: "Account Settings…", bundle: .module), systemImage: "gearshape")
                 }
             }
-        }
-    }
-
-    private func updateHoveredSection(_ section: SidebarHoveredSection, isHovering: Bool) {
-        if isHovering {
-            hoveredSection = section
-        } else if hoveredSection == section {
-            hoveredSection = nil
         }
     }
     #endif
@@ -1536,84 +1529,82 @@ public struct FolderSidebar: View {
             userExpanded: smartViewsUserExpanded,
             hasSelectedSmartView: hasSelectedSmartView
         )
-        let isHovered = hoveredSection == .smartViews
         let isHeaderFocused = focusedHeaderControl == .smartViewsHeader || focusedHeaderControl == .smartViewsActions
         let isActionsFocused = focusedHeaderControl == .smartViewsActions
-        HStack(spacing: BrevSpacing.xs) {
-            Button {
-                smartViewsUserExpanded = FolderSidebarSmartViewPresentation.toggled(
-                    userExpanded: smartViewsUserExpanded,
-                    hasSelectedSmartView: hasSelectedSmartView
-                )
-            } label: {
-                HStack(spacing: BrevSpacing.xs) {
-                    Text("Smart Views", bundle: .module)
-                        .brevFont(.footnote)
-                        .fontWeight(.medium)
-                        .foregroundStyle(FolderSidebarSectionHeaderStyle.titleColor(in: theme))
-                        .lineLimit(1)
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(theme.textTertiary.color)
-                        .opacity(
-                            FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(
-                                isHovered: isHovered,
-                                isFocused: isHeaderFocused
+        SidebarHoverableSectionHeader { isHovered in
+            HStack(spacing: BrevSpacing.xs) {
+                Button {
+                    smartViewsUserExpanded = FolderSidebarSmartViewPresentation.toggled(
+                        userExpanded: smartViewsUserExpanded,
+                        hasSelectedSmartView: hasSelectedSmartView
+                    )
+                } label: {
+                    HStack(spacing: BrevSpacing.xs) {
+                        Text("Smart Views", bundle: .module)
+                            .brevFont(.footnote)
+                            .fontWeight(.medium)
+                            .foregroundStyle(FolderSidebarSectionHeaderStyle.titleColor(in: theme))
+                            .lineLimit(1)
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(theme.textTertiary.color)
+                            .opacity(
+                                FolderSidebarSectionHeaderActionVisibility.accountDisclosureChevronOpacity(
+                                    isHovered: isHovered,
+                                    isFocused: isHeaderFocused
+                                )
                             )
-                        )
-                        .animation(.easeOut(duration: 0.14), value: isHovered || isHeaderFocused)
-                        .accessibilityHidden(true)
+                            .animation(.easeOut(duration: 0.14), value: isHovered || isHeaderFocused)
+                            .accessibilityHidden(true)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .focused($focusedHeaderControl, equals: .smartViewsHeader)
-            .folderSidebarTouchTarget(minHeight: sidebarMetrics.disclosureHitSize)
-            .accessibilityLabel(String(localized: "Smart Views", bundle: .module))
-            .accessibilityValue(
-                isExpanded
-                    ? String(localized: "Expanded", bundle: .module)
-                    : String(localized: "Collapsed", bundle: .module)
-            )
-            .accessibilityHint(
-                isExpanded
-                    ? String(localized: "Collapse Smart Views", bundle: .module)
-                    : String(localized: "Expand Smart Views", bundle: .module)
-            )
-            .accessibilityAddTraits(.isHeader)
-
-            Menu {
-                Button(String(localized: "New Smart View", bundle: .module)) {
-                    savedSearchEditorTarget = .create
-                }
-                Button(String(localized: "Manage Smart Views", bundle: .module)) {
-                    showsSmartViewSettings = true
-                }
-            } label: {
-                sidebarActionsLabel
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .focused($focusedHeaderControl, equals: .smartViewsActions)
-            .opacity(
-                FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(
-                    isHovered: isHovered,
-                    isFocused: isActionsFocused
+                .buttonStyle(.plain)
+                .focused($focusedHeaderControl, equals: .smartViewsHeader)
+                .folderSidebarTouchTarget(minHeight: sidebarMetrics.disclosureHitSize)
+                .accessibilityLabel(String(localized: "Smart Views", bundle: .module))
+                .accessibilityValue(
+                    isExpanded
+                        ? String(localized: "Expanded", bundle: .module)
+                        : String(localized: "Collapsed", bundle: .module)
                 )
-            )
-            .animation(.easeOut(duration: 0.14), value: isHovered || isActionsFocused)
-            .accessibilityLabel(String(localized: "Smart View Actions", bundle: .module))
-            .help(String(localized: "Smart View Actions", bundle: .module))
-        }
-        .padding(.leading, sidebarMetrics.macOSSectionHeaderLeadingInset)
-        .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
-        .padding(.bottom, BrevSpacing.xxs)
-        .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
-        .contentShape(Rectangle())
-        .onHover { hovering in
-            updateHoveredSection(.smartViews, isHovering: hovering)
+                .accessibilityHint(
+                    isExpanded
+                        ? String(localized: "Collapse Smart Views", bundle: .module)
+                        : String(localized: "Expand Smart Views", bundle: .module)
+                )
+                .accessibilityAddTraits(.isHeader)
+
+                Menu {
+                    Button(String(localized: "New Smart View", bundle: .module)) {
+                        savedSearchEditorTarget = .create
+                    }
+                    Button(String(localized: "Manage Smart Views", bundle: .module)) {
+                        showsSmartViewSettings = true
+                    }
+                } label: {
+                    sidebarActionsLabel
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .focused($focusedHeaderControl, equals: .smartViewsActions)
+                .opacity(
+                    FolderSidebarSectionHeaderActionVisibility.trailingActionOpacity(
+                        isHovered: isHovered,
+                        isFocused: isActionsFocused
+                    )
+                )
+                .animation(.easeOut(duration: 0.14), value: isHovered || isActionsFocused)
+                .accessibilityLabel(String(localized: "Smart View Actions", bundle: .module))
+                .help(String(localized: "Smart View Actions", bundle: .module))
+            }
+            .padding(.leading, sidebarMetrics.macOSSectionHeaderLeadingInset)
+            .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+            .padding(.bottom, BrevSpacing.xxs)
+            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .contextMenu {
             Button(String(localized: "New Smart View", bundle: .module)) {
@@ -2059,23 +2050,54 @@ public struct FolderSidebar: View {
         ) {
             sidebarStatus(status)
         } else {
+            let collapsedIDs = collapsedFolderIDs(for: sourceID)
+            let hasCollapsibleFolders = !FolderDisclosureState.collapsibleFolderIDs(in: folders).isEmpty
             let rows = FolderSidebarPresentation.visibleRows(
                 folders: folders,
                 visibility: effectiveFolderVisibility(for: sourceID),
-                collapsedFolderIDs: collapsedFolderIDs(for: sourceID)
+                collapsedFolderIDs: collapsedIDs
             )
             if let sourceID {
                 ForEach(rows.map { ScopedFolderRow(row: $0, sourceID: sourceID) }) { scoped in
-                    folderRow(scoped.row, sourceID: sourceID, activeFavoriteID: activeFavoriteID)
+                    folderRow(
+                        scoped.row,
+                        sourceID: sourceID,
+                        activeFavoriteID: activeFavoriteID,
+                        contextMetrics: FolderContextMenuMetrics(
+                            hasChildren: scoped.row.hasChildren,
+                            isExpanded: !collapsedIDs.contains(scoped.row.folder.id),
+                            canExpandAll: !collapsedIDs.isEmpty,
+                            canCollapseAll: hasCollapsibleFolders
+                        )
+                    )
                 }
             } else {
                 ForEach(rows) { row in
-                    folderRow(row, sourceID: nil, activeFavoriteID: activeFavoriteID)
+                    folderRow(
+                        row,
+                        sourceID: nil,
+                        activeFavoriteID: activeFavoriteID,
+                        contextMetrics: FolderContextMenuMetrics(
+                            hasChildren: row.hasChildren,
+                            isExpanded: !collapsedIDs.contains(row.folder.id),
+                            canExpandAll: !collapsedIDs.isEmpty,
+                            canCollapseAll: hasCollapsibleFolders
+                        )
+                    )
                 }
             }
         }
     }
     #endif
+
+    /// Precomputed per-account folder-tree flags passed to `folderContextMenu` so
+    /// each row avoids O(F) child and disclosure scans.
+    private struct FolderContextMenuMetrics {
+        let hasChildren: Bool
+        let isExpanded: Bool
+        let canExpandAll: Bool
+        let canCollapseAll: Bool
+    }
 
     /// Provider folder IDs can repeat in another expanded mailbox.
     private struct ScopedFolderRow: Identifiable {
@@ -2085,6 +2107,45 @@ public struct FolderSidebar: View {
     }
 
     #if os(macOS)
+    /// Isolates section-header hover state so pointer movement over section headers
+    /// never invalidates `FolderSidebar.body`.
+    private struct SidebarHoverableSectionHeader<Content: View>: View {
+        @State private var isHovered = false
+        let content: (Bool) -> Content
+
+        init(@ViewBuilder content: @escaping (Bool) -> Content) {
+            self.content = content
+        }
+
+        var body: some View {
+            content(isHovered)
+                .onHover { isHovered = $0 }
+        }
+    }
+
+    /// Isolates the Settings footer button hover state from `FolderSidebar.body`.
+    private struct SidebarSettingsFooterButton: View {
+        @Environment(\.brevTheme) private var theme
+        @State private var isHovered = false
+        let hitSize: CGFloat
+        let action: () -> Void
+
+        var body: some View {
+            Button(action: action) {
+                Image(systemName: "gearshape")
+                    .brevFont(.footnote)
+                    .foregroundStyle(isHovered ? theme.textPrimary.color : theme.textTertiary.color)
+                    .frame(minWidth: hitSize, minHeight: hitSize)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovered = $0 }
+            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .accessibilityLabel(String(localized: "Settings", bundle: .module))
+            .help(String(localized: "Settings", bundle: .module))
+        }
+    }
+
     /// Pointer-hover fill for sidebar rows — translucent wash so unselected
     /// row hover reads cleanly over both Liquid Glass and solid surfaces.
     private struct SidebarRowHoverFill: View {
@@ -2111,14 +2172,15 @@ public struct FolderSidebar: View {
     private func folderRow(
         _ row: FolderSidebarRow,
         sourceID: MailSourceID?,
-        activeFavoriteID: MailboxFavoriteID?
+        activeFavoriteID: MailboxFavoriteID?,
+        contextMetrics: FolderContextMenuMetrics
     ) -> some View {
         let folder = row.folder
         let title = displayName(for: folder, sourceID: sourceID)
         let selected = isSelected(folder, in: sourceID, activeFavoriteID: activeFavoriteID)
         return HStack(spacing: FolderSidebarLayoutMetrics.macOSDisclosureToIconSpacing) {
             if row.hasChildren {
-                disclosureControl(for: row, sourceID: sourceID)
+                disclosureControl(for: row, sourceID: sourceID, isExpanded: contextMetrics.isExpanded)
             } else {
                 Color.clear
                     .frame(width: sidebarMetrics.disclosureHitSize, height: sidebarMetrics.disclosureHitSize)
@@ -2175,7 +2237,7 @@ public struct FolderSidebar: View {
             handleDrop(representations, on: folder, sourceID: sourceID)
         }
         .contextMenu {
-            folderContextMenu(folder: folder, sourceID: sourceID)
+            folderContextMenu(folder: folder, sourceID: sourceID, metrics: contextMetrics)
         }
     }
     #endif
@@ -2183,9 +2245,9 @@ public struct FolderSidebar: View {
     @ViewBuilder
     private func disclosureControl(
         for row: FolderSidebarRow,
-        sourceID: MailSourceID?
+        sourceID: MailSourceID?,
+        isExpanded: Bool
     ) -> some View {
-        let isExpanded = isFolderExpanded(row.folder.id, sourceID: sourceID)
         let title = displayName(for: row.folder, sourceID: sourceID)
         Button {
             toggleFolderDisclosure(row.folder.id, sourceID: sourceID)
@@ -2355,17 +2417,30 @@ public struct FolderSidebar: View {
     }
 
     @ViewBuilder
-    private func folderContextMenu(folder: Folder, sourceID: MailSourceID?) -> some View {
+    private func folderContextMenu(
+        folder: Folder,
+        sourceID: MailSourceID?,
+        metrics: FolderContextMenuMetrics? = nil
+    ) -> some View {
+        let resolvedMetrics = metrics ?? {
+            let collapsedIDs = collapsedFolderIDs(for: sourceID)
+            return FolderContextMenuMetrics(
+                hasChildren: folderHasChildren(folder, sourceID: sourceID),
+                isExpanded: !collapsedIDs.contains(folder.id),
+                canExpandAll: !collapsedIDs.isEmpty,
+                canCollapseAll: !collapsibleFolderIDs(sourceID: sourceID).isEmpty
+            )
+        }()
         let presentation = FolderSidebarPresentation.desktopContextMenu(
             folder: folder,
             capabilities: capabilitiesForSource(sourceID),
             isActionBlocked: isFolderActionBlocked,
             hasSourceIdentity: sourceID != nil,
             hasLocalAlias: hasLocalAlias(for: folder, sourceID: sourceID),
-            hasChildren: folderHasChildren(folder, sourceID: sourceID),
-            isExpanded: isFolderExpanded(folder.id, sourceID: sourceID),
-            canExpandAll: !collapsedFolderIDs(for: sourceID).isEmpty,
-            canCollapseAll: !collapsibleFolderIDs(sourceID: sourceID).isEmpty,
+            hasChildren: resolvedMetrics.hasChildren,
+            isExpanded: resolvedMetrics.isExpanded,
+            canExpandAll: resolvedMetrics.canExpandAll,
+            canCollapseAll: resolvedMetrics.canCollapseAll,
             canOpenAccountSettings: true
         )
         ForEach(presentation.sections.indices, id: \.self) { sectionIndex in

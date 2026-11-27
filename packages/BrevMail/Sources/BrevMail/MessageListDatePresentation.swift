@@ -74,8 +74,56 @@ enum MessageListDatePresentation {
                 timeZone: timeZone
             )
         }
-        return relativeFormatter(locale: locale, calendar: calendar)
-            .localizedString(for: date, relativeTo: referenceDate)
+        return spokenRelativeLabel(
+            for: date,
+            referenceDate: referenceDate,
+            calendar: calendar,
+            locale: locale
+        )
+    }
+
+    static func spokenRelativeLabel(
+        for date: Date,
+        referenceDate: Date,
+        calendar: Calendar,
+        locale: Locale
+    ) -> String {
+        let referenceSecond = referenceDate.timeIntervalSinceReferenceDate.rounded(.down)
+        let key = spokenRelativeCacheKey(
+            for: date,
+            referenceSecond: referenceSecond,
+            calendar: calendar,
+            locale: locale
+        )
+        formatterLock.lock()
+        if let cached = spokenRelativeLabelCache[key] {
+            #if DEBUG
+            spokenRelativeLabelCacheHitCountsForTesting[key, default: 0] += 1
+            #endif
+            formatterLock.unlock()
+            return cached
+        }
+        formatterLock.unlock()
+
+        let label = relativeFormatter(locale: locale, calendar: calendar)
+            .localizedString(for: date, relativeTo: Date(timeIntervalSinceReferenceDate: referenceSecond))
+
+        formatterLock.lock()
+        defer { formatterLock.unlock() }
+        if let cached = spokenRelativeLabelCache[key] {
+            #if DEBUG
+            spokenRelativeLabelCacheHitCountsForTesting[key, default: 0] += 1
+            #endif
+            return cached
+        }
+        if spokenRelativeLabelCache.count >= 512 {
+            spokenRelativeLabelCache.removeAll(keepingCapacity: true)
+            #if DEBUG
+            spokenRelativeLabelCacheHitCountsForTesting.removeAll(keepingCapacity: true)
+            #endif
+        }
+        spokenRelativeLabelCache[key] = label
+        return label
     }
 
     static func isKnown(_ date: Date) -> Bool {
@@ -117,11 +165,11 @@ enum MessageListDatePresentation {
         locale: Locale
     ) -> String {
         let referenceSecond = referenceDate.timeIntervalSinceReferenceDate.rounded(.down)
-        let key = CompactRelativeLabelCacheKey(
-            dateInterval: date.timeIntervalSinceReferenceDate,
+        let key = compactRelativeCacheKey(
+            for: date,
             referenceSecond: referenceSecond,
-            localeIdentifier: locale.identifier,
-            calendarIdentifier: calendar.identifier
+            calendar: calendar,
+            locale: locale
         )
         formatterLock.lock()
         if let cached = compactRelativeLabelCache[key] {
@@ -165,15 +213,32 @@ enum MessageListDatePresentation {
         calendar: Calendar,
         locale: Locale
     ) -> Int {
-        let key = CompactRelativeLabelCacheKey(
-            dateInterval: date.timeIntervalSinceReferenceDate,
+        let key = compactRelativeCacheKey(
+            for: date,
             referenceSecond: referenceDate.timeIntervalSinceReferenceDate.rounded(.down),
-            localeIdentifier: locale.identifier,
-            calendarIdentifier: calendar.identifier
+            calendar: calendar,
+            locale: locale
         )
         formatterLock.lock()
         defer { formatterLock.unlock() }
         return compactRelativeLabelCacheHitCountsForTesting[key, default: 0]
+    }
+
+    static func spokenRelativeLabelCacheHitCountForTesting(
+        for date: Date,
+        referenceDate: Date,
+        calendar: Calendar,
+        locale: Locale
+    ) -> Int {
+        let key = spokenRelativeCacheKey(
+            for: date,
+            referenceSecond: referenceDate.timeIntervalSinceReferenceDate.rounded(.down),
+            calendar: calendar,
+            locale: locale
+        )
+        formatterLock.lock()
+        defer { formatterLock.unlock() }
+        return spokenRelativeLabelCacheHitCountsForTesting[key, default: 0]
     }
     #endif
 
@@ -203,16 +268,110 @@ enum MessageListDatePresentation {
     // reused. `DateFormatter`/`RelativeDateTimeFormatter` are safe to read from
     // multiple threads once configured; the cache dictionaries are guarded by a lock.
     private static let formatterLock = NSLock()
-    private struct CompactRelativeLabelCacheKey: Hashable {
-        let dateInterval: TimeInterval
-        let referenceSecond: TimeInterval
+    private enum RelativeAgeBucket: Hashable {
+        /// Quantized elapsed seconds (1s for <60s, 60s for <1h, 3600s for <24h, 86400s for >=24h).
+        case quantizedElapsed(Int64)
+        /// Day-quantized pair for multi-week dates where calendar month/year boundaries matter.
+        case calendarDays(dateDay: Int64, referenceDay: Int64)
+    }
+
+    private struct RelativeLabelCacheKey: Hashable {
+        let bucket: RelativeAgeBucket
         let localeIdentifier: String
         let calendarIdentifier: Calendar.Identifier
     }
 
-    private nonisolated(unsafe) static var compactRelativeLabelCache: [CompactRelativeLabelCacheKey: String] = [:]
+    private static let calendarMonthThresholdSeconds: TimeInterval = 28 * 86400
+
+    private static func quantizedElapsedBucket(
+        dateInterval: TimeInterval,
+        referenceSecond: TimeInterval,
+        useCalendarDaysForMonths: Bool
+    ) -> RelativeAgeBucket {
+        let elapsed = referenceSecond - dateInterval
+        let absElapsed = abs(elapsed)
+        if useCalendarDaysForMonths, absElapsed >= calendarMonthThresholdSeconds {
+            let dateDay = Int64((dateInterval / 86400).rounded(.down))
+            let referenceDay = Int64((referenceSecond / 86400).rounded(.down))
+            return .calendarDays(dateDay: dateDay, referenceDay: referenceDay)
+        }
+        let step: TimeInterval
+        if absElapsed < 60 {
+            step = 1
+        } else if absElapsed < 3600 {
+            step = 60
+        } else if absElapsed < 86400 {
+            step = 3600
+        } else {
+            step = 86400
+        }
+        let quantized = (absElapsed / step).rounded(.down) * step
+        return .quantizedElapsed(elapsed < 0 ? -Int64(quantized) : Int64(quantized))
+    }
+
+    private static func compactRelativeCacheKey(
+        for date: Date,
+        referenceSecond: TimeInterval,
+        calendar: Calendar,
+        locale: Locale
+    ) -> RelativeLabelCacheKey {
+        let dateInterval = date.timeIntervalSinceReferenceDate
+        let isFuture = referenceSecond - dateInterval < 0
+        return RelativeLabelCacheKey(
+            bucket: quantizedElapsedBucket(
+                dateInterval: dateInterval,
+                referenceSecond: referenceSecond,
+                useCalendarDaysForMonths: isFuture
+            ),
+            localeIdentifier: locale.identifier,
+            calendarIdentifier: calendar.identifier
+        )
+    }
+
+    private static let spokenCalendarDayThresholdSeconds: TimeInterval = 7 * 86400
+
+    private static func spokenRelativeCacheKey(
+        for date: Date,
+        referenceSecond: TimeInterval,
+        calendar: Calendar,
+        locale: Locale
+    ) -> RelativeLabelCacheKey {
+        let dateInterval = date.timeIntervalSinceReferenceDate
+        let elapsed = referenceSecond - dateInterval
+        let absElapsed = abs(elapsed)
+        let bucket: RelativeAgeBucket
+        if absElapsed >= spokenCalendarDayThresholdSeconds {
+            let dateDay = Int64((dateInterval / 86400).rounded(.down))
+            let referenceDay = Int64((referenceSecond / 86400).rounded(.down))
+            bucket = .calendarDays(dateDay: dateDay, referenceDay: referenceDay)
+        } else {
+            // Split each unit at its half-unit midpoint (30s / 30m / 12h) so
+            // entries on opposite sides of a rounding boundary never share a bucket.
+            let step: TimeInterval
+            if absElapsed < 60 {
+                step = 1
+            } else if absElapsed < 3600 {
+                step = 30
+            } else if absElapsed < 86400 {
+                step = 1800
+            } else {
+                step = 43200
+            }
+            let quantized = (absElapsed / step).rounded(.down) * step
+            bucket = .quantizedElapsed(elapsed < 0 ? -Int64(quantized) : Int64(quantized))
+        }
+        return RelativeLabelCacheKey(
+            bucket: bucket,
+            localeIdentifier: locale.identifier,
+            calendarIdentifier: calendar.identifier
+        )
+    }
+
+    private nonisolated(unsafe) static var compactRelativeLabelCache: [RelativeLabelCacheKey: String] = [:]
+    private nonisolated(unsafe) static var spokenRelativeLabelCache: [RelativeLabelCacheKey: String] = [:]
     #if DEBUG
-    private nonisolated(unsafe) static var compactRelativeLabelCacheHitCountsForTesting: [CompactRelativeLabelCacheKey: Int] = [:]
+    private nonisolated(unsafe) static var compactRelativeLabelCacheHitCountsForTesting: [RelativeLabelCacheKey: Int] = [:]
+    private nonisolated(unsafe) static var spokenRelativeLabelCacheHitCountsForTesting: [RelativeLabelCacheKey: Int] = [:]
     #endif
     private nonisolated(unsafe) static var dateFormatterCache: [String: DateFormatter] = [:]
     private nonisolated(unsafe) static var relativeFormatterCache: [String: RelativeDateTimeFormatter] = [:]

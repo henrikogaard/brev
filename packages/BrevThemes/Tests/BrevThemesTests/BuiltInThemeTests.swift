@@ -12,6 +12,7 @@
 
 @testable import BrevThemes
 import Foundation
+import SwiftUI
 import Testing
 
 @Suite("Built-in themes")
@@ -246,5 +247,22 @@ struct BuiltInThemeTests {
         #expect(BrevTheme.brevMonoLight.success.hex == "#3B6B4C")
         #expect(BrevTheme.brevMonoGrey.bgPrimary.hex == "#292929")
         #expect(BrevTheme.brevMonoGrey.accent.hex == "#E6E6E6")
+    }
+
+    @Test("BrevColor pre-parses Color eagerly while keeping hex-based equality, hashing, and Codable")
+    func brevColorEagerColorAndCodable() throws {
+        let primary = BrevColor("#3B6B4C")
+        let duplicate = BrevColor("#3B6B4C")
+        let lowercase = BrevColor("#3b6b4c")
+
+        #expect(primary == duplicate)
+        #expect(primary.hashValue == duplicate.hashValue)
+        #expect(primary != lowercase)
+        #expect(primary.color == Color(brevHex: "#3B6B4C"))
+
+        let encoded = try JSONEncoder().encode(primary)
+        let decoded = try JSONDecoder().decode(BrevColor.self, from: encoded)
+        #expect(decoded == primary)
+        #expect(decoded.color == primary.color)
     }
 }

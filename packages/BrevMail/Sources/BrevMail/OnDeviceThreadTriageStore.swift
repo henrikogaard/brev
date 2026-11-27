@@ -213,6 +213,47 @@ public struct ProactiveTriageScheduledItem {
     }
 }
 
+/// Unobserved viewport tracker held by list views so row `.onAppear`/`.onDisappear`
+/// scroll updates never invalidate SwiftUI `body` passes, while still advancing
+/// proactive triage via a debounced callback when enabled.
+@MainActor
+final class ProactiveTriageViewportTracker {
+    private(set) var visibleIDs: Set<String> = []
+    private var debounceTask: Task<Void, Never>?
+
+    func rowAppeared(_ id: String, onSchedule: (() -> Void)?) {
+        let inserted = visibleIDs.insert(id).inserted
+        guard inserted, let onSchedule else { return }
+        scheduleDebounced(onSchedule)
+    }
+
+    func rowDisappeared(_ id: String, onSchedule: (() -> Void)?) {
+        let removed = visibleIDs.remove(id) != nil
+        guard removed, let onSchedule else { return }
+        scheduleDebounced(onSchedule)
+    }
+
+    func reset() {
+        debounceTask?.cancel()
+        debounceTask = nil
+        visibleIDs.removeAll()
+    }
+
+    func cancelPending() {
+        debounceTask?.cancel()
+        debounceTask = nil
+    }
+
+    private func scheduleDebounced(_ onSchedule: @escaping () -> Void) {
+        debounceTask?.cancel()
+        debounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled, self != nil else { return }
+            onSchedule()
+        }
+    }
+}
+
 /// Main-actor observable local cache and scheduler for opt-in proactive on-device triage.
 ///
 /// Enforces two hard privacy gates before reading cached bodies or running inference:
@@ -228,6 +269,11 @@ public struct ProactiveTriageScheduledItem {
 public final class OnDeviceThreadTriageStore {
     /// Cached insights keyed by `cacheKey(accountID:header:)`, bounded by `maxCacheEntries`.
     public private(set) var insightsByKey: [String: ThreadTriageInsight] = [:]
+
+    /// Whether at least one insight is cached. List rows check this before touching
+    /// `insightsByKey` so empty stores avoid per-row dictionary/fingerprint work while
+    /// still invalidating when the first insight arrives.
+    public private(set) var hasCachedInsights = false
 
     @ObservationIgnored
     private let engine: ProactiveOnDeviceTriageEngine
@@ -255,7 +301,10 @@ public final class OnDeviceThreadTriageStore {
     private var hasFullBodyCoverageByKey: [String: Bool] = [:]
 
     @ObservationIgnored
-    private var lruOrder: [String] = []
+    private var accessTickByKey: [String: UInt64] = [:]
+
+    @ObservationIgnored
+    private var nextAccessTick: UInt64 = 0
 
     @ObservationIgnored
     private var activeTasksByOwner: [String: [String: ScheduledTaskEntry]] = [:]
@@ -402,7 +451,8 @@ public final class OnDeviceThreadTriageStore {
         for key: String,
         sourceFingerprint: String
     ) -> ThreadTriageInsight? {
-        guard let existing = insightsByKey[key],
+        guard hasCachedInsights,
+              let existing = insightsByKey[key],
               existing.sourceFingerprint == sourceFingerprint
         else { return nil }
         touchLRU(key)
@@ -416,7 +466,21 @@ public final class OnDeviceThreadTriageStore {
         for key: String,
         matchingHeaderFingerprint headerFingerprint: String
     ) -> ThreadTriageInsight? {
-        guard let existing = insightsByKey[key] else { return nil }
+        guard let existing = insightForDisplay(
+            for: key,
+            matchingHeaderFingerprint: headerFingerprint
+        ) else { return nil }
+        touchLRU(key)
+        return existing
+    }
+
+    /// Pure read-only lookup for SwiftUI `body` rendering: never mutates LRU state
+    /// and short-circuits on `hasCachedInsights` before touching `insightsByKey`.
+    public func insightForDisplay(
+        for key: String,
+        matchingHeaderFingerprint headerFingerprint: String
+    ) -> ThreadTriageInsight? {
+        guard hasCachedInsights, let existing = insightsByKey[key] else { return nil }
         if let storedHeaderFP = headerFingerprintByKey[key] {
             guard storedHeaderFP == headerFingerprint else { return nil }
         } else {
@@ -424,7 +488,6 @@ public final class OnDeviceThreadTriageStore {
                 || existing.sourceFingerprint.hasPrefix("\(headerFingerprint)|b:")
             else { return nil }
         }
-        touchLRU(key)
         return existing
     }
 
@@ -447,9 +510,13 @@ public final class OnDeviceThreadTriageStore {
         if !insightsByKey.isEmpty {
             insightsByKey.removeAll()
         }
+        if hasCachedInsights {
+            hasCachedInsights = false
+        }
         headerFingerprintByKey.removeAll()
         hasFullBodyCoverageByKey.removeAll()
-        lruOrder.removeAll()
+        accessTickByKey.removeAll()
+        nextAccessTick = 0
         let engine = engine
         Task {
             await engine.clearCache()
@@ -801,22 +868,27 @@ public final class OnDeviceThreadTriageStore {
         hasFullBodyCoverage: Bool
     ) {
         insightsByKey[key] = insight
+        if !hasCachedInsights {
+            hasCachedInsights = true
+        }
         headerFingerprintByKey[key] = headerFingerprint
         hasFullBodyCoverageByKey[key] = hasFullBodyCoverage
         touchLRU(key)
-        while lruOrder.count > maxCacheEntries {
-            let evicted = lruOrder.removeFirst()
+        while insightsByKey.count > maxCacheEntries {
+            guard let evicted = accessTickByKey.min(by: { $0.value < $1.value })?.key else { break }
+            accessTickByKey.removeValue(forKey: evicted)
             insightsByKey.removeValue(forKey: evicted)
             headerFingerprintByKey.removeValue(forKey: evicted)
             hasFullBodyCoverageByKey.removeValue(forKey: evicted)
         }
+        if insightsByKey.isEmpty, hasCachedInsights {
+            hasCachedInsights = false
+        }
     }
 
     private func touchLRU(_ key: String) {
-        if let index = lruOrder.firstIndex(of: key) {
-            lruOrder.remove(at: index)
-        }
-        lruOrder.append(key)
+        nextAccessTick &+= 1
+        accessTickByKey[key] = nextAccessTick
     }
 
     // MARK: - Helpers
