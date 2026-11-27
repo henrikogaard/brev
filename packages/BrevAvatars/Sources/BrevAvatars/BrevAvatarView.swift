@@ -143,10 +143,17 @@ public struct BrevAvatarView: View {
             preferences: preferences,
             pixelDimension: currentPixelDimension
         )
+        let isLocalEntryExpired = if let decodedEntry,
+                                     decodedEntry.key == cacheKey,
+                                     decodedEntry.generation == cacheGeneration {
+            decodedEntry.expiresAt <= now
+        } else {
+            false
+        }
         let cachedImage: CGImage? = if let decodedEntry,
                                        decodedEntry.key == cacheKey,
                                        decodedEntry.generation == cacheGeneration,
-                                       decodedEntry.expiresAt > now {
+                                       !isLocalEntryExpired {
             decodedEntry.image
         } else {
             AvatarDisplayImageCache.shared.image(for: cacheKey, now: now)
@@ -156,7 +163,8 @@ public struct BrevAvatarView: View {
             displayName: displayName,
             preferences: preferences,
             pixelDimension: currentPixelDimension,
-            cacheGeneration: cacheGeneration
+            cacheGeneration: cacheGeneration,
+            needsReloadAfterExpiry: isLocalEntryExpired && cachedImage == nil
         )
 
         Group {
@@ -252,4 +260,5 @@ private struct AvatarImageLoadRequest: Hashable {
     let preferences: AvatarPreferences
     let pixelDimension: Int
     let cacheGeneration: Int
+    let needsReloadAfterExpiry: Bool
 }
