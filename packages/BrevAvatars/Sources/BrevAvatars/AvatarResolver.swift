@@ -325,14 +325,14 @@ public actor AvatarResolver {
     /// Drop the cache without changing preferences.
     public func clearCache() async {
         await avatarCache.clear()
-        invalidateCachedWork()
+        invalidateCachedWork(notifyDisplayCache: false)
         let resolverID = ObjectIdentifier(self).hashValue
         await MainActor.run {
             AvatarDisplayImageCache.shared.invalidate(resolverID: resolverID)
         }
     }
 
-    private func invalidateCachedWork() {
+    private func invalidateCachedWork(notifyDisplayCache: Bool = true) {
         preferenceVersion += 1
         // Cached initials from a stricter policy must not mask newly
         // enabled sources, and in-flight work may have captured stale
@@ -340,9 +340,11 @@ public actor AvatarResolver {
         cache.removeAll()
         inFlight.values.forEach { $0.cancel() }
         inFlight.removeAll()
-        let resolverID = ObjectIdentifier(self).hashValue
-        Task { @MainActor in
-            AvatarDisplayImageCache.shared.invalidate(resolverID: resolverID)
+        if notifyDisplayCache {
+            let resolverID = ObjectIdentifier(self).hashValue
+            Task { @MainActor in
+                AvatarDisplayImageCache.shared.invalidate(resolverID: resolverID)
+            }
         }
     }
 

@@ -353,6 +353,24 @@ struct MessageListDatePresentationTests {
         )
         #expect(!first.isEmpty)
         #expect(!second.isEmpty)
+        let uncachedFormatter = RelativeDateTimeFormatter()
+        uncachedFormatter.unitsStyle = .full
+        uncachedFormatter.locale = Self.locale
+        uncachedFormatter.calendar = Self.calendar
+        #expect(first == uncachedFormatter.localizedString(for: fiveMinOneSec, relativeTo: ref))
+        #expect(second == uncachedFormatter.localizedString(for: fiveMinFiftyNineSec, relativeTo: ref))
+        for offsetDays in [7, 8, 30] {
+            let candidate = ref.addingTimeInterval(-Double(offsetDays) * 86400)
+            let spoken = MessageListDatePresentation.accessibilityLabel(
+                for: candidate,
+                showsAbsoluteArrivalTime: false,
+                referenceDate: ref,
+                calendar: Self.calendar,
+                locale: Self.locale,
+                timeZone: Self.timeZone
+            )
+            #expect(spoken == uncachedFormatter.localizedString(for: candidate, relativeTo: ref))
+        }
         #if DEBUG
         #expect(
             MessageListDatePresentation.spokenRelativeLabelCacheHitCountForTesting(

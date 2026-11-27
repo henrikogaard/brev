@@ -117,7 +117,7 @@ public struct BrevAvatarView: View {
     private let resolver: AvatarResolver
     private let preferencesObserver = AvatarPreferencesObserver.shared
 
-    @State private var decodedEntry: (key: AvatarDisplayImageCache.Key, generation: Int, image: CGImage)?
+    @State private var decodedEntry: (key: AvatarDisplayImageCache.Key, generation: Int, expiresAt: Date, image: CGImage)?
 
     public init(
         email: String,
@@ -132,6 +132,7 @@ public struct BrevAvatarView: View {
     }
 
     public var body: some View {
+        let now = Date()
         let preferences = preferencesObserver.preferences
         let currentPixelDimension = pixelDimension
         let resolverID = ObjectIdentifier(resolver).hashValue
@@ -144,10 +145,11 @@ public struct BrevAvatarView: View {
         )
         let cachedImage: CGImage? = if let decodedEntry,
                                        decodedEntry.key == cacheKey,
-                                       decodedEntry.generation == cacheGeneration {
+                                       decodedEntry.generation == cacheGeneration,
+                                       decodedEntry.expiresAt > now {
             decodedEntry.image
         } else {
-            AvatarDisplayImageCache.shared.image(for: cacheKey)
+            AvatarDisplayImageCache.shared.image(for: cacheKey, now: now)
         }
         let taskRequest = AvatarImageLoadRequest(
             email: email,
@@ -181,9 +183,11 @@ public struct BrevAvatarView: View {
                 .strokeBorder(theme.border.color, lineWidth: 0.5)
         )
         .task(id: taskRequest) {
-            if let existing = AvatarDisplayImageCache.shared.image(for: cacheKey) {
-                if decodedEntry?.key != cacheKey || decodedEntry?.generation != cacheGeneration {
-                    decodedEntry = (cacheKey, cacheGeneration, existing)
+            if let existing = AvatarDisplayImageCache.shared.entry(for: cacheKey) {
+                if decodedEntry?.key != cacheKey
+                    || decodedEntry?.generation != cacheGeneration
+                    || decodedEntry?.expiresAt != existing.expiresAt {
+                    decodedEntry = (cacheKey, cacheGeneration, existing.expiresAt, existing.image)
                 }
                 return
             }
@@ -203,7 +207,7 @@ public struct BrevAvatarView: View {
                 expiresAt: resolution.expiresAt
             )
             if let thumbnail {
-                decodedEntry = (cacheKey, cacheGeneration, thumbnail)
+                decodedEntry = (cacheKey, cacheGeneration, resolution.expiresAt, thumbnail)
             } else if decodedEntry?.key == cacheKey {
                 decodedEntry = nil
             }

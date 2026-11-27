@@ -77,13 +77,17 @@ final class AvatarDisplayImageCache {
     }
 
     func image(for key: Key, now: Date = Date()) -> CGImage? {
+        entry(for: key, now: now)?.image
+    }
+
+    func entry(for key: Key, now: Date = Date()) -> (image: CGImage, expiresAt: Date)? {
         guard let box = cache.object(forKey: key.cacheKey) else { return nil }
         let currentGeneration = generationByResolverID[key.resolverID, default: 0]
         guard box.generation == currentGeneration, box.expiresAt > now else {
             cache.removeObject(forKey: key.cacheKey)
             return nil
         }
-        return box.image
+        return (box.image, box.expiresAt)
     }
 
     /// Stores the latest decode with its resolver expiry; `nil` forgets a photo
