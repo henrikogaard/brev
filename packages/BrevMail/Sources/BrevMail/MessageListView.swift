@@ -354,6 +354,9 @@ public struct MessageListView: View {
             .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
                 followUpReminderIndex = FollowUpReminderIndex(settings: .load())
             }
+            .onChange(of: navigation.lastLocalReadStateMutation) { _, mutation in
+                applyLocalReadStateMutation(mutation)
+            }
             .modifier(
                 PeopleUpdatesObserverModifier(
                     activeTab: activePeopleUpdatesTab,
@@ -1415,17 +1418,18 @@ public struct MessageListView: View {
                 listKeyboardFocus = true
             }
             #endif
-            .onChange(of: navigation.lastLocalReadStateMutation) { _, mutation in
-                guard let mutation, mutation.folderID == folder.id else { return }
-                if let sourceID = mutation.sourceID, sourceID.accountID != backend.account.id {
-                    return
-                }
-                let updatedIDs = Set(mutation.messageIDs)
-                updateCachedHeaders(ids: updatedIDs) { $0.isRead = mutation.isRead }
-                for id in updatedIDs {
-                    navigation.updateHeader(id: id) { $0.isRead = mutation.isRead }
-                }
-            }
+        }
+    }
+
+    private func applyLocalReadStateMutation(_ mutation: MailNavigationState.LocalReadStateMutation?) {
+        guard let mutation, mutation.folderID == folder.id else { return }
+        if let sourceID = mutation.sourceID, sourceID.accountID != backend.account.id {
+            return
+        }
+        let updatedIDs = Set(mutation.messageIDs)
+        updateCachedHeaders(ids: updatedIDs) { $0.isRead = mutation.isRead }
+        for id in updatedIDs {
+            navigation.updateHeader(id: id) { $0.isRead = mutation.isRead }
         }
     }
 
