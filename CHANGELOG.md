@@ -4,6 +4,16 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+- Cross-platform scrolling, hover, and list-rendering hot-path performance fixes (macOS & iOS):
+  - Precompiled all `SignInCodeDetector` regular expressions once as static `NSRegularExpression` instances (using `firstMatch` for presence checks), added raw-`Data` in-memory decode caching in `SignInCodeSettings.load(from:)`, and hoisted settings lookup out of per-row rendering in `MessageListView` and `UnifiedInboxListView` with O(1) short-circuiting when sign-in codes are disabled.
+  - Replaced `@State` visible-row sets (`visibleTriageRowIDs` / `visibleTriageItemIDs`) in `MessageListView` and `UnifiedInboxListView` with an unobserved `ProactiveTriageViewportTracker` that debounces scheduling only when proactive triage is active, eliminated read-time LRU mutation in SwiftUI `body` via `OnDeviceThreadTriageStore.insightForDisplay` + `hasCachedInsights`, and replaced O(N) LRU array shifts with O(1) access ticks.
+  - Eliminated guaranteed per-row double-renders on scroll in `MessageListRefreshArrivalEffect` by initializing `hasEntered = !isArrival` and guarding `enterIfNeeded()`.
+  - Added age-bucket-quantized caching (1s / 60s / 3600s / day) for both compact and spoken (`accessibilityLabel`) relative dates in `MessageListDatePresentation`, hoisted `spokenDateLabel` outside `ViewThatFits` branches in `MessageListRow`, and moved `threadToggleFrame` into an unobserved reference box so macOS hover never triggers an extra layout pass.
+  - Replaced four per-cell `@AppStorage` KVO observers in `BrevAvatarView` with a shared `AvatarPreferencesObserver` (deduplicating `resolver.updatePreferences` calls), fast-pathed `AvatarDisplayImageCache` hits to skip `initialsLayer` and actor hops, deduplicated `InitialsAvatar.colorIndex` calls, replaced runtime regex splitting in `InitialsAvatar` with a linear scan, and added bounded memoization caches for initials, color indices, and foreground contrast.
+  - Snapshotted `InboxSenderCategoryOverrideStore` once per batch in `PeopleUpdatesClassifier` / `PeopleUpdatesCounts`, memoized `peopleUpdatesCounts` and `UpdatesSenderBundler.bundle` in `MessageListView`, guarded iOS `.toolbar` selection evaluation behind `isInSelectionMode`, cached unified workflow navigation headers alongside `UnifiedInboxListView.presentationSnapshot` (`NavigationItemsCache`), and precomputed account dot colors once per list pass.
+  - Isolated macOS `FolderSidebar` section-header and Settings-footer hover state into child views, kept per-account folder trees lazy with `LazyVStack`, cached raw-`Data` JSON decoding in `SmartMailboxSettings` and `MailboxFavorites`, and precomputed folder context-menu tree flags in O(F) instead of O(F²).
+  - Pre-parsed `BrevColor.color` eagerly in `init` for lock-free reads, guarded `SplitViewTransparencyProbe` / `WindowConfigurationProbe` in `BrevWindowSurfaceBackground` against redundant SwiftUI update passes and table-cell DFS walks, and cached/coalesced `MailScrollEdgeBlurView` backdrop reduction and fade masks.
+
 ## [0.3.0] - 2026-11-26
 
 - iOS 26/27 HIG polish and iPhone Duo (`iPhone19,4`) foldable adaptive support:

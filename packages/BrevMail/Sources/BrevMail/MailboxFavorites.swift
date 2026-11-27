@@ -66,8 +66,27 @@ struct MailboxFavorites: Codable, Equatable, Sendable {
     var hidden: Set<MailboxFavoriteID> = []
     var added: Set<MailboxFavoriteID> = []
 
+    private static let decodeCacheLock = NSLock()
+    private nonisolated(unsafe) static var decodeCache: [Data: MailboxFavorites] = [:]
+    private static let maxDecodeCacheEntries = 16
+
     init(data: Data = Data()) {
-        self = (try? JSONDecoder().decode(Self.self, from: data)) ?? Self.empty
+        guard !data.isEmpty else {
+            self = Self.empty
+            return
+        }
+        if let cached = Self.decodeCacheLock.withLock({ Self.decodeCache[data] }) {
+            self = cached
+            return
+        }
+        let decoded = (try? JSONDecoder().decode(Self.self, from: data)) ?? Self.empty
+        Self.decodeCacheLock.withLock {
+            if Self.decodeCache.count >= Self.maxDecodeCacheEntries {
+                Self.decodeCache.removeAll(keepingCapacity: true)
+            }
+            Self.decodeCache[data] = decoded
+        }
+        self = decoded
     }
 
     private init() {}

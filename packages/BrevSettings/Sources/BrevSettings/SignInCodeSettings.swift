@@ -43,17 +43,45 @@ public struct SignInCodeSettings: Equatable, Sendable {
     /// Creates settings with no account consent.
     public init() {}
 
+    private static let cacheLock = NSLock()
+    private nonisolated(unsafe) static var decodedCache: [Data: SignInCodeSettings] = [:]
+    private static let maxCacheEntries = 16
+    #if DEBUG
+    private nonisolated(unsafe) static var jsonDecodeCountForTestingStorage = 0
+    static var jsonDecodeCountForTesting: Int {
+        cacheLock.withLock { jsonDecodeCountForTestingStorage }
+    }
+    #endif
+
     /// Loads from the supplied local defaults, rejecting malformed records as a whole.
     public static func load(from defaults: UserDefaults) -> SignInCodeSettings {
-        guard let data = defaults.data(forKey: Key.accountOverrides),
-              let records = try? JSONDecoder().decode([String: AccountOverride].self, from: data),
-              records.allSatisfy({ key, record in
-                  validAccountID(key) && key == record.accountID
-              })
-        else { return Self.defaults }
-        var settings = Self.defaults
-        settings.accountOverrides = records
-        return settings
+        guard let data = defaults.data(forKey: Key.accountOverrides) else {
+            return Self.defaults
+        }
+        if let cached = cacheLock.withLock({ decodedCache[data] }) {
+            return cached
+        }
+        #if DEBUG
+        cacheLock.withLock { jsonDecodeCountForTestingStorage += 1 }
+        #endif
+        let decoded: SignInCodeSettings
+        if let records = try? JSONDecoder().decode([String: AccountOverride].self, from: data),
+           records.allSatisfy({ key, record in
+               validAccountID(key) && key == record.accountID
+           }) {
+            var settings = Self.defaults
+            settings.accountOverrides = records
+            decoded = settings
+        } else {
+            decoded = Self.defaults
+        }
+        cacheLock.withLock {
+            if decodedCache.count >= maxCacheEntries {
+                decodedCache.removeAll(keepingCapacity: true)
+            }
+            decodedCache[data] = decoded
+        }
+        return decoded
     }
 
     /// Persists only consent flags and account IDs to the supplied local defaults.
@@ -61,6 +89,12 @@ public struct SignInCodeSettings: Equatable, Sendable {
         if !accountOverrides.isEmpty,
            let data = try? JSONEncoder().encode(accountOverrides) {
             defaults.set(data, forKey: Key.accountOverrides)
+            Self.cacheLock.withLock {
+                if Self.decodedCache.count >= Self.maxCacheEntries {
+                    Self.decodedCache.removeAll(keepingCapacity: true)
+                }
+                Self.decodedCache[data] = self
+            }
         } else {
             defaults.removeObject(forKey: Key.accountOverrides)
         }

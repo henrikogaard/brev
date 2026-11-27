@@ -848,4 +848,128 @@ struct PeopleUpdatesClassifierTests {
         )
         #expect(selectable.map(\.id) == ["news-monday", "news-thursday"])
     }
+
+    @Test("Batch override snapshot matches per-message classification and powers PeopleUpdatesCounts")
+    func batchOverrideSnapshotMatchesSingleClassification() {
+        let (store, cleanup) = Self.isolatedOverrideStore()
+        defer { cleanup() }
+
+        store.set(.people, forSenderEmail: "alerts@linear.app")
+        store.set(.updates, forSenderEmail: "maya@example.com")
+
+        let headers = [
+            Self.header(id: "h1", fromName: "Linear", fromEmail: "alerts@linear.app", subject: "Issue updated"),
+            Self.header(id: "h2", fromName: "Maya", fromEmail: "maya@example.com", subject: "Lunch?"),
+            Self.header(id: "h3", fromName: "Sam", fromEmail: "sam@example.com", subject: "Slides"),
+        ]
+
+        let snapshot = store.overridesSnapshot()
+        for header in headers {
+            let single = PeopleUpdatesClassifier.classify(header: header, senderOverrideStore: store)
+            let batched = PeopleUpdatesClassifier.classify(header: header, overridesSnapshot: snapshot)
+            #expect(batched == single)
+        }
+
+        let counts = PeopleUpdatesCounts.compute(headers: headers, senderOverrideStore: store)
+        #expect(counts == PeopleUpdatesCounts(peopleCount: 2, updatesCount: 1, allCount: 3))
+    }
+
+    @Test("UnifiedInboxListView.NavigationItemsCache reuses cached headers for identical key and buffer")
+    func unifiedNavigationItemsCacheReusesCachedProjection() {
+        let cache = UnifiedInboxListView.NavigationItemsCache()
+        let sourceA = MailSourceID(accountID: "acct-a", mailboxID: "box-a")
+        let sourceB = MailSourceID(accountID: "acct-b", mailboxID: "box-b")
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let items = [
+            UnifiedInboxItem(
+                sourceID: sourceA,
+                folder: inbox,
+                header: Self.header(id: "a-1", fromEmail: "a@example.test"),
+                sourceTitle: "Work",
+                sourceSubtitle: "a@example.test",
+                archiveFolder: nil
+            ),
+            UnifiedInboxItem(
+                sourceID: sourceB,
+                folder: inbox,
+                header: Self.header(id: "b-1", fromEmail: "b@example.test"),
+                sourceTitle: "Personal",
+                sourceSubtitle: "b@example.test",
+                archiveFolder: nil
+            ),
+        ]
+        let key = UnifiedInboxPresentationSnapshotCache.Key(
+            pinnedMessageIDsRaw: "",
+            groupByDate: true,
+            collapsedDateSectionIDs: [],
+            groupByThread: true,
+            activeInboxCategory: .all,
+            inboxClassificationModeRaw: "",
+            workflowVisibilityMode: .active,
+            workflowState: .defaults,
+            mailboxFilter: .none,
+            savedSearchText: "",
+            savedSearchQuery: nil,
+            mailboxSortOrder: .newestFirst,
+            snoozeWakePromotionEligible: false,
+            temporalInvalidationKey: MailboxListTemporalInvalidationKey(
+                expiredSnoozeCount: 0,
+                lastWeekIncludedCount: 0
+            ),
+            calendarDay: Self.now,
+            calendarIdentifier: .gregorian,
+            calendarTimeZoneIdentifier: "UTC",
+            localeIdentifier: "en_US_POSIX"
+        )
+
+        cache.store(items, for: key, sourceItems: items)
+
+        var fallbackCalls = 0
+        let headersA = cache.headers(for: sourceA, key: key, sourceItems: items) {
+            fallbackCalls += 1
+            return items
+        }
+        let headersARepeated = cache.headers(for: sourceA, key: key, sourceItems: items) {
+            fallbackCalls += 1
+            return items
+        }
+        let headersB = cache.headers(for: sourceB, key: key, sourceItems: items) {
+            fallbackCalls += 1
+            return items
+        }
+        #expect(fallbackCalls == 0)
+        #expect(headersA.map(\.id) == ["a-1"])
+        #expect(headersARepeated.map(\.id) == ["a-1"])
+        #expect(headersB.map(\.id) == ["b-1"])
+
+        // A changed key forces fallback recomputation.
+        let differentKey = UnifiedInboxPresentationSnapshotCache.Key(
+            pinnedMessageIDsRaw: "a-1",
+            groupByDate: true,
+            collapsedDateSectionIDs: [],
+            groupByThread: true,
+            activeInboxCategory: .all,
+            inboxClassificationModeRaw: "",
+            workflowVisibilityMode: .active,
+            workflowState: .defaults,
+            mailboxFilter: .none,
+            savedSearchText: "",
+            savedSearchQuery: nil,
+            mailboxSortOrder: .newestFirst,
+            snoozeWakePromotionEligible: false,
+            temporalInvalidationKey: MailboxListTemporalInvalidationKey(
+                expiredSnoozeCount: 0,
+                lastWeekIncludedCount: 0
+            ),
+            calendarDay: Self.now,
+            calendarIdentifier: .gregorian,
+            calendarTimeZoneIdentifier: "UTC",
+            localeIdentifier: "en_US_POSIX"
+        )
+        _ = cache.headers(for: sourceA, key: differentKey, sourceItems: items) {
+            fallbackCalls += 1
+            return items
+        }
+        #expect(fallbackCalls == 1)
+    }
 }

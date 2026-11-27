@@ -24,47 +24,117 @@ public enum InitialsAvatar {
         case dark
     }
 
+    private struct InitialsCacheKey: Hashable {
+        let displayName: String?
+        let email: String
+    }
+
+    private struct ColorIndexCacheKey: Hashable {
+        let email: String
+        let paletteCount: Int
+    }
+
+    private static let cacheLock = NSLock()
+    private nonisolated(unsafe) static var initialsCache: [InitialsCacheKey: String] = [:]
+    private nonisolated(unsafe) static var colorIndexCache: [ColorIndexCacheKey: Int] = [:]
+    private nonisolated(unsafe) static var foregroundStyleCache: [String: ForegroundStyle] = [:]
+    private static let maxSenderCacheEntries = 512
+    private static let maxForegroundCacheEntries = 128
+
     /// Extract one-or-two-letter initials. Tries the display name
     /// first, falls back to the email local-part.
     public static func initials(displayName: String?, email: String) -> String {
-        if let displayName, !displayName.trimmingCharacters(in: .whitespaces).isEmpty {
-            return initials(from: displayName)
+        let key = InitialsCacheKey(displayName: displayName, email: email)
+        if let cached = cacheLock.withLock({ initialsCache[key] }) {
+            return cached
         }
-        let local = email.split(separator: "@").first.map(String.init) ?? email
-        return initials(from: local)
+        let computed: String
+        if let displayName, !displayName.trimmingCharacters(in: .whitespaces).isEmpty {
+            computed = initials(from: displayName)
+        } else {
+            let local = email.split(separator: "@").first.map(String.init) ?? email
+            computed = initials(from: local)
+        }
+        cacheLock.withLock {
+            if initialsCache.count >= maxSenderCacheEntries {
+                initialsCache.removeAll(keepingCapacity: true)
+            }
+            initialsCache[key] = computed
+        }
+        return computed
     }
 
     /// Color palette index for `email`. Stable across runs.
     public static func colorIndex(email: String, paletteCount: Int) -> Int {
         guard paletteCount > 0 else { return 0 }
+        let key = ColorIndexCacheKey(email: email, paletteCount: paletteCount)
+        if let cached = cacheLock.withLock({ colorIndexCache[key] }) {
+            return cached
+        }
         let normalized = email.lowercased()
         let hash = Insecure.MD5.hash(data: Data(normalized.utf8))
         // Take the first byte; cheap and stable enough for a
         // per-sender swatch (we don't need cryptographic strength
         // here, just deterministic spread).
-        let firstByte = Array(hash).first ?? 0
-        return Int(firstByte) % paletteCount
+        let firstByte = hash.withUnsafeBytes { $0.first ?? 0 }
+        let computed = Int(firstByte) % paletteCount
+        cacheLock.withLock {
+            if colorIndexCache.count >= maxSenderCacheEntries {
+                colorIndexCache.removeAll(keepingCapacity: true)
+            }
+            colorIndexCache[key] = computed
+        }
+        return computed
     }
 
     public static func foregroundStyle(forBackgroundHex hex: String) -> ForegroundStyle {
-        guard let luminance = relativeLuminance(hex: hex) else { return .light }
-        return luminance > 0.55 ? .dark : .light
+        if let cached = cacheLock.withLock({ foregroundStyleCache[hex] }) {
+            return cached
+        }
+        let computed: ForegroundStyle
+        if let luminance = relativeLuminance(hex: hex) {
+            computed = luminance > 0.55 ? .dark : .light
+        } else {
+            computed = .light
+        }
+        cacheLock.withLock {
+            if foregroundStyleCache.count >= maxForegroundCacheEntries {
+                foregroundStyleCache.removeAll(keepingCapacity: true)
+            }
+            foregroundStyleCache[hex] = computed
+        }
+        return computed
     }
 
     // MARK: - Internals
 
     static func initials(from raw: String) -> String {
-        let cleaned = raw
-            .replacingOccurrences(of: "[._\\-+]+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let parts = cleaned
-            .split(separator: " ")
-            .filter { !$0.isEmpty }
-        let letters = parts.prefix(2).compactMap { $0.first }.map(String.init)
-        if letters.isEmpty {
-            return cleaned.first.map { String($0).uppercased() } ?? "?"
+        var cleaned = String()
+        cleaned.reserveCapacity(raw.count)
+        var lastWasSeparator = false
+        for character in raw {
+            if character == "." || character == "_" || character == "-" || character == "+" {
+                if !lastWasSeparator {
+                    cleaned.append(" ")
+                    lastWasSeparator = true
+                }
+            } else {
+                cleaned.append(character)
+                lastWasSeparator = false
+            }
         }
-        return letters.joined().uppercased()
+        let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+        var result = ""
+        for part in parts.prefix(2) {
+            if let first = part.first {
+                result.append(first)
+            }
+        }
+        if result.isEmpty {
+            return trimmed.first.map { String($0).uppercased() } ?? "?"
+        }
+        return result.uppercased()
     }
 
     private static func relativeLuminance(hex: String) -> Double? {

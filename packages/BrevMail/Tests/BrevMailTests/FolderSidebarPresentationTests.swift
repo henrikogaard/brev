@@ -796,4 +796,28 @@ struct FolderSidebarPresentationTests {
         #expect(!state.isExpanded("projects", sourceID: sourceID, folders: folders))
         #expect(try encoder.encode(state) == persistedBefore)
     }
+
+    @Test("MailboxFavorites caches repeated decodes of identical data and updates when data changes")
+    func mailboxFavoritesDecodeCacheRoundTrip() {
+        #expect(MailboxFavorites(data: Data()) == MailboxFavorites())
+
+        var favorites = MailboxFavorites()
+        let folderID = MailboxFavoriteID.folder(
+            SourceFolderID(sourceID: MailSourceID(accountID: "acct-1", mailboxID: "box-1"), folderID: "sent")
+        )
+        favorites.setVisible(true, id: folderID)
+        favorites.reorder([.allInboxes, folderID])
+
+        let encoded = favorites.data
+        let first = MailboxFavorites(data: encoded)
+        let second = MailboxFavorites(data: encoded)
+        #expect(first == favorites)
+        #expect(second == favorites)
+
+        var updated = favorites
+        updated.setVisible(false, id: folderID)
+        let updatedDecoded = MailboxFavorites(data: updated.data)
+        #expect(updatedDecoded == updated)
+        #expect(updatedDecoded != first)
+    }
 }

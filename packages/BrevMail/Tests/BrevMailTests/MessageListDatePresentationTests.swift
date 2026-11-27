@@ -236,6 +236,91 @@ struct MessageListDatePresentationTests {
         ) == "Unknown date")
     }
 
+    @Test("spoken and compact relative labels hit quantized age-bucket caches across seconds")
+    func relativeLabelCachesHitAcrossQuantizedAgeBuckets() {
+        let baseRef = Self.date(year: 2033, month: 4, day: 10, hour: 12, minute: 0)
+        let fiveMinutesAgo = baseRef.addingTimeInterval(-5 * 60)
+        let twoHoursAgo = baseRef.addingTimeInterval(-2 * 3600)
+        let threeDaysAgo = baseRef.addingTimeInterval(-3 * 86400)
+
+        let pairs: [(date: Date, laterRef: Date, expectedSpoken: String)] = [
+            (fiveMinutesAgo, baseRef.addingTimeInterval(25), "5 minutes ago"),
+            (twoHoursAgo, baseRef.addingTimeInterval(20 * 60), "2 hours ago"),
+            (threeDaysAgo, baseRef.addingTimeInterval(6 * 3600), "3 days ago"),
+        ]
+
+        for entry in pairs {
+            let firstCompact = MessageListDatePresentation.compactRelativeLabel(
+                for: entry.date,
+                referenceDate: baseRef,
+                calendar: Self.calendar,
+                locale: Self.locale
+            )
+            #if DEBUG
+            let compactHitsBefore = MessageListDatePresentation.compactRelativeLabelCacheHitCountForTesting(
+                for: entry.date,
+                referenceDate: entry.laterRef,
+                calendar: Self.calendar,
+                locale: Self.locale
+            )
+            #endif
+            let secondCompact = MessageListDatePresentation.compactRelativeLabel(
+                for: entry.date,
+                referenceDate: entry.laterRef,
+                calendar: Self.calendar,
+                locale: Self.locale
+            )
+            #expect(secondCompact == firstCompact)
+            #if DEBUG
+            #expect(
+                MessageListDatePresentation.compactRelativeLabelCacheHitCountForTesting(
+                    for: entry.date,
+                    referenceDate: entry.laterRef,
+                    calendar: Self.calendar,
+                    locale: Self.locale
+                ) == compactHitsBefore + 1
+            )
+            #endif
+
+            let firstSpoken = MessageListDatePresentation.accessibilityLabel(
+                for: entry.date,
+                showsAbsoluteArrivalTime: false,
+                referenceDate: baseRef,
+                calendar: Self.calendar,
+                locale: Self.locale,
+                timeZone: Self.timeZone
+            )
+            #expect(firstSpoken == entry.expectedSpoken)
+            #if DEBUG
+            let spokenHitsBefore = MessageListDatePresentation.spokenRelativeLabelCacheHitCountForTesting(
+                for: entry.date,
+                referenceDate: entry.laterRef,
+                calendar: Self.calendar,
+                locale: Self.locale
+            )
+            #endif
+            let secondSpoken = MessageListDatePresentation.accessibilityLabel(
+                for: entry.date,
+                showsAbsoluteArrivalTime: false,
+                referenceDate: entry.laterRef,
+                calendar: Self.calendar,
+                locale: Self.locale,
+                timeZone: Self.timeZone
+            )
+            #expect(secondSpoken == firstSpoken)
+            #if DEBUG
+            #expect(
+                MessageListDatePresentation.spokenRelativeLabelCacheHitCountForTesting(
+                    for: entry.date,
+                    referenceDate: entry.laterRef,
+                    calendar: Self.calendar,
+                    locale: Self.locale
+                ) == spokenHitsBefore + 1
+            )
+            #endif
+        }
+    }
+
     private static var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone

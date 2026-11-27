@@ -122,18 +122,20 @@ private struct MailToolbarScrollUnderModifier: ViewModifier {
             .clipped()
             .padding(.top, -toolbarHeight)
             .overlay(alignment: .top) {
-                Group {
-                    if reduceTransparency {
-                        theme.bgPrimary.color
-                    } else {
-                        // Blur only: a theme wash here paints the band a
-                        // different colour from the translucent pane below.
-                        MailWindowScrollEdgeBlur(fadesAtBottom: false)
+                if toolbarHeight > 0 {
+                    Group {
+                        if reduceTransparency {
+                            theme.bgPrimary.color
+                        } else {
+                            // Blur only: a theme wash here paints the band a
+                            // different colour from the translucent pane below.
+                            MailWindowScrollEdgeBlur(fadesAtBottom: false)
+                        }
                     }
+                    .frame(height: toolbarHeight)
+                    .offset(y: -toolbarHeight)
+                    .allowsHitTesting(false)
                 }
-                .frame(height: toolbarHeight)
-                .offset(y: -toolbarHeight)
-                .allowsHitTesting(false)
             }
             .onGeometryChange(for: CGFloat.self) { proxy in
                 max(0, proxy.safeAreaInsets.top)
@@ -299,7 +301,7 @@ final class MailScrollEdgeBlurView: NSView {
 
     /// A 1pt-wide gradient strip: opaque from the top through `fadeStart`,
     /// fading to clear at the bottom of the band.
-    private static func fadeMaskImage() -> NSImage {
+    private static let cachedFadeMaskImage: NSImage = {
         let size = NSSize(width: 1, height: bandHeight)
         let image = NSImage(size: size, flipped: true) { rect in
             guard let gradient = NSGradient(
@@ -313,6 +315,10 @@ final class MailScrollEdgeBlurView: NSView {
         }
         image.resizingMode = .stretch
         return image
+    }()
+
+    private static func fadeMaskImage() -> NSImage {
+        cachedFadeMaskImage
     }
 
     @available(*, unavailable)
@@ -327,18 +333,26 @@ final class MailScrollEdgeBlurView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        hasReducedBackdrop = false
+        reducedRootLayer = nil
         scheduleReduction()
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         // Appearance changes rebuild the material's layers; re-reduce.
+        hasReducedBackdrop = false
+        reducedRootLayer = nil
         scheduleReduction()
     }
 
     override func layout() {
         super.layout()
-        scheduleReduction()
+        // Avoid re-walking the CALayer tree and mutating filters on every layout
+        // pass once the backdrop is already reduced for the current root layer.
+        if !hasReducedBackdrop || reducedRootLayer !== effectView.layer {
+            scheduleReduction()
+        }
     }
 
     private static let logger = Logger(
@@ -351,15 +365,21 @@ final class MailScrollEdgeBlurView: NSView {
 
     private var retryState = MailScrollEdgeBlurRetryState()
     private var hasLoggedActiveOutcome = false
+    private var hasReducedBackdrop = false
+    private weak var reducedRootLayer: CALayer?
+    private var isReductionScheduled = false
 
     /// The material builds its layer tree lazily, after it joins a window, so
-    /// reduction runs on the next turn — and is cheap enough to re-run on
-    /// every trigger.
+    /// reduction runs on the next turn, coalesced per trigger.
     private func scheduleReduction() {
         guard window != nil else { return }
         retryState.reset()
+        guard !isReductionScheduled else { return }
+        isReductionScheduled = true
         DispatchQueue.main.async { [weak self] in
-            self?.reduceToBareBackdrop()
+            guard let self else { return }
+            isReductionScheduled = false
+            reduceToBareBackdrop()
         }
     }
 
@@ -405,6 +425,8 @@ final class MailScrollEdgeBlurView: NSView {
         }
         if foundBackdrop {
             retryState.reset()
+            hasReducedBackdrop = true
+            reducedRootLayer = root
             isHidden = false
             // One notice per band instance: reading "active" (or the
             // fail-closed error) from the unified log is the only way to

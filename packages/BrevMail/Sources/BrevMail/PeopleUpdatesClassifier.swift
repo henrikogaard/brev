@@ -119,6 +119,23 @@ final class InboxSenderCategoryOverrideStore: Equatable, @unchecked Sendable {
         }
     }
 
+    /// Reads all remembered People/Updates overrides once so batch classification
+    /// avoids taking `defaultsLock` and querying `UserDefaults` per message.
+    func overridesSnapshot() -> [String: PeopleUpdatesBucket] {
+        Self.defaultsLock.withLock {
+            guard let current = defaults.dictionary(forKey: Self.key) as? [String: String],
+                  !current.isEmpty else { return [:] }
+            var result: [String: PeopleUpdatesBucket] = [:]
+            result.reserveCapacity(current.count)
+            for (email, raw) in current {
+                if let bucket = PeopleUpdatesBucket(rawValue: raw) {
+                    result[email] = bucket
+                }
+            }
+            return result
+        }
+    }
+
     /// Remembers `bucket` for every message from `email`, merging with any
     /// concurrent writes from other windows.
     func set(_ bucket: PeopleUpdatesBucket, forSenderEmail email: String) {
@@ -318,8 +335,43 @@ enum PeopleUpdatesClassifier {
         senderOverrideStore: InboxSenderCategoryOverrideStore = InboxSenderCategoryOverrideStore()
     ) -> PeopleUpdatesClassificationResult {
         let senderEmail = header.from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let override = senderEmail.isEmpty ? nil : senderOverrideStore.bucket(forSenderEmail: senderEmail)
+        return classifyNormalized(
+            header: header,
+            senderEmail: senderEmail,
+            override: override,
+            signals: signals,
+            repliedSenderEmails: repliedSenderEmails
+        )
+    }
 
-        if let override = senderOverrideStore.bucket(forSenderEmail: senderEmail) {
+    /// Batch classification using a pre-snapshotted override dictionary so callers
+    /// avoid taking `UserDefaults` locks once per message.
+    static func classify(
+        header: MessageHeader,
+        signals: PeopleUpdatesHeaderSignals = PeopleUpdatesHeaderSignals(),
+        repliedSenderEmails: Set<String> = [],
+        overridesSnapshot: [String: PeopleUpdatesBucket]
+    ) -> PeopleUpdatesClassificationResult {
+        let senderEmail = header.from.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let override = senderEmail.isEmpty ? nil : overridesSnapshot[senderEmail]
+        return classifyNormalized(
+            header: header,
+            senderEmail: senderEmail,
+            override: override,
+            signals: signals,
+            repliedSenderEmails: repliedSenderEmails
+        )
+    }
+
+    private static func classifyNormalized(
+        header: MessageHeader,
+        senderEmail: String,
+        override: PeopleUpdatesBucket?,
+        signals: PeopleUpdatesHeaderSignals,
+        repliedSenderEmails: Set<String>
+    ) -> PeopleUpdatesClassificationResult {
+        if let override {
             return PeopleUpdatesClassificationResult(
                 bucket: override,
                 signal: .senderOverride(override)
@@ -389,6 +441,7 @@ struct PeopleUpdatesCounts: Equatable, Sendable {
         repliedSenderEmails: Set<String> = [],
         senderOverrideStore: InboxSenderCategoryOverrideStore = InboxSenderCategoryOverrideStore()
     ) -> PeopleUpdatesCounts {
+        let overrides = senderOverrideStore.overridesSnapshot()
         var people = 0
         var updates = 0
         for header in headers {
@@ -396,7 +449,7 @@ struct PeopleUpdatesCounts: Equatable, Sendable {
                 header: header,
                 signals: signalsByMessageID[header.id] ?? PeopleUpdatesHeaderSignals(),
                 repliedSenderEmails: repliedSenderEmails,
-                senderOverrideStore: senderOverrideStore
+                overridesSnapshot: overrides
             ).bucket
             switch bucket {
             case .people: people += 1
@@ -502,6 +555,13 @@ enum UpdatesSenderBundler {
             sourceID: sourceID,
             effectiveDateOverrides: effectiveDateOverrides
         )
+        return selectableHeaders(fromBundles: bundles, expandedBundleIDs: expandedBundleIDs)
+    }
+
+    static func selectableHeaders(
+        fromBundles bundles: [UpdatesSenderBundle],
+        expandedBundleIDs: Set<String>
+    ) -> [MessageHeader] {
         var result: [MessageHeader] = []
         for entry in bundles where entry.headers.count == 1 || expandedBundleIDs.contains(entry.id) {
             result.append(contentsOf: entry.headers)
