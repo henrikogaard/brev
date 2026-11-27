@@ -12,7 +12,93 @@
 
 import BrevThemes
 import CoreGraphics
+import Foundation
+import Observation
 import SwiftUI
+
+/// Shared main-actor observer for avatar preferences so scrolling cells do not
+/// each register and tear down 4 `@AppStorage` KVO observers, and only sync
+/// preferences to an `AvatarResolver` when they actually change.
+@MainActor
+@Observable
+final class AvatarPreferencesObserver {
+    static let shared = AvatarPreferencesObserver()
+
+    private(set) var preferences: AvatarPreferences
+
+    @ObservationIgnored
+    private let defaults: UserDefaults
+
+    @ObservationIgnored
+    private var observer: NSObjectProtocol?
+
+    private final class WeakResolverState {
+        weak var resolver: AvatarResolver?
+        var lastSyncedPreferences: AvatarPreferences
+
+        init(resolver: AvatarResolver, preferences: AvatarPreferences) {
+            self.resolver = resolver
+            lastSyncedPreferences = preferences
+        }
+    }
+
+    @ObservationIgnored
+    private var syncedResolvers: [ObjectIdentifier: WeakResolverState] = [:]
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        preferences = Self.readPreferences(from: defaults)
+        observer = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: defaults,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.refresh()
+            }
+        }
+    }
+
+    deinit {
+        if let observer {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    func refresh() {
+        let latest = Self.readPreferences(from: defaults)
+        if latest != preferences {
+            preferences = latest
+        }
+    }
+
+    func syncPreferencesIfNeeded(_ preferences: AvatarPreferences, to resolver: AvatarResolver) async {
+        let id = ObjectIdentifier(resolver)
+        if let existing = syncedResolvers[id],
+           existing.resolver === resolver,
+           existing.lastSyncedPreferences == preferences {
+            return
+        }
+        await resolver.updatePreferences(preferences)
+        if syncedResolvers.count >= 16 {
+            syncedResolvers = syncedResolvers.filter { $0.value.resolver != nil }
+        }
+        syncedResolvers[id] = WeakResolverState(resolver: resolver, preferences: preferences)
+    }
+
+    private static func readPreferences(from defaults: UserDefaults) -> AvatarPreferences {
+        let useContacts = defaults.object(forKey: "avatar.useContacts") as? Bool ?? true
+        let useGravatar = defaults.bool(forKey: "avatar.useGravatar")
+        let useBIMI = defaults.bool(forKey: "avatar.useBIMI")
+        let useFavicon = defaults.bool(forKey: "avatar.useFavicon")
+        return AvatarPreferences(
+            useContacts: useContacts,
+            useGravatar: useGravatar,
+            useBIMI: useBIMI,
+            useFavicon: useFavicon
+        )
+    }
+}
 
 /// SwiftUI avatar view. Renders an `AvatarResolver` result inside a
 /// circular frame, falling back to deterministic colored initials
@@ -24,19 +110,14 @@ import SwiftUI
 public struct BrevAvatarView: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.displayScale) private var displayScale
-    @AppStorage("avatar.useContacts") private var useContacts = true
-    @AppStorage("avatar.useGravatar") private var useGravatar = false
-    @AppStorage("avatar.useBIMI") private var useBIMI = false
-    @AppStorage("avatar.useFavicon") private var useFavicon = false
 
     private let email: String
     private let displayName: String?
     private let size: CGFloat
     private let resolver: AvatarResolver
+    private let preferencesObserver = AvatarPreferencesObserver.shared
 
-    @State private var avatar: ResolvedAvatar?
-    @State private var decodedImage: CGImage?
-    @State private var avatarImageRevision = 0
+    @State private var decodedEntry: (key: AvatarDisplayImageCache.Key, generation: Int, expiresAt: Date, image: CGImage)?
 
     public init(
         email: String,
@@ -51,9 +132,57 @@ public struct BrevAvatarView: View {
     }
 
     public var body: some View {
-        ZStack {
-            initialsLayer
-            imageLayer
+        let now = Date()
+        let preferences = preferencesObserver.preferences
+        let currentPixelDimension = pixelDimension
+        let resolverID = ObjectIdentifier(resolver).hashValue
+        let cacheGeneration = AvatarDisplayImageCache.shared.generation(forResolverID: resolverID)
+        let cacheKey = AvatarDisplayImageCache.Key(
+            resolverID: resolverID,
+            email: email,
+            preferences: preferences,
+            pixelDimension: currentPixelDimension
+        )
+        let isLocalEntryExpired = if let decodedEntry,
+                                     decodedEntry.key == cacheKey,
+                                     decodedEntry.generation == cacheGeneration {
+            decodedEntry.expiresAt <= now
+        } else {
+            false
+        }
+        let cachedImage: CGImage? = if let decodedEntry,
+                                       decodedEntry.key == cacheKey,
+                                       decodedEntry.generation == cacheGeneration,
+                                       !isLocalEntryExpired {
+            decodedEntry.image
+        } else {
+            AvatarDisplayImageCache.shared.image(for: cacheKey, now: now)
+        }
+        let taskRequest = AvatarImageLoadRequest(
+            email: email,
+            displayName: displayName,
+            preferences: preferences,
+            pixelDimension: currentPixelDimension,
+            cacheGeneration: cacheGeneration,
+            needsReloadAfterExpiry: isLocalEntryExpired && cachedImage == nil
+        )
+
+        Group {
+            if let cachedImage {
+                // Keep the themed circle swatch behind transparent sender logos
+                // without running initials text extraction or rendering letters behind the logo.
+                ZStack {
+                    Circle()
+                        .fill(avatarSwatch.color)
+                    Image(decorative: cachedImage, scale: 1)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: size, height: size)
+                        .clipShape(Circle())
+                }
+            } else {
+                initialsLayer
+            }
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
@@ -61,68 +190,54 @@ public struct BrevAvatarView: View {
             Circle()
                 .strokeBorder(theme.border.color, lineWidth: 0.5)
         )
-        .task(id: resolutionRequest) {
-            await resolver.updatePreferences(resolutionRequest.preferences)
-            avatar = await resolver.resolve(email: email, displayName: displayName)
-            avatarImageRevision &+= 1
-        }
-        .task(id: avatarImageRequest) {
-            decodedImage = await AvatarImageDecoder.shared.thumbnail(
-                from: avatar?.imageData,
-                maximumPixelDimension: pixelDimension
+        .task(id: taskRequest) {
+            if let existing = AvatarDisplayImageCache.shared.entry(for: cacheKey) {
+                if decodedEntry?.key != cacheKey
+                    || decodedEntry?.generation != cacheGeneration
+                    || decodedEntry?.expiresAt != existing.expiresAt {
+                    decodedEntry = (cacheKey, cacheGeneration, existing.expiresAt, existing.image)
+                }
+                return
+            }
+            await preferencesObserver.syncPreferencesIfNeeded(preferences, to: resolver)
+            let resolution = await resolver.resolveWithExpiry(email: email, displayName: displayName)
+            guard !Task.isCancelled else { return }
+            let thumbnail = await AvatarImageDecoder.shared.thumbnail(
+                from: resolution.avatar.imageData,
+                maximumPixelDimension: currentPixelDimension
             )
-            // Revision 0 runs before the first resolve and knows nothing yet.
-            if avatarImageRevision > 0 {
-                AvatarDisplayImageCache.shared.store(decodedImage, for: displayCacheKey)
+            guard !Task.isCancelled else { return }
+            let latestGeneration = AvatarDisplayImageCache.shared.generation(forResolverID: resolverID)
+            guard latestGeneration == cacheGeneration else { return }
+            AvatarDisplayImageCache.shared.store(
+                thumbnail,
+                for: cacheKey,
+                expiresAt: resolution.expiresAt
+            )
+            if let thumbnail {
+                decodedEntry = (cacheKey, cacheGeneration, resolution.expiresAt, thumbnail)
+            } else if decodedEntry?.key == cacheKey {
+                decodedEntry = nil
             }
         }
-    }
-
-    private var resolutionRequest: AvatarViewResolutionRequest {
-        AvatarViewResolutionRequest(
-            email: email,
-            displayName: displayName,
-            preferences: AvatarPreferences(
-                useContacts: useContacts,
-                useGravatar: useGravatar,
-                useBIMI: useBIMI,
-                useFavicon: useFavicon
-            )
-        )
     }
 
     private var pixelDimension: Int {
         AvatarImageDecodingPolicy.maximumPixelDimension(displaySize: size, displayScale: displayScale)
     }
 
-    private var displayCacheKey: AvatarDisplayImageCache.Key {
-        AvatarDisplayImageCache.Key(
-            resolverID: ObjectIdentifier(resolver).hashValue,
-            email: email,
-            preferences: resolutionRequest.preferences,
-            pixelDimension: pixelDimension
-        )
-    }
-
-    private var avatarImageRequest: AvatarImageDecodeRequest {
-        AvatarImageDecodeRequest(
-            revision: avatarImageRevision,
-            displaySize: size,
-            displayScale: displayScale
-        )
+    private var avatarSwatch: BrevColor {
+        let palette = theme.avatarPalette
+        return palette.isEmpty
+            ? theme.accent
+            : palette[InitialsAvatar.colorIndex(email: email, paletteCount: palette.count)]
     }
 
     @ViewBuilder
     private var initialsLayer: some View {
         let initials = InitialsAvatar.initials(displayName: displayName, email: email)
-        let palette = theme.avatarPalette
-        let background = palette.isEmpty
-            ? theme.accent.color
-            : palette[InitialsAvatar.colorIndex(email: email, paletteCount: palette.count)].color
-        let backgroundHex = palette.isEmpty
-            ? theme.accent.hex
-            : palette[InitialsAvatar.colorIndex(email: email, paletteCount: palette.count)].hex
-        let foregroundStyle = InitialsAvatar.foregroundStyle(forBackgroundHex: backgroundHex)
+        let swatch = avatarSwatch
+        let foregroundStyle = InitialsAvatar.foregroundStyle(forBackgroundHex: swatch.hex)
         let foreground = switch (foregroundStyle, theme.mode) {
         case (.dark, .light), (.light, .dark):
             theme.textPrimary.color
@@ -130,28 +245,20 @@ public struct BrevAvatarView: View {
             theme.bgPrimary.color
         }
         Circle()
-            .fill(background)
+            .fill(swatch.color)
             .overlay(
                 Text(initials)
                     .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
                     .foregroundStyle(foreground)
             )
     }
-
-    @ViewBuilder
-    private var imageLayer: some View {
-        if let image = decodedImage ?? AvatarDisplayImageCache.shared.image(for: displayCacheKey) {
-            Image(decorative: image, scale: 1)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: size, height: size)
-                .clipShape(Circle())
-        }
-    }
 }
 
-private struct AvatarImageDecodeRequest: Hashable {
-    let revision: Int
-    let displaySize: CGFloat
-    let displayScale: CGFloat
+private struct AvatarImageLoadRequest: Hashable {
+    let email: String
+    let displayName: String?
+    let preferences: AvatarPreferences
+    let pixelDimension: Int
+    let cacheGeneration: Int
+    let needsReloadAfterExpiry: Bool
 }

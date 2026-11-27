@@ -27,6 +27,7 @@ final class UnifiedInboxPresentationSnapshotCache {
         let groupByThread: Bool
         let activeInboxCategory: InboxCategory
         let inboxClassificationModeRaw: String
+        var inboxCategoryOverrideRevision = 0
         let workflowVisibilityMode: LocalMessageWorkflowVisibilityMode
         let workflowState: LocalMessageWorkflowState
         let mailboxFilter: MailboxFilterQuery

@@ -11,6 +11,7 @@
  */
 
 @testable import BrevAvatars
+import Foundation
 import Testing
 
 @Suite("Initials avatar contrast")
@@ -23,5 +24,42 @@ struct InitialsAvatarContrastTests {
     @Test("dark fallback colors use light foreground")
     func darkFallbackColorsUseLightForeground() {
         #expect(InitialsAvatar.foregroundStyle(forBackgroundHex: "#1D1F21") == .light)
+    }
+
+    @Test("initials extraction splits punctuation separators without regex and memoizes consistently")
+    func initialsExtractionAndColorIndexAreDeterministic() {
+        #expect(InitialsAvatar.initials(displayName: "Ada Lovelace", email: "ada@example.test") == "AL")
+        #expect(InitialsAvatar.initials(displayName: "  grace_hopper-dev  ", email: "g@example.test") == "GH")
+        #expect(InitialsAvatar.initials(displayName: nil, email: "first.last+tag@example.test") == "FL")
+        #expect(InitialsAvatar.initials(displayName: "...", email: "...") == "?")
+        #expect(InitialsAvatar.initials(displayName: "Ada Lovelace", email: "ada@example.test") == "AL")
+
+        let firstIndex = InitialsAvatar.colorIndex(email: "Ada@Example.Test", paletteCount: 8)
+        let secondIndex = InitialsAvatar.colorIndex(email: "ada@example.test", paletteCount: 8)
+        let repeatedIndex = InitialsAvatar.colorIndex(email: "Ada@Example.Test", paletteCount: 8)
+        #expect(firstIndex == secondIndex)
+        #expect(firstIndex == repeatedIndex)
+        #expect((0 ..< 8).contains(firstIndex))
+        #expect(InitialsAvatar.colorIndex(email: "ada@example.test", paletteCount: 0) == 0)
+    }
+
+    @Test("shared avatar preferences observer tracks UserDefaults changes")
+    @MainActor
+    func preferencesObserverTracksChanges() throws {
+        let suite = "AvatarPreferencesObserverTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let observer = AvatarPreferencesObserver(defaults: defaults)
+        #expect(observer.preferences == .default)
+
+        defaults.set(true, forKey: "avatar.useGravatar")
+        observer.refresh()
+        #expect(observer.preferences.useGravatar)
+        #expect(observer.preferences.useContacts)
+
+        defaults.set(false, forKey: "avatar.useContacts")
+        observer.refresh()
+        #expect(!observer.preferences.useContacts)
     }
 }

@@ -168,19 +168,27 @@ public actor AvatarResolver {
     /// Resolve an avatar for `email`. Returns immediately from cache
     /// if present; otherwise walks the cascade and caches the result.
     public func resolve(email: String, displayName: String?) async -> ResolvedAvatar {
+        await resolveWithExpiry(email: email, displayName: displayName).avatar
+    }
+
+    /// Resolves an avatar along with its cache expiration date so UI thumbnail
+    /// caches honor the same source-specific TTL as the resolver.
+    func resolveWithExpiry(email: String, displayName: String?) async -> (avatar: ResolvedAvatar, expiresAt: Date) {
         let key = Self.normalize(email)
         let now = Date()
         if var entry = cache[key] {
             guard entry.expiresAt > now else {
                 cache.removeValue(forKey: key)
-                return await resolve(email: email, displayName: displayName)
+                return await resolveWithExpiry(email: email, displayName: displayName)
             }
             entry.lastAccessedAt = now
             cache[key] = entry
-            return entry.avatar
+            return (entry.avatar, entry.expiresAt)
         }
         if let pending = inFlight[key] {
-            return await pending.value
+            let avatar = await pending.value
+            let expiresAt = cache[key]?.expiresAt ?? Date().addingTimeInterval(Self.cacheTTL(for: avatar.source))
+            return (avatar, expiresAt)
         }
         // Concurrency limiter: wait for a slot before starting new work.
         // Cached results and in-flight dedup bypass this, so the limit
@@ -197,13 +205,15 @@ public actor AvatarResolver {
                 entry.lastAccessedAt = resumedAt
                 cache[key] = entry
                 releaseResolutionSlot()
-                return entry.avatar
+                return (entry.avatar, entry.expiresAt)
             }
             cache.removeValue(forKey: key)
         }
         if let pending = inFlight[key] {
             releaseResolutionSlot()
-            return await pending.value
+            let avatar = await pending.value
+            let expiresAt = cache[key]?.expiresAt ?? Date().addingTimeInterval(Self.cacheTTL(for: avatar.source))
+            return (avatar, expiresAt)
         }
 
         defer { releaseResolutionSlot() }
@@ -263,10 +273,10 @@ public actor AvatarResolver {
         }
         inFlight[key] = task
         let avatar = await task.value
+        let ttl = Self.cacheTTL(for: avatar.source)
+        let expiresAt = Date().addingTimeInterval(ttl)
         if preferenceVersion == version {
             inFlight[key] = nil
-            let ttl = Self.cacheTTL(for: avatar.source)
-            let expiresAt = Date().addingTimeInterval(ttl)
             let cachedAt = Date()
             if cache.count >= maxInMemoryCacheEntries {
                 evictExpiredEntries(now: cachedAt)
@@ -284,7 +294,7 @@ public actor AvatarResolver {
                 now: Date()
             )
         }
-        return avatar
+        return (avatar, expiresAt)
     }
 
     /// Acquires a concurrency slot, suspending if the limit is reached.
@@ -315,10 +325,14 @@ public actor AvatarResolver {
     /// Drop the cache without changing preferences.
     public func clearCache() async {
         await avatarCache.clear()
-        invalidateCachedWork()
+        invalidateCachedWork(notifyDisplayCache: false)
+        let resolverID = ObjectIdentifier(self).hashValue
+        await MainActor.run {
+            AvatarDisplayImageCache.shared.invalidate(resolverID: resolverID)
+        }
     }
 
-    private func invalidateCachedWork() {
+    private func invalidateCachedWork(notifyDisplayCache: Bool = true) {
         preferenceVersion += 1
         // Cached initials from a stricter policy must not mask newly
         // enabled sources, and in-flight work may have captured stale
@@ -326,6 +340,12 @@ public actor AvatarResolver {
         cache.removeAll()
         inFlight.values.forEach { $0.cancel() }
         inFlight.removeAll()
+        if notifyDisplayCache {
+            let resolverID = ObjectIdentifier(self).hashValue
+            Task { @MainActor in
+                AvatarDisplayImageCache.shared.invalidate(resolverID: resolverID)
+            }
+        }
     }
 
     private func evictExpiredEntries(now: Date) {

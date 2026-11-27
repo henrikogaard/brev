@@ -213,8 +213,12 @@ public struct MessageListView: View {
     @State private var snoozeWakeScheduleRevision = 0
     /// Precomputed per-thread header groups & fingerprints for O(1) per-row proactive triage lookup.
     @State private var triageThreadIndex = ProactiveTriageThreadIndex.empty
-    /// Row IDs currently visible in the scroll viewport, used to advance proactive triage on scroll.
-    @State private var visibleTriageRowIDs: Set<MessageHeader.ID> = []
+    /// Unobserved visible-row tracker so scroll appear/disappear never invalidates `List.body`.
+    @State private var triageViewportTracker = ProactiveTriageViewportTracker()
+    /// Memoizes `PeopleUpdatesCounts.compute` per headers buffer + override/signal revision.
+    @State private var peopleUpdatesCountsCache = PeopleUpdatesCountsCache()
+    /// Memoizes `UpdatesSenderBundler.bundle` per filtered headers buffer + overrides.
+    @State private var updatesBundlesCache = UpdatesSenderBundlesCache()
 
     public init(
         navigation: MailNavigationState,
@@ -289,7 +293,7 @@ public struct MessageListView: View {
             }
             .onChange(of: folder?.id) { _, _ in
                 invalidatePendingSnoozeLookup()
-                visibleTriageRowIDs.removeAll()
+                triageViewportTracker.reset()
                 rebuildProactiveTriageThreadIndex()
             }
             .onChange(of: scenePhase) { _, phase in
@@ -307,6 +311,7 @@ public struct MessageListView: View {
                 scheduleProactiveOnDeviceTriageIfEligible()
             }
             .onDisappear {
+                triageViewportTracker.cancelPending()
                 triageStore?.cancelScheduledTasks(forOwner: triageOwnerID)
             }
             // Not a `.task(id:)`: that also runs on appear, where the `reloadKey` task has
@@ -319,7 +324,11 @@ public struct MessageListView: View {
                 Task { await reloadForSearchChange() }
             }
         #if os(iOS)
-            .toolbar { selectionToolbar(visibleHeaders: renderedSelectableHeaders(in: presentationSnapshot)) }
+            .toolbar {
+                if navigation.isInSelectionMode {
+                    selectionToolbar(visibleHeaders: renderedSelectableHeaders(in: presentationSnapshot))
+                }
+            }
         #endif
             .confirmationDialog(
                 swipeMoreHeader?.subject ?? "",
@@ -840,14 +849,19 @@ public struct MessageListView: View {
     }
 
     private var peopleUpdatesCounts: PeopleUpdatesCounts {
-        _ = inboxCategoryOverrideRevision
-        _ = peopleUpdatesSignalsRevision
-        return PeopleUpdatesCounts.compute(
+        peopleUpdatesCountsCache.counts(
             headers: headers,
-            signalsByMessageID: peopleUpdatesSignalsByMessageID,
-            repliedSenderEmails: peopleUpdatesRepliedSenders,
-            senderOverrideStore: senderCategoryOverrideStore
-        )
+            overrideRevision: inboxCategoryOverrideRevision,
+            signalsRevision: peopleUpdatesSignalsRevision,
+            overrideStore: senderCategoryOverrideStore
+        ) {
+            PeopleUpdatesCounts.compute(
+                headers: headers,
+                signalsByMessageID: peopleUpdatesSignalsByMessageID,
+                repliedSenderEmails: peopleUpdatesRepliedSenders,
+                senderOverrideStore: senderCategoryOverrideStore
+            )
+        }
     }
 
     private func peopleUpdatesFilteredHeaders(from candidates: [MessageHeader]) -> [MessageHeader] {
@@ -855,12 +869,13 @@ public struct MessageListView: View {
         _ = inboxCategoryOverrideRevision
         _ = peopleUpdatesSignalsRevision
         let desired: PeopleUpdatesBucket = activePeopleUpdatesTab == .people ? .people : .updates
+        let overrides = senderCategoryOverrideStore.overridesSnapshot()
         return candidates.filter { header in
             PeopleUpdatesClassifier.classify(
                 header: header,
                 signals: peopleUpdatesSignalsByMessageID[header.id] ?? PeopleUpdatesHeaderSignals(),
                 repliedSenderEmails: peopleUpdatesRepliedSenders,
-                senderOverrideStore: senderCategoryOverrideStore
+                overridesSnapshot: overrides
             ).bucket == desired
         }
     }
@@ -900,10 +915,26 @@ public struct MessageListView: View {
         !(showsPeopleUpdatesBar && activePeopleUpdatesTab == .updates)
     }
 
+    private func cachedUpdatesBundles(
+        in presentation: MessageListPresentationSnapshot
+    ) -> [UpdatesSenderBundle] {
+        updatesBundlesCache.bundles(
+            headers: presentation.filteredUngroupedHeaders,
+            sourceID: sourceID,
+            effectiveDateOverrides: presentation.ungroupedDateOverrides
+        )
+    }
+
     private func renderedSelectableHeaders(
         in presentation: MessageListPresentationSnapshot
     ) -> [MessageHeader] {
-        PeopleUpdatesListLayoutPolicy.selectableHeaders(
+        if showsPeopleUpdatesBar && activePeopleUpdatesTab == .updates {
+            return UpdatesSenderBundler.selectableHeaders(
+                fromBundles: cachedUpdatesBundles(in: presentation),
+                expandedBundleIDs: expandedUpdateBundleIDs
+            )
+        }
+        return PeopleUpdatesListLayoutPolicy.selectableHeaders(
             in: presentation,
             showsPeopleUpdatesBar: showsPeopleUpdatesBar,
             activeTab: activePeopleUpdatesTab,
@@ -916,17 +947,14 @@ public struct MessageListView: View {
     @ViewBuilder
     private func peopleUpdatesListRows(
         presentation: MessageListPresentationSnapshot,
-        selectedRowID: MessageHeader.ID?
+        selectedRowID: MessageHeader.ID?,
+        signInCodeSettings: SignInCodeSettings
     ) -> some View {
         if activePeopleUpdatesTab == .updates {
             // Build bundles strictly from filtered ungrouped Updates headers
             // before thread-context expansion adds non-Updates conversation
             // siblings, so archiving a bundle never moves People messages (#295).
-            let bundles = UpdatesSenderBundler.bundle(
-                presentation.filteredUngroupedHeaders,
-                sourceID: sourceID,
-                effectiveDateOverrides: presentation.ungroupedDateOverrides
-            )
+            let bundles = cachedUpdatesBundles(in: presentation)
             ForEach(bundles) { bundle in
                 if bundle.headers.count > 1 {
                     UpdatesBundleRowView(
@@ -960,6 +988,7 @@ public struct MessageListView: View {
                                 // duplicated inline or mixed with People thread siblings.
                                 threadChildrenByID: [:],
                                 selectedRowID: selectedRowID,
+                                signInCodeSettings: signInCodeSettings,
                                 allowsInlineThreading: false
                             )
                         }
@@ -972,6 +1001,7 @@ public struct MessageListView: View {
                         visibleCount: presentation.headers.count,
                         threadChildrenByID: [:],
                         selectedRowID: selectedRowID,
+                        signInCodeSettings: signInCodeSettings,
                         allowsInlineThreading: false
                     )
                 }
@@ -989,7 +1019,8 @@ public struct MessageListView: View {
                         visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
                         visibleCount: presentation.headers.count,
                         threadChildrenByID: presentation.headersByThreadID,
-                        selectedRowID: selectedRowID
+                        selectedRowID: selectedRowID,
+                        signInCodeSettings: signInCodeSettings
                     )
                 }
             }
@@ -1000,7 +1031,8 @@ public struct MessageListView: View {
                     visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
                     visibleCount: presentation.headers.count,
                     threadChildrenByID: presentation.headersByThreadID,
-                    selectedRowID: selectedRowID
+                    selectedRowID: selectedRowID,
+                    signInCodeSettings: signInCodeSettings
                 )
             }
         }
@@ -1286,11 +1318,16 @@ public struct MessageListView: View {
                 }
             }
         } else {
+            let signInCodeSettings = SignInCodeSettings.load(from: .standard)
             Group {
                 ScrollViewReader { proxy in
                     List {
                         if showsPeopleUpdatesBar && activePeopleUpdatesTab != .all {
-                            peopleUpdatesListRows(presentation: presentation, selectedRowID: selectedRowID)
+                            peopleUpdatesListRows(
+                                presentation: presentation,
+                                selectedRowID: selectedRowID,
+                                signInCodeSettings: signInCodeSettings
+                            )
                         } else if groupByDate {
                             ForEach(presentation.dateSections) { section in
                                 dateSectionHeaderRow(section)
@@ -1300,7 +1337,8 @@ public struct MessageListView: View {
                                         visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
                                         visibleCount: presentation.headers.count,
                                         threadChildrenByID: presentation.headersByThreadID,
-                                        selectedRowID: selectedRowID
+                                        selectedRowID: selectedRowID,
+                                        signInCodeSettings: signInCodeSettings
                                     )
                                 }
                             }
@@ -1311,7 +1349,8 @@ public struct MessageListView: View {
                                     visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
                                     visibleCount: presentation.headers.count,
                                     threadChildrenByID: presentation.headersByThreadID,
-                                    selectedRowID: selectedRowID
+                                    selectedRowID: selectedRowID,
+                                    signInCodeSettings: signInCodeSettings
                                 )
                             }
                         }
@@ -1465,11 +1504,18 @@ public struct MessageListView: View {
         )
     }
 
+    private var isProactiveTriageActive: Bool {
+        proactiveTriageSettings.isProactiveOnDeviceTriageAvailable
+            && aiBackend?.isOnDeviceZeroNetwork == true
+            && !OnDeviceThreadTriageStore.isExcludedFolder(folder)
+            && triageStore != nil
+    }
+
     private func visibleProactiveTriageBatch() -> [MessageHeader] {
         let filteredVisible = renderedSelectableHeaders(in: presentationSnapshot)
         return ProactiveTriageVisibleWindow.selectBatch(
             from: filteredVisible,
-            visibleIDs: visibleTriageRowIDs,
+            visibleIDs: triageViewportTracker.visibleIDs,
             itemID: \.id,
             cacheKey: { OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: $0) }
         )
@@ -1491,15 +1537,13 @@ public struct MessageListView: View {
     }
 
     private func proactiveTriageInsight(for header: MessageHeader) -> ThreadTriageInsight? {
-        guard proactiveTriageSettings.isProactiveOnDeviceTriageAvailable,
-              let aiBackend,
-              aiBackend.isOnDeviceZeroNetwork,
-              !OnDeviceThreadTriageStore.isExcludedFolder(folder),
-              let triageStore
+        guard isProactiveTriageActive,
+              let triageStore,
+              triageStore.hasCachedInsights
         else { return nil }
         let key = OnDeviceThreadTriageStore.cacheKey(accountID: backend.account.id, header: header)
         let headerFP = triageThreadIndex.headerFingerprint(for: key, fallback: header)
-        return triageStore.cachedInsight(for: key, matchingHeaderFingerprint: headerFP)
+        return triageStore.insightForDisplay(for: key, matchingHeaderFingerprint: headerFP)
     }
 
     private func scheduleProactiveOnDeviceTriageIfEligible() {
@@ -1540,10 +1584,19 @@ public struct MessageListView: View {
         visibleIndex: Int,
         visibleCount: Int,
         selectedRowID: MessageHeader.ID?,
+        signInCodeSettings: SignInCodeSettings,
         allowsInlineThreading: Bool = true
     ) -> some View {
         let followUpReminder = followUpReminderIndex.reminder(for: header.id, sourceID: sourceID)
         let rowThreadCount = allowsInlineThreading ? threadCount(for: header) : 1
+        let signInCode = signInCodeSettings.accountOverrides[backend.account.id]?.codesEnabled == true
+            ? SignInCodeSurfacePolicy.headerCode(
+                for: header,
+                sourceID: sourceID,
+                accountID: backend.account.id,
+                settings: signInCodeSettings
+            )?.code
+            : nil
         MessageListRow(
             header: header,
             threadCount: rowThreadCount,
@@ -1562,12 +1615,7 @@ public struct MessageListView: View {
             showsAbsoluteArrivalTime: showAbsoluteArrivalTime,
             sourceContext: nil,
             matchedAttachmentName: matchedAttachmentName(for: header.id),
-            signInCode: SignInCodeSurfacePolicy.headerCode(
-                for: header,
-                sourceID: sourceID,
-                accountID: backend.account.id,
-                settings: SignInCodeSettings.load(from: .standard)
-            )?.code,
+            signInCode: signInCode,
             triageInsight: proactiveTriageInsight(for: header),
             isBlockedSender: blockedSenderEmailSet.contains(header.from.email.lowercased()),
             hasFollowUp: followUpReminder != nil,
@@ -1662,7 +1710,10 @@ public struct MessageListView: View {
                 delay: refreshArrivalDelay(for: header.id)
             )
             .onAppear {
-                visibleTriageRowIDs.insert(header.id)
+                triageViewportTracker.rowAppeared(
+                    header.id,
+                    onSchedule: isProactiveTriageActive ? { scheduleProactiveOnDeviceTriageIfEligible() } : nil
+                )
                 guard shouldLoadMore(
                     afterAppearingAt: visibleIndex,
                     totalCount: visibleCount
@@ -1670,7 +1721,10 @@ public struct MessageListView: View {
                 Task { await loadMore() }
             }
             .onDisappear {
-                visibleTriageRowIDs.remove(header.id)
+                triageViewportTracker.rowDisappeared(
+                    header.id,
+                    onSchedule: isProactiveTriageActive ? { scheduleProactiveOnDeviceTriageIfEligible() } : nil
+                )
             }
     }
 
@@ -2235,6 +2289,7 @@ public struct MessageListView: View {
         visibleCount: Int,
         threadChildrenByID: [String: [MessageHeader]],
         selectedRowID: MessageHeader.ID?,
+        signInCodeSettings: SignInCodeSettings,
         allowsInlineThreading: Bool = true
     ) -> some View {
         parentMessageRow(
@@ -2242,6 +2297,7 @@ public struct MessageListView: View {
             visibleIndex: visibleIndex,
             visibleCount: visibleCount,
             selectedRowID: selectedRowID,
+            signInCodeSettings: signInCodeSettings,
             allowsInlineThreading: allowsInlineThreading
         )
         if allowsInlineThreading,
@@ -4915,6 +4971,84 @@ struct MailboxFilterMenu: View {
     }
 }
 
+/// Unobserved reference box holding the macOS thread chevron frame so updating
+/// it from `MessageListThreadTogglePreference` never triggers a second
+/// `MessageListRow.body` layout pass on hover or resize.
+@MainActor
+private final class ThreadToggleFrameBox {
+    var frame: CGRect = .zero
+}
+
+/// Memoizes `PeopleUpdatesCounts.compute` per retained headers buffer and
+/// override/signal revision so scrolling or unrelated body evaluations never
+/// re-classify the entire folder.
+@MainActor
+private final class PeopleUpdatesCountsCache {
+    private var storedHeaders: [MessageHeader]?
+    private var overrideRevision: Int?
+    private var signalsRevision: Int?
+    private var overrideStore: InboxSenderCategoryOverrideStore?
+    private var value: PeopleUpdatesCounts?
+
+    func counts(
+        headers: [MessageHeader],
+        overrideRevision: Int,
+        signalsRevision: Int,
+        overrideStore: InboxSenderCategoryOverrideStore,
+        build: () -> PeopleUpdatesCounts
+    ) -> PeopleUpdatesCounts {
+        if let storedHeaders,
+           headers.sharesRetainedBuffer(with: storedHeaders),
+           self.overrideRevision == overrideRevision,
+           self.signalsRevision == signalsRevision,
+           self.overrideStore == overrideStore,
+           let value {
+            return value
+        }
+        let computed = build()
+        storedHeaders = headers
+        self.overrideRevision = overrideRevision
+        self.signalsRevision = signalsRevision
+        self.overrideStore = overrideStore
+        value = computed
+        return computed
+    }
+}
+
+/// Memoizes `UpdatesSenderBundler.bundle` per retained filtered headers buffer,
+/// source ID, and effective-date overrides.
+@MainActor
+private final class UpdatesSenderBundlesCache {
+    private var storedHeaders: [MessageHeader]?
+    private var sourceID: MailSourceID?
+    private var dateOverrides: [MessageHeader.ID: Date]?
+    private var value: [UpdatesSenderBundle]?
+
+    func bundles(
+        headers: [MessageHeader],
+        sourceID: MailSourceID?,
+        effectiveDateOverrides: [MessageHeader.ID: Date]
+    ) -> [UpdatesSenderBundle] {
+        if let storedHeaders,
+           headers.sharesRetainedBuffer(with: storedHeaders),
+           self.sourceID == sourceID,
+           dateOverrides == effectiveDateOverrides,
+           let value {
+            return value
+        }
+        let computed = UpdatesSenderBundler.bundle(
+            headers,
+            sourceID: sourceID,
+            effectiveDateOverrides: effectiveDateOverrides
+        )
+        storedHeaders = headers
+        self.sourceID = sourceID
+        dateOverrides = effectiveDateOverrides
+        value = computed
+        return computed
+    }
+}
+
 /// Reports the thread chevron's frame in the enclosing row's coordinate
 /// space so the row-level tap gesture can route taps to it.
 struct MessageListThreadTogglePreference: PreferenceKey {
@@ -5209,7 +5343,7 @@ struct MessageListRow: View {
     }
 
     @State private var isHovered = false
-    @State private var threadToggleFrame: CGRect = .zero
+    @State private var threadToggleFrameBox = ThreadToggleFrameBox()
     /// Status glyphs (answered/forwarded) derived once per render pass;
     /// both the visible icons and the accessibility value read this instead
     /// of rebuilding the array at each call site.
@@ -5404,7 +5538,7 @@ struct MessageListRow: View {
             .contentShape(Rectangle())
             .coordinateSpace(name: Self.rowCoordinateSpace)
             .onPreferenceChange(MessageListThreadTogglePreference.self) { frame in
-                threadToggleFrame = frame
+                threadToggleFrameBox.frame = frame
             }
             .highPriorityGesture(
                 SpatialTapGesture(coordinateSpace: .named(Self.rowCoordinateSpace))
@@ -5422,7 +5556,7 @@ struct MessageListRow: View {
                         #endif
                         switch MessageListRowTapRouting.destination(
                             for: value.location,
-                            threadToggleFrame: threadToggleFrame
+                            threadToggleFrame: threadToggleFrameBox.frame
                         ) {
                         case .toggleThread:
                             onToggleThread()
@@ -5597,70 +5731,80 @@ struct MessageListRow: View {
             .overlay(Capsule().stroke(theme.border.color, lineWidth: 0.5))
     }
 
-    private var dateLabel: String {
-        MessageListDatePresentation.label(
+    @ViewBuilder
+    private var senderMetadataHeader: some View {
+        let now = referenceDate ?? Date()
+        let spokenDate = MessageListDatePresentation.accessibilityLabel(
             for: header.date,
             showsAbsoluteArrivalTime: showsAbsoluteArrivalTime,
-            referenceDate: referenceDate ?? Date(),
+            referenceDate: now,
             calendar: calendar,
             locale: locale,
             timeZone: timeZone
         )
-    }
-
-    private var compactDateLabel: String {
-        MessageListDatePresentation.label(
+        let compactDate = MessageListDatePresentation.label(
             for: header.date,
             showsAbsoluteArrivalTime: showsAbsoluteArrivalTime,
             relativeStyle: .compact,
-            referenceDate: referenceDate ?? Date(),
+            referenceDate: now,
             calendar: calendar,
             locale: locale,
             timeZone: timeZone
         )
-    }
-
-    @ViewBuilder
-    private var senderMetadataHeader: some View {
         if usesAccessibilityLayout {
-            stackedSenderMetadata(dateLabel: compactDateLabel)
+            stackedSenderMetadata(dateLabel: compactDate, spokenDateLabel: spokenDate)
         } else if isCompactWidth {
             ViewThatFits(in: .horizontal) {
                 senderMetadataRow(
-                    dateLabel: compactDateLabel,
+                    dateLabel: compactDate,
+                    spokenDateLabel: spokenDate,
                     senderMinimumWidth: MessageListSenderPresentation.minimumWidth
                 )
-                stackedSenderMetadata(dateLabel: compactDateLabel)
+                stackedSenderMetadata(dateLabel: compactDate, spokenDateLabel: spokenDate)
             }
         } else {
+            let primaryDate = MessageListDatePresentation.label(
+                for: header.date,
+                showsAbsoluteArrivalTime: showsAbsoluteArrivalTime,
+                referenceDate: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
             ViewThatFits(in: .horizontal) {
                 senderMetadataRow(
-                    dateLabel: dateLabel,
+                    dateLabel: primaryDate,
+                    spokenDateLabel: spokenDate,
                     senderMinimumWidth: MessageListSenderPresentation.preferredMinimumWidth
                 )
                 senderMetadataRow(
-                    dateLabel: compactDateLabel,
+                    dateLabel: compactDate,
+                    spokenDateLabel: spokenDate,
                     senderMinimumWidth: MessageListSenderPresentation.minimumWidth
                 )
-                stackedSenderMetadata(dateLabel: compactDateLabel)
+                stackedSenderMetadata(dateLabel: compactDate, spokenDateLabel: spokenDate)
             }
         }
     }
 
     private func senderMetadataRow(
         dateLabel: String,
+        spokenDateLabel: String,
         senderMinimumWidth: CGFloat
     ) -> some View {
         HStack(spacing: BrevSpacing.xs) {
             senderIdentityRow(senderMinimumWidth: senderMinimumWidth)
-            metadataTail(dateLabel: dateLabel)
+            metadataTail(dateLabel: dateLabel, spokenDateLabel: spokenDateLabel)
         }
     }
 
-    private func stackedSenderMetadata(dateLabel: String) -> some View {
+    private func stackedSenderMetadata(
+        dateLabel: String,
+        spokenDateLabel: String
+    ) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
             senderIdentityRow(senderMinimumWidth: MessageListSenderPresentation.minimumWidth)
-            metadataTail(dateLabel: dateLabel)
+            metadataTail(dateLabel: dateLabel, spokenDateLabel: spokenDateLabel)
                 .frame(maxWidth: .infinity, alignment: usesAccessibilityLayout ? .leading : .trailing)
         }
     }
@@ -5688,7 +5832,7 @@ struct MessageListRow: View {
 
     /// The attachment clip, the time and (macOS) the thread toggle share the
     /// row's trailing edge, so the time stays the last thing on the line.
-    private func metadataTail(dateLabel: String) -> some View {
+    private func metadataTail(dateLabel: String, spokenDateLabel: String) -> some View {
         HStack(spacing: BrevSpacing.xs) {
             if header.hasAttachments, !isCompactWidth {
                 Image(systemName: "paperclip")
@@ -5697,7 +5841,7 @@ struct MessageListRow: View {
                     .accessibilityLabel(String(localized: "Has attachments", bundle: .module))
                     .mailDenseListChromeDynamicType()
             }
-            metadataDateLabel(dateLabel)
+            metadataDateLabel(dateLabel, spokenDateLabel: spokenDateLabel)
             #if os(macOS)
             if threadCount > 1 {
                 threadControls
@@ -5752,23 +5896,13 @@ struct MessageListRow: View {
     }
     #endif
 
-    private func metadataDateLabel(_ dateLabel: String) -> some View {
+    private func metadataDateLabel(_ dateLabel: String, spokenDateLabel: String) -> some View {
         Text(dateLabel)
             .font(fontFamily.font(size: metadataPointSize))
             .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .accessibilityLabel(spokenDateLabel)
-    }
-
-    private var spokenDateLabel: String {
-        MessageListDatePresentation.accessibilityLabel(
-            for: header.date,
-            showsAbsoluteArrivalTime: showsAbsoluteArrivalTime,
-            calendar: calendar,
-            locale: locale,
-            timeZone: timeZone
-        )
     }
 
     @ViewBuilder

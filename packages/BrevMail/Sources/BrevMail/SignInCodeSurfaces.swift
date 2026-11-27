@@ -60,7 +60,7 @@ public enum SignInCodeSurfacePolicy {
         accountID: String,
         settings: SignInCodeSettings
     ) -> SignInCodeSurfaceMatch? {
-        guard settings.accountOverride(for: accountID).codesEnabled else { return nil }
+        guard settings.accountOverrides[accountID]?.codesEnabled == true else { return nil }
         let code = detectCode(in: header.subject)
             ?? detectCode(in: header.snippet)
             ?? detectCode(in: "\(header.subject)\n\(header.snippet)")
@@ -82,7 +82,7 @@ public enum SignInCodeSurfacePolicy {
         accountID: String,
         settings: SignInCodeSettings
     ) -> SignInCodeSurfaceMatch? {
-        guard settings.accountOverride(for: accountID).codesEnabled else { return nil }
+        guard settings.accountOverrides[accountID]?.codesEnabled == true else { return nil }
         if let plainText, let code = detectCode(in: plainText) {
             return SignInCodeSurfaceMatch(
                 code: code,
@@ -104,7 +104,7 @@ public enum SignInCodeSurfacePolicy {
         settings: SignInCodeSettings,
         now: Date = Date()
     ) -> SignInCodeSurfaceMatch? {
-        guard settings.accountOverride(for: accountID).codesEnabled else { return nil }
+        guard settings.accountOverrides[accountID]?.codesEnabled == true else { return nil }
         let sorted = headers.sorted { $0.date > $1.date }
         for header in sorted {
             guard !SignInCodePresentationFormat.isProbablyExpired(sentAt: header.date, now: now) else {

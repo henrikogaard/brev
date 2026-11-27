@@ -146,17 +146,36 @@ public struct SmartMailboxSettings: Codable, Equatable, Sendable {
         displayOrder = try container.decodeIfPresent([String].self, forKey: .displayOrder) ?? []
     }
 
+    private static let cacheLock = NSLock()
+    private nonisolated(unsafe) static var decodedCache: [Data: SmartMailboxSettings] = [:]
+    private static let maxCacheEntries = 16
+
     public static func load(from defaults: UserDefaults = .standard) -> SmartMailboxSettings {
-        guard let data = defaults.data(forKey: Key.mailboxes),
-              let settings = try? JSONDecoder().decode(SmartMailboxSettings.self, from: data) else {
+        guard let data = defaults.data(forKey: Key.mailboxes) else {
             return .defaults
         }
-        return settings
+        if let cached = cacheLock.withLock({ decodedCache[data] }) {
+            return cached
+        }
+        let decoded = (try? JSONDecoder().decode(SmartMailboxSettings.self, from: data)) ?? .defaults
+        cacheLock.withLock {
+            if decodedCache.count >= maxCacheEntries {
+                decodedCache.removeAll(keepingCapacity: true)
+            }
+            decodedCache[data] = decoded
+        }
+        return decoded
     }
 
     public func save(to defaults: UserDefaults = .standard) {
         guard let data = try? JSONEncoder().encode(self) else { return }
         defaults.set(data, forKey: Key.mailboxes)
+        Self.cacheLock.withLock {
+            if Self.decodedCache.count >= Self.maxCacheEntries {
+                Self.decodedCache.removeAll(keepingCapacity: true)
+            }
+            Self.decodedCache[data] = self
+        }
     }
 
     public mutating func add(_ mailbox: SmartMailbox) {

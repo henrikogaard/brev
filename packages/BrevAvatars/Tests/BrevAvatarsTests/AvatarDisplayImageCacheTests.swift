@@ -12,6 +12,7 @@
 
 @testable import BrevAvatars
 import CoreGraphics
+import Foundation
 import Testing
 
 @MainActor
@@ -50,6 +51,54 @@ struct AvatarDisplayImageCacheTests {
         try cache.store(Self.image(), for: key)
         cache.store(nil, for: key)
         #expect(cache.image(for: key) == nil)
+    }
+
+    @Test("invalidate clears entries for the target resolver without affecting others")
+    func invalidateClearsTargetResolverOnly() throws {
+        let cache = AvatarDisplayImageCache(countLimit: 8)
+        let key1 = AvatarDisplayImageCache.Key(resolverID: 10, email: "a@b.c", preferences: .default, pixelDimension: 56)
+        let key2 = AvatarDisplayImageCache.Key(resolverID: 20, email: "a@b.c", preferences: .default, pixelDimension: 56)
+        let image1 = try Self.image()
+        let image2 = try Self.image()
+        cache.store(image1, for: key1)
+        cache.store(image2, for: key2)
+
+        let beforeGen = cache.generation(forResolverID: 10)
+        cache.invalidate(resolverID: 10)
+
+        #expect(cache.generation(forResolverID: 10) == beforeGen + 1)
+        #expect(cache.image(for: key1) == nil)
+        #expect(cache.image(for: key2) === image2)
+    }
+
+    @Test("expired thumbnails are evicted on read")
+    func expiredEntriesReturnNil() throws {
+        let cache = AvatarDisplayImageCache(countLimit: 4)
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let key = AvatarDisplayImageCache.Key(resolverID: 1, email: "a@b.c", preferences: .default, pixelDimension: 56)
+        let image = try Self.image()
+        cache.store(image, for: key, expiresAt: now.addingTimeInterval(60))
+
+        #expect(cache.image(for: key, now: now.addingTimeInterval(30)) === image)
+        #expect(cache.image(for: key, now: now.addingTimeInterval(60)) == nil)
+    }
+
+    @Test("AvatarResolver.clearCache invalidates shared display cache entries for that resolver")
+    func resolverClearCacheInvalidatesDisplayCache() async throws {
+        let resolver = AvatarResolver(preferences: .default)
+        let resolverID = ObjectIdentifier(resolver).hashValue
+        let key = AvatarDisplayImageCache.Key(
+            resolverID: resolverID,
+            email: "clear-test@example.com",
+            preferences: .default,
+            pixelDimension: 56
+        )
+        let image = try Self.image()
+        AvatarDisplayImageCache.shared.store(image, for: key)
+        #expect(AvatarDisplayImageCache.shared.image(for: key) === image)
+
+        await resolver.clearCache()
+        #expect(AvatarDisplayImageCache.shared.image(for: key) == nil)
     }
 
     private static func image() throws -> CGImage {
